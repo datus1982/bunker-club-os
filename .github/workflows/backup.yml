@@ -1,0 +1,44 @@
+name: Weekly off-platform backup
+
+# docs/12: independent, owner-controlled copy of the database + storage, separate
+# from Supabase Pro's daily backups/PITR. Runs the same scripts/backup.ts used
+# locally. If the DATABASE_URL secret is set it does a full pg_dump; otherwise it
+# takes the password-free service-key JSON snapshot. Artifacts are retained here;
+# a later step can push them to R2/S3/Drive if desired.
+
+on:
+  schedule:
+    - cron: "17 9 * * 1" # Mondays 09:17 UTC
+  workflow_dispatch: {}
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install postgresql-client (for pg_dump when DATABASE_URL is set)
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+
+      - name: Install deps
+        run: npm install --no-audit --no-fund
+
+      - name: Run backup
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          BACKUP_DIR: ./backups
+        run: npm run backup
+
+      - name: Upload backup artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: bunker-backup-${{ github.run_id }}
+          path: backups/
+          retention-days: 90
+          if-no-files-found: error

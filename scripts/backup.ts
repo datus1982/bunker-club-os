@@ -1,18 +1,25 @@
 /**
  * backup.ts — off-platform backup (docs/12).
  *
- * Weekly full pg_dump + storage-bucket download to owner-controlled storage.
- * Supabase Pro already does daily backups + PITR; this is the independent copy.
- * Scheduled via GitHub Actions cron (where pg_dump is available and the off-
- * platform upload step — R2/S3/Drive/artifact — is wired). Locally it writes to
- * BACKUP_DIR so the Phase 0 restore drill can be exercised.
+ * Two modes, auto-selected:
+ *   • DATABASE_URL set  → full pg_dump (schema + data + roles), the gold standard.
+ *   • DATABASE_URL empty → password-free snapshot: every public table dumped to
+ *     JSON via the service key. Restore = apply repo migrations to a fresh project
+ *     (which recreate the schema) + load these JSON rows. // DECISION: this fallback
+ *     lets backups run in CI with only the service-role secret, no DB password.
  *
- *   BACKUP_DIR/db-<stamp>.sql.gz         gzip'd pg_dump (schema + data)
- *   BACKUP_DIR/storage-<stamp>/<bucket>  every storage object
+ * Both modes also download every storage bucket. Supabase Pro already does daily
+ * backups + PITR; this is the independent, owner-controlled copy.
+ *
+ * Output in BACKUP_DIR:
+ *   db-<stamp>.sql.gz            (pg_dump mode)
+ *   data-<stamp>/<table>.json    (service-key mode)
+ *   storage-<stamp>/<bucket>/…   (both)
  *
  * Restore drill (docs/12 — TEST ONCE in Phase 0, into a scratch project):
- *   gunzip -c db-<stamp>.sql.gz | psql "$SCRATCH_DATABASE_URL"
- *   then re-upload storage objects with a short supabase-js loop.
+ *   pg_dump mode: gunzip -c db-<stamp>.sql.gz | psql "$SCRATCH_DATABASE_URL"
+ *   json  mode:  apply supabase/migrations to the scratch project, then upsert each
+ *                data-<stamp>/<table>.json with the service key (reverse of import).
  *
  * Run:  pnpm backup
  */
@@ -22,18 +29,25 @@ import { mkdir, readdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { createGzip } from "node:zlib";
 import { pipeline } from "node:stream/promises";
-import { newServiceClient, requireEnv, optionalEnv, nowStamp } from "./_shared";
+import { newServiceClient, requireEnv, optionalEnv, nowStamp, selectAll } from "./_shared";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 const BACKUP_DIR = optionalEnv("BACKUP_DIR", "./backups");
 const BUCKETS = ["signage", "picture-rounds", "logos"];
 
-async function dumpDatabase(stamp: string) {
+// Every public table (service-key snapshot covers all of them, RLS bypassed).
+const TABLES = [
+  "venues", "venue_settings", "profiles", "venue_staff", "teams", "team_members",
+  "seasons", "games", "game_teams", "rounds", "scores", "questions",
+  "game_display_state", "signage_slots", "signage_items", "screen_takeovers",
+  "toast_menu_cache", "scheduled_events",
+];
+
+async function dumpDatabasePgDump(stamp: string) {
   const dbUrl = requireEnv("DATABASE_URL");
   const dest = join(BACKUP_DIR, `db-${stamp}.sql.gz`);
   await mkdir(BACKUP_DIR, { recursive: true });
-
-  console.log("  · running pg_dump (--no-owner --no-privileges)…");
+  console.log("  · pg_dump (--no-owner --no-privileges)…");
   const proc = spawn("pg_dump", ["--no-owner", "--no-privileges", dbUrl], {
     stdio: ["ignore", "pipe", "pipe"],
   });
@@ -46,17 +60,29 @@ async function dumpDatabase(stamp: string) {
     }
     throw e;
   });
-
   await pipeline(proc.stdout, createGzip(), createWriteStream(dest));
   const code: number = await new Promise((res) => proc.on("close", res));
   if (code !== 0) throw new Error(`pg_dump exited ${code}: ${stderr}`);
   console.log(`  ✓ ${dest}`);
 }
 
+async function dumpDataViaApi(client: SupabaseClient, stamp: string) {
+  const root = join(BACKUP_DIR, `data-${stamp}`);
+  await mkdir(root, { recursive: true });
+  let total = 0;
+  for (const t of TABLES) {
+    const rows = await selectAll(client, t);
+    await writeFile(join(root, `${t}.json`), JSON.stringify(rows, null, 2));
+    total += rows.length;
+    console.log(`  ✓ ${t.padEnd(20)} ${rows.length} rows`);
+  }
+  console.log(`  → ${total} rows across ${TABLES.length} tables → ${root}`);
+}
+
 async function walk(client: SupabaseClient, bucket: string, prefix = ""): Promise<string[]> {
   const paths: string[] = [];
   const { data, error } = await client.storage.from(bucket).list(prefix, { limit: 1000 });
-  if (error) return paths; // bucket may not exist yet
+  if (error) return paths;
   for (const entry of data ?? []) {
     const full = prefix ? `${prefix}/${entry.name}` : entry.name;
     if (entry.id == null) paths.push(...(await walk(client, bucket, full)));
@@ -85,11 +111,21 @@ async function dumpStorage(client: SupabaseClient, stamp: string) {
 async function main() {
   console.log("\n▶ Backup (off-platform copy)\n");
   const stamp = nowStamp();
-  await dumpDatabase(stamp);
+  const client = newServiceClient();
+
+  if (optionalEnv("DATABASE_URL")) {
+    console.log("Database (pg_dump mode):");
+    await dumpDatabasePgDump(stamp);
+  } else {
+    console.log("Database (service-key JSON mode — no DATABASE_URL set):");
+    await dumpDataViaApi(client, stamp);
+  }
+
   console.log("\nStorage:");
-  await dumpStorage(newServiceClient(), stamp);
+  await dumpStorage(client, stamp);
+
   console.log(`\n✓ Backup complete → ${BACKUP_DIR}/  (stamp ${stamp})`);
-  console.log("  CI: upload these artifacts off-platform (R2/S3/Drive). Restore drill in README.\n");
+  console.log("  CI uploads these off-platform (GitHub artifact). Restore drill in README.\n");
 }
 
 main().catch((err) => {
