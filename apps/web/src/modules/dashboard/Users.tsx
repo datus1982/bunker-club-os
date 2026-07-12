@@ -107,6 +107,8 @@ export function Users() {
       {/* Staff table */}
       {staff.isLoading ? (
         <div style={{ fontSize: 22 }}>LOADING STAFF…</div>
+      ) : staff.isError ? (
+        <div style={{ fontSize: 20 }}>⚠ {(staff.error as Error)?.message ?? "Unable to load staff."}</div>
       ) : (
         <div style={{ overflowX: "auto" }}>
           <table style={{ borderCollapse: "collapse", width: "100%", minWidth: 720, fontSize: 18 }}>
