@@ -23,3 +23,6 @@ export { QuestionEntry } from "./QuestionEntry";
 
 // Host tool (host+): set per-round inter-round video URLs.
 export { VideoEntry } from "./VideoEntry";
+
+// Host tool (host+): bulk import questions from a PowerPoint deck.
+export { BulkImport } from "./BulkImport";
