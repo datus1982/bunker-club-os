@@ -20,3 +20,6 @@ export { GameSetup } from "./GameSetup";
 
 // Host tool (host+): enter questions/answers per round.
 export { QuestionEntry } from "./QuestionEntry";
+
+// Host tool (host+): set per-round inter-round video URLs.
+export { VideoEntry } from "./VideoEntry";
