@@ -17,3 +17,6 @@ export { History } from "./History";
 
 // Host tool (host+): create a game + its rounds.
 export { GameSetup } from "./GameSetup";
+
+// Host tool (host+): enter questions/answers per round.
+export { QuestionEntry } from "./QuestionEntry";
