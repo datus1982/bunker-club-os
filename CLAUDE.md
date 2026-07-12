@@ -7,7 +7,22 @@ Venue platform for Bunker Club (OKC). Docs in `/docs` are authoritative — read
 **Phase: 0 (Foundation) — ✅ COMPLETE. All docs/10 acceptance gates pass. Phase 1 (trivia port) ready to begin.**
 Live modules: none yet (app deployed, screens not repointed). Legacy (OptiDev) still serving production Wednesday trivia — do NOT write to it; cutover is a deliberate later act (docs/03).
 
-Done this session:
+### ▶ Next session — START HERE
+1. Auto-loaded: this file. Then read docs/00, 01, 02 (authoritative) + docs/04 (Phase 1 spec).
+2. **Phase 1 = trivia port (docs/04).** Branch `phase-1-trivia` off `main`. Order: read-only display pages first — **Leaderboard → GameDisplay → History** — then GameSetup/QuestionEntry/BulkImport/VideoEntry, **Scoring decomposition LAST** (highest regression risk; use the docs/04 parity checklist).
+3. First concrete task: add a `game_scoreboard(game_id)` SQL function (docs/04 QUAL-4, atomic totals) and port `Leaderboard.tsx` to render a real game's standings through `DisplayCanvas` with **realtime** (NOT 5s polling — ARCH-1). Legacy source: unzip `trivia-scoreboard-32575-main.zip` (repo root) → `src/pages/Leaderboard.tsx` (1056 lines), `GameDisplay.tsx`, `History.tsx`. Port fixes: ARCH-1 (realtime), PERF-1 (no flicker on displays), QUAL-1 (strip console.log), QUAL-4 (scoreboard fn).
+4. Real data is already in the DB — test the ported Leaderboard against the imported 2026-07-08 game.
+
+### Operational notes a fresh session can't see
+- **Secrets** live in `.env` + `apps/web/.env` (both gitignored, NOT in git): `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_ACCESS_TOKEN` (migration PAT — may be revoked by owner; regenerate at supabase.com/dashboard/account/tokens), `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID=838f6b1ba6d8bf9cc45185679950151b`, `LEGACY_SUPABASE_*` (read-only). Owned project ref: `ysrqvdutayirpoibdlbf`. Venue id: `11111111-1111-1111-1111-111111111111`.
+- **Apply migrations:** no Supabase CLI installed — POST each file to `https://api.supabase.com/v1/projects/ysrqvdutayirpoibdlbf/database/query` with `Authorization: Bearer $SUPABASE_ACCESS_TOKEN`. Reusable pattern in prior scratchpad `apply-migrations.mjs` (session-local; re-create if gone).
+- **Deploy:** `npm --prefix apps/web run build` then `npx wrangler pages deploy apps/web/dist --project-name=bunker-club-os --branch=main` (needs `CLOUDFLARE_*` in env). Manual until GitHub→Pages auto-deploy is wired.
+- **Package manager:** repo standard is pnpm, but this env used `npm install` (no pnpm/corepack offline); no lockfile committed. `apps/web` deps install standalone.
+- **Legacy zips** are in repo root; re-unzip to inspect (scratchpad extractions are session-local).
+- **Dev server:** `npm --prefix apps/web run dev` (or preview_start "web"). Not running across sessions.
+- **Owner cleanup pending:** delete `bunker-club-os-scratch` project; revoke migration + Cloudflare tokens; reset the DB password that appeared in a log.
+
+Phase 0 — completed work:
 - Repo scaffolded per docs/01 (pnpm monorepo: `apps/web`, `packages/`, `supabase/`, `scripts/`). Git initialized.
 - Vite + React 19 + TS(strict) + Tailwind 3 + Router v7 + TanStack Query v5 app shell. Boots with the terminal theme applied; full route map wired with role guards. Displays render through `DisplayCanvas` (fixed-canvas scale-to-fit + `?calibrate` + nightly 04:00 reload).
 - Terminal theme moved to `apps/web/src/theme/terminal-theme.css`; third-party franchise wording stripped (principle 5); amber/blue color-state variants scaffolded.
@@ -39,4 +54,5 @@ Owner follow-ups (non-blocking): delete the `bunker-club-os-scratch` project; re
 - Venue-scope everything; no hardcoded 'Bunker Club' in logic (theme/config tables instead).
 - Original in-world IP only (principle 5): Shelter Authority / BUNKER UNIFIED OS / Civil Defense. NO third-party franchise marks in any rendered output, generated copy, identifiers, or seed data — ever.
 - Phases execute in order; acceptance criteria (docs/10) are gates. Each phase = its own branch + PR. When a spec is ambiguous: match legacy → simpler → leave a `// DECISION:` comment and note it in the PR.
-- Update this file's Current state after each phase.
+- **Session handoff (do at the END of every working session, and after each phase):** update the "▶ Next session — START HERE" block + Current state to reflect reality, then `git commit` + `git push`. This file auto-loads next session — it IS the handoff. Keep the "Next session" block to the single most useful next action + any context not in the repo (running services, token state, cleanup owed).
+- Durable owner facts/preferences go in the memory system (`memory/`), not here. Repo-derivable facts (schema, file layout, history) stay out of this file.
