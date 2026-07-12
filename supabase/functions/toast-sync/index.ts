@@ -176,7 +176,11 @@ Deno.serve(async (req) => {
     return json({ error: "unauthorized" }, 401);
   }
 
-  const force = await req.json().then((b) => b?.force === true).catch(() => false);
+  const body = await req.json().catch(() => ({}));
+  const force = body?.force === true;
+  // Optional businessDate override (YYYYMMDD) for manual backfill / testing. Only
+  // reachable behind the cron secret, so it's not an public surface.
+  const dateOverride: string | null = typeof body?.businessDate === "string" && /^\d{8}$/.test(body.businessDate) ? body.businessDate : null;
 
   if (!TOAST_CLIENT_ID || !TOAST_CLIENT_SECRET || !TOAST_RESTAURANT_GUID) {
     return json({ error: "Toast credentials not configured" }, 500);
@@ -219,7 +223,7 @@ Deno.serve(async (req) => {
         );
       }
 
-      const businessDate = businessDateFor(new Date(), tz, closeoutHour);
+      const businessDate = dateOverride ?? businessDateFor(new Date(), tz, closeoutHour);
       const orders = await getOrders(token, businessDate);
 
       // Configured groups to display (fall back to overall if none configured yet).

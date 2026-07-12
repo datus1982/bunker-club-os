@@ -72,8 +72,13 @@ async function getStockMap(token: string): Promise<Map<string, boolean>> {
     const rows = Array.isArray(data) ? data : (data.inventory ?? []);
     for (const r of rows) {
       const guid = r.guid ?? r.itemGuid;
+      if (!guid) continue;
+      // Toast /stock/v1/inventory: status is IN_STOCK | OUT_OF_STOCK | QUANTITY.
+      // QUANTITY carries a finite `quantity`; <= 0 means effectively 86'd.
       const status = (r.status ?? r.stockStatus ?? "").toString().toUpperCase();
-      if (guid) map.set(guid, status === "OUT_OF_STOCK" || status === "OUT" || r.inStock === false);
+      const oos = status === "OUT_OF_STOCK" || status === "OUT" || r.inStock === false ||
+        (status === "QUANTITY" && typeof r.quantity === "number" && r.quantity <= 0);
+      map.set(guid, oos);
     }
   } catch { /* default in-stock */ }
   return map;
@@ -115,33 +120,39 @@ Deno.serve(async (req) => {
       const menusData = await menusRes.json();
 
       const rows: Record<string, unknown>[] = [];
-      for (const menu of menusData.menus ?? []) {
-        for (const group of menu.menuGroups ?? []) {
-          if (group.visibility === "NONE") continue;
-          for (const item of group.menuItems ?? []) {
-            if (!item.guid) continue;
-            const imageUrl = item.image ?? item.imageUrl ?? null;
-            const mirrored = imageUrl ? await mirrorImage(admin, item.guid, imageUrl) : null;
-            rows.push({
-              guid: item.guid,
-              venue_id: VENUE_ID,
-              name: item.name ?? "",
-              description: publicBlurb(item.description), // PUBLIC blurb only (docs/09 safety)
-              price: item.price ?? 0,
-              image_url: imageUrl,
-              image_storage_path: mirrored,
-              menu_group: group.name ?? null,
-              item_tags: (item.itemTags ?? []).map((t: { name?: string }) => t.name ?? "").filter(Boolean),
-              out_of_stock: stock.get(item.guid) ?? false,
-              updated_at: new Date().toISOString(),
-            });
-          }
+      // Groups can nest sub-groups; walk the tree and collect items from every level.
+      const walk = async (group: Record<string, any>) => {
+        if (group.visibility === "NONE") return;
+        for (const item of group.menuItems ?? []) {
+          if (!item.guid) continue;
+          const imageUrl = item.image ?? item.imageUrl ?? null;
+          const mirrored = imageUrl ? await mirrorImage(admin, item.guid, imageUrl) : null;
+          rows.push({
+            guid: item.guid,
+            venue_id: VENUE_ID,
+            name: item.name ?? "",
+            description: publicBlurb(item.description), // PUBLIC blurb only (docs/09 safety)
+            price: typeof item.price === "number" ? item.price : 0,
+            image_url: imageUrl,
+            image_storage_path: mirrored,
+            menu_group: group.name ?? null,
+            item_tags: (item.itemTags ?? []).map((t: { name?: string }) => t.name ?? "").filter(Boolean),
+            out_of_stock: stock.get(item.guid) ?? false,
+            updated_at: new Date().toISOString(),
+          });
         }
+        for (const sub of group.menuGroups ?? []) await walk(sub);
+      };
+      for (const menu of menusData.menus ?? []) {
+        for (const group of menu.menuGroups ?? []) await walk(group);
       }
-      if (rows.length > 0) {
-        const { error } = await admin.from("toast_menu_cache").upsert(rows, { onConflict: "guid" });
-        if (error) throw error;
-        itemsUpserted = rows.length;
+      // De-dupe by guid (an item can appear in multiple menus) — upsert needs unique keys.
+      const byGuid = new Map(rows.map((r) => [r.guid as string, r]));
+      const deduped = [...byGuid.values()];
+      if (deduped.length > 0) {
+        const { error } = await admin.from("toast_menu_cache").upsert(deduped, { onConflict: "guid" });
+        if (error) throw new Error(`toast_menu_cache upsert: ${error.message ?? JSON.stringify(error)}`);
+        itemsUpserted = deduped.length;
       }
       await admin.from("venue_settings").upsert(
         { venue_id: VENUE_ID, key: "toast_menu_last_synced", value: { lastUpdated, at: new Date().toISOString() } },
@@ -156,8 +167,9 @@ Deno.serve(async (req) => {
 
     return json({ ok: true, menuChanged, itemsUpserted, stockRows: stock.size, lastUpdated }, 200);
   } catch (error) {
-    console.error("toast-menu-sync error:", error);
-    return json({ error: error instanceof Error ? error.message : String(error) }, 500);
+    const msg = error instanceof Error ? error.message : JSON.stringify(error);
+    console.error("toast-menu-sync error:", msg);
+    return json({ error: msg }, 500);
   }
 });
 

@@ -133,3 +133,48 @@ end $$;
 insert into public.drinks_display_config (venue_id)
 values ('11111111-1111-1111-1111-111111111111')
 on conflict (venue_id) do nothing;
+
+-- ── signage storage bucket (backfill) ────────────────────────────────────────
+-- 0017 created storage WRITE POLICIES for a 'signage' bucket but never created the
+-- bucket row itself. toast-menu-sync mirrors Toast CDN item images here (docs/09 — screens
+-- never depend on Toast's CDN), so create it now. Public-read like logos/picture-rounds.
+insert into storage.buckets (id, name, public)
+values ('signage', 'signage', true)
+on conflict (id) do nothing;
+
+-- ── Operating-hours window for the sync (venue_settings, non-secret) ──────────
+-- toast-sync only hits Toast within this venue-local window. Overnight-safe (close<open).
+insert into public.venue_settings (venue_id, key, value)
+values ('11111111-1111-1111-1111-111111111111', 'drinks_sync_window', '{"open":"16:00","close":"02:30"}'::jsonb)
+on conflict (venue_id, key) do nothing;
+
+-- ── pg_cron schedules (AUTH-1 b: the DB drives the sync; displays never do) ──
+-- The cron command reads the shared secret from Vault by NAME — no secret literal here,
+-- so this migration is committable + reproducible. Populate the Vault secret out-of-band:
+--   select vault.create_secret('<CRON_SECRET>', 'cron_secret');
+-- (same value as the CRON_SECRET edge-fn secret). Until it's set, calls 401 harmlessly.
+do $$
+declare fn_base text := 'https://ysrqvdutayirpoibdlbf.supabase.co/functions/v1';
+begin
+  -- toast-sync: every 60s (function self-gates to operating hours + writes sales_cache).
+  perform cron.schedule('toast-sync-60s', '* * * * *', format($cmd$
+    select net.http_post(
+      url := %L,
+      headers := jsonb_build_object('Content-Type','application/json',
+        'x-cron-secret', (select decrypted_secret from vault.decrypted_secrets where name='cron_secret')),
+      body := '{}'::jsonb
+    );
+  $cmd$, fn_base || '/toast-sync'));
+
+  -- toast-menu-sync: every 2 min (metadata-gated menu pull + stock poll).
+  perform cron.schedule('toast-menu-sync-2m', '*/2 * * * *', format($cmd$
+    select net.http_post(
+      url := %L,
+      headers := jsonb_build_object('Content-Type','application/json',
+        'x-cron-secret', (select decrypted_secret from vault.decrypted_secrets where name='cron_secret')),
+      body := '{}'::jsonb
+    );
+  $cmd$, fn_base || '/toast-menu-sync'));
+exception when undefined_function or invalid_schema_name then
+  raise notice 'pg_cron/pg_net not ready — schedule the sync jobs manually';
+end $$;
