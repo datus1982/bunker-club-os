@@ -337,9 +337,13 @@ async function analyzePicture(blob: Blob): Promise<string[]> {
       r.onerror = () => reject(r.error);
       r.readAsDataURL(blob);
     });
+    // Send the signed-in host's access token — analyze-image gates on venue_staff role,
+    // not the public anon key. No session → skip the call (answers entered manually).
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return [];
     const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/analyze-image`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}` },
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
       body: JSON.stringify({
         image: base64,
         mimeType: blob.type || "image/png",
