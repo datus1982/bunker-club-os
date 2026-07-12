@@ -4,8 +4,10 @@ Venue platform for Bunker Club (OKC). Docs in `/docs` are authoritative — read
 
 ## Current state
 
-**Phase: 2 (Registration v2) — BUILT + verified end-to-end; on branch `phase-2-registration`. Phase 1 was MERGED to `main` (PR #1) and the CI/CD deploy workflow is live + green. Next: open the Phase 2 PR, get deploy green, MERGE, then Phase 3 (Drinks leaderboard, docs/08 — parallelizable) or Phase 4 (Portal, docs/07).**
+**Phase: 3 (Drinks leaderboard port, docs/08) — IN PROGRESS on branch `phase-3-drinks`. Phases 0–2 all MERGED to `main` (PRs #1, #2); CI/CD deploy workflow live + green. Phase 3 also pulls `toast-menu-sync` forward from Phase 5 (docs/10 Phase 3.5 note).**
 Live modules: none yet (app deployed, screens not repointed). Legacy (OptiDev) still serving production Wednesday trivia — do NOT write to it; cutover is a deliberate later act (docs/03).
+
+**⚠ Toast access reality (Phase 3):** owner provisioned **STANDARD API access = READ-ONLY** (menus:read, orders:read, config:read, stock:read). `stock:write` needs a partner-tier integration and is NOT available — so featured control is **POS-side-only** (staff flip ★ SCREENS duplicates via Quick Edit; our sync READS stock). The "feature from Bunker OS admin writes stock" direction (old docs/09) is removed — docs/09 amended. Toast creds (`TOAST_CLIENT_ID/SECRET/RESTAURANT_GUID`) live ONLY in edge-fn secrets (SEC-3) — never in repo/frontend/this file.
 
 **CI/CD live (`.github/workflows/deploy.yml`):** push to `main` → production deploy to Cloudflare Pages (serves os.bunkerokc.com); push to `phase-*` → preview deploy (`--branch=<branch>`). Repo secrets set (CLOUDFLARE_* + VITE_*). **A phase is complete only when its PR is MERGED and this workflow is green** (codified in Rules + docs/12). Migrations apply to the live project pre-cutover; post-cutover only from merged `main`, each RLS migration followed by anon+host smoke tests.
 
