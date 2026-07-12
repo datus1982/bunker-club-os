@@ -9,9 +9,8 @@ export const Settings = () => <Placeholder title="SETTINGS" phase="Phase 1 (docs
 export const GameTools = () => <Placeholder title="GAME TOOLS" phase="Phase 1 (docs/04)" />;
 
 // Public display routes (docs/01 — rendered through DisplayCanvas, no auth).
-export const Leaderboard = () => (
-  <DisplayPlaceholder title="TRIVIA LEADERBOARD" orientation="portrait" />
-);
+// Leaderboard is ported (docs/04); GameDisplay remains a stub until its port.
+export { Leaderboard } from "./Leaderboard";
 export const GameDisplay = () => (
   <DisplayPlaceholder title="GAME DISPLAY" orientation="landscape" />
 );
