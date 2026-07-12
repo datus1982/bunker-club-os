@@ -30,10 +30,15 @@ async function findUserByEmail(client: SupabaseClient, email: string): Promise<U
 
 async function seedOne(client: SupabaseClient, email: string, role: "admin" | "host" | "staff") {
   if (!email) return;
-  const user = await findUserByEmail(client, email);
+  let user = await findUserByEmail(client, email);
   if (!user) {
-    console.warn(`  ! ${role.padEnd(5)} ${email}: no auth user yet — have them sign in (OTP) first, then re-run.`);
-    return;
+    // No login UI yet (Phase 2), so provision the auth user directly. email_confirm
+    // avoids sending any email; the person just signs in via OTP later with the same
+    // address and lands on this same user (and thus these roles).
+    const { data, error } = await client.auth.admin.createUser({ email, email_confirm: true });
+    if (error) throw new Error(`createUser ${email}: ${error.message}`);
+    user = data.user;
+    console.log(`  + provisioned auth user ${email} (confirmed; no email sent)`);
   }
   // Ensure the profile exists (the trigger normally creates it).
   await client.from("profiles").upsert({ id: user.id, email: user.email }, { onConflict: "id" });
