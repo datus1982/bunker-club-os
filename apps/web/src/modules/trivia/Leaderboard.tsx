@@ -10,6 +10,7 @@ import {
   type Round,
   type ScoreboardRow,
 } from "./useLeaderboard";
+import { useSeasonPanel, type SeasonStanding } from "./useSeasonPanel";
 
 /**
  * Trivia leaderboard — public display route (docs/04 port, docs/01 DisplayCanvas).
@@ -46,6 +47,18 @@ export function Leaderboard() {
   const tieInfo = useMemo(() => computeTieInfo(rows), [rows]);
   const hasAnyScores = rows.some((r) => r.total_score !== 0);
 
+  // Season standings panel (docs/06): during an active season, slowly rotate the live
+  // game standings with a SEASON STANDINGS — TOP 5 panel. Finite 18s toggle (no infinite
+  // animation), and NEVER while Game Over is up (that screen must stay put).
+  const seasonPanel = useSeasonPanel().data ?? null;
+  const canRotate = !!seasonPanel && seasonPanel.rows.length > 0 && game?.status === "active" && !gameOverFlag;
+  const [showSeason, setShowSeason] = useState(false);
+  useEffect(() => {
+    if (!canRotate) { setShowSeason(false); return; }
+    const t = setInterval(() => setShowSeason((v) => !v), 18_000);
+    return () => clearInterval(t);
+  }, [canRotate]);
+
   return (
     <DisplayCanvas orientation="portrait">
       <Frame>
@@ -55,6 +68,8 @@ export function Leaderboard() {
           <Centered title="NO ACTIVE GAME" subtitle="STANDBY — CREATE GAME TO BEGIN" />
         ) : game.status === "setup" || game.status === "stopped" ? (
           <HoldingScreen game={game} teams={rows} />
+        ) : showSeason && seasonPanel ? (
+          <SeasonPanel panel={seasonPanel} />
         ) : (
           <Standings
             game={game}
@@ -67,6 +82,29 @@ export function Leaderboard() {
         )}
       </Frame>
     </DisplayCanvas>
+  );
+}
+
+/* ── Season standings panel (docs/06) ──────────────────────────────────────── */
+function SeasonPanel({ panel }: { panel: { seasonName: string; endsOn: string; rows: SeasonStanding[] } }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", height: "100%", padding: "0 8px" }}>
+      <div style={{ textAlign: "center", marginBottom: 24 }}>
+        <div style={{ fontSize: 34, letterSpacing: 4, opacity: 0.7 }}>SEASON STANDINGS</div>
+        <div style={{ fontSize: 84, fontWeight: 700, lineHeight: 1, textShadow: "0 0 18px var(--terminal-glow)" }}>TOP 5</div>
+        <div style={{ fontSize: 28, opacity: 0.7, marginTop: 8 }}>{panel.seasonName.toUpperCase()} · ENDS {panel.endsOn}</div>
+      </div>
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 16, justifyContent: "center" }}>
+        {panel.rows.map((r) => (
+          <div key={r.team_id} className="terminal-border" style={{ display: "flex", alignItems: "center", gap: 28, padding: "18px 28px", borderWidth: r.rank === 1 ? 4 : 2 }}>
+            <span style={{ fontSize: 72, fontWeight: 700, minWidth: 90 }}>#{r.rank}</span>
+            <span style={{ flex: 1, fontSize: 52, fontWeight: 700, textTransform: "uppercase", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{r.team_name}</span>
+            <span style={{ fontSize: 64, fontWeight: 700 }}>{r.score}</span>
+          </div>
+        ))}
+      </div>
+      <div style={{ textAlign: "center", fontSize: 26, opacity: 0.6, marginTop: 20 }}>■ CUMULATIVE CAMPAIGN SCORE</div>
+    </div>
   );
 }
 

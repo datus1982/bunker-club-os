@@ -14,7 +14,8 @@
     "test:businessdate": "tsx scripts/test-business-date.ts",
     "test:menutext": "tsx scripts/test-menu-text.ts",
     "seed:staff": "tsx scripts/seed-staff.ts",
-    "backup": "tsx scripts/backup.ts"
+    "backup": "tsx scripts/backup.ts",
+    "test:seasons": "tsx scripts/test-season-leaderboard.ts"
   },
   "devDependencies": {
     "@supabase/supabase-js": "2.97.0",

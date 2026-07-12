@@ -1,0 +1,90 @@
+/* Player portal (docs/07). Styles ported from docs/portal-mockup.html — the validated UX
+   reference. Amber ambient base; GREEN = live (color-state language). Scoped under .pt.
+   Mobile-first, full-viewport (the mockup's phone bezel is just presentation chrome). */
+
+.pt {
+  --amb: #ffb000;
+  --amb-dim: rgba(255, 176, 0, 0.55);
+  --amb-faint: rgba(255, 176, 0, 0.14);
+  --live: #00ff41;
+  --live-dim: rgba(0, 255, 65, 0.55);
+  --live-faint: rgba(0, 255, 65, 0.12);
+  --pt-bg: #0a0703;
+  --pt-panel: #140e05;
+  --danger: #ff4136;
+
+  position: fixed;
+  inset: 0;
+  background: var(--pt-bg);
+  color: var(--amb);
+  font-family: "Share Tech Mono", monospace;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.pt::before { content: ""; position: absolute; inset: 0; pointer-events: none; z-index: 9; background: repeating-linear-gradient(0deg, rgba(0,0,0,.20) 0 1px, transparent 1px 3px); }
+.pt::after { content: ""; position: absolute; inset: 0; pointer-events: none; z-index: 10; background: radial-gradient(ellipse at center, transparent 60%, rgba(0,0,0,.5) 100%); }
+
+.pt-header { padding: 14px 18px 12px; border-bottom: 1px solid var(--amb-dim); display: flex; justify-content: space-between; align-items: baseline; flex-shrink: 0; }
+.pt-brand { font-family: "VT323", monospace; font-size: 26px; text-shadow: 0 0 8px var(--amb-dim); }
+.pt-sys { font-size: 10px; color: var(--amb-dim); text-align: right; line-height: 1.3; }
+
+.pt-screen { flex: 1; overflow-y: auto; padding: 22px 18px 26px; max-width: 480px; width: 100%; margin: 0 auto; scrollbar-width: thin; scrollbar-color: var(--amb-faint) transparent; }
+
+.pt-tabs { border-top: 1px solid var(--amb-dim); display: flex; flex-shrink: 0; }
+.pt-tabs button { flex: 1; background: none; border: none; color: var(--amb-dim); font-family: "VT323", monospace; font-size: 22px; letter-spacing: 2px; padding: 13px 0; cursor: pointer; }
+.pt-tabs button.on { color: var(--amb); text-shadow: 0 0 8px var(--amb-dim); border-top: 2px solid var(--amb); margin-top: -1px; }
+
+.pt-eyebrow { font-size: 10px; letter-spacing: 3px; color: var(--amb-dim); margin-bottom: 8px; }
+.pt-title { font-family: "VT323", monospace; font-size: 34px; line-height: 1; text-shadow: 0 0 10px var(--amb-dim); margin-bottom: 4px; font-weight: normal; }
+.pt-sub { font-size: 12px; color: var(--amb-dim); line-height: 1.5; margin-bottom: 16px; }
+.pt-g { color: var(--live) !important; text-shadow: 0 0 7px var(--live-dim); }
+.pt-g-dim { color: var(--live-dim) !important; }
+
+.pt-card { background: var(--pt-panel); border: 1px solid var(--amb-dim); padding: 14px; margin-bottom: 14px; cursor: pointer; transition: box-shadow .12s; width: 100%; text-align: left; color: var(--amb); font-family: inherit; }
+.pt-card:hover { box-shadow: 0 0 14px rgba(255,176,0,.18); }
+.pt-card .nm { font-family: "VT323", monospace; font-size: 26px; text-shadow: 0 0 6px var(--amb-dim); display: block; }
+.pt-card .meta { font-size: 11px; color: var(--amb-dim); margin-top: 5px; display: flex; gap: 14px; flex-wrap: wrap; }
+
+.pt-live { border: 1px solid var(--live); background: rgba(0,255,65,.05); padding: 14px; margin-bottom: 16px; color: var(--live); }
+.pt-live .hd { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.pt-live .pill { font-size: 10px; letter-spacing: 2px; border: 1px solid var(--live); padding: 3px 8px; animation: pt-pulse 1.6s infinite; }
+@keyframes pt-pulse { 50% { box-shadow: 0 0 12px rgba(0,255,65,.5); } }
+.pt-live .score { font-family: "VT323", monospace; font-size: 46px; line-height: 1; text-shadow: 0 0 12px var(--live-dim); }
+.pt-live .row { display: flex; justify-content: space-between; font-size: 12px; color: var(--live-dim); margin-top: 6px; }
+
+.pt-btn { display: block; width: 100%; text-align: left; background: var(--pt-panel); color: var(--amb); border: 1px solid var(--amb-dim); font-family: "Share Tech Mono", monospace; font-size: 14px; padding: 13px 12px; margin-bottom: 10px; cursor: pointer; }
+.pt-btn:hover { background: rgba(255,176,0,.08); }
+.pt-btn.ghost { background: none; border-style: dashed; color: var(--amb-dim); }
+.pt-btn.primary { border-color: var(--amb); }
+.pt-btn:disabled { opacity: .4; cursor: default; }
+.pt-linkish { background: none; border: none; color: var(--amb-dim); font-family: inherit; font-size: 12px; text-decoration: underline; cursor: pointer; padding: 4px 0; }
+.pt-linkish:hover { color: var(--amb); }
+.pt-rule { border: none; border-top: 1px solid var(--amb-faint); margin: 16px 0; }
+.pt-note { font-size: 10px; color: var(--amb-dim); line-height: 1.5; }
+.pt-error { color: var(--danger); font-size: 12px; margin: 8px 0; }
+
+.pt-stat-row { display: flex; gap: 10px; margin: 14px 0; }
+.pt-stat { flex: 1; border: 1px solid var(--amb-dim); padding: 10px; text-align: center; }
+.pt-stat .v { font-family: "VT323", monospace; font-size: 34px; line-height: 1; }
+.pt-stat .k { font-size: 9px; letter-spacing: 2px; color: var(--amb-dim); margin-top: 4px; }
+.pt-streak { display: inline-block; border: 1px solid var(--amb); padding: 5px 10px; font-family: "VT323", monospace; font-size: 18px; letter-spacing: 1px; margin-top: 10px; text-shadow: 0 0 6px var(--amb-dim); }
+
+.pt-member { display: flex; justify-content: space-between; align-items: center; padding: 9px 0; border-bottom: 1px solid var(--amb-faint); font-size: 13px; }
+.pt-tag { font-size: 9px; letter-spacing: 2px; border: 1px solid var(--amb-dim); padding: 2px 6px; color: var(--amb-dim); margin-left: 6px; }
+.pt-tag.pend { color: var(--live); border-color: var(--live-dim); }
+
+table.pt-hist { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 8px; }
+table.pt-hist th { font-size: 9px; letter-spacing: 2px; color: var(--amb-dim); text-align: left; padding: 6px 4px; border-bottom: 1px solid var(--amb-dim); }
+table.pt-hist td { padding: 8px 4px; border-bottom: 1px solid var(--amb-faint); }
+table.pt-hist td.pl { font-family: "VT323", monospace; font-size: 18px; }
+
+.pt-field { margin-bottom: 16px; }
+.pt-field label { display: block; font-size: 10px; letter-spacing: 2px; color: var(--amb-dim); margin-bottom: 6px; }
+.pt-field input { width: 100%; background: #0a0602; border: 1px solid var(--amb-dim); color: var(--amb); font-family: "Share Tech Mono", monospace; font-size: 15px; padding: 11px; }
+.pt-toggle-row { display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid var(--amb-faint); font-size: 13px; gap: 12px; }
+.pt-sw { width: 46px; height: 24px; border: 1px solid var(--amb-dim); position: relative; cursor: pointer; flex-shrink: 0; background: none; }
+.pt-sw i { position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; background: var(--amb-dim); transition: left .15s, background .15s; }
+.pt-sw.on i { left: 24px; background: var(--live); }
+
+@media (prefers-reduced-motion: reduce) { .pt-live .pill { animation: none; } }

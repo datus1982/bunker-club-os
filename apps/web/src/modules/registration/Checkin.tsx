@@ -571,7 +571,7 @@ function Confirm({ game, teamName, setTableName, playerName, busy, error, onConf
         <div className="ck-tk-line">GAME: <b>{game ? `${game.game_date} — Atomic Pub Trivia` : "—"}</b></div>
         <div className="ck-tk-line">CHECKED IN BY: <b>{playerName}</b></div>
         <div className="ck-tk-line">
-          TABLE NAME TONIGHT:{" "}
+          TABLE NAME (TONIGHT ONLY):{" "}
           <b
             className="ck-tk-edit"
             contentEditable
@@ -583,6 +583,7 @@ function Confirm({ game, teamName, setTableName, playerName, busy, error, onConf
           <span style={{ fontSize: 10 }}>(tap to edit)</span>
         </div>
       </div>
+      <p className="ck-note" style={{ marginBottom: 12 }}>Your team stays <b style={{ color: "var(--phos)" }}>{teamName}</b> — this is just what tonight's board shows.</p>
       {error && <div className="ck-error">⚠ {error}</div>}
       <button className="ck-btn primary" disabled={busy} onClick={onConfirm}>{busy ? "WRITING…" : "Check us in"}</button>
       <button className="ck-linkish" onClick={onBack}>← Back to my teams</button>
@@ -600,7 +601,10 @@ function Done({ team, teamName }: { team: MyTeam | null; teamName: string }) {
         <div className="ck-tk-head"><span>STATUS</span><span>ACTIVE</span></div>
         <div className="ck-tk-team">{team?.name ?? teamName}</div>
         {team?.rank != null && team.seasonName ? (
-          <div className="ck-tk-line">SEASON RANK: <b className="ck-rankchip">#{team.rank} — {team.seasonName}</b></div>
+          <>
+            <div className="ck-tk-line">SEASON RANK: <b className="ck-rankchip">#{team.rank} — {team.seasonName}</b></div>
+            <div className="ck-tk-line">{team.rank > 1 ? <>A win tonight could move you to <b className="ck-rankchip">#{team.rank - 1}</b>.</> : "You're leading the campaign — defend it."}</div>
+          </>
         ) : (
           <div className="ck-tk-line">Play tonight to climb the season board.</div>
         )}
