@@ -5,8 +5,8 @@
 
 ## Before doors (10 min)
 
-1. **Sign in.** Go to `os.bunkerokc.com/login`, enter your host email + password. You stay signed in on this device.
-2. **Open the game.** Go to `/scoring`. It auto-loads tonight's game (the one that isn't completed).
+1. **Sign in.** Go to `os.bunkerokc.com/login`. Use your host email + **password**, or tap **EMAIL CODE** to get a 6-digit code emailed to you (handy if you've forgotten the password — no reset needed). You stay signed in on this device. You'll land on the **home dashboard** (BUNKER UNIFIED OS) — the top bar links to every tool, and the status board shows tonight's game, the drinks sync, and the season at a glance.
+2. **Open the game.** From the dashboard tap **TRIVIA CONTROL** (or go to `/scoring`). It auto-loads tonight's game (the one that isn't completed).
    - No game yet? Click **+ CREATE GAME** (or go to `/game/setup`): pick the date, number of rounds (last round is the FINAL), questions per round, and any bonus rounds. Save.
 3. **Load the questions.** From the Scoring header: **QUESTIONS** (type them in) or **IMPORT** (upload the PowerPoint deck — rounds, questions, answers, and picture-round images come in automatically; picture-round answers are read by the AI, double-check them). **VIDEOS** sets each round's inter-round video URL.
 4. **Point the screens.** The two TVs should show:

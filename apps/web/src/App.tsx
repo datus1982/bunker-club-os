@@ -1,14 +1,16 @@
 import { Navigate, Routes, Route } from "react-router-dom";
 
-import { RequireAuth, RequireRole } from "./shared/guards";
+import { RequireAuth, RequireRole, RequireModule } from "./shared/guards";
 import * as Trivia from "./modules/trivia/routes";
 import * as Website from "./modules/website/routes";
 import { Checkin, CheckinQRPage } from "./modules/registration/routes";
 import { Login } from "./modules/auth/Login";
+import { ResetPassword } from "./modules/auth/ResetPassword";
 import { Portal } from "./modules/portal/routes";
 import { DrinksDisplay, DrinksAdmin } from "./modules/leaderboard/routes";
 import { SeasonsAdmin } from "./modules/seasons/routes";
 import { SignageAdmin, SlotDisplay } from "./modules/signage/routes";
+import { Dashboard, StaffLayout, Users } from "./modules/dashboard/routes";
 
 /**
  * Top-level route map (docs/01, updated by docs/14). The public website owns the
@@ -27,19 +29,29 @@ export function App() {
       <Route path="/visit" element={<Website.Visit />} />
       <Route path="/about" element={<Website.About />} />
 
-      {/* Internal dashboard — staff+ */}
-      <Route path="/dashboard" element={<RequireRole role="staff"><Trivia.Dashboard /></RequireRole>} />
+      {/* Staff routes — wrapped in StaffLayout so the persistent staff nav (Phase 4b)
+          renders above every tool. RequireRole inside each route still gates access. */}
+      <Route element={<StaffLayout />}>
+        {/* Internal dashboard / admin-shell home — any staff (tiles filter by module) */}
+        <Route path="/dashboard" element={<RequireRole role="staff"><Dashboard /></RequireRole>} />
 
-      {/* Trivia host tools — host+ */}
-      <Route path="/scoring" element={<RequireRole role="host"><Trivia.Scoring /></RequireRole>} />
-      <Route path="/game/setup" element={<RequireRole role="host"><Trivia.GameSetup /></RequireRole>} />
-      <Route path="/game/:gameId/questions" element={<RequireRole role="host"><Trivia.QuestionEntry /></RequireRole>} />
-      <Route path="/game/:gameId/videos" element={<RequireRole role="host"><Trivia.VideoEntry /></RequireRole>} />
-      <Route path="/game/:gameId/bulk-import" element={<RequireRole role="host"><Trivia.BulkImport /></RequireRole>} />
-      <Route path="/game/*" element={<RequireRole role="host"><Trivia.GameTools /></RequireRole>} />
-      <Route path="/teams" element={<RequireRole role="host"><Trivia.Teams /></RequireRole>} />
-      <Route path="/history" element={<RequireRole role="host"><Trivia.History /></RequireRole>} />
-      <Route path="/settings" element={<RequireRole role="host"><Trivia.Settings /></RequireRole>} />
+        {/* Trivia host tools — gated on the TRIVIA module grant (0024) */}
+        <Route path="/scoring" element={<RequireModule module="trivia"><Trivia.Scoring /></RequireModule>} />
+        <Route path="/game/setup" element={<RequireModule module="trivia"><Trivia.GameSetup /></RequireModule>} />
+        <Route path="/game/:gameId/questions" element={<RequireModule module="trivia"><Trivia.QuestionEntry /></RequireModule>} />
+        <Route path="/game/:gameId/videos" element={<RequireModule module="trivia"><Trivia.VideoEntry /></RequireModule>} />
+        <Route path="/game/:gameId/bulk-import" element={<RequireModule module="trivia"><Trivia.BulkImport /></RequireModule>} />
+        <Route path="/game/*" element={<RequireModule module="trivia"><Trivia.GameTools /></RequireModule>} />
+        <Route path="/teams" element={<RequireModule module="trivia"><Trivia.Teams /></RequireModule>} />
+        <Route path="/history" element={<RequireModule module="trivia"><Trivia.History /></RequireModule>} />
+        <Route path="/settings" element={<RequireRole role="admin"><Trivia.Settings /></RequireRole>} />
+
+        {/* Module surfaces — each gated on its own grant; seasons stays admin-only */}
+        <Route path="/signage" element={<RequireModule module="signage"><SignageAdmin /></RequireModule>} />
+        <Route path="/admin/drinks" element={<RequireModule module="drinks"><DrinksAdmin /></RequireModule>} />
+        <Route path="/admin/seasons" element={<RequireRole role="admin"><SeasonsAdmin /></RequireRole>} />
+        <Route path="/admin/users" element={<RequireRole role="admin"><Users /></RequireRole>} />
+      </Route>
 
       {/* Public display routes — no auth */}
       <Route path="/leaderboard" element={<Trivia.Leaderboard />} />
@@ -47,8 +59,9 @@ export function App() {
       <Route path="/drinks" element={<DrinksDisplay />} />
       <Route path="/signage/s/:slug" element={<SlotDisplay />} />
 
-      {/* Staff sign-in (minimal; full auth is Phase 2) */}
+      {/* Staff sign-in (password + email-OTP) and password recovery landing */}
       <Route path="/login" element={<Login />} />
+      <Route path="/reset-password" element={<ResetPassword />} />
 
       {/* Player-facing */}
       <Route path="/checkin" element={<Checkin />} />
@@ -56,11 +69,6 @@ export function App() {
       {/* Old registration route — /checkin fully replaces it (docs/05); keep a redirect. */}
       <Route path="/add-team" element={<Navigate to="/checkin" replace />} />
       <Route path="/portal/*" element={<RequireAuth><Portal /></RequireAuth>} />
-
-      {/* Staff / admin */}
-      <Route path="/signage" element={<RequireRole role="staff"><SignageAdmin /></RequireRole>} />
-      <Route path="/admin/drinks" element={<RequireRole role="staff"><DrinksAdmin /></RequireRole>} />
-      <Route path="/admin/seasons" element={<RequireRole role="admin"><SeasonsAdmin /></RequireRole>} />
 
       {/* Fallback — unknown paths land on the public home */}
       <Route path="*" element={<Website.Home />} />
