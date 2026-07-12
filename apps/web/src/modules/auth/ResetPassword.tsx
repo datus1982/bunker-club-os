@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/shared/supabaseClient";
+import { roleAtLeast, useRole } from "@/shared/useRole";
 
 /**
  * Password-recovery landing (`/reset-password`). A Supabase recovery email links here
@@ -15,11 +16,15 @@ import { supabase } from "@/shared/supabaseClient";
  * fallback for anyone who set a password and forgot it — not the main door.
  */
 
-type Phase = "checking" | "ready" | "invalid" | "done";
+// "confirm" = an existing plain session with no recovery signal — we ask before
+// letting it change its password (this page isn't the intended door for that).
+type Phase = "checking" | "confirm" | "ready" | "invalid" | "done";
 
 export function ResetPassword() {
   const navigate = useNavigate();
+  const { role } = useRole();
   const [phase, setPhase] = useState<Phase>("checking");
+  const [sessionEmail, setSessionEmail] = useState<string | null>(null);
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -29,9 +34,16 @@ export function ResetPassword() {
   useEffect(() => {
     const markReady = () => { resolved.current = true; setPhase("ready"); };
 
+    // Captured synchronously at mount, before the client's detectSessionInUrl can strip
+    // the hash: does the URL itself carry a recovery signal? The implicit-flow recovery
+    // link lands as `#…&type=recovery`; a query link as `?…&type=recovery`.
+    const hashType = new URLSearchParams(window.location.hash.replace(/^#/, "")).get("type");
+    const queryType = new URLSearchParams(window.location.search).get("type");
+    const urlIsRecovery = hashType === "recovery" || queryType === "recovery";
+
     // 1) React to the recovery event the client fires once it processes the URL token.
-    const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === "PASSWORD_RECOVERY" || (session && !resolved.current)) markReady();
+    const { data: sub } = supabase.auth.onAuthStateChange((event) => {
+      if (event === "PASSWORD_RECOVERY") markReady();
     });
 
     // 2) Cover the cases the event doesn't: a ?token_hash=…&type=recovery query, or a
@@ -45,13 +57,28 @@ export function ResetPassword() {
         if (!error) { markReady(); return; }
       }
       const { data } = await supabase.auth.getSession();
-      if (data.session) { markReady(); return; }
+      if (data.session) {
+        // A recovery URL that resolved to a session before the event fired → straight to
+        // the form. A plain, already-signed-in session (no recovery signal) → confirm first.
+        if (urlIsRecovery) { markReady(); return; }
+        if (!resolved.current) {
+          resolved.current = true;
+          setSessionEmail(data.session.user.email ?? null);
+          setPhase("confirm");
+        }
+        return;
+      }
       // Give the client a beat to finish detectSessionInUrl before declaring the link dead.
       setTimeout(() => { if (!resolved.current) setPhase("invalid"); }, 1500);
     })();
 
     return () => sub.subscription.unsubscribe();
   }, []);
+
+  // Cancel from the confirm step → back where a signed-in user belongs (mirrors Login's
+  // post-auth routing: staff+ → dashboard, everyone else → portal).
+  const cancelConfirm = () =>
+    navigate(roleAtLeast(role, "staff") ? "/dashboard" : "/portal", { replace: true });
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -75,6 +102,17 @@ export function ResetPassword() {
         <div className="terminal-separator" style={{ margin: "16px 0" }} />
 
         {phase === "checking" && <div style={{ fontSize: 24 }}>VERIFYING RESET LINK…</div>}
+
+        {phase === "confirm" && (
+          <div style={col}>
+            <div style={{ fontSize: 22 }}>
+              You are signed in{sessionEmail ? <> as <b>{sessionEmail}</b></> : null}. Change your password?
+            </div>
+            <div style={{ fontSize: 18, opacity: 0.75 }}>You reached this page without a reset link. Confirm to set a new password for this account.</div>
+            <button type="button" className="u-fill u-ink" style={btnPrimary} onClick={() => setPhase("ready")}>CONFIRM — CHANGE PASSWORD</button>
+            <button type="button" style={btnGhost} onClick={cancelConfirm}>← CANCEL</button>
+          </div>
+        )}
 
         {phase === "invalid" && (
           <div style={col}>
@@ -117,4 +155,8 @@ const input: React.CSSProperties = {
 const btnPrimary: React.CSSProperties = {
   background: "var(--terminal-green)", color: "#000", border: "1px solid var(--terminal-green)",
   padding: "12px 20px", fontSize: 26, fontWeight: 700, cursor: "pointer", fontFamily: MONO,
+};
+const btnGhost: React.CSSProperties = {
+  background: "transparent", color: "var(--terminal-green)", border: "1px solid var(--terminal-green)",
+  padding: "10px 20px", fontSize: 22, cursor: "pointer", fontFamily: MONO,
 };
