@@ -191,8 +191,18 @@ end $$;
 -- Never selectable by anon/authenticated. Verification only via verify-team-pin
 -- edge fn (service role). Grant authenticated column-level SELECT on everything
 -- EXCEPT pin_hash; RLS still gates which rows.
-revoke select on public.teams from anon, authenticated;
+-- Drop the table-wide grants (a table-level privilege silently covers pin_hash and
+-- overrides any column-level revoke), then re-grant per column, excluding pin_hash.
+-- pin_hash is therefore never readable OR writable by anon/authenticated — only the
+-- verify-team-pin edge fn (service role, bypasses grants) ever touches it. RLS still
+-- gates which rows (staff manage; players read their own via teams_select_member).
+revoke select, insert, update, delete on public.teams from anon;
+revoke select, insert, update on public.teams from authenticated;
 grant select (id, venue_id, name, logo_url, is_regular, archived, created_at)
+  on public.teams to authenticated;
+grant insert (id, venue_id, name, logo_url, is_regular, archived, created_at)
+  on public.teams to authenticated;
+grant update (name, logo_url, is_regular, archived)
   on public.teams to authenticated;
 
 -- ── Explicit grants for views + scoring function ────────────────────────────

@@ -11,10 +11,10 @@ Done this session:
 - Repo scaffolded per docs/01 (pnpm monorepo: `apps/web`, `packages/`, `supabase/`, `scripts/`). Git initialized.
 - Vite + React 19 + TS(strict) + Tailwind 3 + Router v7 + TanStack Query v5 app shell. Boots with the terminal theme applied; full route map wired with role guards. Displays render through `DisplayCanvas` (fixed-canvas scale-to-fit + `?calibrate` + nightly 04:00 reload).
 - Terminal theme moved to `apps/web/src/theme/terminal-theme.css`; third-party franchise wording stripped (principle 5); amber/blue color-state variants scaffolded.
-- ALL migrations from docs/02 written (`supabase/migrations/0001–0014`), plus seasons, signage (calibration/recurrence/celebration), and events schema (docs/06/09/13). RLS default-deny with the public/player/staff split; `pin_hash` locked out of anon+authenticated; `check_in_team` RPC; `season_leaderboard()` (3 modes). **Statically reviewed only — not yet applied to a real Postgres.**
+- ALL migrations from docs/02 written (`supabase/migrations/0001–0014`), plus seasons, signage (calibration/recurrence/celebration), and events schema (docs/06/09/13). RLS default-deny with the public/player/staff split; `pin_hash` locked out of anon+authenticated (read AND write); `check_in_team` RPC; `season_leaderboard()` (3 modes). **APPLIED to the owned Supabase project (ref `ysrqvdutayirpoibdlbf`) via the Management API and verified: 18 tables all RLS-on, 36 policies, 3 views, realtime on 12 tables, seed venue present. Anon-key smoke test passed — public reads 200, anon writes + pin_hash reads rejected.**
 - `scripts/export-legacy.ts` (path B, read-only), `import-legacy.ts` (docs/03 mapping, idempotent, count-verified), `seed-staff.ts`, `backup.ts` (docs/12).
 
-Blocked on owner (see README "What Claude needs from you"): Supabase project URL + keys, legacy anon key + gateway URL, hosting/domain choice, venue_staff seed emails, Supabase Pro + custom domain, restore-drill sign-off.
+Blocked on owner (see README "What Claude needs from you"): legacy anon key + gateway URL (from the live app's `window.__ENV__`), hosting/domain choice, venue_staff seed emails, Supabase Pro tier + custom domain, `DATABASE_URL` (backups), restore-drill sign-off.
 
 ## Commands
 
