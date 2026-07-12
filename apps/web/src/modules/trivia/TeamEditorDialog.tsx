@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { supabase, VENUE_ID } from "@/shared/supabaseClient";
 import { log } from "@/shared/log";
 import { Modal, Field, input, btnPrimary, btnGhost, checkRow } from "./ui";
@@ -9,10 +9,14 @@ import { Modal, Field, input, btnPrimary, btnGhost, checkRow } from "./ui";
  * component both use. It edits a team's identity only — name, is_regular, logo — and
  * syncs the as-registered name (game_teams.display_name) into every non-completed game.
  *
- * SEC-1: contact name/email/PIN are NOT edited here. PINs are pin_hash only (never shown
- * or set in plaintext) and player-owned team contact data belongs to Registration v2
- * (Phase 2). Editing those is intentionally absent.
+ * SEC-1 (Phase 2, docs/05): the deferred fields land here the RIGHT way. The join PIN is
+ * SET/RESET only — never displayed (pin_hash is locked out of every client read; the
+ * legacy "show the PIN" behavior is dead). set_team_pin bcrypt-hashes server-side. The
+ * roster is read via the staff-only team_roster RPC (staff can't join profiles under RLS).
+ * Both are edit-mode only and best-effort (a team must exist first).
  */
+
+interface RosterMember { profile_id: string; display_name: string | null; email: string | null; role: string; }
 
 export interface EditableTeam {
   id: string;
@@ -41,6 +45,42 @@ export function TeamEditorDialog({
   const [logoPreview, setLogoPreview] = useState<string | null>(initial?.logo_url ?? null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // SEC-1 extras (edit mode only).
+  const [hasPin, setHasPin] = useState<boolean | null>(null);
+  const [newPin, setNewPin] = useState("");
+  const [pinBusy, setPinBusy] = useState(false);
+  const [pinMsg, setPinMsg] = useState<string | null>(null);
+  const [roster, setRoster] = useState<RosterMember[] | null>(null);
+
+  const teamId = initial?.id;
+  useEffect(() => {
+    if (mode !== "edit" || !teamId) return;
+    let cancelled = false;
+    (async () => {
+      const [{ data: pinData }, { data: rosterData }] = await Promise.all([
+        supabase.rpc("team_has_pin", { p_team_id: teamId }),
+        supabase.rpc("team_roster", { p_team_id: teamId }),
+      ]);
+      if (cancelled) return;
+      setHasPin(pinData === true);
+      setRoster((rosterData as RosterMember[] | null) ?? []);
+    })();
+    return () => { cancelled = true; };
+  }, [mode, teamId]);
+
+  const setPin = async (clear: boolean) => {
+    if (!teamId) return;
+    if (!clear && !/^\d{4,6}$/.test(newPin)) { setPinMsg("PIN must be 4–6 digits."); return; }
+    setPinBusy(true);
+    setPinMsg(null);
+    const { error: e } = await supabase.rpc("set_team_pin", { p_team_id: teamId, p_pin: clear ? null : newPin });
+    setPinBusy(false);
+    if (e) { setPinMsg(e.message); return; }
+    setNewPin("");
+    setHasPin(!clear);
+    setPinMsg(clear ? "PIN removed." : "PIN set.");
+  };
 
   const pickLogo = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -127,6 +167,50 @@ export function TeamEditorDialog({
             <input type="file" accept="image/*" onChange={pickLogo} style={{ ...input, fontSize: 18 }} />
           </div>
         </Field>
+
+        {mode === "edit" && (
+          <>
+            <div className="terminal-separator" style={{ margin: "4px 0" }} />
+            <Field label={`JOIN PIN  ·  ${hasPin === null ? "…" : hasPin ? "SET" : "NOT SET"}`}>
+              <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                <input
+                  value={newPin}
+                  onChange={(e) => setNewPin(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                  placeholder="4–6 digits"
+                  inputMode="numeric"
+                  style={{ ...input, width: 140 }}
+                />
+                <button type="button" onClick={() => setPin(false)} disabled={pinBusy} style={btnPrimary}>
+                  {hasPin ? "RESET PIN" : "SET PIN"}
+                </button>
+                {hasPin && (
+                  <button type="button" onClick={() => setPin(true)} disabled={pinBusy} style={btnGhost}>REMOVE</button>
+                )}
+              </div>
+              <div style={{ fontSize: 16, opacity: 0.6, marginTop: 6 }}>
+                Teammates join with this PIN. It's never displayed — set a new one to rotate it.
+              </div>
+              {pinMsg && <div style={{ fontSize: 18, marginTop: 6 }}>{pinMsg}</div>}
+            </Field>
+
+            <Field label={`MEMBERS  ·  ${roster?.length ?? 0}`}>
+              {roster == null ? (
+                <div style={{ opacity: 0.6, fontSize: 18 }}>Loading…</div>
+              ) : roster.length === 0 ? (
+                <div style={{ opacity: 0.6, fontSize: 18 }}>No registered members yet (walk-up / paper team).</div>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                  {roster.map((m) => (
+                    <div key={m.profile_id} style={{ fontSize: 18, display: "flex", justifyContent: "space-between", gap: 12 }}>
+                      <span>{m.display_name || m.email || m.profile_id.slice(0, 8)}</span>
+                      <span style={{ opacity: 0.6 }}>{m.role === "captain" ? "★ CAPTAIN" : "member"}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </Field>
+          </>
+        )}
 
         {error && <div className="terminal-border" style={{ padding: 10, fontSize: 20 }}>⚠ {error}</div>}
       </div>

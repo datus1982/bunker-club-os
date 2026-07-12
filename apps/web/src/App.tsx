@@ -1,9 +1,9 @@
-import { Routes, Route } from "react-router-dom";
+import { Navigate, Routes, Route } from "react-router-dom";
 
 import { RequireAuth, RequireRole } from "./shared/guards";
 import * as Trivia from "./modules/trivia/routes";
 import * as Website from "./modules/website/routes";
-import { Checkin } from "./modules/registration/routes";
+import { Checkin, CheckinQRPage } from "./modules/registration/routes";
 import { Login } from "./modules/auth/Login";
 import { Portal } from "./modules/portal/routes";
 import { DrinksDisplay } from "./modules/leaderboard/routes";
@@ -52,6 +52,9 @@ export function App() {
 
       {/* Player-facing */}
       <Route path="/checkin" element={<Checkin />} />
+      <Route path="/checkin/qr" element={<CheckinQRPage />} />
+      {/* Old registration route — /checkin fully replaces it (docs/05); keep a redirect. */}
+      <Route path="/add-team" element={<Navigate to="/checkin" replace />} />
       <Route path="/portal/*" element={<RequireAuth><Portal /></RequireAuth>} />
 
       {/* Staff / admin */}

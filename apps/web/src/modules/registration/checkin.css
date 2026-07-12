@@ -1,0 +1,297 @@
+/* Patron check-in terminal (docs/05). Styles ported from docs/checkin-flow-mockup.html
+   — the VALIDATED UX reference — and scoped under .ck so they don't touch the rest of
+   the app. The mockup's demo "phone bezel" is dropped: this IS the phone, so the CRT
+   screen fills the viewport. Fonts (VT323 / Share Tech Mono) are already loaded app-wide
+   by the terminal theme. */
+
+.ck {
+  --phos: #00ff41;
+  --phos-dim: rgba(0, 255, 65, 0.55);
+  --phos-faint: rgba(0, 255, 65, 0.18);
+  --amber: #ffb000;
+  --amber-dim: rgba(255, 176, 0, 0.5);
+  --ck-bg: #04070a;
+  --ck-panel: #081409;
+  --ck-line: rgba(0, 255, 65, 0.35);
+  --danger: #ff4136;
+
+  position: fixed;
+  inset: 0;
+  background: var(--ck-bg);
+  color: var(--phos);
+  font-family: "Share Tech Mono", monospace;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* CRT scanline + vignette overlays */
+.ck::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 9;
+  background: repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.22) 0 1px, transparent 1px 3px);
+}
+.ck::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 10;
+  background: radial-gradient(ellipse at center, transparent 60%, rgba(0, 0, 0, 0.45) 100%);
+}
+
+.ck-header {
+  padding: 14px 18px 12px;
+  border-bottom: 1px solid var(--ck-line);
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  flex-shrink: 0;
+}
+.ck-brand {
+  font-family: "VT323", monospace;
+  font-size: 26px;
+  letter-spacing: 1px;
+  text-shadow: 0 0 8px var(--phos-dim);
+}
+.ck-sys {
+  font-size: 10px;
+  color: var(--phos-dim);
+  text-align: right;
+  line-height: 1.3;
+}
+
+.ck-screen {
+  flex: 1;
+  overflow-y: auto;
+  padding: 26px 20px 30px;
+  position: relative;
+  max-width: 460px;
+  width: 100%;
+  margin: 0 auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--phos-faint) transparent;
+}
+
+.ck-footer {
+  border-top: 1px solid var(--ck-line);
+  padding: 8px 18px;
+  font-size: 10px;
+  color: var(--phos-dim);
+  display: flex;
+  justify-content: space-between;
+  flex-shrink: 0;
+}
+
+/* type */
+.ck-title {
+  font-family: "VT323", monospace;
+  font-size: 36px;
+  line-height: 1.05;
+  text-shadow: 0 0 10px var(--phos-dim);
+  margin-bottom: 8px;
+  font-weight: normal;
+}
+.ck-eyebrow {
+  font-size: 11px;
+  letter-spacing: 3px;
+  color: var(--phos-dim);
+  margin-bottom: 12px;
+}
+.ck-sub {
+  font-size: 13px;
+  color: var(--phos-dim);
+  line-height: 1.5;
+  margin-bottom: 22px;
+}
+.ck-cursor::after {
+  content: "▮";
+  animation: ck-blink 1s steps(1) infinite;
+  margin-left: 2px;
+}
+@keyframes ck-blink { 50% { opacity: 0; } }
+
+/* controls */
+.ck-btn {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: var(--ck-panel);
+  color: var(--phos);
+  border: 1px solid var(--ck-line);
+  font-family: "Share Tech Mono", monospace;
+  font-size: 15px;
+  padding: 16px 14px;
+  margin-bottom: 12px;
+  cursor: pointer;
+  transition: background 0.12s, box-shadow 0.12s;
+  position: relative;
+}
+.ck-btn:hover,
+.ck-btn:focus-visible {
+  background: rgba(0, 255, 65, 0.09);
+  box-shadow: 0 0 14px rgba(0, 255, 65, 0.22);
+  outline: none;
+}
+.ck-btn:focus-visible { border-color: var(--phos); }
+.ck-btn.big {
+  font-family: "VT323", monospace;
+  font-size: 26px;
+  padding: 22px 16px;
+  text-shadow: 0 0 8px var(--phos-dim);
+}
+.ck-btn.big small {
+  display: block;
+  font-family: "Share Tech Mono", monospace;
+  font-size: 12px;
+  color: var(--phos-dim);
+  margin-top: 6px;
+  text-shadow: none;
+}
+.ck-btn.amber { color: var(--amber); border-color: var(--amber-dim); }
+.ck-btn.amber:hover,
+.ck-btn.amber:focus-visible {
+  background: rgba(255, 176, 0, 0.08);
+  box-shadow: 0 0 14px rgba(255, 176, 0, 0.2);
+}
+.ck-btn.primary { border-color: var(--phos); }
+.ck-btn:disabled { opacity: 0.35; cursor: default; box-shadow: none; }
+
+.ck-field { margin-bottom: 18px; }
+.ck-field label {
+  display: block;
+  font-size: 11px;
+  letter-spacing: 2px;
+  color: var(--phos-dim);
+  margin-bottom: 7px;
+}
+.ck-field input {
+  width: 100%;
+  background: #02120a;
+  border: 1px solid var(--ck-line);
+  color: var(--phos);
+  font-family: "Share Tech Mono", monospace;
+  font-size: 17px;
+  padding: 13px 12px;
+}
+.ck-field input:focus {
+  outline: none;
+  border-color: var(--phos);
+  box-shadow: 0 0 12px rgba(0, 255, 65, 0.25);
+}
+
+.ck-otp-row {
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+  margin-bottom: 18px;
+}
+.ck-otp-row input {
+  width: 100%;
+  height: 60px;
+  text-align: center;
+  font-size: 30px;
+  font-family: "VT323", monospace;
+  background: #02120a;
+  border: 1px solid var(--ck-line);
+  color: var(--phos);
+}
+.ck-otp-row input:focus {
+  outline: none;
+  border-color: var(--phos);
+  box-shadow: 0 0 12px rgba(0, 255, 65, 0.3);
+}
+
+.ck-linkish {
+  background: none;
+  border: none;
+  color: var(--phos-dim);
+  font-family: inherit;
+  font-size: 12px;
+  text-decoration: underline;
+  cursor: pointer;
+  padding: 4px 0;
+}
+.ck-linkish:hover { color: var(--phos); }
+
+/* team rows */
+.ck-team-row .nm {
+  font-family: "VT323", monospace;
+  font-size: 24px;
+  text-shadow: 0 0 6px var(--phos-dim);
+  display: block;
+}
+.ck-team-row .meta {
+  font-size: 11px;
+  color: var(--phos-dim);
+  margin-top: 4px;
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+.ck-rankchip { color: var(--amber); }
+
+/* ticket */
+.ck-ticket {
+  border: 1px dashed var(--phos);
+  padding: 18px 16px;
+  margin: 10px 0 20px;
+  background: rgba(0, 255, 65, 0.04);
+}
+.ck-tk-head {
+  font-size: 10px;
+  letter-spacing: 3px;
+  color: var(--phos-dim);
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+.ck-tk-team {
+  font-family: "VT323", monospace;
+  font-size: 32px;
+  text-shadow: 0 0 10px var(--phos-dim);
+}
+.ck-tk-line { font-size: 12px; color: var(--phos-dim); margin-top: 8px; }
+.ck-tk-line b { color: var(--phos); font-weight: normal; }
+.ck-tk-edit {
+  border-bottom: 1px dashed var(--phos-dim);
+  color: var(--phos);
+  outline: none;
+  min-width: 40px;
+  display: inline-block;
+}
+.ck-tk-edit:focus { border-bottom-color: var(--phos); }
+
+.ck-divider { border: none; border-top: 1px solid var(--phos-faint); margin: 20px 0; }
+.ck-note { font-size: 11px; color: var(--phos-dim); line-height: 1.5; }
+.ck-error { color: var(--danger); font-size: 13px; margin-bottom: 14px; }
+
+/* boot transition */
+.ck-boot {
+  position: absolute;
+  inset: 0;
+  background: var(--ck-bg);
+  z-index: 20;
+  padding: 30px 22px;
+  font-size: 13px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  color: var(--phos-dim);
+}
+.ck-boot .ln { white-space: pre-wrap; }
+
+/* QR */
+.ck-qr {
+  display: inline-block;
+  padding: 12px;
+  background: #02120a;
+  border: 1px solid var(--ck-line);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ck-cursor::after { animation: none; }
+}
