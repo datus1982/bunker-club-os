@@ -1,7 +1,15 @@
-# Email / SMTP Setup — PRODUCTION BLOCKER
+# Email / SMTP Setup — RESOLVED (was a production blocker)
 
-*Status (2026-07-12): NOT configured. The project is on Supabase's built-in shared
-mailer, hard-capped at **2 emails/hour**. This must be fixed before real use.*
+*Status (2026-07-12, evening): **CONFIGURED and verified.** Custom SMTP via **Resend**
+(domain `bunkerokc.com` verified — DKIM + SPF + MX on the `send` subdomain at Namecheap),
+Supabase sender `no-reply@bunkerokc.com` / "Bunker Club", host `smtp.resend.com:465`,
+`rate_limit_email_sent` raised to **100/hour**. Proven end-to-end: a real OTP email was
+sent through Supabase → Resend → delivered to stephentyler@mac.com. The `RESEND_API_KEY`
+lives in root `.env` (gitignored) and doubles as the SMTP password; the Resend domain id
+is `76924dda-0c60-4191-aa3b-8fb436ea4e7a`. If the project is ever rebuilt, re-apply the
+SMTP config per the steps below (the DNS records at Namecheap persist).*
+
+*Everything below is kept as the original setup/reference procedure.*
 
 ## Why this matters now
 
