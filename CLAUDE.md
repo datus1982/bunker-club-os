@@ -4,8 +4,8 @@ Venue platform for Bunker Club (OKC). Docs in `/docs` are authoritative — read
 
 ## Current state
 
-**Phase: 0 (Foundation) — scaffolding complete, not yet run against live services.**
-Live modules: none. Legacy (OptiDev) still serving production Wednesday trivia — do NOT write to it.
+**Phase: 0 (Foundation) — ✅ COMPLETE. All docs/10 acceptance gates pass. Phase 1 (trivia port) ready to begin.**
+Live modules: none yet (app deployed, screens not repointed). Legacy (OptiDev) still serving production Wednesday trivia — do NOT write to it; cutover is a deliberate later act (docs/03).
 
 Done this session:
 - Repo scaffolded per docs/01 (pnpm monorepo: `apps/web`, `packages/`, `supabase/`, `scripts/`). Git initialized.
@@ -18,8 +18,13 @@ Done this session:
 - **Staff seeded: stephentyler@mac.com (admin), trashtvronnie@gmail.com (host) — provisioned as confirmed auth users (no email sent) so roles are live before Phase 2 login.**
 - **DEPLOYED to Cloudflare Pages: https://bunker-club-os.pages.dev (project `bunker-club-os`, auto-builds are NOT connected — deployed via wrangler from local `apps/web/dist`; env baked in at build). Prod smoke-test: deep-link `?calibrate` renders, queried live DB → 265 teams. Custom domain `os.bunkerokc.com` registered on the project; CNAME (os → bunker-club-os.pages.dev) added at Namecheap, propagating.**
 - **Backups (docs/12): `backup.ts` runs password-free (service-key JSON of all 18 tables + storage) when `DATABASE_URL` unset, full `pg_dump` when set. Ran locally (4188 rows + 35 objects). Weekly GitHub Action `.github/workflows/backup.yml` proven green in CI; repo secrets SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY set.**
+- **RESTORE DRILL PASSED: rebuilt schema from migrations in a scratch project + loaded the backup; all checked table counts matched exactly (teams 265, games 27, rounds 220, scores 1826, questions 1525, …). Auth-dependent tables (profiles/venue_staff/team_members) are excluded from the JSON snapshot by design.**
+- **Supabase Pro ACTIVE. Custom domain LIVE: https://os.bunkerokc.com serves the app over valid HTTPS (deep-links work).**
 
-Blocked on owner (see README "What Claude needs from you"): Supabase Pro tier (billing); `DATABASE_URL` (pooler string → enables full pg_dump + the restore drill); a scratch Supabase project to run the restore drill into; DNS propagation of `os.bunkerokc.com` (CNAME in, waiting). NOTE: Cloudflare deploy is currently manual `wrangler` — a GitHub→Pages auto-deploy or a deploy workflow can be added later.
+### Phase 0 acceptance (docs/10) — all pass
+Custom domain ✅ · Supabase Pro ✅ · backup runs + restore drill ✅ · counts match legacy ✅ · storage present ✅.
+
+Owner follow-ups (non-blocking): delete the `bunker-club-os-scratch` project; revoke the migration token (`sbp_…`) and optionally the Cloudflare token; reset the DB password that appeared in a log. Deploy is currently manual `wrangler` from `apps/web/dist` — wire GitHub→Pages auto-deploy (or a deploy workflow) when convenient.
 
 ## Commands
 
