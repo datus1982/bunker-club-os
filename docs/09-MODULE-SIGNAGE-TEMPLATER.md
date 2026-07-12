@@ -100,6 +100,13 @@ Stock polled every ~60s (lightweight) into `out_of_stock`.
 
 **Auto-hide rule:** any signage item whose source_toast_guid is out_of_stock is skipped by the rotation. 86 the keg, the ad disappears.
 
+**Write-access reality (verified):** Toast menu STRUCTURE is read-only via public API — no creating/modifying items, groups, or membership; menu edits happen in Toast Web + publish cycle. The exception: the Stock API supports WRITES (scope `stock:write`), and stock is explicitly separate from menu data. Therefore featured control is built on stock status as the single shared truth, controllable from BOTH sides:
+- POS side: Quick Edit In/Out of Stock (below).
+- Bunker OS side: 'Feature this' toggle in /signage admin → edge function writes stock status to the ★ SCREENS duplicate via stock:write. Both surfaces mutate the same state; no conflict resolution needed.
+- Sync inbound: 60s polling (guaranteed); Toast's stock webhook is the preferred upgrade if the credential tier supports it (verify at provisioning).
+- CREDENTIALS NOTE: when provisioning owner-controlled Toast API access (replacing legacy/OptiDev credentials), request scopes: menus:read, config:read, orders:read, stock:read, stock:write.
+- ANTI-GOAL: ★ SCREENS duplicates are NEVER sellable — selling through duplicates splits product reporting. Featured is presentation-layer only; real items remain the only sellable entities. Names/prices/photos/new items remain authored in Toast Web (slow-changing config; acceptable).
+
 **Fingertip featured control — the ★ SCREENS toggle group:** one-time setup in Toast Web: a menu group '★ SCREENS' (hidden from ordering channels via visibility) containing lightweight DUPLICATE items mirroring featured candidates (NOT the real sellable items — 86 status is global across menus, so real items must never be used as display toggles). Sync treats in-stock items in this group as 'featured': auto-materialized into the signage rotation (template defaults + toast fields). Staff workflow: manager passcode → hold button in ★ SCREENS → In Stock = on screens / Out of Stock = off. No new tools, no training beyond one shift note.
 
 **Description safety rule:** Toast descriptions may contain internal recipes. NEVER auto-display description text. Convention: only text BEFORE a `---` delimiter is public blurb; absent a delimiter, show nothing until a human fills the blurb override in item admin. (Owner should separately verify descriptions aren't already exposed on Toast online ordering.)

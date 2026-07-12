@@ -19,7 +19,8 @@ A self-hosted platform consolidating all of Bunker Club's interactive/digital sy
 | 5 | Shelter-Terminal Signage Templater (ad templates for OptiSigns) | New | 5 |
 | 6 | Solo Play-Along (bar patrons answer on phones, parallel to team game) | New | 6 |
 | 7 | Scheduled Event Choreography (midnight launches, infestation alerts, live sales counter) | New | 7 |
-| 8 | Video curation / future modules | Backlog | 8+ |
+| 8 | Public Website (bunkeokc.com: home, live menu, events, trivia standings, visit) | New | 3.5 |
+| 9 | Video curation / future modules | Backlog | 8+ |
 
 ## Non-negotiable principles
 

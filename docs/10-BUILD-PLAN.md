@@ -27,6 +27,10 @@ Per 05. Supabase email OTP; profiles trigger; team_members; check_in_team RPC; v
 Per 08: scheduled toast-sync writing sales_cache (option b), secrets moved, TZ fix, /drinks reads table via realtime.
 **Accept:** 08 parity checklist; simulate 11:30pm CDT date handling in a test.
 
+## Phase 3.5 — Public Website (est. 2 sessions)
+Per 14. Pulls toast-menu-sync forward from Phase 5. Public routes at root (dashboard moves to /dashboard), public_menu/public_events views + RLS, show_on_website flags, SEO checklist, DNS migration per doc 14 (email/MX inventory FIRST; old webhost canceled only after 2 clean weeks).
+**Accept:** menu page reflects a Toast menu edit within sync cadence; 86ing an item hides it; a screen promo with show_on_website=true appears on /events; Lighthouse mobile ≥90 perf/SEO/a11y; LocalBusiness JSON-LD validates; site live on the real domain with email confirmed unaffected.
+
 ## Phase 4 — Seasons + Portal (est. 2–3 sessions)
 Per 06 + 07: season_leaderboard function w/ 3 modes + unit tests (SQL tests via pgTAP or a seed-and-assert script); admin/seasons; portal pages; leaderboard season panel; check-in rank teaser.
 **Accept:** seeded 3-team 4-game season produces hand-verified standings in ALL modes; portal renders history correctly on mobile viewport; finals-night creation pre-checks-in top N.
