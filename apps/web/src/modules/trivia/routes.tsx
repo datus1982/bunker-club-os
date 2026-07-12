@@ -14,3 +14,6 @@ export { GameDisplay } from "./GameDisplay";
 
 // Host tool (host+): read-only game history + view a game's final board.
 export { History } from "./History";
+
+// Host tool (host+): create a game + its rounds.
+export { GameSetup } from "./GameSetup";

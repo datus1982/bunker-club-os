@@ -31,6 +31,7 @@ export function App() {
 
       {/* Trivia host tools — host+ */}
       <Route path="/scoring" element={<RequireRole role="host"><Trivia.Scoring /></RequireRole>} />
+      <Route path="/game/setup" element={<RequireRole role="host"><Trivia.GameSetup /></RequireRole>} />
       <Route path="/game/*" element={<RequireRole role="host"><Trivia.GameTools /></RequireRole>} />
       <Route path="/teams" element={<RequireRole role="host"><Trivia.Teams /></RequireRole>} />
       <Route path="/history" element={<RequireRole role="host"><Trivia.History /></RequireRole>} />
