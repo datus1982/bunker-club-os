@@ -13,7 +13,7 @@
  *   theme_settings              → venue_settings
  *   storage: picture-rounds,logos → same bucket names in the new project
  *
- * // DECISION: legacy teams.contact_*/notes have no home in the docs/02 schema
+ * // DECISION: legacy teams.contact_* and notes have no home in the docs/02 schema
  * // (registration v2 owns that surface). Rather than invent columns or fabricate
  * // auth users here, unmapped contacts are written to legacy-export/unmapped-
  * // contacts.json; Phase 2 maps contact_email → invited profiles (docs/10 P2).
@@ -51,10 +51,15 @@ function pick(row: Row, keys: string[]): Row {
   return out;
 }
 
+// Legacy games have no date column: start_time is time-only ("20:00:00") and
+// created_at is when the record was made (often days early). game_started_at is
+// the actual play time; render it in the venue timezone to get the game night.
+const VENUE_TZ = "America/Chicago";
 function deriveGameDate(g: Row): string {
-  const src = g.game_date ?? g.start_time ?? g.created_at ?? g.date;
-  if (!src) return new Date().toISOString().slice(0, 10);
-  return String(src).slice(0, 10);
+  const ts = g.game_started_at ?? g.end_time ?? g.created_at;
+  const d = ts ? new Date(String(ts)) : new Date();
+  // en-CA locale yields YYYY-MM-DD.
+  return d.toLocaleDateString("en-CA", { timeZone: VENUE_TZ });
 }
 
 const VALID_STATUS = new Set(["setup", "active", "paused", "stopped", "completed"]);
@@ -127,6 +132,36 @@ async function main() {
 
   // 1) teams (+ pin_hash) and unmapped-contacts sidecar.
   const legacyTeams = await loadTable("teams");
+
+  // Disambiguate duplicate team names for the docs/02 unique(venue_id,name)
+  // constraint. Legacy had no such constraint. // DECISION: keep EVERY legacy row
+  // (the accept gate checks teams count), and append " (n)" to the 2nd+ occurrence
+  // of a name, ordered by created_at (deterministic → idempotent on re-run). The
+  // ORIGINAL name is preserved on game_teams.display_name (below) so leaderboards
+  // and history render the real registered name; only the teams.name identity used
+  // for Phase 2 registration/login is disambiguated. True duplicate regular teams
+  // can be merged later by a human — we never conflate rows automatically.
+  const origName = new Map<string, string>(); // team_id -> original trimmed name
+  const finalName = new Map<string, string>(); // team_id -> disambiguated name
+  {
+    const groups = new Map<string, Row[]>();
+    for (const t of legacyTeams) {
+      const nm = String(t.name ?? "").trim();
+      origName.set(t.id, nm);
+      (groups.get(nm) ?? groups.set(nm, []).get(nm)!).push(t);
+    }
+    for (const [nm, rows] of groups) {
+      rows.sort(
+        (a, b) =>
+          String(a.created_at ?? "").localeCompare(String(b.created_at ?? "")) ||
+          String(a.id).localeCompare(String(b.id)),
+      );
+      rows.forEach((r, i) => finalName.set(r.id, i === 0 ? nm : `${nm} (${i + 1})`));
+    }
+  }
+  const renamed = [...finalName].filter(([id, nm]) => nm !== origName.get(id)).length;
+  if (renamed) console.log(`  ⓘ ${renamed} duplicate team name(s) disambiguated (originals kept on game_teams.display_name)`);
+
   const unmapped: Row[] = [];
   const teams: Row[] = [];
   for (const t of legacyTeams) {
@@ -134,7 +169,7 @@ async function main() {
     teams.push({
       id: t.id,
       venue_id: VENUE_ID,
-      name: t.name,
+      name: finalName.get(t.id) ?? String(t.name ?? "").trim(),
       logo_url: t.logo_url ?? null,
       is_regular: !!t.is_regular,
       pin_hash: pin ? bcrypt.hashSync(pin, 10) : null,
@@ -163,7 +198,9 @@ async function main() {
     venue_id: VENUE_ID,
     season_id: null,
     game_date: deriveGameDate(g),
-    start_time: g.start_time ?? null,
+    // docs/02 start_time is timestamptz = actual start. Legacy start_time is a
+    // time-only "20:00:00"; use game_started_at (a real timestamp) instead.
+    start_time: g.game_started_at ?? null,
     status: mapStatus(g.status),
     questions_per_round: g.questions_per_round ?? 10,
     is_playoff: false,
@@ -175,7 +212,9 @@ async function main() {
     id: gt.id,
     game_id: gt.game_id,
     team_id: gt.team_id,
-    display_name: gt.display_name ?? gt.team_name_used ?? null,
+    // Preserve the per-night registered name; fall back to the team's ORIGINAL
+    // (pre-disambiguation) name so screens never show a " (2)" suffix.
+    display_name: gt.display_name ?? gt.team_name_used ?? origName.get(gt.team_id) ?? null,
     checked_in_by: null,
     wildcard_used_on_round: gt.wildcard_used_on_round ?? null,
     tiebreaker_rank: gt.tiebreaker_rank ?? null,
