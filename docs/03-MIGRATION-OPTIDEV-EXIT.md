@@ -38,6 +38,9 @@ Write the import as an idempotent script (`scripts/import-legacy.ts`) run once a
 
 1. New Supabase project + repo scaffold + migrations applied (Phase 0).
 2. Port apps (Phases 1, 3). Deploy to Vercel at new URLs.
+
+   **Drinks-first pilot (available option, independent of trivia cutover):** before the trivia steps below, one portrait screen can be repointed to `/drinks`. Validates the display canvas and Toast sync pipeline on real venue hardware with no impact on the trivia workflow; counts as the doc 10 pilot week. Can run weeks before the trivia cutover.
+
 3. Legacy data import. Verify counts per table old vs new.
 4. **Parallel run one full Wednesday:** OptiSigns keeps pointing at OptiDev URLs; Ronnie also opens the new /scoring on a second tab; new /game-display on a spare screen. Score the night in BOTH (or score in old, shadow-read in new).
 5. If clean: repoint OptiSigns schedules to new URLs, print new QR code, Ronnie bookmarks new host URL. Re-run data import delta (that night's game) or accept starting fresh from cutover.

@@ -59,9 +59,9 @@ Public display routes must render with zero auth and be safe to leave on an unat
 
 Supabase Auth. Two populations, one auth system:
 - **Players:** email OTP (free, built-in) now; phone OTP via Twilio later (config flag). Session persists on device ("remembers you" check-in).
-- **Staff:** email+password or OTP. Roles via `venue_staff` table (NOT app_metadata — keeps it venue-scoped for SaaS): `admin` (Stephen), `host` (Ronnie), `staff` (bartenders/signage uploads).
+- **Staff:** email+password or OTP. Identity in `venue_staff` table (NOT app_metadata — keeps it venue-scoped for SaaS). Role labels (`admin`, `host`, `staff`) are **titles only** — they carry no automatic module access. Module access is controlled by `venue_staff.modules text[] not null default '{}'` — explicit per-staff grants; keys: `trivia`, `seasons`, `drinks`, `signage`, `website`, `events`. The check is SECURITY DEFINER `has_module(p_venue, p_module)`: true if the caller is the venue's admin, or the named module is in their grants. **Admin implies all modules** (no explicit grants needed); host and staff imply nothing — grants must be set explicitly. Two exceptions stayed rank-based: seasons management is admin-only; `team_roster` staff email visibility uses `venue_role_at_least`.
 
-Route guards: a `useRole()` hook reading `venue_staff` for the current venue; `<RequireRole role="host">` wrapper components.
+Route guards: `useRole()` hook reads `venue_staff` for the current venue, returning `{ role, modules, can() }` + `hasModule()` helper. `<RequireRole>` enforces rank (admin/host/staff); `<RequireModule>` enforces module grants. Both wrap routes in App.tsx.
 
 ## Realtime strategy (fixes the OptiDev mess)
 

@@ -49,3 +49,8 @@ In portal (07): list members, add member by email/phone (creates pending profile
 
 ## Anti-goals
 No passwords. No email verification beyond OTP. No team approval workflows beyond the two join paths. No profile photos/avatars v1.
+
+## Deferred
+
+- **SMS / phone OTP:** post-launch, behind the config flag already present in the flow spec. Requires Twilio provisioning (number purchase + `TWILIO_*` edge-function secrets). Owner decision; volume is trivial (~$0.01/msg).
+- **Guest membership:** anonymous session + PIN join, claimable to a verified email or phone later. Deferred to Phase 6, which introduces anonymous Supabase Auth; the claim-to-identity upgrade path ships with that infrastructure.
