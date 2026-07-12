@@ -4,6 +4,7 @@ import { RequireAuth, RequireRole } from "./shared/guards";
 import * as Trivia from "./modules/trivia/routes";
 import * as Website from "./modules/website/routes";
 import { Checkin } from "./modules/registration/routes";
+import { Login } from "./modules/auth/Login";
 import { Portal } from "./modules/portal/routes";
 import { DrinksDisplay } from "./modules/leaderboard/routes";
 import { SeasonsAdmin } from "./modules/seasons/routes";
@@ -42,6 +43,9 @@ export function App() {
       <Route path="/game-display" element={<Trivia.GameDisplay />} />
       <Route path="/drinks" element={<DrinksDisplay />} />
       <Route path="/signage/s/:slug" element={<SlotDisplay />} />
+
+      {/* Staff sign-in (minimal; full auth is Phase 2) */}
+      <Route path="/login" element={<Login />} />
 
       {/* Player-facing */}
       <Route path="/checkin" element={<Checkin />} />
