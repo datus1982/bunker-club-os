@@ -15,8 +15,11 @@ Done this session:
 - `scripts/export-legacy.ts` (path B, read-only), `import-legacy.ts` (docs/03 mapping, idempotent, count-verified), `seed-staff.ts`, `backup.ts` (docs/12).
 - **Legacy data EXPORTED + IMPORTED. Counts match legacy exactly: teams 265, games 27, rounds 220, scores 1826, questions 1525 (+ game_teams 247, game_display_state 24, venue_settings 49, storage: logos 4 + picture-rounds 31).** Notes: the raw project `cdgdxfichpikapawnnth.supabase.co` is directly readable with the publishable key (gateway bypassed). 22 duplicate team names disambiguated for `unique(venue_id,name)` (originals kept on `game_teams.display_name`); 23 team contacts saved to `legacy-export/unmapped-contacts.json` for Phase 2. Follow-ups for Stephen: 1 customer team name contains a franchise term ("Crawl out through the Fallout"); "Regulars" + that team have true-duplicate regular rows to merge.
 - **App boots locally against the live DB; `tsc -b` clean; terminal theme + routing + DisplayCanvas (+`?calibrate`) verified in-browser.**
+- **Staff seeded: stephentyler@mac.com (admin), trashtvronnie@gmail.com (host) — provisioned as confirmed auth users (no email sent) so roles are live before Phase 2 login.**
+- **DEPLOYED to Cloudflare Pages: https://bunker-club-os.pages.dev (project `bunker-club-os`, auto-builds are NOT connected — deployed via wrangler from local `apps/web/dist`; env baked in at build). Prod smoke-test: deep-link `?calibrate` renders, queried live DB → 265 teams. Custom domain `os.bunkerokc.com` registered on the project; CNAME (os → bunker-club-os.pages.dev) added at Namecheap, propagating.**
+- **Backups (docs/12): `backup.ts` runs password-free (service-key JSON of all 18 tables + storage) when `DATABASE_URL` unset, full `pg_dump` when set. Ran locally (4188 rows + 35 objects). Weekly GitHub Action `.github/workflows/backup.yml` proven green in CI; repo secrets SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY set.**
 
-Blocked on owner (see README "What Claude needs from you"): hosting/domain choice + deploy, venue_staff seed emails, Supabase Pro tier + custom domain, `DATABASE_URL` (backups), restore-drill sign-off.
+Blocked on owner (see README "What Claude needs from you"): Supabase Pro tier (billing); `DATABASE_URL` (pooler string → enables full pg_dump + the restore drill); a scratch Supabase project to run the restore drill into; DNS propagation of `os.bunkerokc.com` (CNAME in, waiting). NOTE: Cloudflare deploy is currently manual `wrangler` — a GitHub→Pages auto-deploy or a deploy workflow can be added later.
 
 ## Commands
 
