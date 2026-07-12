@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import {
   useActiveGame,
@@ -15,6 +15,7 @@ import { VideoControls } from "./VideoControls";
 import { LeaderboardToggle } from "./LeaderboardToggle";
 import { TeamEditorDialog, type EditableTeam } from "./TeamEditorDialog";
 import { Modal, Field, input, btnGhost, btnPrimary, btnActive, btnDanger } from "./ui";
+import { searchTeams, type TeamHit } from "../registration/useCheckin";
 
 /**
  * Scoring console — host tool (docs/01 /scoring, host+). Ported from the legacy
@@ -222,7 +223,23 @@ function AddTeamPicker({
 }) {
   const [creating, setCreating] = useState(false);
   const [pick, setPick] = useState("");
+  const [q, setQ] = useState("");
+  const [hits, setHits] = useState<TeamHit[]>([]);
   const available = regularTeams.filter((t) => !teamsInGame.has(t.id));
+
+  // Walk-up escape hatch (docs/05): the host can find ANY venue team by name —
+  // not just regulars — to check in a phoneless crew. Host bypasses membership.
+  useEffect(() => {
+    let cancelled = false;
+    const t = setTimeout(async () => {
+      if (q.trim().length < 2) { setHits([]); return; }
+      try {
+        const r = await searchTeams(q);
+        if (!cancelled) setHits(r.filter((h) => !teamsInGame.has(h.id)));
+      } catch { /* ignore */ }
+    }, 200);
+    return () => { cancelled = true; clearTimeout(t); };
+  }, [q, teamsInGame]);
 
   if (creating) {
     return <TeamEditorDialog mode="add" onClose={onClose} onSaved={onCreated} />;
@@ -241,7 +258,7 @@ function AddTeamPicker({
     >
       <Field label="EXISTING REGULAR TEAM">
         {available.length === 0 ? (
-          <div style={{ opacity: 0.6, fontSize: 20 }}>All regular teams are already in the game — create a new one.</div>
+          <div style={{ opacity: 0.6, fontSize: 20 }}>All regular teams are already in the game — search below or create a new one.</div>
         ) : (
           <select value={pick} onChange={(e) => setPick(e.target.value)} style={input}>
             <option value="">— select —</option>
@@ -249,6 +266,23 @@ function AddTeamPicker({
               <option key={t.id} value={t.id} style={{ background: "#000" }}>{t.name}</option>
             ))}
           </select>
+        )}
+      </Field>
+
+      <Field label="OR SEARCH ANY TEAM (WALK-UP)">
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="type a team name…" style={input} />
+        {hits.length > 0 && (
+          <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 6 }}>
+            {hits.map((h) => (
+              <button key={h.id} type="button" onClick={() => onAddExisting(h.id, h.name)}
+                style={{ ...btnGhost, textAlign: "left", justifyContent: "flex-start" }}>
+                {h.name}{h.is_regular ? "  ★" : ""}
+              </button>
+            ))}
+          </div>
+        )}
+        {q.trim().length >= 2 && hits.length === 0 && (
+          <div style={{ opacity: 0.6, fontSize: 18, marginTop: 6 }}>No teams match “{q}”.</div>
         )}
       </Field>
     </Modal>

@@ -10,6 +10,7 @@
     "typecheck": "pnpm --filter web typecheck",
     "export:legacy": "tsx scripts/export-legacy.ts",
     "import:legacy": "tsx scripts/import-legacy.ts",
+    "import:contacts": "tsx scripts/import-legacy-contacts.ts",
     "seed:staff": "tsx scripts/seed-staff.ts",
     "backup": "tsx scripts/backup.ts"
   },
