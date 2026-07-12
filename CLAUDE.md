@@ -85,6 +85,20 @@ Owner follow-ups (non-blocking): ~~delete the `bunker-club-os-scratch` project~~
 `pnpm export:legacy` · `pnpm import:legacy` · `pnpm import:contacts` (legacy captains → claimable identities, docs/05) · `pnpm seed:staff` · `pnpm backup`
 Tests (tsx, run against the live DB via service role): `pnpm test:businessdate` (toast-sync TZ) · `pnpm test:menutext` (docs/09 description-safety) · `pnpm test:seasons` (season_leaderboard all 3 modes + tiebreaks; seeds + cleans its own fixture).
 
+## Orchestration (from this phase forward)
+
+- The main session runs on Fable and ORCHESTRATES: plans, sequences,
+  adjudicates DECISIONs, reviews diffs against specs, manages the PR. It does
+  not bulk-write code itself.
+- ALL implementation is delegated to the `builder` subagent in scoped tasks
+  (one component/migration/function per task, with the relevant docs/ sections
+  named in the task prompt).
+- Before any phase PR merges, the orchestrator invokes the `reviewer` subagent
+  on the branch. The reviewer's report is pasted VERBATIM into the PR body —
+  never summarized or edited. Blocking findings are fixed and re-reviewed; any
+  waived finding requires the owner's explicit say-so in the session. The
+  orchestrator may not merge over an unaddressed finding.
+
 ## Rules
 
 - No OptiDev code patterns (gateway client, `window.__ENV__`, `.optidev/` plugins).
