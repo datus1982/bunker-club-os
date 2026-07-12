@@ -6,7 +6,7 @@ import * as Website from "./modules/website/routes";
 import { Checkin, CheckinQRPage } from "./modules/registration/routes";
 import { Login } from "./modules/auth/Login";
 import { Portal } from "./modules/portal/routes";
-import { DrinksDisplay } from "./modules/leaderboard/routes";
+import { DrinksDisplay, DrinksAdmin } from "./modules/leaderboard/routes";
 import { SeasonsAdmin } from "./modules/seasons/routes";
 import { SignageAdmin, SlotDisplay } from "./modules/signage/routes";
 
@@ -59,6 +59,7 @@ export function App() {
 
       {/* Staff / admin */}
       <Route path="/signage" element={<RequireRole role="staff"><SignageAdmin /></RequireRole>} />
+      <Route path="/admin/drinks" element={<RequireRole role="staff"><DrinksAdmin /></RequireRole>} />
       <Route path="/admin/seasons" element={<RequireRole role="admin"><SeasonsAdmin /></RequireRole>} />
 
       {/* Fallback — unknown paths land on the public home */}

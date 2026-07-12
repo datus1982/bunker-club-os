@@ -1,6 +1,3 @@
-import { DisplayPlaceholder } from "@/shared/Placeholder";
-
-// Toast top-selling drinks display (docs/08). Ported in Phase 3.
-export const DrinksDisplay = () => (
-  <DisplayPlaceholder title="NOW POURING — TOP SELLERS" orientation="portrait" />
-);
+// Toast top-selling drinks display + admin (docs/08). Ported in Phase 3.
+export { DrinksDisplay } from "./DrinksDisplay";
+export { DrinksAdmin } from "./DrinksAdmin";
