@@ -1,0 +1,64 @@
+name: Deploy web app (Cloudflare Pages)
+
+# CI/CD for apps/web. Build the Vite app (env baked in at build time) and publish
+# to the Cloudflare Pages project `bunker-club-os`.
+#   - push to main        -> production deploy (--branch=main; serves os.bunkerokc.com)
+#   - push to phase-*      -> preview deploy (--branch=<branch>; stable per-phase URL)
+# Deploy method mirrors the documented manual flow (CLAUDE.md / docs/12):
+#   npm --prefix apps/web run build  +  wrangler pages deploy apps/web/dist
+# apps/web is self-contained (its own package-lock.json, no workspace deps), so we
+# install/build only there.
+
+on:
+  push:
+    branches:
+      - main
+      - "phase-*"
+  workflow_dispatch: {}
+
+concurrency:
+  # One deploy at a time per branch; newer pushes cancel in-flight builds.
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+
+      - name: Install deps
+        working-directory: apps/web
+        run: npm ci --no-audit --no-fund
+
+      - name: Build
+        working-directory: apps/web
+        env:
+          # Public, browser-shipped values — baked into the bundle at build time.
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          VITE_VENUE_ID: ${{ secrets.VITE_VENUE_ID }}
+        run: npm run build
+
+      - name: Resolve deploy branch
+        id: branch
+        # main -> production (--branch=main). phase-* -> preview under its own name.
+        run: echo "name=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy to Cloudflare Pages
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: >-
+            pages deploy apps/web/dist
+            --project-name=bunker-club-os
+            --branch=${{ steps.branch.outputs.name }}

@@ -27,3 +27,15 @@ Opus generates two one-pagers into /docs/runbooks/ and keeps them current:
 ## Access hygiene
 - Supabase service key + Toast secrets live ONLY in edge function secrets and CI secrets. Never in repo, never in frontend env.
 - Owner's GitHub + Supabase + registrar accounts get 2FA; recovery codes stored offline (this system is the bar's infrastructure now).
+
+## CI/CD & deployment (`.github/workflows/deploy.yml`)
+- **GitHub Actions is the deploy path.** Push to `main` → production deploy to Cloudflare Pages (`--branch=main`, serves `os.bunkerokc.com`). Push to a `phase-*` branch → preview deploy (`--branch=<branch>`), giving every phase a stable preview URL for review. Manual `wrangler` from a local `dist` is now only a fallback.
+- **Build is baked at CI time:** `apps/web` is self-contained (own `package-lock.json`, no workspace deps) — the job runs `npm ci` + `npm run build` in `apps/web`, then `wrangler pages deploy apps/web/dist`. The public `VITE_*` values (Supabase URL, anon key, venue id) are repo secrets and are compiled into the bundle.
+- **Repo secrets required:** `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_VENUE_ID` (set via `gh secret set`; values in `.env` / `apps/web/.env`).
+- **A phase is complete only when its PR is MERGED to `main` and this deploy workflow is green** — merging + a green production deploy is part of the phase, not a later owner chore.
+- **Preview URL in the PR body:** every phase PR records its `phase-*` Cloudflare preview URL so reviewers can exercise the running app.
+
+## Migrations: development vs. cutover
+- **Until cutover** (legacy OptiDev still serving production trivia): migrations MAY be applied to the live owned project during development via the Management API (see the migration pattern in CLAUDE.md), so in-browser verification runs against real schema.
+- **From cutover onward:** migrations apply ONLY from merged `main` — never ad-hoc against production. The merged migration files are the source of truth.
+- **Every RLS migration** (any phase) is immediately followed by the anon + host smoke tests (anon writes must 401; a host read of the touched tables must 200) before the phase is called done — the 0018 `42P17` recursion bug was live in prod from Phase 0 precisely because a successful host read was never actually exercised.
