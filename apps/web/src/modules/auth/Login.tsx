@@ -64,6 +64,18 @@ export function Login() {
     // success → redirect effect fires.
   };
 
+  const [resetSent, setResetSent] = useState(false);
+  const sendReset = async () => {
+    if (!email) { setError("Enter your email first."); return; }
+    setBusy(true); setError(null);
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}/reset-password`,
+    });
+    setBusy(false);
+    if (error) setError(error.message);
+    else setResetSent(true);
+  };
+
   const signedInBusy = isSignedIn && roleLoading;
 
   return (
@@ -93,6 +105,11 @@ export function Login() {
                 </Label>
                 {error && <div style={{ fontSize: 20 }}>⚠ {error}</div>}
                 <button type="submit" disabled={busy} className="u-fill u-ink" style={btnPrimary}>{busy ? "AUTHENTICATING…" : "SIGN IN"}</button>
+                {resetSent ? (
+                  <div style={{ fontSize: 17, opacity: 0.75 }}>✓ If that email has an account, a reset link is on its way. Or just use <b>EMAIL CODE</b> — no reset needed.</div>
+                ) : (
+                  <button type="button" onClick={sendReset} disabled={busy} style={{ ...btnGhost, fontSize: 17, opacity: 0.7, alignSelf: "flex-start", padding: "4px 8px", border: "none" }}>Forgot password? Send a reset link →</button>
+                )}
               </form>
             ) : !codeSent ? (
               <form onSubmit={sendCode} style={col}>

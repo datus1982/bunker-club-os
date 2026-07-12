@@ -1,6 +1,6 @@
 import { Outlet, useNavigate, NavLink } from "react-router-dom";
 import { supabase } from "@/shared/supabaseClient";
-import { roleAtLeast, useRole, type StaffRole } from "@/shared/useRole";
+import { hasModule, roleAtLeast, useRole, type ModuleKey, type StaffRole } from "@/shared/useRole";
 
 /**
  * Slim persistent staff header (Phase 4b). Renders above every staff route via the
@@ -14,21 +14,27 @@ import { roleAtLeast, useRole, type StaffRole } from "@/shared/useRole";
 
 const MONO = "'VT323','Share Tech Mono',monospace";
 
-interface NavItem { to: string; label: string; min: StaffRole }
+// A nav item is shown when its gate passes: `module` → has_module grant (admin implied);
+// `minRole` → rank (used for HOME/admin-only entries that aren't module-scoped).
+interface NavItem { to: string; label: string; module?: ModuleKey; minRole?: StaffRole }
 
 const NAV: NavItem[] = [
-  { to: "/dashboard", label: "HOME", min: "staff" },
-  { to: "/scoring", label: "TRIVIA", min: "host" },
-  { to: "/game/setup", label: "GAME SETUP", min: "host" },
-  { to: "/teams", label: "TEAMS", min: "host" },
-  { to: "/history", label: "HISTORY", min: "host" },
-  { to: "/admin/drinks", label: "DRINKS", min: "staff" },
-  { to: "/admin/seasons", label: "SEASONS", min: "admin" },
+  { to: "/dashboard", label: "HOME", minRole: "staff" },
+  { to: "/scoring", label: "TRIVIA", module: "trivia" },
+  { to: "/game/setup", label: "GAME SETUP", module: "trivia" },
+  { to: "/teams", label: "TEAMS", module: "trivia" },
+  { to: "/history", label: "HISTORY", module: "trivia" },
+  { to: "/admin/drinks", label: "DRINKS", module: "drinks" },
+  { to: "/admin/seasons", label: "SEASONS", minRole: "admin" },
+  { to: "/admin/users", label: "USERS", minRole: "admin" },
 ];
 
 export function StaffLayout() {
-  const { role, isSignedIn, loading } = useRole();
+  const { role, modules, isSignedIn, loading } = useRole();
   const navigate = useNavigate();
+
+  const visible = (i: NavItem) =>
+    i.module ? hasModule(role, modules, i.module) : roleAtLeast(role, i.minRole ?? "staff");
 
   const signOut = async () => {
     await supabase.auth.signOut();
@@ -53,7 +59,7 @@ export function StaffLayout() {
         >
           <NavLink to="/dashboard" style={{ ...brand, textDecoration: "none" }}>▚ BUNKER OS</NavLink>
           <div style={{ display: "flex", gap: 2, flexWrap: "wrap", flex: 1 }}>
-            {NAV.filter((i) => roleAtLeast(role, i.min)).map((i) => (
+            {NAV.filter(visible).map((i) => (
               <NavLink
                 key={i.to}
                 to={i.to}

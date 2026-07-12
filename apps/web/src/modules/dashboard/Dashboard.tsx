@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { roleAtLeast, useRole, type StaffRole } from "@/shared/useRole";
+import { hasModule, roleAtLeast, useRole, type ModuleKey, type StaffRole } from "@/shared/useRole";
 import {
   useSyncStatus, useTonight, useActiveSeason, formatAge, type Freshness,
 } from "./useDashboard";
@@ -11,7 +11,9 @@ import {
  * module the viewer's role may touch. Deferred from Phase 1 ("wire Dashboard as the host
  * landing page"); the docs/12 freshness panel finally gets a home here too.
  *
- * Role gates: admin ⊇ host ⊇ staff. Tiles render only when roleAtLeast(role, tile.min).
+ * Gating (0024): module tiles render on an explicit has_module grant (admin implies
+ * every module); admin-only surfaces (SEASONS, USERS) gate on rank. Role labels are
+ * titles/clearance, not access — a host with only {trivia} sees trivia, not drinks.
  */
 
 const MONO = "'VT323','Share Tech Mono',monospace";
@@ -36,7 +38,7 @@ function useClock() {
 }
 
 export function Dashboard() {
-  const { role } = useRole();
+  const { role, modules } = useRole();
   const now = useClock();
   const sync = useSyncStatus();
   const tonight = useTonight();
@@ -88,14 +90,14 @@ export function Dashboard() {
                 {tonightLabel(tonight.data.status)}
               </div>
               <Dim>{tonight.data.team_count} TEAMS{tonight.data.is_playoff ? " · FINALS" : ""}</Dim>
-              {roleAtLeast(role, "host") && (
+              {hasModule(role, modules, "trivia") && (
                 <Link to="/scoring" className="u-ink" style={jumpLink}>OPEN SCORING →</Link>
               )}
             </>
           ) : (
             <>
               <div style={{ fontSize: 26, opacity: 0.7 }}>NO GAME TODAY</div>
-              {roleAtLeast(role, "host") && <Link to="/game/setup" className="u-ink" style={jumpLink}>CREATE GAME →</Link>}
+              {hasModule(role, modules, "trivia") && <Link to="/game/setup" className="u-ink" style={jumpLink}>CREATE GAME →</Link>}
             </>
           )}
         </StatusPanel>
@@ -133,7 +135,7 @@ export function Dashboard() {
       {/* ── MODULE GRID ──────────────────────────────────────────────── */}
       <SectionLabel style={{ marginTop: 32 }}>MODULES</SectionLabel>
       <div style={moduleGrid}>
-        {TILES.filter((t) => roleAtLeast(role, t.min)).map((t) => (
+        {TILES.filter((t) => (t.module ? hasModule(role, modules, t.module) : roleAtLeast(role, t.minRole ?? "staff"))).map((t) => (
           <ModuleTile key={t.label} tile={t} tonight={tonight.data} season={season.data} />
         ))}
         <DisplaysTile />
@@ -145,20 +147,23 @@ export function Dashboard() {
 // ── module tiles ─────────────────────────────────────────────────────────
 
 interface Tile {
-  label: string; to: string; desc: string; min: StaffRole;
-  disabled?: string; // phase note if not yet built
+  label: string; to: string; desc: string;
+  module?: ModuleKey;    // shown when the caller holds this grant (admin implied)
+  minRole?: StaffRole;   // used for non-module-scoped tiles (admin-only surfaces)
+  disabled?: string;     // phase note if not yet built
   hint?: "tonight" | "season";
 }
 
 const TILES: Tile[] = [
-  { label: "TRIVIA CONTROL", to: "/scoring", desc: "Live scoring console — run the game", min: "host", hint: "tonight" },
-  { label: "GAME SETUP", to: "/game/setup", desc: "Create a game, rounds & questions", min: "host" },
-  { label: "TEAMS", to: "/teams", desc: "Regular-team roster & PINs", min: "host" },
-  { label: "HISTORY", to: "/history", desc: "Past games & final boards", min: "host" },
-  { label: "SEASONS", to: "/admin/seasons", desc: "Standings, playoffs & finals", min: "admin", hint: "season" },
-  { label: "DRINKS BOARD", to: "/admin/drinks", desc: "Configure the top-drinks screen", min: "staff" },
-  { label: "SIGNAGE", to: "/signage", desc: "Specials & event screens", min: "staff", disabled: "Phase 5" },
-  { label: "WEBSITE", to: "/", desc: "Public site content", min: "staff", disabled: "Phase 3.5" },
+  { label: "TRIVIA CONTROL", to: "/scoring", desc: "Live scoring console — run the game", module: "trivia", hint: "tonight" },
+  { label: "GAME SETUP", to: "/game/setup", desc: "Create a game, rounds & questions", module: "trivia" },
+  { label: "TEAMS", to: "/teams", desc: "Regular-team roster & PINs", module: "trivia" },
+  { label: "HISTORY", to: "/history", desc: "Past games & final boards", module: "trivia" },
+  { label: "SEASONS", to: "/admin/seasons", desc: "Standings, playoffs & finals", minRole: "admin", hint: "season" },
+  { label: "DRINKS BOARD", to: "/admin/drinks", desc: "Configure the top-drinks screen", module: "drinks" },
+  { label: "USERS", to: "/admin/users", desc: "Staff accounts & module grants", minRole: "admin" },
+  { label: "SIGNAGE", to: "/signage", desc: "Specials & event screens", module: "signage", disabled: "Phase 5" },
+  { label: "WEBSITE", to: "/", desc: "Public site content", module: "website", disabled: "Phase 3.5" },
 ];
 
 function ModuleTile({ tile, tonight, season }: { tile: Tile; tonight: ReturnType<typeof useTonight>["data"]; season: ReturnType<typeof useActiveSeason>["data"] }) {

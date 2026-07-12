@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { Navigate, useLocation } from "react-router-dom";
-import { roleAtLeast, useRole, type StaffRole } from "./useRole";
+import { hasModule, roleAtLeast, useRole, type ModuleKey, type StaffRole } from "./useRole";
 import { useSession } from "./useSession";
 
 function TerminalNotice({ text }: { text: string }) {
@@ -37,6 +37,22 @@ export function RequireRole({ role, children }: { role: StaffRole; children: Rea
   if (!isSignedIn) return <Navigate to="/login" state={{ from: location }} replace />;
   if (!roleAtLeast(current, role)) {
     return <TerminalNotice text={`ACCESS DENIED — requires ${role.toUpperCase()} clearance.`} />;
+  }
+  return <>{children}</>;
+}
+
+/**
+ * <RequireModule module="drinks"> — gates a route on an explicit module grant (0024).
+ * Admins implicitly hold every module; everyone else needs it in venue_staff.modules.
+ * Direct-URL access to an ungranted module renders a themed ACCESS DENIED, never a crash.
+ */
+export function RequireModule({ module, children }: { module: ModuleKey; children: ReactNode }) {
+  const { role, modules, loading, isSignedIn } = useRole();
+  const location = useLocation();
+  if (loading) return <TerminalNotice text="CHECKING CLEARANCE…" />;
+  if (!isSignedIn) return <Navigate to="/login" state={{ from: location }} replace />;
+  if (!hasModule(role, modules, module)) {
+    return <TerminalNotice text={`ACCESS DENIED — the ${module.toUpperCase()} module is not enabled for your account.`} />;
   }
   return <>{children}</>;
 }
