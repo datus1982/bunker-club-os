@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Navigate } from "react-router-dom";
+import { Navigate, useLocation } from "react-router-dom";
 import { roleAtLeast, useRole, type StaffRole } from "./useRole";
 import { useSession } from "./useSession";
 
@@ -31,8 +31,10 @@ export function RequireAuth({ children }: { children: ReactNode }) {
  */
 export function RequireRole({ role, children }: { role: StaffRole; children: ReactNode }) {
   const { role: current, loading, isSignedIn } = useRole();
+  const location = useLocation();
   if (loading) return <TerminalNotice text="CHECKING CLEARANCE…" />;
-  if (!isSignedIn) return <Navigate to="/checkin" replace />;
+  // Staff routes send unauthenticated users to the staff login (players use /checkin).
+  if (!isSignedIn) return <Navigate to="/login" state={{ from: location }} replace />;
   if (!roleAtLeast(current, role)) {
     return <TerminalNotice text={`ACCESS DENIED — requires ${role.toUpperCase()} clearance.`} />;
   }

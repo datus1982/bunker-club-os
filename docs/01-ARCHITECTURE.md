@@ -42,7 +42,8 @@ Rationale: one app, role-gated routes. Splitting into multiple deployables adds 
 
 | Route | Module | Access |
 |---|---|---|
-| `/` | Dashboard | staff+ |
+| `/`, `/menu`, `/events`, `/trivia`, `/visit`, `/about` | public website (doc 14) | public |
+| `/dashboard` | Dashboard | staff+ |
 | `/scoring`, `/game/*`, `/teams`, `/history`, `/settings` | trivia host tools | host+ |
 | `/leaderboard` | trivia leaderboard display | public (display) |
 | `/game-display` | audience Q&A display | public (display) |

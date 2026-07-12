@@ -28,5 +28,11 @@ supabase/.temp/
 # legacy source zips — kept on disk, not tracked (re-downloadable from GitHub)
 *.zip
 
-# npm lockfile — project standard is pnpm (docs decision 2)
-package-lock.json
+# Lockfile: project standard is pnpm (docs decision 2), but this environment has no
+# pnpm/corepack offline and installs + builds + deploys apps/web with npm (see CLAUDE.md).
+# The npm package-lock.json is therefore the file that actually pins the deployed
+# dependency state, so it is committed (Phase 1). Regenerate a pnpm-lock.yaml and switch
+# back when a pnpm-capable environment is available.
+
+# Ronnie's real trivia decks — large binaries, kept on disk only (CLAUDE.md)
+docs/*.pptx
