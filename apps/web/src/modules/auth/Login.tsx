@@ -1,41 +1,70 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { supabase } from "@/shared/supabaseClient";
-import { useRole } from "@/shared/useRole";
+import { roleAtLeast, useRole } from "@/shared/useRole";
 
 /**
- * Minimal staff sign-in (email + password). Pulled forward from Phase 2 (docs/05)
- * so host tools + the parity checklist can be exercised end-to-end before the full
- * Registration v2 auth lands. Players still use /checkin (email OTP, Phase 2); this
- * is the staff/host door only. The full auth (OTP, password reset, staff invite) is
- * Phase 2's job — keep this deliberately small.
+ * Staff sign-in door. Two ways in (Phase 4b):
+ *  - PASSWORD (email + password), and
+ *  - CODE (email OTP — the same signInWithOtp flow players use). Staff are distinguished
+ *    by their venue_staff role, NOT the auth method, so the OTP path means a host who
+ *    forgot their password never has to touch the Supabase dashboard to get back in.
+ *
+ * After auth, role decides the destination: staff+ land on the admin shell (/dashboard,
+ * or wherever RequireRole bounced them from); a non-staff account that somehow signs in
+ * here is sent to the player portal. Players normally use /checkin, not this page.
  */
 export function Login() {
   const navigate = useNavigate();
   const location = useLocation();
   const from = (location.state as { from?: { pathname?: string } } | null)?.from?.pathname ?? "/dashboard";
 
-  const { isSignedIn, role } = useRole();
+  const { isSignedIn, role, loading: roleLoading } = useRole();
+
+  const [mode, setMode] = useState<"password" | "code">("password");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [codeSent, setCodeSent] = useState(false);
+  const [code, setCode] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const submit = async (e: React.FormEvent) => {
+  // Once authenticated and the role is resolved, route by clearance.
+  useEffect(() => {
+    if (!isSignedIn || roleLoading) return;
+    navigate(roleAtLeast(role, "staff") ? from : "/portal", { replace: true });
+  }, [isSignedIn, roleLoading, role, from, navigate]);
+
+  const submitPassword = async (e: React.FormEvent) => {
     e.preventDefault();
-    setBusy(true);
-    setError(null);
+    setBusy(true); setError(null);
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     setBusy(false);
     if (error) setError(error.message);
-    else navigate(from, { replace: true });
+    // success → the effect above redirects once the role query resolves.
   };
 
-  const signOut = async () => {
-    await supabase.auth.signOut();
-    setEmail("");
-    setPassword("");
+  const sendCode = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setBusy(true); setError(null);
+    // shouldCreateUser:false — this is a sign-in door, not registration; a typo'd
+    // email must not mint a new auth user here.
+    const { error } = await supabase.auth.signInWithOtp({ email, options: { shouldCreateUser: false } });
+    setBusy(false);
+    if (error) setError(error.message);
+    else setCodeSent(true);
   };
+
+  const verifyCode = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setBusy(true); setError(null);
+    const { error } = await supabase.auth.verifyOtp({ email, token: code.trim(), type: "email" });
+    setBusy(false);
+    if (error) setError(error.message);
+    // success → redirect effect fires.
+  };
+
+  const signedInBusy = isSignedIn && roleLoading;
 
   return (
     <div className="terminal-theme" style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: 40, fontFamily: "'VT323','Share Tech Mono',monospace" }}>
@@ -45,56 +74,77 @@ export function Login() {
         <div className="terminal-separator" style={{ margin: "16px 0" }} />
 
         {isSignedIn ? (
-          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-            <div style={{ fontSize: 24 }}>
-              SIGNED IN · CLEARANCE: {(role ?? "NONE").toUpperCase()}
-            </div>
-            <button type="button" onClick={() => navigate(from, { replace: true })} style={btnPrimary}>CONTINUE →</button>
-            <button type="button" onClick={signOut} style={btnGhost}>SIGN OUT</button>
-          </div>
+          <div style={{ fontSize: 24 }}>{signedInBusy ? "CHECKING CLEARANCE…" : "SIGNED IN — REDIRECTING…"}</div>
         ) : (
-          <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-            <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-              <span style={{ fontSize: 20, opacity: 0.8 }}>EMAIL</span>
-              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="username" required style={input} />
-            </label>
-            <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-              <span style={{ fontSize: 20, opacity: 0.8 }}>PASSWORD</span>
-              <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" required style={input} />
-            </label>
-            {error && <div style={{ fontSize: 20 }}>⚠ {error}</div>}
-            <button type="submit" disabled={busy} style={btnPrimary}>{busy ? "AUTHENTICATING…" : "SIGN IN"}</button>
-          </form>
+          <>
+            {/* Method toggle */}
+            <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+              <button type="button" className={mode === "password" ? "u-fill u-ink" : ""} onClick={() => { setMode("password"); setError(null); }} style={mode === "password" ? tabActive : tab}>PASSWORD</button>
+              <button type="button" className={mode === "code" ? "u-fill u-ink" : ""} onClick={() => { setMode("code"); setError(null); }} style={mode === "code" ? tabActive : tab}>EMAIL CODE</button>
+            </div>
+
+            {mode === "password" ? (
+              <form onSubmit={submitPassword} style={col}>
+                <Label text="EMAIL">
+                  <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="username" required style={input} />
+                </Label>
+                <Label text="PASSWORD">
+                  <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" required style={input} />
+                </Label>
+                {error && <div style={{ fontSize: 20 }}>⚠ {error}</div>}
+                <button type="submit" disabled={busy} className="u-fill u-ink" style={btnPrimary}>{busy ? "AUTHENTICATING…" : "SIGN IN"}</button>
+              </form>
+            ) : !codeSent ? (
+              <form onSubmit={sendCode} style={col}>
+                <Label text="EMAIL">
+                  <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="username" required style={input} />
+                </Label>
+                <div style={{ fontSize: 18, opacity: 0.7 }}>We'll send a 6-digit code to your staff email.</div>
+                {error && <div style={{ fontSize: 20 }}>⚠ {error}</div>}
+                <button type="submit" disabled={busy} className="u-fill u-ink" style={btnPrimary}>{busy ? "SENDING…" : "SEND CODE"}</button>
+              </form>
+            ) : (
+              <form onSubmit={verifyCode} style={col}>
+                <div style={{ fontSize: 20, opacity: 0.8 }}>Code sent to {email}.</div>
+                <Label text="6-DIGIT CODE">
+                  <input inputMode="numeric" autoComplete="one-time-code" value={code} onChange={(e) => setCode(e.target.value)} required style={{ ...input, letterSpacing: 8, fontSize: 30 }} maxLength={6} />
+                </Label>
+                {error && <div style={{ fontSize: 20 }}>⚠ {error}</div>}
+                <button type="submit" disabled={busy} className="u-fill u-ink" style={btnPrimary}>{busy ? "VERIFYING…" : "VERIFY"}</button>
+                <button type="button" onClick={() => { setCodeSent(false); setCode(""); setError(null); }} style={btnGhost}>← USE A DIFFERENT EMAIL</button>
+              </form>
+            )}
+          </>
         )}
       </div>
     </div>
   );
 }
 
+function Label({ text, children }: { text: string; children: React.ReactNode }) {
+  return (
+    <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+      <span style={{ fontSize: 20, opacity: 0.8 }}>{text}</span>
+      {children}
+    </label>
+  );
+}
+
+const col: React.CSSProperties = { display: "flex", flexDirection: "column", gap: 16 };
 const input: React.CSSProperties = {
-  background: "#000",
-  color: "var(--terminal-green)",
-  border: "1px solid var(--terminal-green)",
-  padding: "10px 12px",
-  fontSize: 24,
-  fontFamily: "'VT323','Share Tech Mono',monospace",
+  background: "#000", color: "var(--terminal-green)", border: "1px solid var(--terminal-green)",
+  padding: "10px 12px", fontSize: 24, fontFamily: "'VT323','Share Tech Mono',monospace",
 };
 const btnPrimary: React.CSSProperties = {
-  background: "var(--terminal-green)",
-  color: "#000",
-  border: "1px solid var(--terminal-green)",
-  padding: "12px 20px",
-  fontSize: 26,
-  fontWeight: 700,
-  cursor: "pointer",
-  fontFamily: "'VT323','Share Tech Mono',monospace",
+  background: "var(--terminal-green)", color: "#000", border: "1px solid var(--terminal-green)",
+  padding: "12px 20px", fontSize: 26, fontWeight: 700, cursor: "pointer", fontFamily: "'VT323','Share Tech Mono',monospace",
 };
 const btnGhost: React.CSSProperties = {
-  background: "transparent",
-  color: "var(--terminal-green)",
-  border: "1px solid var(--terminal-green)",
-  padding: "10px 16px",
-  fontSize: 22,
-  cursor: "pointer",
-  fontFamily: "'VT323','Share Tech Mono',monospace",
+  background: "transparent", color: "var(--terminal-green)", border: "1px solid var(--terminal-green)",
+  padding: "10px 16px", fontSize: 20, cursor: "pointer", fontFamily: "'VT323','Share Tech Mono',monospace",
 };
+const tab: React.CSSProperties = {
+  flex: 1, background: "transparent", color: "var(--terminal-green)", border: "1px solid var(--terminal-green)",
+  padding: "8px 12px", fontSize: 20, cursor: "pointer", fontFamily: "'VT323','Share Tech Mono',monospace", opacity: 0.6,
+};
+const tabActive: React.CSSProperties = { ...tab, background: "var(--terminal-green)", color: "#000", fontWeight: 700, opacity: 1 };

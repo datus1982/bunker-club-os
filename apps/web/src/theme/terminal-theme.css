@@ -447,3 +447,25 @@ div[data-radix-select-viewport] {
   color: var(--terminal-green);
   text-shadow: 0 0 5px var(--terminal-glow);
 }
+
+/* Admin-shell module tiles (Phase 4b) — subtle hover lift on the clickable ones. */
+.dash-tile {
+  transition: background 0.12s ease, box-shadow 0.12s ease;
+}
+.dash-tile:hover {
+  background: rgba(0, 255, 65, 0.08) !important;
+  box-shadow: 0 0 8px var(--terminal-glow);
+}
+
+/* ===== Admin-shell color overrides (Phase 4b) =====
+ * The global `.terminal-theme *` rule forces green with !important, which would
+ * flatten the docs/12 staleness colors and black-on-green button text. These
+ * `.terminal-theme`-scoped classes (specificity 0,2,0) beat that rule (0,1,1). */
+.terminal-theme .u-amber { color: var(--terminal-amber, #ffb000) !important; text-shadow: 0 0 4px rgba(255, 176, 0, 0.45) !important; }
+.terminal-theme .u-red   { color: #ff5a5a !important; text-shadow: 0 0 4px rgba(255, 90, 90, 0.45) !important; }
+.terminal-theme .u-idle  { color: #8a8f8a !important; text-shadow: none !important; }
+.terminal-theme .u-ink   { color: #000 !important; text-shadow: none !important; }
+/* Solid green fill for CTAs — beats `.terminal-theme button { background: transparent }`.
+ * Pair with u-ink for legible black-on-green (filled buttons / active toggle). */
+.terminal-theme .u-fill { background: var(--terminal-green) !important; border-color: var(--terminal-green) !important; opacity: 1 !important; }
+.terminal-theme .u-fill:hover { background: var(--terminal-green) !important; box-shadow: 0 0 12px var(--terminal-glow) !important; }

@@ -9,6 +9,7 @@ import { Portal } from "./modules/portal/routes";
 import { DrinksDisplay, DrinksAdmin } from "./modules/leaderboard/routes";
 import { SeasonsAdmin } from "./modules/seasons/routes";
 import { SignageAdmin, SlotDisplay } from "./modules/signage/routes";
+import { Dashboard, StaffLayout } from "./modules/dashboard/routes";
 
 /**
  * Top-level route map (docs/01, updated by docs/14). The public website owns the
@@ -27,19 +28,28 @@ export function App() {
       <Route path="/visit" element={<Website.Visit />} />
       <Route path="/about" element={<Website.About />} />
 
-      {/* Internal dashboard — staff+ */}
-      <Route path="/dashboard" element={<RequireRole role="staff"><Trivia.Dashboard /></RequireRole>} />
+      {/* Staff routes — wrapped in StaffLayout so the persistent staff nav (Phase 4b)
+          renders above every tool. RequireRole inside each route still gates access. */}
+      <Route element={<StaffLayout />}>
+        {/* Internal dashboard / admin-shell home — staff+ */}
+        <Route path="/dashboard" element={<RequireRole role="staff"><Dashboard /></RequireRole>} />
 
-      {/* Trivia host tools — host+ */}
-      <Route path="/scoring" element={<RequireRole role="host"><Trivia.Scoring /></RequireRole>} />
-      <Route path="/game/setup" element={<RequireRole role="host"><Trivia.GameSetup /></RequireRole>} />
-      <Route path="/game/:gameId/questions" element={<RequireRole role="host"><Trivia.QuestionEntry /></RequireRole>} />
-      <Route path="/game/:gameId/videos" element={<RequireRole role="host"><Trivia.VideoEntry /></RequireRole>} />
-      <Route path="/game/:gameId/bulk-import" element={<RequireRole role="host"><Trivia.BulkImport /></RequireRole>} />
-      <Route path="/game/*" element={<RequireRole role="host"><Trivia.GameTools /></RequireRole>} />
-      <Route path="/teams" element={<RequireRole role="host"><Trivia.Teams /></RequireRole>} />
-      <Route path="/history" element={<RequireRole role="host"><Trivia.History /></RequireRole>} />
-      <Route path="/settings" element={<RequireRole role="host"><Trivia.Settings /></RequireRole>} />
+        {/* Trivia host tools — host+ */}
+        <Route path="/scoring" element={<RequireRole role="host"><Trivia.Scoring /></RequireRole>} />
+        <Route path="/game/setup" element={<RequireRole role="host"><Trivia.GameSetup /></RequireRole>} />
+        <Route path="/game/:gameId/questions" element={<RequireRole role="host"><Trivia.QuestionEntry /></RequireRole>} />
+        <Route path="/game/:gameId/videos" element={<RequireRole role="host"><Trivia.VideoEntry /></RequireRole>} />
+        <Route path="/game/:gameId/bulk-import" element={<RequireRole role="host"><Trivia.BulkImport /></RequireRole>} />
+        <Route path="/game/*" element={<RequireRole role="host"><Trivia.GameTools /></RequireRole>} />
+        <Route path="/teams" element={<RequireRole role="host"><Trivia.Teams /></RequireRole>} />
+        <Route path="/history" element={<RequireRole role="host"><Trivia.History /></RequireRole>} />
+        <Route path="/settings" element={<RequireRole role="host"><Trivia.Settings /></RequireRole>} />
+
+        {/* Staff / admin module surfaces */}
+        <Route path="/signage" element={<RequireRole role="staff"><SignageAdmin /></RequireRole>} />
+        <Route path="/admin/drinks" element={<RequireRole role="staff"><DrinksAdmin /></RequireRole>} />
+        <Route path="/admin/seasons" element={<RequireRole role="admin"><SeasonsAdmin /></RequireRole>} />
+      </Route>
 
       {/* Public display routes — no auth */}
       <Route path="/leaderboard" element={<Trivia.Leaderboard />} />
@@ -56,11 +66,6 @@ export function App() {
       {/* Old registration route — /checkin fully replaces it (docs/05); keep a redirect. */}
       <Route path="/add-team" element={<Navigate to="/checkin" replace />} />
       <Route path="/portal/*" element={<RequireAuth><Portal /></RequireAuth>} />
-
-      {/* Staff / admin */}
-      <Route path="/signage" element={<RequireRole role="staff"><SignageAdmin /></RequireRole>} />
-      <Route path="/admin/drinks" element={<RequireRole role="staff"><DrinksAdmin /></RequireRole>} />
-      <Route path="/admin/seasons" element={<RequireRole role="admin"><SeasonsAdmin /></RequireRole>} />
 
       {/* Fallback — unknown paths land on the public home */}
       <Route path="*" element={<Website.Home />} />
