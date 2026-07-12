@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bunker Club — Signage Frame Mockup</title>
+<link href="https://fonts.googleapis.com/css2?family=VT323&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --phos:#00ff41; --phos-dim:rgba(0,255,65,.55); --phos-faint:rgba(0,255,65,.16);
+    --amber:#ffb000; --amber-dim:rgba(255,176,0,.55); --amber-faint:rgba(255,176,0,.14);
+    --ink:var(--phos); --ink-dim:var(--phos-dim); --ink-faint:var(--phos-faint);
+    --bg:#04070a; --crt:#050d07; --panel:#081409;
+  }
+  .theme-amber{
+    --ink:var(--amber); --ink-dim:var(--amber-dim); --ink-faint:var(--amber-faint);
+    --crt:#0d0903; --panel:#140e05;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:#9fdcb0;font-family:'Share Tech Mono',monospace;
+    min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:18px}
+  .lbl{font-family:'VT323',monospace;font-size:20px;letter-spacing:2px;color:rgba(0,255,65,.5)}
+  /* ---- the display panel (portrait 9:16) ---- */
+  .display{
+    width:400px;max-width:96vw;height:711px;max-height:84vh;
+    background:var(--crt);border:2px solid var(--ink-dim);
+    position:relative;overflow:hidden;display:flex;flex-direction:column;
+    box-shadow:0 0 40px var(--ink-faint), inset 0 0 70px rgba(0,0,0,.6);
+    color:var(--ink);
+    transition:background .3s, border-color .3s;
+  }
+  .display::before{content:"";position:absolute;inset:0;pointer-events:none;z-index:9;
+    background:repeating-linear-gradient(0deg, rgba(0,0,0,.20) 0 1px, transparent 1px 3px)}
+  .display::after{content:"";position:absolute;inset:0;pointer-events:none;z-index:10;
+    background:radial-gradient(ellipse at center, transparent 58%, rgba(0,0,0,.5) 100%)}
+  /* ---- persistent chrome ---- */
+  .chrome-top{border-bottom:1px solid var(--ink-dim);padding:10px 16px;display:flex;
+    justify-content:space-between;align-items:baseline;flex-shrink:0}
+  .chrome-top .mark{font-family:'VT323',monospace;font-size:26px;letter-spacing:1px;text-shadow:0 0 9px var(--ink-dim)}
+  .chrome-top .tid{font-size:10px;color:var(--ink-dim);text-align:right;line-height:1.5}
+  .chrome-bot{border-top:1px solid var(--ink-dim);padding:8px 16px;font-size:11px;
+    color:var(--ink-dim);display:flex;justify-content:space-between;flex-shrink:0;gap:12px}
+  .chrome-bot .tick{overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+  /* ---- content zone ---- */
+  .zone{flex:1;position:relative;overflow:hidden}
+  .item{position:absolute;inset:0;padding:26px 22px;display:flex;flex-direction:column;
+    opacity:0;transition:opacity .35s}
+  .item.on{opacity:1}
+  .stamp{position:absolute;top:18px;right:18px;border:2px solid var(--ink-dim);color:var(--ink-dim);
+    font-family:'VT323',monospace;font-size:15px;letter-spacing:2px;padding:4px 9px;transform:rotate(6deg)}
+  .eyebrow{font-size:11px;letter-spacing:4px;color:var(--ink-dim);margin-bottom:10px}
+  .big{font-family:'VT323',monospace;font-size:56px;line-height:.95;text-shadow:0 0 12px var(--ink-dim)}
+  .mid{font-family:'VT323',monospace;font-size:30px;line-height:1.05;text-shadow:0 0 8px var(--ink-dim)}
+  .body{font-size:14px;color:var(--ink-dim);line-height:1.6}
+  .price{font-family:'VT323',monospace;font-size:84px;text-shadow:0 0 16px var(--ink-dim);line-height:1}
+  .price small{font-size:30px;vertical-align:top}
+  .rule{border:none;border-top:1px solid var(--ink-faint);margin:16px 0}
+  /* ---- photo viewport (drink) ---- */
+  .viewport{
+    margin:18px 0;border:1px solid var(--ink-dim);position:relative;height:250px;overflow:hidden;
+    background:#000;
+  }
+  .viewport .cap{position:absolute;top:6px;left:8px;font-size:9px;letter-spacing:2px;color:var(--ink-dim);z-index:3}
+  .viewport svg{width:100%;height:100%;display:block}
+  .viewport::after{content:"";position:absolute;inset:0;pointer-events:none;
+    background:repeating-linear-gradient(0deg, rgba(0,0,0,.18) 0 1px, transparent 1px 4px),
+               radial-gradient(ellipse at center, transparent 60%, rgba(0,0,0,.45) 100%)}
+  /* phosphor treatment: tint the image toward the theme ink */
+  .phosphor .viewport svg{filter:grayscale(1) brightness(1.05) sepia(1) hue-rotate(75deg) saturate(4)}
+  .theme-amber .phosphor .viewport svg{filter:grayscale(1) brightness(1.05) sepia(1) hue-rotate(-8deg) saturate(4)}
+  /* ---- announcement typewriter ---- */
+  .type-out{font-family:'VT323',monospace;font-size:34px;line-height:1.25;text-shadow:0 0 10px var(--ink-dim);white-space:pre-wrap}
+  .cursor::after{content:"▮";animation:blink 1s steps(1) infinite}
+  @keyframes blink{50%{opacity:0}}
+  /* ---- event ---- */
+  .datebox{display:flex;gap:16px;align-items:center;margin:18px 0}
+  .datebox .d{border:1px solid var(--ink-dim);padding:12px 16px;text-align:center}
+  .datebox .d .dw{font-size:11px;letter-spacing:3px;color:var(--ink-dim)}
+  .datebox .d .dn{font-family:'VT323',monospace;font-size:44px;line-height:1}
+  /* ---- takeover ---- */
+  .takeover{position:absolute;inset:0;background:var(--crt);z-index:15;display:none;
+    flex-direction:column;justify-content:center;align-items:center;text-align:center;padding:30px;
+    border:6px double var(--ink)}
+  .takeover.on{display:flex}
+  .takeover .alert{font-size:12px;letter-spacing:6px;color:var(--ink-dim);margin-bottom:18px}
+  .takeover .msg{font-family:'VT323',monospace;font-size:58px;line-height:1;text-shadow:0 0 18px var(--ink-dim)}
+  .takeover .sub{margin-top:16px;font-size:13px;color:var(--ink-dim)}
+  /* ---- demo controls ---- */
+  .demo{width:400px;max-width:96vw;display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
+  .demo button{background:none;border:1px solid rgba(0,255,65,.25);color:rgba(0,255,65,.6);
+    font-family:'Share Tech Mono',monospace;font-size:12px;padding:7px 11px;cursor:pointer}
+  .demo button:hover{color:#00ff41;border-color:rgba(0,255,65,.5)}
+  .demo button.active{color:#00ff41;border-color:#00ff41}
+  @media (prefers-reduced-motion: reduce){ .cursor::after{animation:none} .item{transition:none} }
+</style>
+</head>
+<body>
+
+<div class="lbl" id="lbl">SIGNAGE SLOT: PORTRAIT-LEFT · ROTATION 12s (demo: manual)</div>
+
+<div class="display" id="disp">
+  <div class="chrome-top">
+    <span class="mark">BUNKER CLUB</span>
+    <span class="tid">BUNKER UNIFIED OS v2.1<br>TERMINAL 02 — TAPROOM EAST · <span id="clk"></span></span>
+  </div>
+
+  <div class="zone" id="zone">
+
+    <!-- 1: DRINK SPECIAL -->
+    <div class="item on" id="it0">
+      <div class="stamp">CIVIL DEFENSE APPROVED</div>
+      <div class="eyebrow">TONIGHT'S SPECIAL — CONSUMABLE</div>
+      <div class="big">ATOMIC<br>OLD FASHIONED</div>
+      <div class="viewport" id="vp">
+        <span class="cap">OPTICAL FEED 01 — LIVE</span>
+        <!-- stand-in "photo": warm-toned SVG cocktail; treatment toggles via CSS filter -->
+        <svg viewBox="0 0 400 250" preserveAspectRatio="xMidYMid slice">
+          <defs>
+            <radialGradient id="glow" cx="50%" cy="42%" r="65%">
+              <stop offset="0%" stop-color="#3a2410"/><stop offset="100%" stop-color="#120a04"/>
+            </radialGradient>
+            <linearGradient id="liq" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="#e8912a"/><stop offset="100%" stop-color="#8a4a10"/>
+            </linearGradient>
+          </defs>
+          <rect width="400" height="250" fill="url(#glow)"/>
+          <rect x="150" y="70" width="100" height="110" rx="8" fill="none" stroke="#d9c9a8" stroke-width="4"/>
+          <rect x="154" y="110" width="92" height="66" rx="6" fill="url(#liq)"/>
+          <circle cx="200" cy="140" r="26" fill="#f4b03c" opacity=".55"/>
+          <rect x="196" y="52" width="7" height="70" fill="#c33" transform="rotate(14 200 90)"/>
+          <ellipse cx="200" cy="196" rx="70" ry="8" fill="#000" opacity=".5"/>
+        </svg>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:end">
+        <div class="body">Bourbon · smoked cola bitters ·<br>irradiated orange peel</div>
+        <div class="price"><small>$</small>9</div>
+      </div>
+    </div>
+
+    <!-- 2: EVENT -->
+    <div class="item" id="it1">
+      <div class="stamp">MANDATORY FUN</div>
+      <div class="eyebrow">UPCOMING PROTOCOL</div>
+      <div class="big">ATOMIC<br>PUB TRIVIA</div>
+      <div class="datebox">
+        <div class="d"><div class="dw">WED</div><div class="dn">15</div></div>
+        <div>
+          <div class="mid">8:00 PM</div>
+          <div class="body">Hosted by Ronnie Meyer<br>Teams of any size · paper &amp; pencil<br>Season points on the line</div>
+        </div>
+      </div>
+      <hr class="rule">
+      <div class="body">Scan the table QR to check your team in — or play along solo from the bar.</div>
+    </div>
+
+    <!-- 3: ANNOUNCEMENT (typewriter) -->
+    <div class="item" id="it2">
+      <div class="eyebrow">SYSTEM BULLETIN — PRIORITY LOW</div>
+      <div class="type-out cursor" id="typeTarget"></div>
+    </div>
+
+    <!-- 4: IMAGE ONLY -->
+    <div class="item" id="it3">
+      <div class="eyebrow">ARCHIVE FEED</div>
+      <div class="viewport" style="height:420px">
+        <span class="cap">OPTICAL FEED 02 — ARCHIVE</span>
+        <svg viewBox="0 0 400 420" preserveAspectRatio="xMidYMid slice">
+          <rect width="400" height="420" fill="#101a12"/>
+          <g stroke="#2f7a45" stroke-width="2" fill="none">
+            <circle cx="200" cy="180" r="90"/><circle cx="200" cy="180" r="60"/>
+            <path d="M200 90 v180 M110 180 h180"/>
+            <path d="M200 180 l64 -64 M200 180 l-64 64"/>
+          </g>
+          <text x="200" y="330" text-anchor="middle" fill="#2f7a45" font-family="monospace" font-size="20">UPLOADED BY STAFF · AUTO-FRAMED</text>
+        </svg>
+      </div>
+      <div class="body" style="margin-top:14px">Any uploaded flyer/poster gets letterboxed inside the frame — staff never touch design tools.</div>
+    </div>
+
+    <!-- TAKEOVER overlay -->
+    <div class="takeover" id="take">
+      <div class="alert">■ PRIORITY BROADCAST — ALL TERMINALS ■</div>
+      <div class="msg">TRIVIA BEGINS<br>IN 10 MINUTES</div>
+      <div class="sub">Find your table. Sharpen your pencils.<br>— MANAGEMENT</div>
+    </div>
+  </div>
+
+  <div class="chrome-bot">
+    <span>■ ONLINE</span>
+    <span class="tick" id="tick">WEDNESDAYS: ATOMIC PUB TRIVIA 8PM · HAPPY HOUR 4–7 · FOLLOW @BUNKERCLUBOKC</span>
+  </div>
+</div>
+
+<div class="demo">
+  <button onclick="next()">Next item ▸</button>
+  <button id="btnTreat" onclick="toggleTreat()">Treatment: VIEWPORT</button>
+  <button id="btnTheme" onclick="toggleTheme()">Theme: GREEN</button>
+  <button id="btnTake" onclick="toggleTake()">Takeover broadcast</button>
+</div>
+
+<script>
+const items = ["it0","it1","it2","it3"];
+let cur = 0, treatPhos = false, amber = false;
+
+function next(){
+  document.getElementById(items[cur]).classList.remove("on");
+  cur = (cur + 1) % items.length;
+  document.getElementById(items[cur]).classList.add("on");
+  if (items[cur] === "it2") typewrite();
+}
+function toggleTreat(){
+  treatPhos = !treatPhos;
+  document.getElementById("zone").classList.toggle("phosphor", treatPhos);
+  document.getElementById("btnTreat").textContent = "Treatment: " + (treatPhos ? "PHOSPHOR" : "VIEWPORT");
+}
+function toggleTheme(){
+  amber = !amber;
+  document.getElementById("disp").classList.toggle("theme-amber", amber);
+  document.getElementById("btnTheme").textContent = "Theme: " + (amber ? "AMBER" : "GREEN");
+}
+function toggleTake(){
+  const t = document.getElementById("take");
+  t.classList.toggle("on");
+  document.getElementById("btnTake").classList.toggle("active", t.classList.contains("on"));
+}
+/* typewriter for announcement — runs once per entry, then idles (no infinite anim) */
+const MSG = "KITCHEN CLOSES 11PM.\n\nTHE JUKEBOX ACCEPTS\nNO RESPONSIBILITY FOR\nYOUR EX'S SONG CHOICES.\n\nTIP YOUR BARTENDERS.";
+function typewrite(){
+  const el2 = document.getElementById("typeTarget");
+  el2.textContent = "";
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches){ el2.textContent = MSG; return; }
+  let i = 0;
+  const t = setInterval(()=>{
+    el2.textContent = MSG.slice(0, ++i);
+    if (i >= MSG.length) clearInterval(t);
+  }, 28);
+}
+/* footer ticker: swaps lines every 9s with a reprint (no scroll animation) */
+const TICKS = [
+  "WEDNESDAYS: ATOMIC PUB TRIVIA 8PM · HAPPY HOUR 4–7 · FOLLOW @BUNKERCLUBOKC",
+  "SEASON STANDINGS: 1. QUANTUM LEAPERS · 2. MEGATON BREAK · 3. THE REGULATORS",
+  "NOW POURING: ATOMIC OLD FASHIONED $9 · ASK ABOUT THE SHELTER FLIGHT",
+];
+let ti = 0;
+setInterval(()=>{ ti = (ti+1)%TICKS.length; document.getElementById("tick").textContent = TICKS[ti]; }, 9000);
+/* clock */
+function clk(){ document.getElementById("clk").textContent = new Date().toLocaleTimeString([], {hour:"numeric",minute:"2-digit"}); }
+clk(); setInterval(clk, 1000);
+</script>
+</body>
+</html>

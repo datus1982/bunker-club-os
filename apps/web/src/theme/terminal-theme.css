@@ -1,0 +1,449 @@
+/*
+ * BUNKER UNIFIED OS — TERMINAL THEME
+ * Shelter Authority atomic-era retro-terminal design system.
+ * Green phosphor CRT: scanlines, vignette, VT323 + Share Tech Mono, opt-in flicker.
+ *
+ * Ported from the legacy drinks-leaderboard export (originally distributed as
+ * "fallout-terminal-theme.css"). The atomic-era CRT aesthetic is a style and
+ * freely usable; all third-party franchise wording from the original file's
+ * header/README has been removed per docs/00 principle 5 (original in-world IP only).
+ * The base green (#00ff41) is extended below with amber (#ffb000) and blue
+ * (#46a4ff) custom-property variants for signage color-state (docs/01, docs/09).
+ *
+ * USAGE:
+ * 1. Import Google Fonts in your HTML <head>:
+ *    <link href="https://fonts.googleapis.com/css2?family=VT323&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+ *
+ * 2. Include this CSS file in your project
+ *
+ * 3. Add the "terminal-theme" class to your root container:
+ *    <div class="terminal-theme">Your content here</div>
+ *
+ * 4. (Optional) Control flicker animation:
+ *    <div class="terminal-theme" style="animation: flicker 3s infinite; --flicker-intensity: 0.03;">
+ *    - flicker-intensity: 0 to 0.1 (0.03 default)
+ *    - animation duration: 0.5s to 10s (3s default)
+ *
+ * FEATURES:
+ * - CRT scanline effect
+ * - Vignette/screen glow
+ * - Terminal green phosphor color (#00ff41)
+ * - Retro monospace fonts (VT323, Share Tech Mono)
+ * - Customizable flicker animation
+ * - All UI components styled (buttons, tabs, inputs, selects, switches)
+ * - Sharp rectangular borders (no rounding)
+ * - Glowing text and borders
+ */
+
+/* ===== CORE THEME ===== */
+.terminal-theme {
+  --terminal-green: #00ff41;
+  --terminal-bg: #000000;
+  --terminal-glow: rgba(0, 255, 65, 0.5);
+  font-family: 'VT323', 'Share Tech Mono', monospace;
+  background: var(--terminal-bg);
+  color: var(--terminal-green);
+  text-shadow: 0 0 5px var(--terminal-glow);
+}
+
+.terminal-theme * {
+  font-family: 'VT323', 'Share Tech Mono', monospace;
+}
+
+/* ===== CRT EFFECTS ===== */
+
+/* CRT Scanline Effect */
+.terminal-theme::before {
+  content: "";
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: repeating-linear-gradient(
+    0deg,
+    rgba(0, 0, 0, 0.15),
+    rgba(0, 0, 0, 0.15) 1px,
+    transparent 1px,
+    transparent 2px
+  );
+  pointer-events: none;
+  z-index: 9999;
+}
+
+/* CRT Screen Glow / Vignette */
+.terminal-theme::after {
+  content: "";
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: radial-gradient(ellipse at center, transparent 0%, rgba(0, 0, 0, 0.3) 100%);
+  pointer-events: none;
+  z-index: 9998;
+}
+
+/* ===== UTILITY CLASSES ===== */
+
+/* Terminal Border */
+.terminal-border {
+  border: 2px solid var(--terminal-green);
+  box-shadow:
+    0 0 10px var(--terminal-glow),
+    inset 0 0 10px rgba(0, 255, 65, 0.1);
+}
+
+/* Terminal Text Glow */
+.terminal-text {
+  color: var(--terminal-green);
+  text-shadow:
+    0 0 5px var(--terminal-glow),
+    0 0 10px var(--terminal-glow);
+}
+
+/* Terminal Separator Line */
+.terminal-separator {
+  height: 2px;
+  background: var(--terminal-green);
+  box-shadow: 0 0 5px var(--terminal-glow);
+  margin: 1rem 0;
+}
+
+/* ===== FLICKER ANIMATION ===== */
+@keyframes flicker {
+  0% { opacity: calc(1 - var(--flicker-intensity, 0.03)); }
+  2% { opacity: calc(1 - var(--flicker-intensity, 0.03) * 1.67); }
+  4% { opacity: calc(1 - var(--flicker-intensity, 0.03) * 0.67); }
+  19% { opacity: calc(1 - var(--flicker-intensity, 0.03)); }
+  21% { opacity: calc(1 - var(--flicker-intensity, 0.03) * 1.33); }
+  23% { opacity: calc(1 - var(--flicker-intensity, 0.03) * 0.67); }
+  80% { opacity: calc(1 - var(--flicker-intensity, 0.03) * 1.33); }
+  83% { opacity: calc(1 - var(--flicker-intensity, 0.03)); }
+  87% { opacity: calc(1 - var(--flicker-intensity, 0.03) * 1.67); }
+  100% { opacity: calc(1 - var(--flicker-intensity, 0.03)); }
+}
+
+/* ===== BASE STYLES ===== */
+
+/* Remove all border rounding */
+.terminal-theme *,
+.terminal-theme button,
+.terminal-theme input,
+.terminal-theme textarea,
+.terminal-theme select,
+.terminal-theme div,
+.terminal-theme [class*="rounded"] {
+  border-radius: 0 !important;
+}
+
+/* All borders should be green */
+.terminal-theme .border,
+.terminal-theme [class*="border"] {
+  border-color: var(--terminal-green) !important;
+}
+
+/* All backgrounds should be transparent */
+.terminal-theme [class*="bg-card"],
+.terminal-theme [class*="bg-background"],
+.terminal-theme [class*="bg-muted"],
+.terminal-theme [class*="bg-primary"],
+.terminal-theme [class*="bg-secondary"] {
+  background: transparent !important;
+}
+
+/* ===== TYPOGRAPHY ===== */
+
+/* All text should be green */
+.terminal-theme,
+.terminal-theme *,
+.terminal-theme p,
+.terminal-theme span,
+.terminal-theme label,
+.terminal-theme button,
+.terminal-theme a,
+.terminal-theme h2,
+.terminal-theme h3,
+.terminal-theme h4,
+.terminal-theme h5,
+.terminal-theme h6,
+.terminal-theme div {
+  color: var(--terminal-green) !important;
+  font-size: 1.5rem; /* Base: 24px */
+}
+
+.terminal-theme h2 {
+  font-size: 2rem !important; /* 32px */
+}
+
+.terminal-theme h3 {
+  font-size: 1.75rem !important; /* 28px */
+}
+
+.terminal-theme label {
+  font-size: 1.5rem !important; /* 24px */
+}
+
+.terminal-theme [class*="text-muted"],
+.terminal-theme [class*="text-destructive"],
+.terminal-theme [class*="text-foreground"] {
+  color: var(--terminal-green) !important;
+  opacity: 1 !important;
+  text-shadow: 0 0 5px var(--terminal-glow) !important;
+}
+
+/* ===== FORM INPUTS ===== */
+
+.terminal-theme input,
+.terminal-theme textarea,
+.terminal-theme select {
+  background: transparent !important;
+  border-color: var(--terminal-green) !important;
+  color: var(--terminal-green) !important;
+  font-size: 1.5rem !important;
+}
+
+.terminal-theme input::placeholder,
+.terminal-theme textarea::placeholder {
+  color: var(--terminal-green) !important;
+  opacity: 0.5 !important;
+}
+
+/* ===== BUTTONS ===== */
+
+.terminal-theme button {
+  background: transparent !important;
+  border-color: var(--terminal-green) !important;
+  font-size: 1.5rem !important;
+}
+
+.terminal-theme button:hover {
+  background: rgba(0, 255, 65, 0.25) !important;
+  box-shadow: 0 0 15px var(--terminal-glow) !important;
+}
+
+/* ===== SVG ICONS ===== */
+
+.terminal-theme svg {
+  color: var(--terminal-green) !important;
+  fill: currentColor !important;
+}
+
+/* ===== TABS ===== */
+
+.terminal-theme [role="tablist"] {
+  border-color: var(--terminal-green) !important;
+  background: transparent !important;
+  min-height: 60px !important;
+  padding: 8px !important;
+}
+
+/* Inactive tabs - dimmed */
+.terminal-theme button[role="tab"] {
+  opacity: 0.5 !important;
+  transition: opacity 0.2s ease, text-shadow 0.2s ease !important;
+}
+
+/* Tab hover - brighten */
+.terminal-theme button[role="tab"]:hover {
+  opacity: 0.8 !important;
+  text-shadow: 0 0 8px var(--terminal-glow) !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+/* Active tab - full brightness with border */
+.terminal-theme button[data-state="active"] {
+  background: transparent !important;
+  border: 2px solid var(--terminal-green) !important;
+  box-shadow: 0 0 10px var(--terminal-glow) !important;
+  color: var(--terminal-green) !important;
+  text-shadow: 0 0 5px var(--terminal-glow) !important;
+  opacity: 1 !important;
+}
+
+/* Active tab hover */
+.terminal-theme button[data-state="active"]:hover {
+  background: transparent !important;
+  box-shadow: 0 0 15px var(--terminal-glow) !important;
+}
+
+/* ===== SLIDERS ===== */
+
+.terminal-theme [role="slider"] {
+  background: var(--terminal-green) !important;
+  border-color: var(--terminal-green) !important;
+  box-shadow: 0 0 10px var(--terminal-glow) !important;
+}
+
+.terminal-theme span[data-orientation="horizontal"]:has([role="slider"]) {
+  background: rgba(0, 255, 65, 0.3) !important;
+}
+
+.terminal-theme [class*="SliderTrack"] {
+  background: rgba(0, 255, 65, 0.3) !important;
+}
+
+.terminal-theme [class*="SliderRange"] {
+  background: var(--terminal-green) !important;
+}
+
+/* ===== SWITCHES/TOGGLES ===== */
+
+.terminal-theme button[role="switch"] {
+  background: transparent !important;
+  border: 2px solid var(--terminal-green) !important;
+  border-radius: 0 !important;
+}
+
+.terminal-theme button[role="switch"][data-state="checked"] {
+  background: transparent !important;
+}
+
+.terminal-theme button[role="switch"] span {
+  background: var(--terminal-green) !important;
+  box-shadow: 0 0 10px var(--terminal-glow) !important;
+  border-radius: 0 !important;
+}
+
+/* ===== SELECT/DROPDOWN ===== */
+
+/* Select trigger button */
+.terminal-theme button[role="combobox"],
+.terminal-theme [data-radix-select-trigger] {
+  background: transparent !important;
+  border: 2px solid var(--terminal-green) !important;
+  color: var(--terminal-green) !important;
+  font-family: 'VT323', 'Share Tech Mono', monospace !important;
+  font-size: 1.5rem !important;
+  text-shadow: 0 0 5px var(--terminal-glow) !important;
+}
+
+/* Remove focus outline from select trigger */
+.terminal-theme button[role="combobox"]:focus,
+.terminal-theme [data-radix-select-trigger]:focus {
+  outline: none !important;
+  ring: 0 !important;
+  box-shadow: 0 0 10px var(--terminal-glow) !important;
+}
+
+/* Dropdown content/menu */
+.terminal-theme [data-radix-select-content],
+.terminal-theme [role="listbox"] {
+  background: var(--terminal-bg) !important;
+  border: 2px solid var(--terminal-green) !important;
+  box-shadow: 0 0 20px var(--terminal-glow) !important;
+  color: var(--terminal-green) !important;
+  font-family: 'VT323', 'Share Tech Mono', monospace !important;
+}
+
+/* Dropdown items */
+.terminal-theme [role="option"],
+.terminal-theme [data-radix-select-item] {
+  background: transparent !important;
+  color: var(--terminal-green) !important;
+  font-size: 1.5rem !important;
+  text-shadow: 0 0 5px var(--terminal-glow) !important;
+  padding: 8px 12px !important;
+}
+
+/* Dropdown item hover/focus */
+.terminal-theme [role="option"]:hover,
+.terminal-theme [data-radix-select-item][data-highlighted] {
+  background: rgba(0, 255, 65, 0.2) !important;
+  box-shadow: 0 0 10px var(--terminal-glow) !important;
+}
+
+/* Dropdown item selected/checked */
+.terminal-theme [role="option"][data-state="checked"],
+.terminal-theme [data-radix-select-item][data-state="checked"] {
+  background: rgba(0, 255, 65, 0.3) !important;
+}
+
+/* ===== GLOBAL DROPDOWN STYLES (for portaled content) ===== */
+/* These target dropdown content rendered outside the .terminal-theme container */
+
+.bg-popover,
+[data-radix-popper-content-wrapper] .bg-popover {
+  background: #000000 !important;
+  border: 2px solid rgb(0, 255, 65) !important;
+  box-shadow: 0 0 20px rgba(0, 255, 65, 0.5) !important;
+  border-radius: 0 !important;
+}
+
+.text-popover-foreground {
+  color: rgb(0, 255, 65) !important;
+  font-family: 'VT323', 'Share Tech Mono', monospace !important;
+}
+
+div[data-radix-select-viewport] {
+  background: transparent !important;
+}
+
+.bg-popover [role="option"],
+.bg-popover [data-radix-select-item] {
+  background: transparent !important;
+  color: rgb(0, 255, 65) !important;
+  font-size: 1.5rem !important;
+  text-shadow: 0 0 5px rgba(0, 255, 65, 0.5) !important;
+  padding: 8px 12px !important;
+  border-radius: 0 !important;
+  font-family: 'VT323', 'Share Tech Mono', monospace !important;
+}
+
+/* Override Tailwind accent colors for dropdowns */
+.bg-accent,
+.focus\:bg-accent:focus,
+[data-highlighted] {
+  background: rgba(0, 255, 65, 0.2) !important;
+}
+
+.text-accent-foreground,
+.focus\:text-accent-foreground:focus {
+  color: rgb(0, 255, 65) !important;
+}
+
+.bg-popover [role="option"][data-highlighted],
+.bg-popover [data-radix-select-item][data-highlighted],
+.bg-popover [role="option"]:hover,
+.bg-popover [data-radix-select-item]:hover {
+  background: rgba(0, 255, 65, 0.2) !important;
+  outline: none !important;
+}
+
+.bg-popover [data-radix-select-item][data-state="checked"],
+.bg-popover [role="option"][aria-selected="true"] {
+  background: rgba(0, 255, 65, 0.3) !important;
+}
+
+[data-radix-select-item] svg,
+[role="option"] svg {
+  color: rgb(0, 255, 65) !important;
+}
+
+/* ===== COLOR-STATE VARIANTS (docs/01, docs/09) ===== */
+/*
+ * AMBER = ambient (default building state: signage, events, announcements)
+ * GREEN = live (realtime feeds; the base .terminal-theme is already green)
+ * BLUE  = auxiliary signage accent
+ *
+ * These variant classes re-point the theme custom properties. The legacy CSS
+ * body hardcodes #00ff41 in many rules; full tokenization (hex -> var) is
+ * deferred to Phase 5 (Signage), when the color-state system is actually built
+ * and exercised on real slots.
+ * // DECISION: ship the variant scaffolding now, tokenize the hardcoded greens
+ * // in Phase 5 rather than doing a 400-line refactor during Phase 0 shell setup.
+ */
+.terminal-theme--amber {
+  --terminal-green: #ffb000;
+  --terminal-glow: rgba(255, 176, 0, 0.5);
+  color: var(--terminal-green);
+  text-shadow: 0 0 5px var(--terminal-glow);
+}
+
+.terminal-theme--blue {
+  --terminal-green: #46a4ff;
+  --terminal-glow: rgba(70, 164, 255, 0.5);
+  color: var(--terminal-green);
+  text-shadow: 0 0 5px var(--terminal-glow);
+}

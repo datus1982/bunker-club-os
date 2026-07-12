@@ -1,0 +1,40 @@
+import type { ReactNode } from "react";
+import { Navigate } from "react-router-dom";
+import { roleAtLeast, useRole, type StaffRole } from "./useRole";
+import { useSession } from "./useSession";
+
+function TerminalNotice({ text }: { text: string }) {
+  return (
+    <div className="terminal-theme" style={{ minHeight: "100vh", padding: 48 }}>
+      <div className="terminal-border" style={{ display: "inline-block", padding: 24 }}>
+        {text}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Requires any authenticated user (players + staff). Scaffolding — the real
+ * player OTP sign-in flow lands in Phase 2 (registration v2). For now it gates,
+ * showing where sign-in belongs rather than implementing it.
+ */
+export function RequireAuth({ children }: { children: ReactNode }) {
+  const { session, loading } = useSession();
+  if (loading) return <TerminalNotice text="AUTHENTICATING…" />;
+  if (!session) return <Navigate to="/checkin" replace />;
+  return <>{children}</>;
+}
+
+/**
+ * <RequireRole role="host"> — gates staff routes by minimum venue role (docs/01).
+ * admin satisfies host satisfies staff.
+ */
+export function RequireRole({ role, children }: { role: StaffRole; children: ReactNode }) {
+  const { role: current, loading, isSignedIn } = useRole();
+  if (loading) return <TerminalNotice text="CHECKING CLEARANCE…" />;
+  if (!isSignedIn) return <Navigate to="/checkin" replace />;
+  if (!roleAtLeast(current, role)) {
+    return <TerminalNotice text={`ACCESS DENIED — requires ${role.toUpperCase()} clearance.`} />;
+  }
+  return <>{children}</>;
+}

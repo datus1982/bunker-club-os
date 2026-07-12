@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bunker Club — Patron Terminal (Flow Mockup)</title>
+<link href="https://fonts.googleapis.com/css2?family=VT323&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --phos:#00ff41;
+    --phos-dim:rgba(0,255,65,.55);
+    --phos-faint:rgba(0,255,65,.18);
+    --amber:#ffb000;
+    --amber-dim:rgba(255,176,0,.5);
+    --bg:#04070a;
+    --crt:#050d07;
+    --panel:#081409;
+    --line:rgba(0,255,65,.35);
+    --danger:#ff4136;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    background:var(--bg);
+    color:var(--phos);
+    font-family:'Share Tech Mono',monospace;
+    min-height:100vh;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    gap:14px;padding:20px;
+  }
+  .stage-label{
+    font-family:'VT323',monospace;font-size:20px;letter-spacing:2px;color:var(--phos-dim);
+  }
+  /* ---------- phone frame ---------- */
+  .phone{
+    width:390px;max-width:100%;height:760px;max-height:88vh;
+    background:var(--crt);
+    border:2px solid var(--line);
+    border-radius:22px;
+    position:relative;overflow:hidden;
+    box-shadow:0 0 34px rgba(0,255,65,.14), inset 0 0 60px rgba(0,0,0,.65);
+    display:flex;flex-direction:column;
+  }
+  /* CRT overlays */
+  .phone::before{
+    content:"";position:absolute;inset:0;pointer-events:none;z-index:9;
+    background:repeating-linear-gradient(0deg, rgba(0,0,0,.22) 0 1px, transparent 1px 3px);
+  }
+  .phone::after{
+    content:"";position:absolute;inset:0;pointer-events:none;z-index:10;
+    background:radial-gradient(ellipse at center, transparent 55%, rgba(0,0,0,.5) 100%);
+  }
+  header.term{
+    padding:12px 16px 10px;border-bottom:1px solid var(--line);
+    display:flex;justify-content:space-between;align-items:baseline;flex-shrink:0;
+  }
+  header.term .brand{font-family:'VT323',monospace;font-size:24px;letter-spacing:1px;text-shadow:0 0 8px var(--phos-dim)}
+  header.term .sys{font-size:10px;color:var(--phos-dim)}
+  .screen{
+    flex:1;overflow-y:auto;padding:22px 18px 26px;position:relative;
+    scrollbar-width:thin;scrollbar-color:var(--phos-faint) transparent;
+  }
+  footer.term{
+    border-top:1px solid var(--line);padding:7px 16px;font-size:10px;
+    color:var(--phos-dim);display:flex;justify-content:space-between;flex-shrink:0;
+  }
+  /* ---------- type ---------- */
+  h1.screen-title{
+    font-family:'VT323',monospace;font-size:34px;line-height:1.05;
+    text-shadow:0 0 10px var(--phos-dim);margin-bottom:6px;font-weight:normal;
+  }
+  .eyebrow{font-size:11px;letter-spacing:3px;color:var(--phos-dim);margin-bottom:10px}
+  .sub{font-size:13px;color:var(--phos-dim);line-height:1.5;margin-bottom:22px}
+  .cursor::after{content:"▮";animation:blink 1s steps(1) infinite;margin-left:2px}
+  @keyframes blink{50%{opacity:0}}
+  /* ---------- controls ---------- */
+  .btn{
+    display:block;width:100%;text-align:left;
+    background:var(--panel);color:var(--phos);
+    border:1px solid var(--line);
+    font-family:'Share Tech Mono',monospace;font-size:15px;
+    padding:16px 14px;margin-bottom:12px;cursor:pointer;
+    transition:background .12s, box-shadow .12s;
+    position:relative;
+  }
+  .btn:hover,.btn:focus-visible{background:rgba(0,255,65,.09);box-shadow:0 0 14px rgba(0,255,65,.22);outline:none}
+  .btn:focus-visible{border-color:var(--phos)}
+  .btn .k{color:var(--phos-dim);margin-right:8px}
+  .btn.big{font-family:'VT323',monospace;font-size:26px;padding:22px 16px;text-shadow:0 0 8px var(--phos-dim)}
+  .btn.big small{display:block;font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--phos-dim);margin-top:6px;text-shadow:none}
+  .btn.amber{color:var(--amber);border-color:var(--amber-dim)}
+  .btn.amber:hover,.btn.amber:focus-visible{background:rgba(255,176,0,.08);box-shadow:0 0 14px rgba(255,176,0,.2)}
+  .btn.primary{border-color:var(--phos)}
+  .btn:disabled{opacity:.35;cursor:default;box-shadow:none}
+  .field{margin-bottom:18px}
+  .field label{display:block;font-size:11px;letter-spacing:2px;color:var(--phos-dim);margin-bottom:7px}
+  .field input{
+    width:100%;background:#02120a;border:1px solid var(--line);color:var(--phos);
+    font-family:'Share Tech Mono',monospace;font-size:17px;padding:13px 12px;
+  }
+  .field input:focus{outline:none;border-color:var(--phos);box-shadow:0 0 12px rgba(0,255,65,.25)}
+  .otp-row{display:flex;gap:8px;justify-content:space-between;margin-bottom:18px}
+  .otp-row input{
+    width:48px;height:60px;text-align:center;font-size:30px;font-family:'VT323',monospace;
+    background:#02120a;border:1px solid var(--line);color:var(--phos);
+  }
+  .otp-row input:focus{outline:none;border-color:var(--phos);box-shadow:0 0 12px rgba(0,255,65,.3)}
+  .linkish{background:none;border:none;color:var(--phos-dim);font-family:inherit;font-size:12px;
+    text-decoration:underline;cursor:pointer;padding:4px 0}
+  .linkish:hover{color:var(--phos)}
+  /* team rows */
+  .team-row .nm{font-family:'VT323',monospace;font-size:24px;text-shadow:0 0 6px var(--phos-dim)}
+  .team-row .meta{font-size:11px;color:var(--phos-dim);margin-top:4px;display:flex;gap:14px}
+  .rankchip{color:var(--amber)}
+  /* ticket */
+  .ticket{
+    border:1px dashed var(--phos);padding:18px 16px;margin:10px 0 20px;
+    background:rgba(0,255,65,.04);
+  }
+  .ticket .tk-head{font-size:10px;letter-spacing:3px;color:var(--phos-dim);display:flex;justify-content:space-between;margin-bottom:10px}
+  .ticket .tk-team{font-family:'VT323',monospace;font-size:32px;text-shadow:0 0 10px var(--phos-dim)}
+  .ticket .tk-line{font-size:12px;color:var(--phos-dim);margin-top:8px}
+  .ticket .tk-line b{color:var(--phos);font-weight:normal}
+  /* status pill */
+  .pill{display:inline-block;font-size:11px;letter-spacing:2px;padding:5px 10px;border:1px solid var(--line)}
+  .pill.open{color:var(--phos);border-color:var(--phos);animation:pulse 1.6s ease-in-out infinite}
+  .pill.locked{color:var(--amber);border-color:var(--amber-dim);animation:none}
+  @keyframes pulse{50%{box-shadow:0 0 12px rgba(0,255,65,.45)}}
+  .qmeta{display:flex;justify-content:space-between;align-items:center;margin-bottom:18px}
+  .qnum{font-family:'VT323',monospace;font-size:30px}
+  .result-ok{color:var(--phos);font-family:'VT323',monospace;font-size:28px;text-shadow:0 0 10px var(--phos-dim)}
+  .result-bad{color:var(--danger);font-family:'VT323',monospace;font-size:28px}
+  .scoreline{font-size:13px;color:var(--phos-dim);margin-top:10px}
+  table.board{width:100%;border-collapse:collapse;font-size:14px;margin-top:14px}
+  table.board td{padding:8px 6px;border-bottom:1px solid var(--phos-faint)}
+  table.board .me td{color:var(--amber)}
+  .divider{border:none;border-top:1px solid var(--phos-faint);margin:20px 0}
+  .note{font-size:11px;color:var(--phos-dim);line-height:1.5}
+  /* boot transition */
+  .boot{position:absolute;inset:0;background:var(--crt);z-index:20;padding:26px 20px;font-size:13px;
+    display:none;flex-direction:column;gap:8px;color:var(--phos-dim)}
+  .boot.active{display:flex}
+  .boot .ln{white-space:pre}
+  /* demo panel */
+  .demo{
+    width:390px;max-width:100%;display:flex;gap:10px;flex-wrap:wrap;justify-content:center;
+  }
+  .demo button{
+    background:none;border:1px solid var(--phos-faint);color:var(--phos-dim);
+    font-family:'Share Tech Mono',monospace;font-size:12px;padding:8px 12px;cursor:pointer;
+  }
+  .demo button:hover:not(:disabled){color:var(--phos);border-color:var(--line)}
+  .demo button:disabled{opacity:.3;cursor:default}
+  @media (prefers-reduced-motion: reduce){
+    .cursor::after,.pill.open{animation:none}
+  }
+</style>
+</head>
+<body>
+
+<div class="stage-label" id="stageLabel">FLOW: LANDING</div>
+
+<div class="phone">
+  <header class="term">
+    <span class="brand">BUNKER CLUB</span>
+    <span class="sys">PATRON TERMINAL v2.1<br>SHELTER AUTHORITY CERTIFIED</span>
+  </header>
+  <div class="screen" id="screen"></div>
+  <div class="boot" id="boot"></div>
+  <footer class="term">
+    <span>ATOMIC PUB TRIVIA — WEDNESDAYS</span>
+    <span id="clock">9:41 PM</span>
+  </footer>
+</div>
+
+<div class="demo">
+  <button onclick="go('landing')">⟲ Restart flow</button>
+  <button id="revealBtn" onclick="hostReveal()" disabled>Host reveals answer</button>
+  <button id="nextQBtn" onclick="nextQuestion()" disabled>Next question</button>
+</div>
+
+<script>
+/* ------------------------------------------------------------------ */
+/* demo state */
+const S = {
+  playerName: "Stephen",
+  email: "",
+  soloName: "",
+  q: { round: 2, num: 4, total: 10 },
+  answered: false,
+  locked: false,
+  submittedText: "",
+  score: 3,
+  answeredCount: 4,
+};
+const TEAMS = [
+  { name: "The Regulators", members: 6, rank: 3, last: "Jul 8" },
+  { name: "Mole Rat Stompers", members: 4, rank: 7, last: "Jul 1" },
+];
+
+const screens = {};
+const $ = s => document.querySelector(s);
+const el = $("#screen");
+
+function setLabel(t){ $("#stageLabel").textContent = "FLOW: " + t; }
+
+/* boot-line transition — the signature moment */
+function go(name, lines){
+  const boot = $("#boot");
+  const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const seq = lines || ["> ACCESSING SHELTER AUTHORITY NETWORK…", "> AUTH RELAY: OK", "> LOADING MODULE"];
+  if (reduced){ render(name); return; }
+  boot.innerHTML = ""; boot.classList.add("active");
+  let i = 0;
+  const tick = () => {
+    if (i < seq.length){
+      const d = document.createElement("div");
+      d.className = "ln"; d.textContent = seq[i++];
+      boot.appendChild(d);
+      setTimeout(tick, 130);
+    } else {
+      setTimeout(() => { boot.classList.remove("active"); render(name); }, 160);
+    }
+  };
+  tick();
+}
+function render(name){
+  el.innerHTML = screens[name]();
+  setLabel(name.toUpperCase().replace(/_/g," "));
+  $("#revealBtn").disabled = !(name === "solo_play" && S.answered && !S.locked) && !(name==="solo_play" && !S.locked);
+  $("#nextQBtn").disabled = !(name === "solo_result");
+  const f = el.querySelector("[data-autofocus]");
+  if (f) f.focus();
+  if (name === "otp") wireOtp();
+}
+
+/* ------------------------------------------------------------------ */
+/* SCREENS */
+
+screens.landing = () => `
+  <div class="eyebrow">TERMINAL 04 — TAPROOM</div>
+  <h1 class="screen-title cursor">TRIVIA NIGHT<br>IS LIVE</h1>
+  <p class="sub">Round 2 in progress. Pick your path, patron.</p>
+  <button class="btn big primary" onclick="go('identify')">CHECK IN MY TEAM
+    <small>Play on paper with your crew. Any member can check the team in.</small>
+  </button>
+  <button class="btn big amber" onclick="go('solo_name',['> GUEST PROTOCOL','> NO REGISTRATION REQUIRED','> LOADING'])">PLAY ALONG SOLO
+    <small>At the bar? Answer on your phone, just for bragging rights.</small>
+  </button>
+  <hr class="divider">
+  <p class="note">Team check-in remembers this device — next week it's one tap.</p>
+`;
+
+/* ---- team path ---- */
+screens.identify = () => `
+  <div class="eyebrow">TEAM CHECK-IN — STEP 1 OF 2</div>
+  <h1 class="screen-title">WHO GOES<br>THERE?</h1>
+  <p class="sub">Enter your email. We'll send a 6-digit code — no passwords, ever.</p>
+  <div class="field">
+    <label for="em">EMAIL</label>
+    <input id="em" type="email" inputmode="email" placeholder="you@wasteland.net" data-autofocus
+      value="${S.email}">
+  </div>
+  <button class="btn primary" onclick="S.email=document.getElementById('em').value||'stephen@bunkerclub.bar';go('otp',['> TRANSMITTING CODE…','> CHECK YOUR INBOX'])">Send my code</button>
+  <p class="note">Prefer text message? SMS codes are coming soon.</p>
+`;
+
+screens.otp = () => `
+  <div class="eyebrow">TEAM CHECK-IN — STEP 2 OF 2</div>
+  <h1 class="screen-title">ENTER<br>ACCESS CODE</h1>
+  <p class="sub">Sent to <b style="color:var(--phos)">${S.email || "stephen@bunkerclub.bar"}</b></p>
+  <div class="otp-row" id="otpRow">
+    ${Array.from({length:6}).map((_,i)=>`<input maxlength="1" inputmode="numeric" aria-label="digit ${i+1}" ${i===0?"data-autofocus":""}>`).join("")}
+  </div>
+  <button class="linkish" onclick="go('identify')">Wrong email? Go back</button>
+`;
+
+function wireOtp(){
+  const boxes = [...document.querySelectorAll("#otpRow input")];
+  boxes.forEach((b,i)=>{
+    b.addEventListener("input", ()=>{
+      if (b.value && i < 5) boxes[i+1].focus();
+      if (boxes.every(x=>x.value)) setTimeout(()=>go("returning",["> CODE ACCEPTED","> IDENTITY: "+S.playerName.toUpperCase(),"> PULLING TEAM REGISTRY"]),250);
+    });
+    b.addEventListener("keydown", e=>{ if(e.key==="Backspace" && !b.value && i>0) boxes[i-1].focus(); });
+  });
+}
+
+screens.returning = () => `
+  <div class="eyebrow">REGISTRY MATCH</div>
+  <h1 class="screen-title">WELCOME BACK,<br>${S.playerName.toUpperCase()}</h1>
+  <p class="sub">Tonight: Wednesday, July 15 — game is open. Tap your team to check in.</p>
+  ${TEAMS.map(t=>`
+    <button class="btn team-row" onclick="go('confirm_${t.rank}',['> RESERVING SLOT…'])">
+      <span class="nm">${t.name}</span>
+      <span class="meta">
+        <span>${t.members} members</span>
+        <span class="rankchip">#${t.rank} this season</span>
+        <span>last played ${t.last}</span>
+      </span>
+    </button>`).join("")}
+  <button class="linkish" onclick="go('new_player')">Start a different team or join one →</button>
+`;
+
+screens.confirm_3 = () => confirmScreen(TEAMS[0]);
+screens.confirm_7 = () => confirmScreen(TEAMS[1]);
+function confirmScreen(t){ return `
+  <div class="eyebrow">CONFIRM CHECK-IN</div>
+  <h1 class="screen-title">LOCK IT IN?</h1>
+  <div class="ticket">
+    <div class="tk-head"><span>SHELTER ACCESS PASS</span><span>№ 0715-${t.rank}</span></div>
+    <div class="tk-team">${t.name}</div>
+    <div class="tk-line">GAME: <b>Wed, July 15 — Atomic Pub Trivia</b></div>
+    <div class="tk-line">CHECKED IN BY: <b>${S.playerName}</b></div>
+    <div class="tk-line">TABLE NAME TONIGHT: <b contenteditable="true" style="border-bottom:1px dashed var(--phos-dim)">${t.name}</b> <span style="font-size:10px">(tap to edit)</span></div>
+  </div>
+  <button class="btn primary" onclick="go('done_team',['> WRITING TO LEDGER…','> ZERO-FILL: ROUNDS 1 (COMPLETE)','> DONE'])">Check us in</button>
+  <button class="linkish" onclick="go('returning')">← Back to my teams</button>
+  <p class="note">Joining late? Completed rounds score zero automatically — you're in from here forward.</p>
+`;}
+
+screens.done_team = () => `
+  <div class="eyebrow">CONFIRMED</div>
+  <h1 class="screen-title">YOU'RE IN.<br>GOOD LUCK.</h1>
+  <div class="ticket">
+    <div class="tk-head"><span>STATUS</span><span>ACTIVE</span></div>
+    <div class="tk-team">The Regulators</div>
+    <div class="tk-line">SEASON RANK: <b class="rankchip">#3 — Summer Wasteland Circuit</b></div>
+    <div class="tk-line">A win tonight could move you to <b>#2</b>.</div>
+  </div>
+  <p class="sub">Grab your answer sheets from the host stand. Phones down, glasses up.</p>
+  <button class="btn" onclick="go('landing')">View team portal →</button>
+  <p class="note">(Portal opens team history, members, and season standings — separate mockup.)</p>
+`;
+
+screens.new_player = () => `
+  <div class="eyebrow">NEW RECRUIT</div>
+  <h1 class="screen-title">NO TEAM<br>ON FILE</h1>
+  <p class="sub">Two ways in:</p>
+  <button class="btn big" onclick="go('done_team',['> FOUNDING NEW TEAM…'])">START A NEW TEAM
+    <small>Name it, you're the captain, done in one screen.</small>
+  </button>
+  <button class="btn big" onclick="go('join_pin')">JOIN AN EXISTING TEAM
+    <small>Ask a teammate to add you — or enter the team PIN.</small>
+  </button>
+  <button class="linkish" onclick="go('returning')">← Back</button>
+`;
+
+screens.join_pin = () => `
+  <div class="eyebrow">JOIN TEAM</div>
+  <h1 class="screen-title">TEAM PIN</h1>
+  <p class="sub">Any current member has it. 4–6 digits.</p>
+  <div class="field">
+    <label for="tn">TEAM NAME</label>
+    <input id="tn" placeholder="The Regulators" data-autofocus>
+  </div>
+  <div class="field">
+    <label for="pin">PIN</label>
+    <input id="pin" inputmode="numeric" placeholder="••••">
+  </div>
+  <button class="btn primary" onclick="go('done_team',['> VERIFYING PIN…','> MEMBERSHIP GRANTED'])">Join team</button>
+  <button class="linkish" onclick="go('new_player')">← Back</button>
+`;
+
+/* ---- solo path ---- */
+screens.solo_name = () => `
+  <div class="eyebrow">LONE OPERATIVE MODE</div>
+  <h1 class="screen-title">PLAY ALONG<br>SOLO</h1>
+  <p class="sub">Listen to the host, answer on your phone. No signup — just a name for the board.</p>
+  <div class="field">
+    <label for="sn">CALL SIGN</label>
+    <input id="sn" placeholder="e.g. BarstoolBandit" maxlength="20" data-autofocus>
+  </div>
+  <button class="btn amber primary" onclick="S.soloName=document.getElementById('sn').value||'BarstoolBandit';S.answered=false;S.locked=false;go('solo_play',['> GUEST PASS ISSUED: '+(S.soloName||'GUEST'),'> SYNCING WITH GAME STATE…'])">Start playing</button>
+  <p class="note">Solo scores are their own board — team competition stays on paper.</p>
+`;
+
+screens.solo_play = () => `
+  <div class="eyebrow">PLAYING AS ${(S.soloName||"GUEST").toUpperCase()}</div>
+  <div class="qmeta">
+    <span class="qnum">R${S.q.round} · Q${S.q.num}<span style="color:var(--phos-dim)">/${S.q.total}</span></span>
+    <span class="pill ${S.locked ? "locked" : "open"}">${S.locked ? "LOCKED" : "ANSWERS OPEN"}</span>
+  </div>
+  <p class="sub">${S.locked
+     ? "Host revealed the answer — this one's closed."
+     : "Listen to the host read the question, then log your answer before the reveal."}</p>
+  ${S.answered ? `
+    <div class="ticket">
+      <div class="tk-head"><span>YOUR ANSWER</span><span>LOGGED 9:42:13 PM</span></div>
+      <div class="tk-team" style="font-size:24px">${S.submittedText}</div>
+      <div class="tk-line">${S.locked ? "" : "Awaiting reveal… you can’t change it now. Commit to the bit."}</div>
+    </div>` : `
+    <div class="field">
+      <label for="ans">YOUR ANSWER</label>
+      <input id="ans" placeholder="type it…" data-autofocus ${S.locked?"disabled":""}>
+    </div>
+    <button class="btn primary" ${S.locked?"disabled":""}
+      onclick="S.submittedText=document.getElementById('ans').value||'Red Dawn';S.answered=true;render('solo_play')">Log answer</button>`}
+  <div class="scoreline">SCORE ${S.score}/${S.answeredCount} tonight</div>
+  <hr class="divider">
+  <p class="note">Demo: press “Host reveals answer” below to simulate the host’s reveal.</p>
+`;
+
+screens.solo_result = () => {
+  const correct = /red dawn/i.test(S.submittedText||"");
+  return `
+  <div class="eyebrow">R${S.q.round} · Q${S.q.num} — REVEALED</div>
+  ${correct
+    ? `<div class="result-ok">✔ CORRECT</div>`
+    : `<div class="result-bad">✘ NOT THIS TIME</div>`}
+  <p class="sub" style="margin-top:8px">Answer: <b style="color:var(--phos)">Red Dawn</b>${S.answered? "" : " — you didn’t log one in time."}</p>
+  <div class="scoreline">SCORE ${S.score + (correct?1:0)}/${S.answeredCount+1} tonight</div>
+  <table class="board">
+    <tr><td>1</td><td>QuantumLeaper</td><td style="text-align:right">6</td></tr>
+    <tr class="me"><td>2</td><td>${S.soloName||"BarstoolBandit"} (you)</td><td style="text-align:right">${S.score + (correct?1:0)}</td></tr>
+    <tr><td>3</td><td>AtomFiend</td><td style="text-align:right">3</td></tr>
+  </table>
+  <hr class="divider">
+  <button class="btn amber" onclick="go('solo_claim')">Save my streak for next week →</button>
+  <p class="note">Demo: “Next question” below advances the game.</p>
+`;};
+
+screens.solo_claim = () => `
+  <div class="eyebrow">OPTIONAL — 10 SECONDS</div>
+  <h1 class="screen-title">KEEP YOUR<br>RECORD?</h1>
+  <p class="sub">Drop an email and your solo history, streaks, and standings survive tonight. Skip it and you're a ghost — also fine.</p>
+  <div class="field"><label for="ce">EMAIL</label><input id="ce" inputmode="email" placeholder="you@wasteland.net" data-autofocus></div>
+  <button class="btn primary" onclick="go('solo_play',['> RECORD LINKED','> BACK TO THE GAME'])">Save it</button>
+  <button class="linkish" onclick="go('solo_play')">Stay anonymous</button>
+`;
+
+/* demo controls */
+function hostReveal(){
+  if (!screens.solo_play) return;
+  S.locked = true;
+  go("solo_result", ["> HOST REVEAL DETECTED", "> SUBMISSIONS LOCKED", "> GRADING…"]);
+}
+function nextQuestion(){
+  const wasCorrect = /red dawn/i.test(S.submittedText||"");
+  if (S.answered && wasCorrect) S.score += 1;
+  if (S.answered) S.answeredCount += 1;
+  S.q.num += 1; S.answered = false; S.locked = false; S.submittedText = "";
+  go("solo_play", ["> NEXT QUESTION QUEUED"]);
+}
+
+/* clock */
+setInterval(()=>{ $("#clock").textContent = new Date().toLocaleTimeString([], {hour:"numeric",minute:"2-digit"}); }, 1000);
+
+render("landing");
+</script>
+</body>
+</html>

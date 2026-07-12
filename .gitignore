@@ -1,0 +1,29 @@
+# dependencies
+node_modules/
+.pnpm-store/
+
+# build output
+dist/
+apps/web/dist/
+*.tsbuildinfo
+
+# env & secrets — NEVER commit (docs/12 access hygiene)
+.env
+.env.*
+!.env.example
+
+# legacy export artifacts (produced by scripts/export-legacy.ts)
+legacy-export/
+backups/
+
+# editor / OS
+.DS_Store
+.vscode/
+.idea/
+
+# supabase local
+supabase/.branches/
+supabase/.temp/
+
+# legacy source zips — kept on disk, not tracked (re-downloadable from GitHub)
+*.zip

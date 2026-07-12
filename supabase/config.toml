@@ -1,0 +1,12 @@
+# Supabase CLI config. `project_id` is a local label; link the real project with
+# `supabase link --project-ref <ref>`. Migrations live in ./migrations (0001–).
+project_id = "bunker-club-os"
+
+[db]
+major_version = 15
+
+[storage]
+enabled = true
+
+# Buckets are created on first use by the import/backup scripts (public, matching
+# legacy): picture-rounds, logos, signage.

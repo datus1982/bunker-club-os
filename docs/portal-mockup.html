@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bunker Club — Player Portal Mockup</title>
+<link href="https://fonts.googleapis.com/css2?family=VT323&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --amb:#ffb000; --amb-dim:rgba(255,176,0,.55); --amb-faint:rgba(255,176,0,.14);
+    --live:#00ff41; --live-dim:rgba(0,255,65,.55); --live-faint:rgba(0,255,65,.12);
+    --bg:#0a0703; --crt:#0d0903; --panel:#140e05; --danger:#ff4136;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--amb);font-family:'Share Tech Mono',monospace;
+    min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:18px}
+  .lbl{font-family:'VT323',monospace;font-size:20px;letter-spacing:2px;color:var(--amb-dim)}
+  .phone{width:390px;max-width:100%;height:760px;max-height:86vh;background:var(--crt);
+    border:2px solid var(--amb-dim);border-radius:22px;position:relative;overflow:hidden;
+    box-shadow:0 0 34px rgba(255,176,0,.12), inset 0 0 60px rgba(0,0,0,.65);
+    display:flex;flex-direction:column}
+  .phone::before{content:"";position:absolute;inset:0;pointer-events:none;z-index:9;
+    background:repeating-linear-gradient(0deg, rgba(0,0,0,.20) 0 1px, transparent 1px 3px)}
+  .phone::after{content:"";position:absolute;inset:0;pointer-events:none;z-index:10;
+    background:radial-gradient(ellipse at center, transparent 56%, rgba(0,0,0,.5) 100%)}
+  header.term{padding:12px 16px 10px;border-bottom:1px solid var(--amb-dim);
+    display:flex;justify-content:space-between;align-items:baseline;flex-shrink:0}
+  header.term .brand{font-family:'VT323',monospace;font-size:24px;text-shadow:0 0 8px var(--amb-dim)}
+  header.term .sys{font-size:10px;color:var(--amb-dim);text-align:right}
+  .screen{flex:1;overflow-y:auto;padding:20px 18px 24px;scrollbar-width:thin;scrollbar-color:var(--amb-faint) transparent}
+  nav.tabs{border-top:1px solid var(--amb-dim);display:flex;flex-shrink:0}
+  nav.tabs button{flex:1;background:none;border:none;color:var(--amb-dim);
+    font-family:'VT323',monospace;font-size:20px;letter-spacing:2px;padding:12px 0;cursor:pointer}
+  nav.tabs button.on{color:var(--amb);text-shadow:0 0 8px var(--amb-dim);border-top:2px solid var(--amb);margin-top:-1px}
+  h1.t{font-family:'VT323',monospace;font-size:32px;line-height:1;text-shadow:0 0 10px var(--amb-dim);margin-bottom:4px;font-weight:normal}
+  .eyebrow{font-size:10px;letter-spacing:3px;color:var(--amb-dim);margin-bottom:8px}
+  .sub{font-size:12px;color:var(--amb-dim);line-height:1.5;margin-bottom:16px}
+  .card{background:var(--panel);border:1px solid var(--amb-dim);padding:14px;margin-bottom:14px;
+    cursor:pointer;transition:box-shadow .12s}
+  .card:hover{box-shadow:0 0 14px rgba(255,176,0,.18)}
+  .card .nm{font-family:'VT323',monospace;font-size:26px;text-shadow:0 0 6px var(--amb-dim)}
+  .card .meta{font-size:11px;color:var(--amb-dim);margin-top:5px;display:flex;gap:14px;flex-wrap:wrap}
+  .g{color:var(--live)!important;text-shadow:0 0 7px var(--live-dim)}
+  .g-dim{color:var(--live-dim)!important}
+  /* live tonight card */
+  .live-card{border:1px solid var(--live);background:rgba(0,255,65,.05);padding:14px;margin-bottom:16px;color:var(--live)}
+  .live-card .hd{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+  .live-pill{font-size:10px;letter-spacing:2px;border:1px solid var(--live);padding:3px 8px;animation:pulse 1.6s infinite}
+  @keyframes pulse{50%{box-shadow:0 0 12px rgba(0,255,65,.5)}}
+  .live-card .score{font-family:'VT323',monospace;font-size:44px;line-height:1;text-shadow:0 0 12px var(--live-dim)}
+  .live-card .row{display:flex;justify-content:space-between;font-size:12px;color:var(--live-dim);margin-top:6px}
+  .btn{display:block;width:100%;text-align:left;background:var(--panel);color:var(--amb);
+    border:1px solid var(--amb-dim);font-family:'Share Tech Mono',monospace;font-size:14px;
+    padding:13px 12px;margin-bottom:10px;cursor:pointer}
+  .btn:hover{background:rgba(255,176,0,.08)}
+  .btn.ghost{background:none;border-style:dashed;color:var(--amb-dim)}
+  .linkish{background:none;border:none;color:var(--amb-dim);font-family:inherit;font-size:12px;
+    text-decoration:underline;cursor:pointer;padding:4px 0}
+  .rule{border:none;border-top:1px solid var(--amb-faint);margin:16px 0}
+  /* team detail */
+  .stat-row{display:flex;gap:10px;margin:14px 0}
+  .stat{flex:1;border:1px solid var(--amb-dim);padding:10px;text-align:center}
+  .stat .v{font-family:'VT323',monospace;font-size:34px;line-height:1}
+  .stat .k{font-size:9px;letter-spacing:2px;color:var(--amb-dim);margin-top:4px}
+  .member{display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid var(--amb-faint);font-size:13px}
+  .member .tag{font-size:9px;letter-spacing:2px;border:1px solid var(--amb-dim);padding:2px 6px;color:var(--amb-dim)}
+  .member .tag.pend{color:var(--live);border-color:var(--live-dim)}
+  table.hist{width:100%;border-collapse:collapse;font-size:12px;margin-top:8px}
+  table.hist th{font-size:9px;letter-spacing:2px;color:var(--amb-dim);text-align:left;padding:6px 4px;border-bottom:1px solid var(--amb-dim)}
+  table.hist td{padding:8px 4px;border-bottom:1px solid var(--amb-faint)}
+  table.hist td.pl{font-family:'VT323',monospace;font-size:18px}
+  .spark{margin:10px 0 4px}
+  .streak{display:inline-block;border:1px solid var(--amb);padding:5px 10px;font-family:'VT323',monospace;
+    font-size:18px;letter-spacing:1px;margin-top:10px;text-shadow:0 0 6px var(--amb-dim)}
+  .field{margin-bottom:16px}
+  .field label{display:block;font-size:10px;letter-spacing:2px;color:var(--amb-dim);margin-bottom:6px}
+  .field input{width:100%;background:#0a0602;border:1px solid var(--amb-dim);color:var(--amb);
+    font-family:'Share Tech Mono',monospace;font-size:15px;padding:11px}
+  .toggle-row{display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid var(--amb-faint);font-size:13px}
+  .sw{width:46px;height:24px;border:1px solid var(--amb-dim);position:relative;cursor:pointer;flex-shrink:0}
+  .sw i{position:absolute;top:2px;left:2px;width:18px;height:18px;background:var(--amb-dim);transition:left .15s,background .15s}
+  .sw.on i{left:24px;background:var(--live)}
+  .note{font-size:10px;color:var(--amb-dim);line-height:1.5}
+  .demo{width:390px;max-width:100%;display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
+  .demo button{background:none;border:1px solid var(--amb-faint);color:var(--amb-dim);
+    font-family:'Share Tech Mono',monospace;font-size:12px;padding:7px 11px;cursor:pointer}
+  .demo button:hover{color:var(--amb)}
+  .demo button.active{color:var(--live);border-color:var(--live-dim)}
+  @media (prefers-reduced-motion: reduce){.live-pill{animation:none}}
+</style>
+</head>
+<body>
+
+<div class="lbl">PLAYER PORTAL — AMBER AMBIENT · GREEN = LIVE</div>
+
+<div class="phone">
+  <header class="term">
+    <span class="brand">BUNKER CLUB</span>
+    <span class="sys">PATRON PORTAL<br>DWELLER: STEPHEN</span>
+  </header>
+  <div class="screen" id="screen"></div>
+  <nav class="tabs">
+    <button id="tabHome" class="on" onclick="go('home')">TEAMS</button>
+    <button id="tabProf" onclick="go('profile')">PROFILE</button>
+  </nav>
+</div>
+
+<div class="demo">
+  <button id="btnLive" onclick="toggleLive()">Simulate: game live tonight</button>
+  <button onclick="go('home')">⟲ Home</button>
+</div>
+
+<script>
+let LIVE = false;
+const el = document.getElementById("screen");
+const HIST = [
+  {d:"Jul 8",  p:82, pl:2,  spark:82},
+  {d:"Jul 1",  p:74, pl:4,  spark:74},
+  {d:"Jun 24", p:91, pl:1,  spark:91},
+  {d:"Jun 17", p:68, pl:5,  spark:68},
+  {d:"Jun 10", p:77, pl:3,  spark:77},
+  {d:"Jun 3",  p:85, pl:2,  spark:85},
+];
+
+function sparkline(){
+  const vals = HIST.map(h=>h.spark).reverse();
+  const min = Math.min(...vals)-5, max = Math.max(...vals)+5;
+  const pts = vals.map((v,i)=>`${20 + i*62},${70 - ((v-min)/(max-min))*60}`).join(" ");
+  return `<svg class="spark" width="100%" height="80" viewBox="0 0 350 80" preserveAspectRatio="none">
+    <polyline points="${pts}" fill="none" stroke="var(--amb)" stroke-width="2"/>
+    ${vals.map((v,i)=>`<circle cx="${20+i*62}" cy="${70 - ((v-min)/(max-min))*60}" r="3.5" fill="${i===vals.length-1?'var(--live)':'var(--amb)'}"/>`).join("")}
+    <text x="20" y="78" fill="var(--amb-dim)" font-size="9" font-family="monospace">JUN 3</text>
+    <text x="300" y="78" fill="var(--amb-dim)" font-size="9" font-family="monospace">JUL 8</text>
+  </svg>`;
+}
+
+const screens = {};
+
+screens.home = () => `
+  <div class="eyebrow">MY OUTFIT</div>
+  <h1 class="t">TEAMS</h1>
+  <p class="sub">Wednesday, July 15 — ${LIVE ? '<span class="g">game in progress</span>' : "next game 8:00 PM"}</p>
+  ${LIVE ? `
+  <div class="live-card">
+    <div class="hd"><span style="font-family:'VT323',monospace;font-size:22px">THE REGULATORS</span><span class="live-pill">● LIVE — R3</span></div>
+    <div class="score">147 PTS</div>
+    <div class="row"><span>CURRENT PLACE: 2ND</span><span>4 PTS BEHIND LEAD</span></div>
+    <div class="row"><span>Playing tonight · checked in by you, 7:41 PM</span></div>
+  </div>` : ``}
+  <div class="card" onclick="go('team')">
+    <div class="nm">THE REGULATORS</div>
+    <div class="meta">
+      <span>6 members</span>
+      <span class="${LIVE?'g':''}">${LIVE ? '#3 → could hit #2 tonight' : '#3 · Summer Wasteland Circuit'}</span>
+      <span>6-week streak</span>
+    </div>
+  </div>
+  <div class="card" onclick="go('team')">
+    <div class="nm">MOLE RAT STOMPERS</div>
+    <div class="meta"><span>4 members</span><span>#7 this season</span><span>last played Jul 1</span></div>
+  </div>
+  <button class="btn ghost" onclick="alert('→ /checkin flow (separate mockup)')">+ Start or join another team</button>
+  <hr class="rule">
+  <p class="note">Season: <b style="color:var(--amb)">Summer Wasteland Circuit</b> · Jun 3 – Aug 26 · best 8 of 13 nights count · top 4 reach the finals.</p>
+`;
+
+screens.team = () => `
+  <button class="linkish" onclick="go('home')">← my teams</button>
+  <div class="eyebrow" style="margin-top:8px">TEAM DOSSIER</div>
+  <h1 class="t">THE REGULATORS</h1>
+  <div class="stat-row">
+    <div class="stat"><div class="v ${LIVE?'g':''}">#3</div><div class="k">SEASON RANK</div></div>
+    <div class="stat"><div class="v">477</div><div class="k">PTS (BEST 6)</div></div>
+    <div class="stat"><div class="v">1</div><div class="k">NIGHT WINS</div></div>
+  </div>
+  <span class="streak">⚡ 6-WEEK STREAK</span>
+  <p class="note" style="margin-top:8px">Best 8 of 13 count — 7 nights left, 2 more scores can still improve your total. #2 is 11 pts ahead.</p>
+  ${sparkline()}
+  <hr class="rule">
+  <div class="eyebrow">ROSTER</div>
+  <div class="member"><span>Stephen <span class="tag">CAPTAIN</span></span><span class="note">you</span></div>
+  <div class="member"><span>Dana</span><button class="linkish">remove</button></div>
+  <div class="member"><span>Marcus</span><button class="linkish">remove</button></div>
+  <div class="member"><span>Priya <span class="tag pend">WANTS TO JOIN</span></span><button class="linkish g-dim">approve</button></div>
+  <button class="btn ghost" style="margin-top:12px">+ Add member by email or phone</button>
+  <div class="toggle-row"><span>Team PIN (join fallback)</span><button class="linkish">reset PIN</button></div>
+  <hr class="rule">
+  <div class="eyebrow">GAME HISTORY</div>
+  <table class="hist">
+    <tr><th>DATE</th><th>PTS</th><th>PLACE</th><th>COUNTS?</th></tr>
+    ${HIST.map(h=>`<tr><td>${h.d}</td><td>${h.p}</td><td class="pl">${h.pl}${["","st","nd","rd"][h.pl]||"th"}</td><td class="note">${h.p>=74?"✔ top 8":"—"}</td></tr>`).join("")}
+  </table>
+`;
+
+screens.profile = () => `
+  <div class="eyebrow">DWELLER RECORD</div>
+  <h1 class="t">STEPHEN</h1>
+  <p class="sub">Member since June 2026 · 2 teams · 11 games played</p>
+  <div class="field"><label>DISPLAY NAME</label><input value="Stephen"></div>
+  <div class="field"><label>EMAIL</label><input value="stephen@bunkerclub.bar"></div>
+  <div class="field"><label>PHONE (FOR TEXT CODES — SOON)</label><input placeholder="+1 405 …"></div>
+  <div class="toggle-row">
+    <span>Email me about trivia nights &amp; events<br><span class="note">Occasional. From the bar, not a robot farm.</span></span>
+    <div class="sw" onclick="this.classList.toggle('on')"><i></i></div>
+  </div>
+  <div class="toggle-row">
+    <span>Sign out of this device</span>
+    <button class="linkish">sign out</button>
+  </div>
+  <hr class="rule">
+  <p class="note">Your data: name, contact, team memberships, and game history. Nothing else. Ask the bar to delete it anytime.</p>
+`;
+
+function go(name){
+  el.innerHTML = screens[name]();
+  document.getElementById("tabHome").classList.toggle("on", name!=="profile");
+  document.getElementById("tabProf").classList.toggle("on", name==="profile");
+  el.scrollTop = 0;
+}
+function toggleLive(){
+  LIVE = !LIVE;
+  document.getElementById("btnLive").classList.toggle("active", LIVE);
+  document.getElementById("btnLive").textContent = LIVE ? "● LIVE MODE ON" : "Simulate: game live tonight";
+  go("home");
+}
+go("home");
+</script>
+</body>
+</html>

@@ -1,0 +1,14 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* The terminal theme is imported after Tailwind in main.tsx so its !important
+   rules win over preflight. Base page is black so letterbox bars are invisible. */
+html,
+body,
+#root {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: #000000;
+}

@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bunker Club — Event Choreography Mockup</title>
+<link href="https://fonts.googleapis.com/css2?family=VT323&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --amb:#ffb000; --amb-dim:rgba(255,176,0,.55); --amb-faint:rgba(255,176,0,.14);
+    --live:#00ff41; --live-dim:rgba(0,255,65,.55);
+    --bg:#0a0703; --crt:#0d0903; --panel:#140e05;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--amb);font-family:'Share Tech Mono',monospace;
+    min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:18px}
+  .lbl{font-family:'VT323',monospace;font-size:20px;letter-spacing:2px;color:var(--amb-dim)}
+  .display{width:400px;max-width:96vw;height:711px;max-height:82vh;background:var(--crt);
+    border:2px solid var(--amb-dim);position:relative;overflow:hidden;display:flex;flex-direction:column;
+    box-shadow:0 0 40px var(--amb-faint), inset 0 0 70px rgba(0,0,0,.6)}
+  .display::before{content:"";position:absolute;inset:0;pointer-events:none;z-index:9;
+    background:repeating-linear-gradient(0deg, rgba(0,0,0,.2) 0 1px, transparent 1px 3px)}
+  .display::after{content:"";position:absolute;inset:0;pointer-events:none;z-index:10;
+    background:radial-gradient(ellipse at center, transparent 58%, rgba(0,0,0,.5) 100%)}
+  .chrome-top{border-bottom:1px solid var(--amb-dim);padding:10px 16px;display:flex;justify-content:space-between;align-items:baseline;flex-shrink:0}
+  .chrome-top .mark{font-family:'VT323',monospace;font-size:26px;text-shadow:0 0 9px var(--amb-dim)}
+  .chrome-top .tid{font-size:10px;color:var(--amb-dim);text-align:right;line-height:1.5}
+  .chrome-bot{border-top:1px solid var(--amb-dim);padding:8px 16px;font-size:11px;color:var(--amb-dim);display:flex;justify-content:space-between;flex-shrink:0;gap:12px}
+  .chrome-bot .tick{overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+  .zone{flex:1;position:relative;overflow:hidden}
+  .stagec{position:absolute;inset:0;padding:26px 22px;display:none;flex-direction:column}
+  .stagec.on{display:flex}
+  .eyebrow{font-size:11px;letter-spacing:4px;color:var(--amb-dim);margin-bottom:10px}
+  .big{font-family:'VT323',monospace;font-size:52px;line-height:.95;text-shadow:0 0 12px var(--amb-dim)}
+  .body{font-size:14px;color:var(--amb-dim);line-height:1.6}
+  .center{justify-content:center;align-items:center;text-align:center}
+  /* hazard frame for alert stages */
+  .hazard{border:none}
+  .hazard-frame{position:absolute;inset:0;pointer-events:none;
+    border:14px solid transparent;
+    border-image:repeating-linear-gradient(45deg, var(--amb) 0 16px, #000 16px 32px) 14}
+  .tminus{font-family:'VT323',monospace;font-size:110px;line-height:1;text-shadow:0 0 22px var(--amb-dim);margin:14px 0}
+  .counter{font-family:'VT323',monospace;font-size:96px;line-height:1;color:var(--live);text-shadow:0 0 20px var(--live-dim)}
+  .cta-price{font-family:'VT323',monospace;font-size:44px;color:var(--live);text-shadow:0 0 12px var(--live-dim)}
+  .rocket{font-size:70px;margin:12px 0}
+  .divide{border:none;border-top:1px solid var(--amb-faint);margin:16px 0;width:100%}
+  .interstitial{border:1px dashed var(--amb-dim);padding:16px;margin-top:20px}
+  /* demo */
+  .demo{width:640px;max-width:96vw;display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
+  .demo button{background:none;border:1px solid var(--amb-faint);color:var(--amb-dim);
+    font-family:'Share Tech Mono',monospace;font-size:12px;padding:7px 11px;cursor:pointer}
+  .demo button:hover{color:var(--amb)}
+  .demo button.cur{color:var(--live);border-color:var(--live-dim)}
+  .stage-title{font-size:11px;letter-spacing:3px;color:var(--amb-dim)}
+</style>
+</head>
+<body>
+
+<div class="lbl" id="lbl">EVENT: MIDNIGHT LAUNCH · <span id="stageName">STAGE 1/6 — NORMAL ROTATION</span></div>
+
+<div class="display" id="disp">
+  <div class="chrome-top">
+    <span class="mark">BUNKER CLUB</span>
+    <span class="tid">BUNKER UNIFIED OS v2.1<br>TERMINAL 03 — BAR BACK · 11:02 PM</span>
+  </div>
+  <div class="zone" id="zone">
+
+    <!-- 0 NORMAL (with tease absent) -->
+    <div class="stagec on" id="s0">
+      <div class="eyebrow">TONIGHT'S SPECIAL</div>
+      <div class="big">ATOMIC<br>OLD FASHIONED</div>
+      <hr class="divide">
+      <div class="body">Normal signage rotation. Nothing is wrong. Everything is fine.</div>
+    </div>
+
+    <!-- 1 TEASE -->
+    <div class="stagec" id="s1">
+      <div class="eyebrow">TONIGHT'S SPECIAL</div>
+      <div class="big">ATOMIC<br>OLD FASHIONED</div>
+      <div class="interstitial">
+        <div class="eyebrow">⚠ SYSTEM NOTICE — PRIORITY LOW</div>
+        <div class="body" style="color:var(--amb)">ANOMALOUS ACTIVITY DETECTED ON THE LAUNCH PAD.<br><br>PRE-FLIGHT CHECKS UNDERWAY. DWELLERS ARE ADVISED TO REMAIN CALM AND ADEQUATELY HYDRATED.</div>
+      </div>
+      <div class="body" style="margin-top:14px;font-size:11px">↑ 12-second interstitial joins the ad rotation every ~4 min · ticker (below) gains event lines</div>
+    </div>
+
+    <!-- 2 ALERT -->
+    <div class="stagec center" id="s2">
+      <div class="hazard-frame"></div>
+      <div class="eyebrow">■ ALL TERMINALS — PRIORITY BROADCAST ■</div>
+      <div class="big">LAUNCH<br>IMMINENT</div>
+      <div class="tminus" id="tminus">T−04:59</div>
+      <div class="body">FUEL UP BEFORE THE WINDOW OPENS.<br>ROCKET SAUCE — AT THE BAR — NOW.</div>
+    </div>
+
+    <!-- 3 MOMENT -->
+    <div class="stagec center" id="s3">
+      <div class="rocket">🚀</div>
+      <div class="big">WE HAVE<br>LIFTOFF</div>
+      <div class="body" style="margin-top:12px">T+00:03 · TRAJECTORY NOMINAL</div>
+    </div>
+
+    <!-- 4 EVENT WINDOW -->
+    <div class="stagec center" id="s4">
+      <div class="eyebrow">LAUNCH WINDOW OPEN — 27:14 REMAINING</div>
+      <div class="big" style="font-size:40px">ROCKET SAUCE</div>
+      <div class="cta-price">$6</div>
+      <hr class="divide">
+      <div class="eyebrow">FUEL CONSUMED</div>
+      <div class="counter" id="count">23</div>
+      <div class="body" style="margin-top:10px">UNITS · LIVE FROM MISSION CONTROL (TOAST)</div>
+    </div>
+
+    <!-- 5 ALL CLEAR -->
+    <div class="stagec center" id="s5">
+      <div class="eyebrow">MISSION COMPLETE</div>
+      <div class="big">47 DWELLERS<br>FUELED</div>
+      <div class="body" style="margin-top:14px">THE FACILITY SURVIVES.<br>NORMAL OPERATIONS RESUME.</div>
+    </div>
+
+  </div>
+  <div class="chrome-bot">
+    <span>■ ONLINE</span>
+    <span class="tick" id="tick">HAPPY HOUR 4–7 · WEDNESDAYS: ATOMIC PUB TRIVIA 8PM</span>
+  </div>
+</div>
+
+<div class="demo">
+  <button onclick="setStage(0)" id="b0" class="cur">1 Normal</button>
+  <button onclick="setStage(1)" id="b1">2 Tease (T−60m)</button>
+  <button onclick="setStage(2)" id="b2">3 Alert (T−5m)</button>
+  <button onclick="setStage(3)" id="b3">4 Liftoff</button>
+  <button onclick="setStage(4)" id="b4">5 Event window</button>
+  <button onclick="setStage(5)" id="b5">6 All clear</button>
+  <button onclick="toggleSkin()" id="bSkin">Skin: LAUNCH → try INFESTATION</button>
+</div>
+
+<script>
+const NAMES=["NORMAL ROTATION","TEASE — T−60 MIN","ALERT — T−5 MIN","THE MOMENT","EVENT WINDOW — LIVE COUNTER","ALL CLEAR"];
+let cur=0, infest=false, cd=null, ct=null;
+const TICKS_NORMAL=["HAPPY HOUR 4–7 · WEDNESDAYS: ATOMIC PUB TRIVIA 8PM"];
+const TICKS_TEASE=["⚠ ANOMALOUS ACTIVITY DETECTED — SECTOR 7 ⚠","PRE-FLIGHT CHECKS UNDERWAY · LAUNCH WINDOW: MIDNIGHT","DWELLERS ADVISED TO FUEL ACCORDINGLY"];
+const TICKS_INFEST=["⚠ BIOLOGICAL READINGS ELEVATED — SUBLEVEL 2 ⚠","CONTAINMENT TEAMS ON STANDBY · OUTBREAK PROJECTION: MIDNIGHT","INOCULATION SUPPLIES CONFIRMED AT THE BAR"];
+
+const SKIN = {
+  launch:{s1t:"ANOMALOUS ACTIVITY DETECTED ON THE LAUNCH PAD.<br><br>PRE-FLIGHT CHECKS UNDERWAY. DWELLERS ARE ADVISED TO REMAIN CALM AND ADEQUATELY HYDRATED.",
+    s2a:"LAUNCH<br>IMMINENT", s2b:"FUEL UP BEFORE THE WINDOW OPENS.<br>ROCKET SAUCE — AT THE BAR — NOW.",
+    s3i:"🚀", s3a:"WE HAVE<br>LIFTOFF", s3b:"T+00:03 · TRAJECTORY NOMINAL",
+    s4e:"LAUNCH WINDOW OPEN — 27:14 REMAINING", s4n:"ROCKET SAUCE", s4c:"FUEL CONSUMED",
+    s5a:"47 DWELLERS<br>FUELED", s5b:"THE FACILITY SURVIVES.<br>NORMAL OPERATIONS RESUME."},
+  infest:{s1t:"BIOLOGICAL READINGS ELEVATED IN SUBLEVEL 2.<br><br>CONTAINMENT PROTOCOLS ARE BEING REVIEWED. THIS IS NOT A DRILL. PROBABLY.",
+    s2a:"INFESTATION<br>DETECTED", s2b:"INOCULATION DIRECTIVE:<br>ONE GREEN TEA SHOT PER DWELLER.",
+    s3i:"🪳", s3a:"OUTBREAK<br>IN PROGRESS", s3b:"CONTAINMENT WINDOW OPEN",
+    s4e:"INOCULATION WINDOW — 27:14 REMAINING", s4n:"GREEN TEA SHOT", s4c:"DWELLERS INOCULATED",
+    s5a:"47 DWELLERS<br>INOCULATED", s5b:"OUTBREAK CONTAINED.<br>THE FACILITY SURVIVES."}
+};
+
+function applySkin(){
+  const k = infest ? SKIN.infest : SKIN.launch;
+  document.querySelector("#s1 .interstitial .body").innerHTML = k.s1t;
+  document.querySelector("#s2 .big").innerHTML = k.s2a;
+  document.querySelector("#s2 .body").innerHTML = k.s2b;
+  document.querySelector("#s3 .rocket").textContent = k.s3i;
+  document.querySelector("#s3 .big").innerHTML = k.s3a;
+  document.querySelector("#s3 .body").innerHTML = k.s3b;
+  document.querySelector("#s4 .eyebrow").textContent = k.s4e;
+  document.querySelector("#s4 .big").textContent = k.s4n;
+  document.querySelectorAll("#s4 .eyebrow")[1].textContent = k.s4c;
+  document.querySelector("#s5 .big").innerHTML = k.s5a;
+  document.querySelector("#s5 .body").innerHTML = k.s5b;
+  document.getElementById("lbl").firstChild.textContent = "EVENT: " + (infest?"INFESTATION ALERT":"MIDNIGHT LAUNCH") + " · ";
+  document.getElementById("bSkin").textContent = infest ? "Skin: INFESTATION → try LAUNCH" : "Skin: LAUNCH → try INFESTATION";
+}
+function toggleSkin(){ infest=!infest; applySkin(); }
+
+function setStage(n){
+  document.getElementById("s"+cur).classList.remove("on");
+  document.getElementById("b"+cur).classList.remove("cur");
+  cur=n;
+  document.getElementById("s"+cur).classList.add("on");
+  document.getElementById("b"+cur).classList.add("cur");
+  document.getElementById("stageName").textContent = "STAGE "+(n+1)+"/6 — "+NAMES[n];
+  clearInterval(cd); clearInterval(ct);
+  // ticker per stage
+  const ticks = n===0 ? TICKS_NORMAL : (infest?TICKS_INFEST:TICKS_TEASE);
+  let ti=0; document.getElementById("tick").textContent = ticks[0];
+  if(ticks.length>1){ ct=setInterval(()=>{ti=(ti+1)%ticks.length;document.getElementById("tick").textContent=ticks[ti];},4000); }
+  // countdown on alert
+  if(n===2){
+    let s=299;
+    const f=()=>{const m=String(Math.floor(s/60)).padStart(2,"0"),x=String(s%60).padStart(2,"0");
+      document.getElementById("tminus").textContent="T−"+m+":"+x; if(s>0)s--;};
+    f(); cd=setInterval(f,1000);
+  }
+  // live counter on event window
+  if(n===4){
+    let c=23; const cEl=document.getElementById("count");
+    cEl.textContent=c;
+    cd=setInterval(()=>{ if(Math.random()<.45){c+=1;cEl.textContent=c;
+      cEl.style.textShadow="0 0 34px rgba(0,255,65,.9)";
+      setTimeout(()=>cEl.style.textShadow="",300);} },1500);
+  }
+}
+applySkin();
+</script>
+</body>
+</html>
