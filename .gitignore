@@ -27,3 +27,6 @@ supabase/.temp/
 
 # legacy source zips — kept on disk, not tracked (re-downloadable from GitHub)
 *.zip
+
+# npm lockfile — project standard is pnpm (docs decision 2)
+package-lock.json
