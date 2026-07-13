@@ -227,7 +227,12 @@
 .site .site-btn--ghost:hover { background: rgba(255, 176, 0, 0.1); text-decoration: none; }
 
 /* ── Sections ────────────────────────────────────────────────────────────── */
-.site-main { flex: 1 0 auto; }
+/* Reserve viewport-tall content space so client-fetched pages (the live /menu,
+   /events) don't sit short during their loading state — which would place the
+   footer in the viewport and then shove it down when the data arrives, spiking
+   CLS. Keeping the main region at least a screen tall holds the footer below the
+   fold until content fills in. (Menu's 269 live Toast items are the worst case.) */
+.site-main { flex: 1 0 auto; min-height: 80vh; }
 .site-section { padding: clamp(2.5rem, 8vw, 5rem) 0; }
 .site-section--tight { padding: clamp(1.5rem, 5vw, 2.5rem) 0; }
 
