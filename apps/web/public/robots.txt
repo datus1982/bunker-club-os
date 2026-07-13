@@ -1,0 +1,21 @@
+User-agent: *
+Allow: /
+
+# Internal / non-marketing surfaces — no SEO value, keep out of the index.
+Disallow: /dashboard
+Disallow: /scoring
+Disallow: /game
+Disallow: /teams
+Disallow: /history
+Disallow: /settings
+Disallow: /admin
+Disallow: /signage
+Disallow: /portal
+Disallow: /checkin
+Disallow: /login
+Disallow: /reset-password
+Disallow: /leaderboard
+Disallow: /game-display
+Disallow: /drinks
+
+Sitemap: https://bunkerokc.com/sitemap.xml

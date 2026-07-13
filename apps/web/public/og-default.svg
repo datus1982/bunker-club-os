@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <!-- OWNER TODO: placeholder OG card. Replace with a 1200x630 PNG/JPG before
+       launch — many social scrapers do not render SVG OpenGraph images. -->
+  <defs>
+    <radialGradient id="glow" cx="50%" cy="0%" r="90%">
+      <stop offset="0%" stop-color="#3a2a10"/>
+      <stop offset="60%" stop-color="#16110d"/>
+      <stop offset="100%" stop-color="#16110d"/>
+    </radialGradient>
+  </defs>
+  <rect width="1200" height="630" fill="url(#glow)"/>
+  <rect x="0" y="0" width="1200" height="8" fill="#ffb000"/>
+  <text x="600" y="290" text-anchor="middle" font-family="'Share Tech Mono',monospace"
+        font-size="34" letter-spacing="14" fill="#ffb000">▲ OKC · NW 23RD ST</text>
+  <text x="600" y="400" text-anchor="middle" font-family="'VT323',monospace"
+        font-size="150" letter-spacing="6" fill="#f3ead9">BUNKER CLUB</text>
+  <text x="600" y="470" text-anchor="middle" font-family="'Share Tech Mono',monospace"
+        font-size="26" letter-spacing="6" fill="#bcae97">ATOMIC PUB TRIVIA · EVERY WEDNESDAY</text>
+</svg>
