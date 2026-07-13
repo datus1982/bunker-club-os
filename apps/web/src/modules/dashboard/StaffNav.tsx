@@ -31,6 +31,7 @@ const NAV: NavItem[] = [
   { to: "/teams", label: "TEAMS", module: "trivia" },
   { to: "/history", label: "HISTORY", module: "trivia" },
   { to: "/admin/drinks", label: "DRINKS", module: "drinks" },
+  { to: "/signage", label: "SIGNAGE", module: "signage" },
   { to: "/admin/seasons", label: "SEASONS", minRole: "admin" },
   { to: "/admin/users", label: "USERS", minRole: "admin" },
 ];

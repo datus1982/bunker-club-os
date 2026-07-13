@@ -164,7 +164,7 @@ const TILES: Tile[] = [
   { label: "SEASONS", to: "/admin/seasons", desc: "Standings, playoffs & finals", minRole: "admin", hint: "season" },
   { label: "DRINKS BOARD", to: "/admin/drinks", desc: "Configure the top-drinks screen", module: "drinks" },
   { label: "USERS", to: "/admin/users", desc: "Staff accounts & module grants", minRole: "admin" },
-  { label: "SIGNAGE", to: "/signage", desc: "Specials & event screens", module: "signage", disabled: "Phase 5" },
+  { label: "SIGNAGE", to: "/signage", desc: "Specials & event screens", module: "signage" },
   { label: "WEBSITE", to: "/", desc: "Public site content", module: "website", disabled: "Phase 3.5" },
 ];
 
