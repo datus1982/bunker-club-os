@@ -92,7 +92,7 @@ Library of Congress, Prints & Photographs Division"):**
 | `mrg-08516` (2017710605) | Flamingo Motel neon sign, Oklahoma City — Route 66-era roadside atmosphere | 1979 | 708×1024 | Placed — atomic-age roadside context |
 | `mrg-00473` (2017702587) | Tower Theater neon marquee ("OPEN SUNDAY ONLY") | 1993 | 707×1024 | Downloaded + archived; NOT placed (Tower kept light) |
 
-**Placement summary:** 9 owner scans + 2 LOC images render on `/history`; the rest are
-archived. Tower gets a deliberately light 3-image decades strip (owner scans #6/#7/#8)
-plus one outbound link to Retro Metro OKC — the page tells the *street's* story, not the
-Tower's.
+**Placement summary:** 10 owner scans (#1–#8, #11, #13) + 2 LOC images render on
+`/history` — 12 images total; the rest (#9, #10, #12, #14) are archived only. Tower gets a
+deliberately light 3-image decades strip (owner scans #6/#7/#8) plus one outbound link to
+Retro Metro OKC — the page tells the *street's* story, not the Tower's.
