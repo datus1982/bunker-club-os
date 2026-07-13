@@ -35,7 +35,20 @@ const CANVAS_H = 1920;
 export function Leaderboard() {
   const [params] = useSearchParams();
   const overrideGameId = params.get("game");
+  return (
+    <DisplayCanvas orientation="portrait">
+      <LeaderboardBoard overrideGameId={overrideGameId} />
+    </DisplayCanvas>
+  );
+}
 
+/**
+ * The leaderboard board content WITHOUT its DisplayCanvas wrapper. The /leaderboard
+ * route wraps this in DisplayCanvas exactly as before (behaviour-identical); the
+ * signage slot page also embeds it in game mode so the two boards share one code
+ * path (docs/09 — reuse, don't fork).
+ */
+export function LeaderboardBoard({ overrideGameId }: { overrideGameId: string | null }) {
   const gameQuery = useCurrentGame(overrideGameId);
   const game = gameQuery.data ?? null;
   const { scoreboard, rounds, displayState } = useLeaderboardData(game?.id ?? null);
@@ -60,28 +73,26 @@ export function Leaderboard() {
   }, [canRotate]);
 
   return (
-    <DisplayCanvas orientation="portrait">
-      <Frame>
-        {gameQuery.isPending ? (
-          <Centered title="SYNCING STANDINGS" subtitle="◊ SHELTER AUTHORITY UPLINK" />
-        ) : !game ? (
-          <Centered title="NO ACTIVE GAME" subtitle="STANDBY — CREATE GAME TO BEGIN" />
-        ) : game.status === "setup" || game.status === "stopped" ? (
-          <HoldingScreen game={game} teams={rows} />
-        ) : showSeason && seasonPanel ? (
-          <SeasonPanel panel={seasonPanel} />
-        ) : (
-          <Standings
-            game={game}
-            rows={rows}
-            rounds={roundList}
-            tieInfo={tieInfo}
-            hasAnyScores={hasAnyScores}
-            gameOverFlag={gameOverFlag}
-          />
-        )}
-      </Frame>
-    </DisplayCanvas>
+    <Frame>
+      {gameQuery.isPending ? (
+        <Centered title="SYNCING STANDINGS" subtitle="◊ SHELTER AUTHORITY UPLINK" />
+      ) : !game ? (
+        <Centered title="NO ACTIVE GAME" subtitle="STANDBY — CREATE GAME TO BEGIN" />
+      ) : game.status === "setup" || game.status === "stopped" ? (
+        <HoldingScreen game={game} teams={rows} />
+      ) : showSeason && seasonPanel ? (
+        <SeasonPanel panel={seasonPanel} />
+      ) : (
+        <Standings
+          game={game}
+          rows={rows}
+          rounds={roundList}
+          tieInfo={tieInfo}
+          hasAnyScores={hasAnyScores}
+          gameOverFlag={gameOverFlag}
+        />
+      )}
+    </Frame>
   );
 }
 
