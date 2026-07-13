@@ -26,7 +26,7 @@ const MONO = "'VT323','Share Tech Mono',monospace";
 
 // A nav child is shown when its gate passes: `module` → has_module grant (admin implied);
 // `minRole` → rank (used for HOME/admin-only entries that aren't module-scoped).
-interface NavChild { to: string; label: string; module?: ModuleKey; minRole?: StaffRole }
+interface NavChild { to: string; label: string; module?: ModuleKey; minRole?: StaffRole; end?: boolean }
 interface NavSection { label: string; children: NavChild[] }
 
 // HOME is a plain top-level link, not a section.
@@ -49,7 +49,11 @@ const SECTIONS: NavSection[] = [
   {
     label: "BAR OPS",
     children: [
-      { to: "/signage", label: "SIGNAGE HUB", module: "signage" },
+      // `end` so the hub link only lights on exactly /signage, not its child pages
+      // (/signage/screens/:slug, /signage/broadcast).
+      { to: "/signage", label: "SIGNAGE HUB", module: "signage", end: true },
+      { to: "/signage/broadcast", label: "BROADCAST", module: "signage" },
+      // EVENTS & PROMOS lands with the events task — omitted for now.
       // TOP SELLERS = the sales-rank board config (was mislabelled "DRINKS"). Route +
       // module key unchanged; only the staff-facing label is task-named.
       { to: "/admin/drinks", label: "TOP SELLERS", module: "drinks" },
@@ -161,6 +165,7 @@ export function StaffLayout() {
                       <NavLink
                         key={c.to}
                         to={c.to}
+                        end={c.end}
                         role="menuitem"
                         onClick={() => setMenuOpen(false)}
                         className={({ isActive }) => (isActive ? "u-fill u-ink" : "")}
@@ -223,6 +228,7 @@ export function StaffLayout() {
                 <NavLink
                   key={c.to}
                   to={c.to}
+                  end={c.end}
                   className={({ isActive }) => (isActive ? "u-fill u-ink" : "")}
                   style={({ isActive }) => ({ ...subItem, ...(isActive ? subItemActive : null) })}
                 >

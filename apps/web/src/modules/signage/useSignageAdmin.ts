@@ -134,6 +134,36 @@ export function useTakeovers() {
   return q;
 }
 
+/** A row of the events table (docs/13). The stage engine that fires these lands in the
+ *  events task; the hub only READS them for the RUNNING & UPCOMING strip today. */
+export interface ScheduledEvent {
+  id: string;
+  name: string;
+  skin: string;
+  fire_at: string | null;
+  recurrence: { daysOfWeek?: string[]; time?: string } | null;
+  interrupt_game: boolean;
+  status: "scheduled" | "running" | "completed" | "aborted" | "disabled";
+}
+
+/** scheduled_events for this venue (read-only). public_read grants SELECT (0011); the
+ *  events engine writes them later. Empty today — the hub renders the honest empty state. */
+export function useScheduledEvents() {
+  return useQuery({
+    queryKey: ["signage-admin", "events"],
+    refetchInterval: 60_000,
+    queryFn: async (): Promise<ScheduledEvent[]> => {
+      const { data, error } = await supabase
+        .from("scheduled_events")
+        .select("id, name, skin, fire_at, recurrence, interrupt_game, status")
+        .eq("venue_id", VENUE_ID)
+        .order("fire_at", { nullsFirst: false });
+      if (error) throw error;
+      return (data ?? []) as ScheduledEvent[];
+    },
+  });
+}
+
 export function activeTakeover(list: AdminTakeover[], now = Date.now()): AdminTakeover | null {
   return (
     list.find(
