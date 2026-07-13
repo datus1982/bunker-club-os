@@ -59,6 +59,8 @@ export const checkRow: CSSProperties = {
   gap: 10,
   fontSize: 22,
   cursor: "pointer",
+  minHeight: 44, // whole label row is a ≥44px tap target (Phase 4c)
+  padding: "4px 0",
 };
 
 /** Centered modal overlay in the terminal theme. */
@@ -80,15 +82,23 @@ export function Modal({ title, onClose, children, footer }: { title: string; onC
       <div
         onClick={(e) => e.stopPropagation()}
         className="terminal-border"
-        style={{ background: "#000", padding: 24, width: "min(560px, 92vw)", maxHeight: "88vh", overflowY: "auto", display: "flex", flexDirection: "column", gap: 16 }}
+        style={{ background: "#000", width: "min(560px, 92vw)", maxHeight: "88vh", overflow: "hidden", display: "flex", flexDirection: "column" }}
       >
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        {/* Header — pinned (does not scroll) */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "20px 24px 12px" }}>
           <h2 style={{ fontSize: 30, fontWeight: 700, letterSpacing: 1 }}>{title}</h2>
           <button type="button" onClick={onClose} style={btnGhost} aria-label="Close">✕</button>
         </div>
-        <div className="terminal-separator" />
-        {children}
-        {footer && <div style={{ display: "flex", gap: 12, justifyContent: "flex-end", marginTop: 4 }}>{footer}</div>}
+        <div className="terminal-separator" style={{ margin: 0 }} />
+        {/* Body — the only scrolling region. gap 16 restores the pre-pinned-footer spacing for
+            callers that pass bare siblings (e.g. AddTeamPicker's two Fields). */}
+        <div style={{ flex: "1 1 auto", overflowY: "auto", padding: "16px 24px", display: "flex", flexDirection: "column", gap: 16 }}>{children}</div>
+        {/* Footer — pinned bottom, themed background, so CANCEL/SAVE stay visible while the body scrolls (Phase 4c). */}
+        {footer && (
+          <div style={{ display: "flex", gap: 12, justifyContent: "flex-end", padding: "14px 24px", borderTop: "1px solid var(--terminal-green)", background: "#000" }}>
+            {footer}
+          </div>
+        )}
       </div>
     </div>
   );

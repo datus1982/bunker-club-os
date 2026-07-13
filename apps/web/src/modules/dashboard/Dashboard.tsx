@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { hasModule, roleAtLeast, useRole, type ModuleKey, type StaffRole } from "@/shared/useRole";
+import { useIsMobile } from "@/shared/useIsMobile";
 import {
   useSyncStatus, useTonight, useActiveSeason, formatAge, type Freshness,
 } from "./useDashboard";
@@ -43,6 +44,7 @@ export function Dashboard() {
   const sync = useSyncStatus();
   const tonight = useTonight();
   const season = useActiveSeason();
+  const narrow = useIsMobile();
 
   const clock = now.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
   const day = now.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" }).toUpperCase();
@@ -50,12 +52,12 @@ export function Dashboard() {
   return (
     <div className="terminal-theme" style={{ minHeight: "100%", padding: "24px clamp(14px, 4vw, 48px)", fontFamily: MONO }}>
       {/* Header */}
-      <header style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
+      <header style={{ display: "flex", alignItems: narrow ? "flex-start" : "flex-end", justifyContent: "space-between", flexWrap: "wrap", gap: narrow ? 2 : 12 }}>
         <div>
           <div style={{ fontSize: 20, opacity: 0.6, letterSpacing: 3 }}>SHELTER AUTHORITY · CIVIL DEFENSE</div>
           <h1 style={{ fontSize: "clamp(34px, 6vw, 56px)", fontWeight: 700, letterSpacing: 2, lineHeight: 1 }}>BUNKER UNIFIED OS</h1>
         </div>
-        <div style={{ textAlign: "right" }}>
+        <div style={{ textAlign: narrow ? "left" : "right" }}>
           <div style={{ fontSize: "clamp(28px, 5vw, 44px)", fontWeight: 700, letterSpacing: 2, color: GREEN }}>{clock}</div>
           <div style={{ fontSize: 18, opacity: 0.7, letterSpacing: 2 }}>{day} · CLEARANCE {(role ?? "—").toUpperCase()}</div>
         </div>
@@ -270,9 +272,11 @@ const tileBase: React.CSSProperties = {
 };
 const jumpLink: React.CSSProperties = {
   fontSize: 18, color: "#000", background: GREEN, fontWeight: 700,
-  padding: "4px 10px", textDecoration: "none", marginTop: 8, alignSelf: "flex-start", letterSpacing: 1,
+  padding: "0 14px", minHeight: 44, display: "inline-flex", alignItems: "center",
+  textDecoration: "none", marginTop: 8, alignSelf: "flex-start", letterSpacing: 1,
 };
 const screenLink: React.CSSProperties = {
   fontSize: 16, color: GREEN, border: "1px solid var(--terminal-green)",
-  padding: "4px 8px", textDecoration: "none", letterSpacing: 1,
+  padding: "0 12px", minHeight: 44, display: "inline-flex", alignItems: "center",
+  textDecoration: "none", letterSpacing: 1,
 };

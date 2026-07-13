@@ -60,7 +60,7 @@ export function Scoring() {
   if (!game) return <NoGame />;
 
   return (
-    <div className="terminal-theme" style={{ minHeight: "100vh", padding: 32, fontFamily: "'VT323','Share Tech Mono',monospace" }}>
+    <div className="terminal-theme" style={{ minHeight: "100vh", padding: "clamp(16px, 4vw, 32px)", fontFamily: "'VT323','Share Tech Mono',monospace" }}>
       <div style={{ maxWidth: 1400, margin: "0 auto", display: "flex", flexDirection: "column", gap: 20 }}>
         {/* Header + nav */}
         <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
@@ -293,7 +293,7 @@ function AddTeamPicker({
 
 function StatusButton({ label, active, onClick, disabled }: { label: string; active?: boolean; onClick: () => void; disabled?: boolean }) {
   return (
-    <button type="button" onClick={onClick} disabled={disabled} style={{ ...(active ? btnActive : btnGhost), opacity: disabled ? 0.4 : 1 }}>
+    <button type="button" onClick={onClick} disabled={disabled} style={{ ...(active ? btnActive : btnGhost), opacity: disabled ? 0.4 : 1, minHeight: 44 }}>
       {label}
     </button>
   );

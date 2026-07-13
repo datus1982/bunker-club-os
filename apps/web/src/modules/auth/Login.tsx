@@ -162,6 +162,7 @@ const btnGhost: React.CSSProperties = {
 };
 const tab: React.CSSProperties = {
   flex: 1, background: "transparent", color: "var(--terminal-green)", border: "1px solid var(--terminal-green)",
-  padding: "8px 12px", fontSize: 20, cursor: "pointer", fontFamily: "'VT323','Share Tech Mono',monospace", opacity: 0.6,
+  padding: "10px 12px", minHeight: 44, fontSize: 20, cursor: "pointer", fontFamily: "'VT323','Share Tech Mono',monospace",
+  opacity: 0.6, whiteSpace: "nowrap",
 };
 const tabActive: React.CSSProperties = { ...tab, background: "var(--terminal-green)", color: "#000", fontWeight: 700, opacity: 1 };

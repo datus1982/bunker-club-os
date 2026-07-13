@@ -60,11 +60,11 @@ export function Teams() {
   const rows = teams.data ?? [];
 
   return (
-    <div className="terminal-theme" style={{ minHeight: "100vh", padding: 40, fontFamily: "'VT323','Share Tech Mono',monospace" }}>
+    <div className="terminal-theme" style={{ minHeight: "100vh", padding: "clamp(16px, 4vw, 40px)", fontFamily: "'VT323','Share Tech Mono',monospace" }}>
       <div style={{ maxWidth: 1100, margin: "0 auto" }}>
-        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 8 }}>
-          <h1 style={{ fontSize: 48, fontWeight: 700, letterSpacing: 2 }}>TEAM ROSTER</h1>
-          <div style={{ display: "flex", gap: 12, alignItems: "baseline" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12, marginBottom: 8 }}>
+          <h1 style={{ fontSize: "clamp(28px, 7vw, 48px)", fontWeight: 700, letterSpacing: 2 }}>TEAM ROSTER</h1>
+          <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
             <button type="button" onClick={() => setAdding(true)} style={btnPrimary}>+ ADD TEAM</button>
             <Link to="/dashboard" style={{ fontSize: 24, opacity: 0.8 }}>← DASHBOARD</Link>
           </div>

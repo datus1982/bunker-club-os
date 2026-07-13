@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useDisplayState, useRoundQuestions, type Round, type DisplayState } from "./useScoring";
 import { btnGhost, btnActive } from "./ui";
+import { useIsMobile } from "@/shared/useIsMobile";
 
 /**
  * Host question projector + answer key (docs/04 ARCH-2 — wraps the legacy QuestionDisplay
@@ -31,6 +32,10 @@ export function QuestionPanel({
 }) {
   const questions = useRoundQuestions(gameId, currentRound, rounds);
   const answers = useRoundQuestions(gameId, answerKeyRound, rounds);
+  // Below ~700px the two side-by-side panels (346px select + 4-button row) can't
+  // share a row without clipping — stack to one column. minmax(0,1fr) keeps the
+  // columns from expanding past the viewport at any width (root cause 1).
+  const stack = useIsMobile(700);
 
   const [index, setIndex] = useState(0);
   const [showAns, setShowAns] = useState(false);
@@ -83,7 +88,7 @@ export function QuestionPanel({
   };
 
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+    <div style={{ display: "grid", gridTemplateColumns: stack ? "minmax(0, 1fr)" : "minmax(0, 1fr) minmax(0, 1fr)", gap: 16 }}>
       {/* Answer key — previous completed round */}
       <div className="terminal-border" style={{ padding: 16, display: "flex", flexDirection: "column", gap: 8, minHeight: 220 }}>
         <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between" }}>
@@ -92,7 +97,7 @@ export function QuestionPanel({
         </div>
         <div className="terminal-separator" />
         {answerKeyRound && answers.length > 0 ? (
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "2px 16px" }}>
+          <div style={{ display: "grid", gridTemplateColumns: stack ? "minmax(0, 1fr)" : "minmax(0, 1fr) minmax(0, 1fr)", gap: "2px 16px" }}>
             {answers.map((a) => (
               <div key={a.id} style={{ display: "flex", gap: 8, fontSize: 20, lineHeight: 1.2 }}>
                 <span style={{ fontWeight: 700, flexShrink: 0 }}>{a.question_number > 10 ? "B" : a.question_number}:</span>
@@ -108,8 +113,10 @@ export function QuestionPanel({
       {/* Question projector — current round */}
       <div className="terminal-border" style={{ padding: 16, display: "flex", flexDirection: "column", gap: 10, minHeight: 220 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-          <h3 style={{ fontSize: 24, fontWeight: 700 }}>{roundLabel(currentRound)}</h3>
-          <select value={currentRound.id} onChange={(e) => onSelectRound(e.target.value)} style={{ ...btnGhost, padding: "4px 8px" }}>
+          <h3 style={{ fontSize: 24, fontWeight: 700, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{roundLabel(currentRound)}</h3>
+          {/* The round <select> auto-sizes to its widest option (~346px); minWidth:0 +
+              maxWidth lets it shrink inside the flex row instead of forcing page overflow. */}
+          <select value={currentRound.id} onChange={(e) => onSelectRound(e.target.value)} style={{ ...btnGhost, padding: "4px 8px", minWidth: 0, maxWidth: "55%" }}>
             {rounds.map((r) => (
               <option key={r.id} value={r.id} style={{ background: "#000" }}>{roundLabel(r)}</option>
             ))}
