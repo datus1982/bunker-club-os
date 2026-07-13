@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { Navigate, useLocation } from "react-router-dom";
 import { hasModule, roleAtLeast, useRole, type ModuleKey, type StaffRole } from "./useRole";
+import { moduleLabel } from "./moduleLabels";
 import { useSession } from "./useSession";
 
 function TerminalNotice({ text }: { text: string }) {
@@ -52,7 +53,7 @@ export function RequireModule({ module, children }: { module: ModuleKey; childre
   if (loading) return <TerminalNotice text="CHECKING CLEARANCE…" />;
   if (!isSignedIn) return <Navigate to="/login" state={{ from: location }} replace />;
   if (!hasModule(role, modules, module)) {
-    return <TerminalNotice text={`ACCESS DENIED — the ${module.toUpperCase()} module is not enabled for your account.`} />;
+    return <TerminalNotice text={`ACCESS DENIED — the ${moduleLabel(module)} module is not enabled for your account.`} />;
   }
   return <>{children}</>;
 }
