@@ -126,3 +126,15 @@
   .evt-alert-pulse,
   .evt-liftoff { animation: none; }
 }
+
+/* ── EVENTS & PROMOS console (/signage/events, view 5) ─────────────────────── */
+/* Two panes: LIST (wider) + inline EDITOR. Stacks on mobile — the owner runs this
+ * from his phone at the bar. Defined in CSS (not inline) so the media query wins. */
+.events-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+  gap: 16px;
+}
+@media (max-width: 640px) {
+  .events-split { grid-template-columns: 1fr; }
+}
