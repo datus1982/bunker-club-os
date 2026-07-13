@@ -27,7 +27,20 @@ import {
 export function GameDisplay() {
   const [params] = useSearchParams();
   const overrideGameId = params.get("game");
+  return (
+    <DisplayCanvas orientation="landscape">
+      <GameDisplayBoard overrideGameId={overrideGameId} />
+    </DisplayCanvas>
+  );
+}
 
+/**
+ * The game-display board content WITHOUT its DisplayCanvas wrapper. The /game-display
+ * route wraps this in DisplayCanvas exactly as before (behaviour-identical); the
+ * signage slot page also embeds it in game mode for landscape slots (docs/09 — reuse,
+ * don't fork). Returns the raw 1920×1080 content (video fill or the framed board).
+ */
+export function GameDisplayBoard({ overrideGameId }: { overrideGameId: string | null }) {
   const gameQuery = useDisplayGame(overrideGameId);
   const game = gameQuery.data ?? null;
   const { displayState, currentRound, questions, isPending } = useGameDisplayData(game?.id ?? null);
@@ -46,11 +59,9 @@ export function GameDisplay() {
   } else if (displayState?.show_video && currentRound?.video_url) {
     // Video fills the whole canvas (no frame).
     return (
-      <DisplayCanvas orientation="landscape">
-        <div style={{ width: 1920, height: 1080, background: "#000" }}>
-          <VideoPlayer videoUrl={currentRound.video_url} autoplay />
-        </div>
-      </DisplayCanvas>
+      <div style={{ width: 1920, height: 1080, background: "#000" }}>
+        <VideoPlayer videoUrl={currentRound.video_url} autoplay />
+      </div>
     );
   } else if (isPending) {
     body = <Centered title="SYNCING" subtitle="◊ SHELTER AUTHORITY UPLINK" />;
@@ -72,11 +83,7 @@ export function GameDisplay() {
     );
   }
 
-  return (
-    <DisplayCanvas orientation="landscape">
-      <Frame>{body}</Frame>
-    </DisplayCanvas>
-  );
+  return <Frame>{body}</Frame>;
 }
 
 /* ── Chrome ────────────────────────────────────────────────────────────────── */

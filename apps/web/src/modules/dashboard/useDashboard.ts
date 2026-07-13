@@ -169,6 +169,33 @@ export function useActiveSeason() {
   });
 }
 
+export interface ScreenSlot {
+  id: string;
+  name: string;
+  slug: string;
+  terminal_number: number | null;
+  location_label: string | null;
+  last_seen: string | null;
+}
+
+/** Signage slots + their heartbeat, for the STATUS BOARD SCREENS panel + DISPLAYS tile.
+ *  Health is derived from last_seen via screenHealth() (useSignageAdmin) at render time. */
+export function useScreens() {
+  return useQuery({
+    queryKey: ["dashboard", "screens"],
+    refetchInterval: 60_000,
+    queryFn: async (): Promise<ScreenSlot[]> => {
+      const { data, error } = await supabase
+        .from("signage_slots")
+        .select("id, name, slug, terminal_number, location_label, last_seen")
+        .eq("venue_id", VENUE_ID)
+        .order("terminal_number", { nullsFirst: false });
+      if (error) throw error;
+      return (data ?? []) as ScreenSlot[];
+    },
+  });
+}
+
 /** "12m ago" / "3h ago" for a millisecond age. */
 export function formatAge(ageMs: number | null): string {
   if (ageMs == null) return "—";

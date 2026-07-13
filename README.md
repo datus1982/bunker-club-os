@@ -69,7 +69,14 @@ unattended screen. Append `?calibrate` to any of them for the install test patte
 | `/leaderboard` | trivia leaderboard (portrait) |
 | `/game-display` | audience Q&A (landscape) |
 | `/drinks` | Toast top sellers (portrait) |
-| `/signage/s/{slug}` | signage slot (per-slot orientation) |
+| `https://os.bunkerokc.com/signage/s/portrait-main` | signage slot — portrait |
+| `https://os.bunkerokc.com/signage/s/landscape-bar` | signage slot — landscape |
+
+**Point a TV at the clean `/signage/s/{slug}` URL above** — these are the kiosk
+targets (rotation + takeovers + game mode). `?preview=1` is a STAFF-ONLY preview
+that renders the rotation *without* takeovers or game mode, so never use a
+`?preview=1` link on a TV. The `/signage` admin (each slot card) has a COPY button
+for the clean URL.
 
 Per-physical-screen slot inventory (terminal #, location, inset) is recorded here
 as screens are calibrated in Phase 5.

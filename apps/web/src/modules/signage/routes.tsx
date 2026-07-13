@@ -1,7 +1,5 @@
-import { Placeholder, DisplayPlaceholder } from "@/shared/Placeholder";
+// Signage admin (staff+, has_module('signage')) — the templater, Phase 5 task 2 (docs/09).
+export { SignageAdmin } from "./SignageAdmin";
 
-// Signage admin (staff+) and the public rendered slot page (docs/09). Built in Phase 5.
-export const SignageAdmin = () => <Placeholder title="SIGNAGE TEMPLATER" phase="Phase 5 (docs/09)" />;
-export const SlotDisplay = () => (
-  <DisplayPlaceholder title="SIGNAGE SLOT" orientation="portrait" />
-);
+// The public rendered slot page (/signage/s/:slug) — built in Phase 5 task 1.
+export { SlotDisplay } from "./SlotDisplay";
