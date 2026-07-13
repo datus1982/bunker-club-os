@@ -26,6 +26,10 @@
 --    NOTE: 0029 uses `on conflict do nothing`, so on a LIVE project that already
 --    ran the old seed these new values were applied by a one-off UPDATE (kept in
 --    sync with this file). A fresh rebuild seeds these values directly.
+--    site_about REVISED AGAIN 2026-07-13: final paragraph now names "karaoke most
+--    Saturdays" alongside Wednesday trivia (owner venue fact — karaoke runs most,
+--    not all, Saturdays; phrasing stays honest). Applied to the live project by the
+--    same one-off UPDATE, extracted verbatim from this file so live == file.
 
 insert into public.venue_settings (venue_id, key, value) values
 
@@ -83,7 +87,7 @@ insert into public.venue_settings (venue_id, key, value) values
       "Bunker Club is an atomic age high-dive on NW 23rd — a Cold War fallout shelter of a bar tucked into a jewel-box storefront in the Tower Theater building, its rare green Vitrolite glass still catching the light out front. Inside it's warm, dim, and lush rather than stark: civil-defense signage, low light, and a proper drink while the end of the world stays safely out there.",
       "The room opened in 2017, built by hand as a post-war atomic-era dive — and built with a clear idea of what the theme meant. It was never politics; it was an affection for a moment in time. As the bar's original credo puts it: \"It's an ode to the preparedness, it's an ode to the propaganda, it's an ode to the art, the fear of what's to come, the hope of a future, and what that inspired in the daily lives of people.\"",
       "That ode keeps evolving. These days the Bunker leans into the pop culture the atomic age set off — the retro-future of blast doors and ray guns, duck-and-cover kitsch, the movies and games that turned fallout into a playground. Less time capsule, more clubhouse for everyone who grew up loving the bunker fantasy.",
-      "It's still a neighborhood dive at heart: open 4 PM to 2 AM every single day, Atomic Pub Trivia every Wednesday at 8, and a bar that runs on its own screens — standings, specials, and the occasional all-screen birthday shout-out. The lights are low and the drinks are honest. The bunker's open."
+      "It's still a neighborhood dive at heart: open 4 PM to 2 AM every single day, Atomic Pub Trivia every Wednesday at 8, karaoke most Saturdays, and a bar that runs on its own screens — standings, specials, and the occasional all-screen birthday shout-out. The lights are low and the drinks are honest. The bunker's open."
     ]$$::jsonb)
 
 on conflict (venue_id, key) do nothing;

@@ -14,7 +14,7 @@ import { todayKey } from "./useSiteCopy";
 
 export type StripCard = {
   key: string;
-  kind: "trivia" | "event" | "promo";
+  kind: "trivia" | "karaoke" | "event" | "promo";
   kicker: string;
   title: string;
   body?: string;
@@ -22,6 +22,7 @@ export type StripCard = {
 };
 
 const TRIVIA_DAY = "wed"; // Bunker Club runs trivia Wednesday nights (docs/00).
+const KARAOKE_DAY = "sat"; // Karaoke runs MOST Saturdays — not guaranteed (owner, 2026-07-13).
 
 function pickText(fields: unknown, keys: string[]): string | undefined {
   if (!fields || typeof fields !== "object") return undefined;
@@ -39,15 +40,28 @@ export function useThisWeek() {
     staleTime: 60_000,
     queryFn: async (): Promise<StripCard[]> => {
       const cards: StripCard[] = [];
-      const isTriviaDay = todayKey() === TRIVIA_DAY;
+      const today = todayKey();
 
-      if (isTriviaDay) {
+      if (today === TRIVIA_DAY) {
         cards.push({
           key: "trivia-tonight",
           kind: "trivia",
           kicker: "Tonight",
           title: "ATOMIC PUB TRIVIA",
           body: "Round up a team and take your shot at the season leaderboard. Doors are open — grab a table.",
+          live: true,
+        });
+      }
+
+      // Karaoke runs MOST Saturdays, not every one — so the card stays honest: it
+      // flags the night but tells people to check socials rather than promising it.
+      if (today === KARAOKE_DAY) {
+        cards.push({
+          key: "karaoke-tonight",
+          kind: "karaoke",
+          kicker: "Tonight",
+          title: "KARAOKE",
+          body: "Karaoke runs most Saturdays — not every week, so check our socials to be sure. If the mic's on, it's your night.",
           live: true,
         });
       }
