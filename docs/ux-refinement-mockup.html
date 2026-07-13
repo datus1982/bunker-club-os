@@ -1,0 +1,560 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bunker Club — Staff IA + Signage Hub Mockup</title>
+<link href="https://fonts.googleapis.com/css2?family=VT323&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --phos:#00ff41; --phos-dim:rgba(0,255,65,.60); --phos-mid:rgba(0,255,65,.32); --phos-faint:rgba(0,255,65,.14);
+    --amber:#ffb000; --amber-dim:rgba(255,176,0,.60); --amber-faint:rgba(255,176,0,.14);
+    --red:#ff4136; --red-dim:rgba(255,65,54,.65);
+    --bg:#04070a; --crt:#050d07; --panel:#081409; --panel2:#0b1a0d;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    background:var(--bg);color:var(--phos);font-family:'Share Tech Mono',monospace;
+    min-height:100vh;padding:20px 16px 90px;display:flex;flex-direction:column;align-items:center;gap:18px;
+  }
+  a{color:inherit}
+
+  /* ---- header / caption ---- */
+  .pagehead{text-align:center;max-width:900px}
+  .pagehead h1{font-family:'VT323',monospace;font-size:34px;letter-spacing:2px;color:var(--phos);text-shadow:0 0 12px var(--phos-dim)}
+  .pagehead p{font-size:13px;color:var(--phos-dim);margin-top:6px;line-height:1.6}
+  .viewcap{font-family:'VT323',monospace;font-size:22px;letter-spacing:2px;color:var(--phos-dim)}
+  .viewcap b{color:var(--phos)}
+
+  /* ---- the terminal frame (shared) ---- */
+  .frame{
+    background:var(--crt);border:2px solid var(--phos-dim);position:relative;overflow:hidden;
+    box-shadow:0 0 44px var(--phos-faint), inset 0 0 90px rgba(0,0,0,.6);
+    display:flex;flex-direction:column;
+  }
+  .frame::before{content:"";position:absolute;inset:0;pointer-events:none;z-index:80;
+    background:repeating-linear-gradient(0deg, rgba(0,0,0,.16) 0 1px, transparent 1px 3px)}
+  .frame::after{content:"";position:absolute;inset:0;pointer-events:none;z-index:81;
+    background:radial-gradient(ellipse at center, transparent 62%, rgba(0,0,0,.42) 100%)}
+  .frame.desktop{width:1100px;max-width:97vw}
+  .frame.phone{width:390px;max-width:97vw;border-radius:22px}
+
+  .scroll{position:relative;z-index:2;overflow-y:auto}
+  .frame.desktop .scroll{max-height:78vh}
+  .frame.phone .scroll{height:720px;max-height:78vh}
+
+  /* ---- top nav bar (two-tier) ---- */
+  .navbar{border-bottom:1px solid var(--phos-dim);background:#000;position:sticky;top:0;z-index:20}
+  .navrow{display:flex;align-items:center;gap:6px;padding:9px 16px}
+  .brand{font-family:'VT323',monospace;font-size:24px;letter-spacing:2px;color:var(--phos);white-space:nowrap;margin-right:8px;text-shadow:0 0 8px var(--phos-dim)}
+  .sect{font-family:'VT323',monospace;font-size:22px;letter-spacing:2px;color:var(--phos);padding:5px 16px;border:1px solid transparent;cursor:default}
+  .sect:hover{border-color:var(--phos-mid)}
+  .sect.on{background:var(--phos);color:#000;font-weight:700}
+  .navspacer{flex:1}
+  .who{font-size:13px;color:var(--phos-dim);letter-spacing:1px;white-space:nowrap}
+  .signout{font-family:'Share Tech Mono';font-size:13px;color:var(--amber);border:1px solid var(--amber);background:transparent;padding:5px 10px;letter-spacing:1px;white-space:nowrap}
+  /* sub-nav */
+  .subrow{display:flex;align-items:center;gap:4px;padding:7px 16px;border-top:1px solid var(--phos-faint);background:#020402;flex-wrap:wrap}
+  .subrow .kick{font-size:11px;letter-spacing:3px;color:var(--phos-mid);margin-right:6px}
+  .subitem{font-family:'Share Tech Mono';font-size:15px;letter-spacing:1px;color:var(--phos-dim);padding:4px 12px;border:1px solid transparent;white-space:nowrap;cursor:default}
+  .subitem:hover{color:var(--phos);border-color:var(--phos-mid)}
+  .subitem.on{background:var(--phos);color:#000;font-weight:700}
+  .subitem .note{font-size:10px;opacity:.75;margin-left:4px}
+
+  /* ---- page body ---- */
+  .body{padding:20px 20px 26px}
+  .frame.phone .body{padding:14px 12px 22px}
+  .eyebrow{font-size:11px;letter-spacing:4px;color:var(--phos-mid);margin-bottom:8px}
+  .h2{font-family:'VT323',monospace;font-size:26px;letter-spacing:1px;color:var(--phos);margin:2px 0 12px;display:flex;align-items:center;gap:10px}
+  .h2 .tag{font-size:11px;letter-spacing:2px;color:var(--phos-mid);font-family:'Share Tech Mono'}
+  .divider{border:none;border-top:1px solid var(--phos-faint);margin:22px 0 16px}
+
+  /* callout notes (footnote style) */
+  .callout{display:flex;gap:8px;align-items:flex-start;font-size:12px;color:var(--phos-mid);line-height:1.55;margin-top:8px}
+  .callout::before{content:"◂";color:var(--amber-dim);flex-shrink:0}
+  .callout b{color:var(--phos-dim)}
+  .callout.amber::before{content:"⚠";color:var(--amber)}
+  .callout.amber{color:var(--amber-dim)}
+
+  /* placeholder page-content hint */
+  .placeholder{border:1px dashed var(--phos-mid);color:var(--phos-mid);padding:26px;text-align:center;font-size:13px;letter-spacing:2px;opacity:.55}
+  .placeholder .big{font-family:'VT323',monospace;font-size:30px;letter-spacing:2px;display:block;margin-bottom:6px}
+
+  /* ---- generic panels ---- */
+  .panel{border:1px solid var(--phos-mid);background:var(--panel);padding:14px}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .frame.phone .grid2{grid-template-columns:1fr}
+  .grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+  .frame.phone .grid3{grid-template-columns:1fr}
+
+  /* screen (ON AIR) card */
+  .screen{border:1px solid var(--phos-dim);background:var(--panel2);padding:13px 14px;display:flex;flex-direction:column;gap:8px}
+  .screen .top{display:flex;justify-content:space-between;align-items:center;gap:8px}
+  .screen .nm{font-family:'VT323',monospace;font-size:24px;letter-spacing:1px}
+  .dot{font-size:12px;white-space:nowrap;letter-spacing:1px}
+  .dot.live{color:var(--phos)}
+  .dot.stale{color:var(--amber)}
+  .dot.off{color:var(--red)}
+  .mode{display:inline-block;font-size:11px;letter-spacing:2px;border:1px solid var(--phos-mid);color:var(--phos-dim);padding:2px 8px}
+  .mode.game{border-color:var(--amber-dim);color:var(--amber)}
+  .screen .rot{font-size:12px;color:var(--phos-dim);line-height:1.5}
+  .screen .rot em{color:var(--phos);font-style:normal}
+  .miniacts{display:flex;gap:6px;flex-wrap:wrap;margin-top:2px}
+  .mini{font-family:'Share Tech Mono';font-size:11px;letter-spacing:1px;color:var(--phos-dim);border:1px solid var(--phos-mid);background:transparent;padding:6px 9px;min-height:32px;cursor:pointer}
+  .mini:hover{color:var(--phos);border-color:var(--phos-dim)}
+  .mini.key{color:var(--phos);border-color:var(--phos-dim)}
+
+  /* quick-action big buttons */
+  .quickrow{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+  .frame.phone .quickrow{grid-template-columns:1fr}
+  .qbtn{min-height:56px;border:1px solid var(--phos);background:rgba(0,255,65,.06);color:var(--phos);
+    font-family:'VT323',monospace;font-size:22px;letter-spacing:1px;display:flex;align-items:center;justify-content:center;gap:8px;cursor:pointer;text-align:center;padding:8px}
+  .qbtn:hover{background:rgba(0,255,65,.14)}
+  .qbtn.solid{background:var(--phos);color:#000;font-weight:700}
+  .qcap{font-size:12px;color:var(--phos-mid);text-align:center;margin-top:8px;letter-spacing:1px}
+
+  /* schedule rows */
+  .schedrow{border:1px solid var(--phos-mid);background:var(--panel);padding:10px 12px;display:flex;align-items:center;gap:12px}
+  .frame.phone .schedrow{flex-wrap:wrap;gap:6px 10px}
+  .schedrow .main{flex:1;min-width:0}
+  .schedrow .nm{font-family:'VT323',monospace;font-size:21px;letter-spacing:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .schedrow .when{font-size:12px;color:var(--phos-dim);margin-top:2px}
+  .typebadge{font-size:10px;letter-spacing:2px;border:1px solid var(--phos-mid);color:var(--phos-dim);padding:2px 7px;white-space:nowrap}
+  .typebadge.moment{border-color:var(--amber-dim);color:var(--amber)}
+  .typebadge.msg{border-color:var(--phos-dim);color:var(--phos)}
+  .status{font-size:12px;white-space:nowrap;letter-spacing:1px}
+  .status.now{color:var(--phos)}
+  .status.up{color:var(--phos-dim)}
+  .status.one{color:var(--amber-dim)}
+  .rowacts{display:flex;gap:6px;flex-shrink:0}
+  .ib{font-family:'Share Tech Mono';font-size:12px;color:var(--phos-dim);border:1px solid var(--phos-mid);background:transparent;min-height:34px;min-width:38px;padding:0 9px;cursor:pointer}
+  .ib:hover{color:var(--phos);border-color:var(--phos-dim)}
+
+  /* featured chips */
+  .chip{display:flex;align-items:center;gap:9px;border:1px solid var(--phos-mid);background:var(--panel);padding:7px 10px}
+  .chip .thumb{width:34px;height:34px;border:1px solid var(--phos-mid);flex-shrink:0;background:#0c1a0d}
+  .chip .cn{flex:1;min-width:0;font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--phos)}
+  .chip .cp{font-family:'VT323',monospace;font-size:20px;color:var(--phos)}
+  .badge-hidden{font-size:10px;letter-spacing:1px;color:var(--amber);border:1px solid var(--amber-dim);padding:1px 6px}
+
+  /* ---- mobile drawer (view 3) ---- */
+  .drawer{display:flex;flex-direction:column}
+  .drawer .dlink{display:flex;align-items:center;min-height:46px;padding:0 16px;font-family:'VT323',monospace;font-size:22px;letter-spacing:1px;color:var(--phos);border-bottom:1px solid var(--phos-faint)}
+  .drawer .dlink.home{background:rgba(0,255,65,.05)}
+  .drawer .dlink.sub{padding-left:30px;font-size:20px;color:var(--phos-dim)}
+  .drawer .dlink.sub.on{background:var(--phos);color:#000;font-weight:700}
+  .drawer .dsect{padding:11px 16px 4px;font-size:11px;letter-spacing:4px;color:var(--phos-mid);border-bottom:1px solid var(--phos-faint);background:#020402}
+  .drawer .dfoot{display:flex;justify-content:space-between;align-items:center;padding:14px 16px;gap:10px}
+
+  /* ---- events page (view 5) ---- */
+  .split{display:grid;grid-template-columns:1.35fr 1fr;gap:16px}
+  .frame.phone .split{grid-template-columns:1fr}
+  .detail{border:1px solid var(--phos-dim);background:var(--panel2);padding:14px}
+  .field{margin-bottom:11px}
+  .field .k{font-size:11px;letter-spacing:2px;color:var(--phos-mid);margin-bottom:3px}
+  .field .v{border:1px solid var(--phos-mid);background:#000;padding:8px 10px;font-size:15px;color:var(--phos)}
+  .field .v.green{color:var(--phos);border-color:var(--phos-dim);box-shadow:0 0 10px var(--phos-faint)}
+  .toggle{display:inline-flex;align-items:center;gap:8px;font-size:14px}
+  .sw{width:44px;height:22px;border:1px solid var(--phos-dim);border-radius:12px;position:relative;flex-shrink:0}
+  .sw::after{content:"";position:absolute;top:2px;width:16px;height:16px;border-radius:50%;background:var(--phos)}
+  .sw.on{background:rgba(0,255,65,.18)}
+  .sw.on::after{right:2px;left:auto}
+  .sw.off::after{left:2px;background:var(--phos-mid)}
+  .statsline{font-size:12px;color:var(--amber);letter-spacing:1px;margin-top:3px}
+
+  /* ---- view switcher ---- */
+  .switch{position:fixed;bottom:0;left:0;right:0;z-index:200;background:#000;border-top:1px solid var(--phos-dim);
+    display:flex;gap:6px;justify-content:center;flex-wrap:wrap;padding:10px 12px}
+  .switch button{font-family:'Share Tech Mono';font-size:12px;letter-spacing:1px;color:var(--phos-dim);
+    background:transparent;border:1px solid var(--phos-mid);padding:8px 12px;cursor:pointer}
+  .switch button:hover{color:var(--phos)}
+  .switch button.cur{color:#000;background:var(--phos);border-color:var(--phos);font-weight:700}
+
+  .view{display:none;flex-direction:column;align-items:center;gap:14px;width:100%}
+  .view.on{display:flex}
+
+  @media (max-width:640px){
+    .frame.desktop{width:97vw}
+    .grid2,.grid3,.quickrow,.split{grid-template-columns:1fr !important}
+    .navrow{flex-wrap:wrap}
+  }
+</style>
+</head>
+<body>
+
+<div class="pagehead">
+  <h1>▚ STAFF IA + SIGNAGE HUB — PROPOSAL</h1>
+  <p>How the staff shell reorganizes by <b style="color:var(--phos)">what system you're in</b> (Trivia vs Bar Ops), and how Signage becomes a live hub where a manager promos a drink or schedules a message in minutes. Static mockup for reaction — no code written yet.</p>
+</div>
+
+<div class="viewcap" id="viewcap"></div>
+
+<!-- ══════════════ VIEW 1 — DESKTOP NAV · TRIVIA ══════════════ -->
+<div class="view on" id="v1">
+  <div class="frame desktop">
+    <div class="navbar">
+      <div class="navrow">
+        <span class="brand">▚ BUNKER OS</span>
+        <span class="sect">HOME</span>
+        <span class="sect on">TRIVIA</span>
+        <span class="sect">BAR OPS</span>
+        <span class="sect">SYSTEM</span>
+        <span class="navspacer"></span>
+        <span class="who">VIEWING AS ADMIN</span>
+        <button class="signout">SIGN OUT</button>
+      </div>
+      <div class="subrow">
+        <span class="kick">TRIVIA ▸</span>
+        <span class="subitem on">SCORING</span>
+        <span class="subitem">GAME SETUP</span>
+        <span class="subitem">TEAMS</span>
+        <span class="subitem">HISTORY</span>
+        <span class="subitem">SEASONS</span>
+      </div>
+    </div>
+    <div class="scroll"><div class="body">
+      <div class="eyebrow">TRIVIA ▸ SCORING</div>
+      <div class="placeholder"><span class="big">SCORING GRID</span>the page content lives here — this mockup is about the nav above</div>
+      <hr class="divider">
+      <div class="callout"><span>Top tier = <b>which system am I in</b> (Trivia · Bar Ops · System), not a flat list of pages. The active section fills green and reveals its children in the sub-nav row.</span></div>
+      <div class="callout"><span><b>SEASONS moves under TRIVIA</b> — it ranks trivia seasons, so it belongs with the trivia tools, not floating at the top level.</span></div>
+      <div class="callout"><span>The shell is built to grow: sections can gain more children (Signage already will) without the top bar ever getting crowded.</span></div>
+    </div></div>
+  </div>
+</div>
+
+<!-- ══════════════ VIEW 2 — DESKTOP · BAR OPS + SIGNAGE HUB ══════════════ -->
+<div class="view" id="v2">
+  <div class="frame desktop">
+    <div class="navbar">
+      <div class="navrow">
+        <span class="brand">▚ BUNKER OS</span>
+        <span class="sect">HOME</span>
+        <span class="sect">TRIVIA</span>
+        <span class="sect on">BAR OPS</span>
+        <span class="sect">SYSTEM</span>
+        <span class="navspacer"></span>
+        <span class="who">VIEWING AS ADMIN</span>
+        <button class="signout">SIGN OUT</button>
+      </div>
+      <div class="subrow">
+        <span class="kick">BAR OPS ▸</span>
+        <span class="subitem on">SIGNAGE HUB</span>
+        <span class="subitem">EVENTS &amp; PROMOS</span>
+        <span class="subitem">BROADCAST</span>
+        <span class="subitem">TOP SELLERS <span class="note">(was “DRINKS”)</span></span>
+      </div>
+    </div>
+    <div class="scroll"><div class="body">
+
+      <div class="callout amber" style="margin:0 0 14px"><span><b>DRINKS</b> renamed → <b>TOP SELLERS</b>. The old label read like “edit the advertised drinks,” but it configures the sales-rank TV board — which covers drinks, food, and merch alike. Task-named labels throughout.</span></div>
+
+      <!-- ON AIR NOW -->
+      <div class="h2">◉ ON AIR NOW <span class="tag">what the room is showing this second</span></div>
+      <div class="grid2">
+        <div class="screen">
+          <div class="top"><span class="nm">PORTRAIT MAIN</span><span class="dot live">● LIVE</span></div>
+          <div><span class="mode">MODE: ROTATION</span></div>
+          <div class="rot"><em>6 items rotating:</em> Atomic Old Fashioned · Green Tea Shot · Trivia Wednesdays · <span style="opacity:.7">+3 more</span></div>
+          <div class="miniacts">
+            <button class="mini">PREVIEW</button>
+            <button class="mini key">EDIT ROTATION</button>
+            <button class="mini">COPY KIOSK URL</button>
+          </div>
+        </div>
+        <div class="screen">
+          <div class="top"><span class="nm">LANDSCAPE BAR</span><span class="dot live">● LIVE</span></div>
+          <div><span class="mode game">MODE: LIVE GAME</span></div>
+          <div class="rot"><em>Showing the game display</em> — Round 3 standings. <span style="opacity:.7">Returns to rotation automatically when the game ends.</span></div>
+          <div class="miniacts">
+            <button class="mini">PREVIEW</button>
+            <button class="mini key">EDIT ROTATION</button>
+            <button class="mini">COPY KIOSK URL</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- QUICK ACTIONS -->
+      <div class="quickrow" style="margin-top:16px">
+        <button class="qbtn solid">★ PROMO A DRINK</button>
+        <button class="qbtn">📅 SCHEDULE A MESSAGE</button>
+        <button class="qbtn">📢 BROADCAST NOW</button>
+      </div>
+      <div class="qcap">THE MANAGER TEST — promo a drink or schedule a message in minutes.</div>
+
+      <!-- RUNNING & UPCOMING -->
+      <div class="h2" style="margin-top:22px">RUNNING &amp; UPCOMING <span class="tag">promos &amp; events, live and scheduled</span></div>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <div class="schedrow">
+          <div class="main"><div class="nm">HAPPY HOUR</div><div class="when">daily 4–7 PM</div></div>
+          <span class="typebadge">WINDOW</span>
+          <span class="status now">● ACTIVE NOW — ends 7:00 PM</span>
+          <div class="rowacts"><button class="ib">❚❚</button><button class="ib">EDIT</button></div>
+        </div>
+        <div class="schedrow">
+          <div class="main"><div class="nm">FREE HOT DOGS W/ ANY DRINK</div><div class="when">Mondays 4 PM–close</div></div>
+          <span class="typebadge">WINDOW</span>
+          <span class="status up">next MON 4:00 PM</span>
+          <div class="rowacts"><button class="ib">❚❚</button><button class="ib">EDIT</button></div>
+        </div>
+        <div class="schedrow">
+          <div class="main"><div class="nm">BIRTHDAY: DELILAH R.</div><div class="when">Jul 26 · 4–6 PM</div></div>
+          <span class="typebadge msg">MESSAGE</span>
+          <span class="status one">one-shot</span>
+          <div class="rowacts"><button class="ib">❚❚</button><button class="ib">EDIT</button></div>
+        </div>
+        <div class="schedrow">
+          <div class="main"><div class="nm">MIDNIGHT LAUNCH · ROCKET SAUCE</div><div class="when">Fri + Sat 12:00 AM · stage engine: tease → alert → moment</div></div>
+          <span class="typebadge moment">MOMENT</span>
+          <span class="status up">next FRI 12:00 AM</span>
+          <div class="rowacts"><button class="ib">❚❚</button><button class="ib">EDIT</button></div>
+        </div>
+      </div>
+
+      <!-- FEATURED ON POS -->
+      <div class="h2" style="margin-top:22px">★ FEATURED ON POS <span class="tag">read-only — flipped at the register</span></div>
+      <div class="grid3">
+        <div class="chip"><span class="thumb"></span><span class="cn">Atomic Old Fashioned</span><span class="cp">$9</span></div>
+        <div class="chip"><span class="thumb"></span><span class="cn">Green Tea Shot</span><span class="cp">$5</span></div>
+        <div class="chip"><span class="thumb"></span><span class="cn">Sputnik</span><span class="badge-hidden">POS-HIDDEN</span></div>
+      </div>
+
+      <hr class="divider">
+      <div class="callout"><span><b>The landing = what the room looks like RIGHT NOW.</b> Screens first, then the actions to change them, then everything scheduled — you never wonder what's on the TVs.</span></div>
+      <div class="callout"><span>The old per-slot templater becomes <b>EDIT ROTATION</b>, one level down, scoped to a single screen. Signage grows children under BAR OPS without cluttering the hub.</span></div>
+    </div></div>
+  </div>
+</div>
+
+<!-- ══════════════ VIEW 3 — MOBILE NAV DRAWER ══════════════ -->
+<div class="view" id="v3">
+  <div class="frame phone">
+    <div class="navbar">
+      <div class="navrow" style="padding:9px 14px">
+        <span class="brand" style="font-size:20px">▚ BUNKER OS</span>
+        <span class="navspacer"></span>
+        <button class="signout" style="background:var(--phos);color:#000;border-color:var(--phos)">▟ CLOSE</button>
+      </div>
+    </div>
+    <div class="scroll"><div class="drawer">
+      <div class="dlink home">HOME</div>
+
+      <div class="dsect">TRIVIA</div>
+      <div class="dlink sub">SCORING</div>
+      <div class="dlink sub">GAME SETUP</div>
+      <div class="dlink sub">TEAMS</div>
+      <div class="dlink sub">HISTORY</div>
+      <div class="dlink sub">SEASONS</div>
+
+      <div class="dsect">BAR OPS</div>
+      <div class="dlink sub on">SIGNAGE HUB</div>
+      <div class="dlink sub">EVENTS &amp; PROMOS</div>
+      <div class="dlink sub">BROADCAST</div>
+      <div class="dlink sub">TOP SELLERS</div>
+
+      <div class="dsect">SYSTEM</div>
+      <div class="dlink sub">USERS</div>
+      <div class="dlink sub">SETTINGS</div>
+
+      <div class="dfoot">
+        <span style="font-size:13px;color:var(--phos-dim);letter-spacing:1px">VIEWING AS ADMIN</span>
+        <button class="signout">SIGN OUT</button>
+      </div>
+    </div></div>
+  </div>
+  <div class="callout" style="max-width:390px"><span>Same grouping on the phone. Sections are <b>headers, not accordions</b> — one thumb-scroll shows everything at once. HOME pinned at top, VIEWING AS + SIGN OUT at the bottom.</span></div>
+</div>
+
+<!-- ══════════════ VIEW 4 — MOBILE SIGNAGE HUB ══════════════ -->
+<div class="view" id="v4">
+  <div class="frame phone">
+    <div class="navbar">
+      <div class="navrow" style="padding:9px 14px">
+        <span class="brand" style="font-size:20px">▚ BUNKER OS</span>
+        <span class="navspacer"></span>
+        <span style="font-size:15px;color:var(--phos-dim)">▸ SIGNAGE HUB</span>
+        <span style="width:8px"></span>
+        <button class="signout" style="min-height:34px">▚ MENU</button>
+      </div>
+    </div>
+    <div class="scroll"><div class="body">
+      <div class="eyebrow">BAR OPS ▸ SIGNAGE HUB</div>
+
+      <div class="h2" style="font-size:22px">◉ ON AIR NOW</div>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div class="screen">
+          <div class="top"><span class="nm" style="font-size:21px">PORTRAIT MAIN</span><span class="dot live">● LIVE</span></div>
+          <div><span class="mode">ROTATION</span></div>
+          <div class="rot"><em>6 items</em> · Atomic Old Fashioned · Green Tea Shot · +4</div>
+          <div class="miniacts">
+            <button class="mini">PREVIEW</button>
+            <button class="mini key">EDIT ROTATION</button>
+            <button class="mini">COPY URL</button>
+          </div>
+        </div>
+        <div class="screen">
+          <div class="top"><span class="nm" style="font-size:21px">LANDSCAPE BAR</span><span class="dot live">● LIVE</span></div>
+          <div><span class="mode game">LIVE GAME</span></div>
+          <div class="rot">Showing the game display · returns to rotation when it ends.</div>
+          <div class="miniacts">
+            <button class="mini">PREVIEW</button>
+            <button class="mini key">EDIT ROTATION</button>
+            <button class="mini">COPY URL</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="quickrow" style="margin-top:14px">
+        <button class="qbtn solid">★ PROMO A DRINK</button>
+        <button class="qbtn">📅 SCHEDULE A MESSAGE</button>
+        <button class="qbtn">📢 BROADCAST NOW</button>
+      </div>
+      <div class="qcap">promo or schedule in minutes — from your phone at the bar</div>
+
+      <div class="h2" style="font-size:22px;margin-top:18px">RUNNING &amp; UPCOMING</div>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <div class="schedrow">
+          <div class="main"><div class="nm" style="font-size:19px">HAPPY HOUR</div><div class="when">daily 4–7 PM · <span style="color:var(--phos)">● NOW, ends 7:00</span></div></div>
+          <span class="typebadge">WINDOW</span>
+          <div class="rowacts"><button class="ib">EDIT</button></div>
+        </div>
+        <div class="schedrow">
+          <div class="main"><div class="nm" style="font-size:19px">FREE HOT DOGS</div><div class="when">Mondays 4 PM–close · next MON</div></div>
+          <span class="typebadge">WINDOW</span>
+          <div class="rowacts"><button class="ib">EDIT</button></div>
+        </div>
+        <div class="schedrow">
+          <div class="main"><div class="nm" style="font-size:19px">BIRTHDAY: DELILAH R.</div><div class="when">Jul 26 · 4–6 PM · one-shot</div></div>
+          <span class="typebadge msg">MESSAGE</span>
+          <div class="rowacts"><button class="ib">EDIT</button></div>
+        </div>
+        <div class="schedrow">
+          <div class="main"><div class="nm" style="font-size:19px">MIDNIGHT LAUNCH</div><div class="when">Fri+Sat 12 AM · tease→alert→moment</div></div>
+          <span class="typebadge moment">MOMENT</span>
+          <div class="rowacts"><button class="ib">EDIT</button></div>
+        </div>
+      </div>
+    </div></div>
+  </div>
+  <div class="callout" style="max-width:390px"><span>The owner's primary surface — bar ops runs from his phone. Same hub, single column, full-width actions, ≥44px targets.</span></div>
+</div>
+
+<!-- ══════════════ VIEW 5 — EVENTS & PROMOS PAGE ══════════════ -->
+<div class="view" id="v5">
+  <div class="frame desktop">
+    <div class="navbar">
+      <div class="navrow">
+        <span class="brand">▚ BUNKER OS</span>
+        <span class="sect">HOME</span>
+        <span class="sect">TRIVIA</span>
+        <span class="sect on">BAR OPS</span>
+        <span class="sect">SYSTEM</span>
+        <span class="navspacer"></span>
+        <span class="who">VIEWING AS ADMIN</span>
+        <button class="signout">SIGN OUT</button>
+      </div>
+      <div class="subrow">
+        <span class="kick">BAR OPS ▸</span>
+        <span class="subitem">SIGNAGE HUB</span>
+        <span class="subitem on">EVENTS &amp; PROMOS</span>
+        <span class="subitem">BROADCAST</span>
+        <span class="subitem">TOP SELLERS</span>
+      </div>
+    </div>
+    <div class="scroll"><div class="body">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+        <div class="h2" style="margin:0">EVENTS &amp; PROMOS <span class="tag">first-class scheduled objects</span></div>
+        <button class="qbtn solid" style="min-height:44px;font-size:20px;padding:8px 18px;flex:0">+ NEW</button>
+      </div>
+      <hr class="divider" style="margin:14px 0 16px">
+
+      <div class="split">
+        <!-- LIST -->
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <div class="schedrow" style="border-color:var(--phos-dim);background:var(--panel2)">
+            <div class="main"><div class="nm">HAPPY HOUR</div><div class="when">daily 4–7 PM</div></div>
+            <span class="typebadge">WINDOW</span>
+            <span class="status now">● ACTIVE</span>
+          </div>
+          <div class="schedrow">
+            <div class="main"><div class="nm">FREE HOT DOGS W/ ANY DRINK</div><div class="when">Mondays 4 PM–close</div></div>
+            <span class="typebadge">WINDOW</span>
+            <span class="status up">next MON</span>
+          </div>
+          <div class="schedrow">
+            <div class="main"><div class="nm">BIRTHDAY: DELILAH R.</div><div class="when">Jul 26 · 4–6 PM</div></div>
+            <span class="typebadge msg">MESSAGE</span>
+            <span class="status one">one-shot</span>
+          </div>
+          <div class="schedrow">
+            <div class="main"><div class="nm">MIDNIGHT LAUNCH · ROCKET SAUCE</div><div class="when">Fri + Sat 12:00 AM</div></div>
+            <span class="typebadge moment">MOMENT</span>
+            <span class="status up">next FRI</span>
+          </div>
+          <div class="schedrow" style="opacity:.72">
+            <div class="main">
+              <div class="nm">WORLD CUP WATCH PARTY</div>
+              <div class="when">completed · Jun 14 3–6 PM</div>
+              <div class="statsline">LAST RUN: 47 sold · +31% vs avg night</div>
+            </div>
+            <span class="typebadge moment">MOMENT</span>
+            <span class="status" style="color:var(--phos-mid)">DONE</span>
+          </div>
+        </div>
+
+        <!-- DETAIL -->
+        <div class="detail">
+          <div class="eyebrow">EDITING</div>
+          <div style="font-family:'VT323',monospace;font-size:26px;letter-spacing:1px;margin-bottom:12px">HAPPY HOUR</div>
+          <div class="field"><div class="k">NAME</div><div class="v">Happy Hour</div></div>
+          <div class="field"><div class="k">WINDOW</div><div class="v">daily · 4:00 – 7:00 PM</div></div>
+          <div class="field"><div class="k">WHAT SHOWS</div><div class="v">signage card + ticker line</div></div>
+          <div class="field"><div class="k">DRINK LINK (optional) — live price</div><div class="v green">Atomic Old Fashioned · $9 · in stock</div></div>
+          <div class="field" style="display:flex;justify-content:space-between;align-items:center">
+            <div class="k" style="margin:0">INTERRUPT GAME?</div>
+            <span class="toggle"><span class="sw off"></span> OFF</span>
+          </div>
+          <div class="field" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0">
+            <div class="k" style="margin:0">STATUS</div>
+            <span class="toggle"><span class="sw on"></span> ● ACTIVE</span>
+          </div>
+        </div>
+      </div>
+
+      <hr class="divider">
+      <div class="callout"><span><b>Promos are first-class objects</b> — schedule once and they run themselves. Recurrence re-arms server-side (pg_cron), so “Mondays” or “Fri + Sat” just keep happening.</span></div>
+      <div class="callout"><span><b>WINDOW</b> promos are calm — the card quietly joins the rotation and adds a ticker line for the window. <b>MOMENT</b> events fire the stage engine (tease → alert → moment → all-clear) from docs/13.</span></div>
+    </div></div>
+  </div>
+</div>
+
+<!-- ══════════════ VIEW SWITCHER ══════════════ -->
+<div class="switch" id="switch">
+  <button data-v="v1" class="cur">1 · DESKTOP NAV — TRIVIA</button>
+  <button data-v="v2">2 · BAR OPS + SIGNAGE HUB</button>
+  <button data-v="v3">3 · MOBILE DRAWER</button>
+  <button data-v="v4">4 · MOBILE SIGNAGE HUB</button>
+  <button data-v="v5">5 · EVENTS &amp; PROMOS</button>
+</div>
+
+<script>
+const CAPS = {
+  v1:'VIEW 1 · <b>Desktop staff nav — Trivia section</b>',
+  v2:'VIEW 2 · <b>Bar Ops section + the Signage Hub landing</b>',
+  v3:'VIEW 3 · <b>Mobile nav drawer (390px) — grouped by system</b>',
+  v4:'VIEW 4 · <b>Mobile Signage Hub (390px) — the owner’s primary surface</b>',
+  v5:'VIEW 5 · <b>Events &amp; Promos — first-class scheduled objects</b>',
+};
+const cap = document.getElementById('viewcap');
+function show(v){
+  document.querySelectorAll('.view').forEach(el=>el.classList.toggle('on', el.id===v));
+  document.querySelectorAll('#switch button').forEach(b=>b.classList.toggle('cur', b.dataset.v===v));
+  cap.innerHTML = CAPS[v];
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+document.querySelectorAll('#switch button').forEach(b=>b.addEventListener('click',()=>{location.hash=b.dataset.v;show(b.dataset.v);}));
+window.addEventListener('hashchange',()=>{const v=location.hash.slice(1); if(CAPS[v]) show(v);});
+show(CAPS[location.hash.slice(1)] ? location.hash.slice(1) : 'v1');
+</script>
+</body>
+</html>
