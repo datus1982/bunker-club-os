@@ -49,8 +49,10 @@ const GameDisplay = namedLazy(triviaRoutes, "GameDisplay");
 const DrinksDisplay = namedLazy(leaderboardRoutes, "DrinksDisplay");
 const DrinksAdmin = namedLazy(leaderboardRoutes, "DrinksAdmin");
 
-// Signage templater + public slot display.
-const SignageAdmin = namedLazy(signageRoutes, "SignageAdmin");
+// Signage hub + child pages (edit-rotation, broadcast) + public slot display.
+const SignageHub = namedLazy(signageRoutes, "SignageHub");
+const EditRotation = namedLazy(signageRoutes, "EditRotation");
+const Broadcast = namedLazy(signageRoutes, "Broadcast");
 const SlotDisplay = namedLazy(signageRoutes, "SlotDisplay");
 
 // Admin shell (dashboard, persistent staff layout, users).
@@ -179,7 +181,9 @@ export function App() {
         <Route path="/settings" element={<RequireRole role="admin"><Settings /></RequireRole>} />
 
         {/* Module surfaces — each gated on its own grant; seasons stays admin-only */}
-        <Route path="/signage" element={<RequireModule module="signage"><SignageAdmin /></RequireModule>} />
+        <Route path="/signage" element={<RequireModule module="signage"><SignageHub /></RequireModule>} />
+        <Route path="/signage/screens/:slug" element={<RequireModule module="signage"><EditRotation /></RequireModule>} />
+        <Route path="/signage/broadcast" element={<RequireModule module="signage"><Broadcast /></RequireModule>} />
         <Route path="/admin/drinks" element={<RequireModule module="drinks"><DrinksAdmin /></RequireModule>} />
         <Route path="/admin/seasons" element={<RequireRole role="admin"><SeasonsAdmin /></RequireRole>} />
         <Route path="/admin/users" element={<RequireRole role="admin"><Users /></RequireRole>} />

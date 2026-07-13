@@ -31,17 +31,20 @@ const SKINS = ["birthday", "bachelor", "bachelorette", "anniversary", "congrats"
 const DOW = ["SU", "MO", "TU", "WE", "TH", "FR", "SA"];
 
 export function ItemEditor({
-  slots, toastRows, defaultSlotId, editing, nextSortOrder, onClose, onSaved,
+  slots, toastRows, defaultSlotId, editing, presetTemplate, nextSortOrder, onClose, onSaved,
 }: {
   slots: AdminSlot[];
   toastRows: ToastCacheRow[];
   defaultSlotId: string | null;
   editing: AdminItem | null;
+  /** Skip the template picker and open straight into this template (hub quick actions).
+   *  Only applies when creating (editing === null); editing always uses its own template. */
+  presetTemplate?: Template | null;
   nextSortOrder: (slotId: string | null) => number;
   onClose: () => void;
   onSaved: () => void;
 }) {
-  const [template, setTemplate] = useState<Template | null>(editing?.template ?? null);
+  const [template, setTemplate] = useState<Template | null>(editing?.template ?? presetTemplate ?? null);
 
   if (!template) {
     return (

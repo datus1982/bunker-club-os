@@ -70,6 +70,19 @@ export interface LiveGame {
   status: "active" | "paused";
 }
 
+/** The three modes a slot can resolve to, highest priority first. */
+export type SlotMode = "takeover" | "game" | "rotation";
+
+/**
+ * The mode ladder EVERY slot resolves by (docs/09): an active takeover overrides
+ * everything; else a live game shows the trivia board; else the authored rotation.
+ * Extracted here so the staff Signage Hub reports the exact same precedence the public
+ * SlotDisplay renders — one source of truth, never a second copy of the ladder.
+ */
+export function resolveSlotMode(opts: { takeover: boolean; liveGame: boolean }): SlotMode {
+  return opts.takeover ? "takeover" : opts.liveGame ? "game" : "rotation";
+}
+
 const SCREENS_GROUP = "★ SCREENS";
 
 /** Everything the slot page needs, keyed by slug. */

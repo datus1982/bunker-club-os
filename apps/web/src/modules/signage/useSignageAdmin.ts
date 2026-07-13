@@ -76,6 +76,38 @@ export function useAdminSlots() {
   });
 }
 
+export interface LiveGameRow {
+  id: string;
+  status: "active" | "paused";
+  game_date: string | null;
+}
+
+/** The venue's live game resolved EXACTLY as the public SlotDisplay resolves it
+ *  (useSignage.ts liveGame query): status active/paused, venue-wide, date IGNORED.
+ *  The hub MUST source game-mode from this — NOT useTonight() (which is tonight-only by
+ *  venue date) — so the MODE chip can never disagree with what the screens actually show.
+ *  A stale `active` game left over from a past date (this venue has hit exactly that) still
+ *  pins every screen into game mode; the hub surfaces that date rather than hiding it. */
+export function useLiveGame() {
+  return useQuery({
+    queryKey: ["signage-admin", "live-game"],
+    // No sub-30s poll (docs/01) — game start/stop arrives via realtime elsewhere; this
+    // slow poll just re-confirms a stale-active game hasn't been cleared out-of-band.
+    refetchInterval: 60_000,
+    queryFn: async (): Promise<LiveGameRow | null> => {
+      const { data, error } = await supabase
+        .from("games")
+        .select("id, status, game_date")
+        .eq("venue_id", VENUE_ID)
+        .in("status", ["active", "paused"])
+        .limit(1)
+        .maybeSingle();
+      if (error) throw error;
+      return (data as LiveGameRow | null) ?? null;
+    },
+  });
+}
+
 export function useAllItems() {
   const qc = useQueryClient();
   const q = useQuery({
@@ -132,6 +164,36 @@ export function useTakeovers() {
   }, [qc]);
 
   return q;
+}
+
+/** A row of the events table (docs/13). The stage engine that fires these lands in the
+ *  events task; the hub only READS them for the RUNNING & UPCOMING strip today. */
+export interface ScheduledEvent {
+  id: string;
+  name: string;
+  skin: string;
+  fire_at: string | null;
+  recurrence: { daysOfWeek?: string[]; time?: string } | null;
+  interrupt_game: boolean;
+  status: "scheduled" | "running" | "completed" | "aborted" | "disabled";
+}
+
+/** scheduled_events for this venue (read-only). public_read grants SELECT (0011); the
+ *  events engine writes them later. Empty today — the hub renders the honest empty state. */
+export function useScheduledEvents() {
+  return useQuery({
+    queryKey: ["signage-admin", "events"],
+    refetchInterval: 60_000,
+    queryFn: async (): Promise<ScheduledEvent[]> => {
+      const { data, error } = await supabase
+        .from("scheduled_events")
+        .select("id, name, skin, fire_at, recurrence, interrupt_game, status")
+        .eq("venue_id", VENUE_ID)
+        .order("fire_at", { nullsFirst: false });
+      if (error) throw error;
+      return (data ?? []) as ScheduledEvent[];
+    },
+  });
 }
 
 export function activeTakeover(list: AdminTakeover[], now = Date.now()): AdminTakeover | null {

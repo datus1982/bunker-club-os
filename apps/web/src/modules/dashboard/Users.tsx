@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase, VENUE_ID } from "@/shared/supabaseClient";
 import type { ModuleKey, StaffRole } from "@/shared/useRole";
+import { moduleLabel } from "@/shared/moduleLabels";
 import { useIsMobile } from "@/shared/useIsMobile";
 
 /**
@@ -120,7 +121,7 @@ export function Users() {
               <tr>
                 <th style={th}>EMAIL</th>
                 <th style={th}>ROLE</th>
-                {ALL_MODULES.map((m) => <th key={m} style={{ ...th, textAlign: "center" }}>{m.toUpperCase()}</th>)}
+                {ALL_MODULES.map((m) => <th key={m} style={{ ...th, textAlign: "center" }}>{moduleLabel(m)}</th>)}
                 <th style={th}></th>
               </tr>
             </thead>

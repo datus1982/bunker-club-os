@@ -50,6 +50,15 @@
   font-family: 'VT323', 'Share Tech Mono', monospace;
 }
 
+/* Staff tool surfaces favor crispness over phosphor bloom — the 5px glow reads
+   blurry on large headers at phone/laptop distance (owner feedback, PR #12).
+   Public displays (not under StaffLayout) keep the full glow for TV distance.
+   `.staff-ui .terminal-theme` also covers pages that re-wrap themselves. */
+.staff-ui.terminal-theme,
+.staff-ui .terminal-theme {
+  text-shadow: 0 0 2px rgba(0, 255, 65, 0.3);
+}
+
 /* ===== CRT EFFECTS ===== */
 
 /* CRT Scanline Effect */

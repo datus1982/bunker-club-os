@@ -4,7 +4,7 @@ import { DisplayCanvas } from "@/shared/DisplayCanvas";
 import { supabase } from "@/shared/supabaseClient";
 import { LeaderboardBoard } from "@/modules/trivia/Leaderboard";
 import { GameDisplayBoard } from "@/modules/trivia/GameDisplay";
-import { useSlot, resolveRotation, type SignageItem, type Slot, type Takeover, type ToastCacheRow } from "./useSignage";
+import { useSlot, resolveRotation, resolveSlotMode, type SignageItem, type Slot, type SlotMode, type Takeover, type ToastCacheRow } from "./useSignage";
 import { useTicker, type TickerLine } from "./useTicker";
 import { TemplateView } from "./SignageTemplates";
 import "./signage.css";
@@ -56,7 +56,7 @@ export function SlotDisplay() {
   );
 }
 
-type Mode = "takeover" | "game" | "rotation";
+type Mode = SlotMode;
 
 function SlotScreen({
   slot, venueName, timezone, items, takeover, liveGameId, toast,
@@ -86,7 +86,7 @@ function SlotScreen({
 
   const activeTakeover = preview ? null : takeover;
   const gameOn = preview ? false : !!liveGameId;
-  const mode: Mode = activeTakeover ? "takeover" : gameOn ? "game" : "rotation";
+  const mode: Mode = resolveSlotMode({ takeover: !!activeTakeover, liveGame: gameOn });
 
   // Ink: game → green; takeover inherits the ink underneath (green if a game is live,
   // else amber); rotation → amber ambient. (docs/09 color-state)
