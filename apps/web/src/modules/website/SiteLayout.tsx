@@ -111,12 +111,21 @@ export function SiteLayout({ active, children }: { active: PageId; children: Rea
             <div>
               <h2>Follow</h2>
               <div className="site-footer__socials">
-                <a href={copy?.socials.instagram || "#"} target="_blank" rel="noreferrer noopener">
-                  Instagram
-                </a>
-                <a href={copy?.socials.facebook || "#"} target="_blank" rel="noreferrer noopener">
-                  Facebook
-                </a>
+                {copy?.socials.instagram && copy.socials.instagram !== "#" && (
+                  <a href={copy.socials.instagram} target="_blank" rel="noreferrer noopener">
+                    Instagram
+                  </a>
+                )}
+                {copy?.socials.facebook && copy.socials.facebook !== "#" && (
+                  <a href={copy.socials.facebook} target="_blank" rel="noreferrer noopener">
+                    Facebook
+                  </a>
+                )}
+                {copy?.socials.tiktok && copy.socials.tiktok !== "#" && (
+                  <a href={copy.socials.tiktok} target="_blank" rel="noreferrer noopener">
+                    TikTok
+                  </a>
+                )}
               </div>
             </div>
           </div>

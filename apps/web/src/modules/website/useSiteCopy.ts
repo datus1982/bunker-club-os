@@ -21,7 +21,7 @@ export type SiteAddress = {
   lat?: number;
   lng?: number;
 };
-export type SiteSocials = { instagram?: string; facebook?: string };
+export type SiteSocials = { instagram?: string; facebook?: string; tiktok?: string };
 
 export type SiteCopy = {
   heroTitle: string;
@@ -38,13 +38,13 @@ const FALLBACK: SiteCopy = {
   heroSub:
     "A shelter for the thirsty on NW 23rd. Cold drinks, warm company, and Atomic Pub Trivia every Wednesday night.",
   hours: {
-    mon: null,
+    mon: { open: "16:00", close: "02:00" },
     tue: { open: "16:00", close: "02:00" },
     wed: { open: "16:00", close: "02:00" },
     thu: { open: "16:00", close: "02:00" },
     fri: { open: "16:00", close: "02:00" },
     sat: { open: "16:00", close: "02:00" },
-    sun: { open: "16:00", close: "00:00" },
+    sun: { open: "16:00", close: "02:00" },
   },
   address: {
     line1: "433 NW 23rd St",
@@ -56,7 +56,11 @@ const FALLBACK: SiteCopy = {
   },
   parking:
     "Street parking runs along NW 23rd and the side streets. Ride-share drop-off is easiest right out front.",
-  socials: { instagram: "#", facebook: "#" },
+  socials: {
+    instagram: "https://instagram.com/bunkerclubokc",
+    facebook: "https://facebook.com/bunkerclubokc",
+    tiktok: "https://tiktok.com/@bunkerclubokc",
+  },
   about: [
     "Bunker Club is a neighborhood bar on NW 23rd Street in Oklahoma City.",
   ],
@@ -125,7 +129,8 @@ export function dayLabel(k: DayKey): string {
   return DAY_LABEL[k];
 }
 
-/** "16:00" → "4:00 PM"; "02:00" → "2:00 AM". Robust to bad input. */
+/** "16:00" → "4 PM"; "16:30" → "4:30 PM"; "02:00" → "2 AM". On-the-hour times drop
+ *  the ":00" for cleaner marketing copy. Robust to bad input. */
 export function fmtTime(hhmm: string): string {
   const m = /^(\d{1,2}):(\d{2})$/.exec(hhmm.trim());
   if (!m) return hhmm;
@@ -134,7 +139,7 @@ export function fmtTime(hhmm: string): string {
   const ampm = h >= 12 ? "PM" : "AM";
   h = h % 12;
   if (h === 0) h = 12;
-  return `${h}:${min} ${ampm}`;
+  return min === "00" ? `${h} ${ampm}` : `${h}:${min} ${ampm}`;
 }
 
 export function fmtHours(dh: DayHours): string {

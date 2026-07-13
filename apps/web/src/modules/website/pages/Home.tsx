@@ -64,7 +64,7 @@ export function Home() {
             closes: h.close,
           };
         }),
-        sameAs: [copy.socials.instagram, copy.socials.facebook].filter(
+        sameAs: [copy.socials.instagram, copy.socials.facebook, copy.socials.tiktok].filter(
           (u): u is string => !!u && u !== "#",
         ),
       }
