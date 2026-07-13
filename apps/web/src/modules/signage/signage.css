@@ -89,7 +89,40 @@
   opacity: 0.85;
 }
 
+/* ── Event stages (docs/13 / event-choreography-mockup) ─────────────────────── */
+.evt-stage {
+  color: var(--terminal-green);
+}
+/* Hazard stripe frame for the infestation skin's ALERT stage. */
+.evt-hazard-frame {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border: 18px solid transparent;
+  border-image: repeating-linear-gradient(45deg, var(--terminal-green) 0 20px, #000 20px 40px) 18;
+}
+/* Inverse-video pulse for the final 10s of the ALERT countdown. FINITE — a bounded
+   10-iteration animation (10 × 1s = 10s), NOT `infinite` (display perf rule). The
+   class is only applied while remaining ≤ 10s, so React never restarts it mid-run. */
+.evt-alert-pulse {
+  animation: evtAlertPulse 1s steps(1, end) 10;
+}
+@keyframes evtAlertPulse {
+  0%, 100% { background: transparent; color: var(--terminal-green); }
+  50% { background: var(--terminal-green); color: #000; }
+}
+/* MOMENT payoff icon lift — one-shot on entry, then rests (no loop). */
+.evt-liftoff {
+  animation: evtLiftoff 900ms ease-out;
+}
+@keyframes evtLiftoff {
+  from { transform: translateY(24px) scale(0.9); opacity: 0; }
+  to { transform: translateY(0) scale(1); opacity: 1; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .sig-enter,
-  .sig-boot { animation: none; }
+  .sig-boot,
+  .evt-alert-pulse,
+  .evt-liftoff { animation: none; }
 }

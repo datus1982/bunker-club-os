@@ -1,5 +1,6 @@
 import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import type { Orientation, SignageItem, ToastCacheRow } from "./useSignage";
+import { EventWindowCard, EventMessageCard, EventTeaseCard } from "./EventStages";
 
 /**
  * Signage template components (docs/09). Each renders one item inside the slot's
@@ -224,6 +225,10 @@ export function TemplateView(props: TemplateProps) {
     case "announcement": return <Announcement {...props} />;
     case "image_only": return <ImageOnly {...props} />;
     case "celebration": return <Celebration {...props} />;
+    // Phase 7 rotation-level event cards (docs/13) — materialized from a live event.
+    case "event_window": return <EventWindowCard item={props.item} toast={props.toast} orientation={props.orientation} />;
+    case "event_message": return <EventMessageCard item={props.item} toast={props.toast} orientation={props.orientation} />;
+    case "event_tease": return props.item.event ? <EventTeaseCard event={props.item.event} orientation={props.orientation} /> : null;
     default: return null;
   }
 }
