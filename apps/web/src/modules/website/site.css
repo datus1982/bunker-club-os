@@ -257,10 +257,36 @@
       rgba(255, 176, 0, 0.05) 38px, rgba(255, 176, 0, 0.05) 40px);
   pointer-events: none;
 }
-.site-hero__inner { position: relative; }
+/* Owner interior photo behind the hero. Absolute + cover = no layout box = no CLS.
+   The CSS radial-ring garnish (::before) and gradient background survive as the
+   fallback if the image 404s or is still loading. */
+.site-hero__bg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 70%;
+  z-index: 0;
+}
+/* Darkening scrim so the cream headline + dim sub-copy clear WCAG-AA over the
+   photo's bright spots (gold bar, red glow) while the room stays clearly visible.
+   Left-weighted (text is left-aligned) so the right side keeps more of the photo;
+   a bottom lift seats the CTAs. Tuned so #f3ead9 and #bcae97 both pass ≥4.5:1 in
+   the text column (a text-shadow on the h1 covers the brightest gold highlights). */
+.site-hero__scrim {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background:
+    linear-gradient(90deg, rgba(11, 8, 5, 0.85) 0%, rgba(11, 8, 5, 0.55) 44%, rgba(11, 8, 5, 0.16) 100%),
+    linear-gradient(to top, rgba(11, 8, 5, 0.72) 0%, rgba(11, 8, 5, 0) 50%);
+  pointer-events: none;
+}
+.site-hero__inner { position: relative; z-index: 2; }
 .site-hero h1 {
   color: var(--site-ink);
-  text-shadow: 0 0 24px rgba(255, 176, 0, 0.18);
+  text-shadow: 0 2px 18px rgba(0, 0, 0, 0.6);
 }
 .site-hero__sub {
   max-width: 46ch;
@@ -341,10 +367,82 @@
 .site-hours tr[data-today="true"] th { color: var(--site-amber); }
 .site-hours .closed { color: var(--site-ink-dim); }
 
+/* ── Content photo (about / visit) ───────────────────────────────────────── */
+/* Full-width editorial image. width/height on the <img> reserve the 16:9 box so
+   the lazy load never shifts layout (zero CLS). Sharp corners + a hairline frame
+   keep the terminal aesthetic. */
+.site-photo {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  border: 1px solid var(--site-line-strong);
+  background: var(--site-bg-raised);
+}
+.site-photo__cap {
+  font-family: var(--site-font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  font-size: 0.68rem;
+  color: var(--site-ink-dim);
+  margin: 0.5rem 0 0;
+}
+
 /* ── Prose (about) ───────────────────────────────────────────────────────── */
 .site-prose { max-width: 62ch; }
 .site-prose p { margin: 0 0 1.15rem; color: var(--site-ink); }
 .site-prose p:first-of-type { font-size: 1.12rem; }
+
+/* ── CLUB RULES (about) ──────────────────────────────────────────────────── */
+/* Echoes the hand-lettered house rules painted on the barroom wall: the display
+   font (VT323), forced uppercase (the wall is all-caps), amber glow on dark, one
+   rule per centered line, Civil-Defense triangle markers. Owner-editable copy
+   comes from site_club_rules; the styling lives here. */
+.site-rules {
+  margin-top: 2.75rem;
+  padding: clamp(1.5rem, 5vw, 2.5rem) clamp(1.25rem, 5vw, 2.5rem) clamp(1.75rem, 5vw, 2.75rem);
+  border: 1px solid var(--site-line-strong);
+  border-left: 3px solid var(--site-signal);
+  background:
+    radial-gradient(130% 100% at 0% 0%, rgba(255, 122, 69, 0.07), transparent 60%),
+    var(--site-bg-raised);
+}
+.site-rules__head {
+  font-family: var(--site-font-display);
+  color: var(--site-amber);
+  text-align: center;
+  font-size: clamp(1.9rem, 7vw, 2.8rem);
+  letter-spacing: 0.05em;
+  margin: 0 0 1.4rem;
+  text-shadow: 0 0 20px rgba(255, 176, 0, 0.25);
+}
+.site-rules__list {
+  list-style: none;
+  margin: 0 auto;
+  padding: 0;
+  max-width: 42ch;
+  display: flex;
+  flex-direction: column;
+  gap: 0.95rem;
+}
+.site-rules__list li {
+  font-family: var(--site-font-display);
+  text-transform: uppercase;
+  font-size: clamp(1.25rem, 4.4vw, 1.7rem);
+  line-height: 1.12;
+  letter-spacing: 0.03em;
+  color: var(--site-amber-bright);
+  text-align: center;
+  text-wrap: balance;
+}
+.site-rules__list li::before {
+  content: "▲";
+  color: var(--site-signal);
+  font-size: 0.62em;
+  margin-right: 0.5em;
+  vertical-align: 0.18em;
+}
 
 /* ── Map ─────────────────────────────────────────────────────────────────── */
 .site-map {

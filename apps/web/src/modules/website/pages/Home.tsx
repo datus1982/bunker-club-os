@@ -76,6 +76,24 @@ export function Home() {
 
       {/* ── Hero ── */}
       <section className="site-hero">
+        {/* Owner interior photo as the hero backdrop. Absolutely positioned + object-fit
+            cover so it never participates in layout (zero CLS); the .site-hero box height
+            is still set by its padding + the text content. Eager + fetchpriority=high +
+            the index.html imagesrcset preload make it the LCP. srcset/sizes here MUST match
+            the preload's imagesrcset/imagesizes. DECISION: descriptive alt (real editorial
+            photo of the venue, not decoration) rather than empty. */}
+        <img
+          className="site-hero__bg"
+          src="/photos/hero-room-1920.jpg"
+          srcSet="/photos/hero-room-960.jpg 960w, /photos/hero-room-1920.jpg 1920w"
+          sizes="100vw"
+          width={1920}
+          height={1080}
+          fetchPriority="high"
+          decoding="async"
+          alt="Inside Bunker Club — a long pewter bar lined with gold stools, red vinyl booths across the room, and screens glowing at the back"
+        />
+        <div className="site-hero__scrim" aria-hidden />
         <div className="site-wrap site-hero__inner">
           <p className="site-label">▲ Shelter for the thirsty · OKC</p>
           <h1>{copy?.heroTitle ?? "BUNKER CLUB"}</h1>

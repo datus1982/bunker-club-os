@@ -33,6 +33,19 @@
     <noscript>
       <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=VT323&family=Share+Tech+Mono&display=swap" />
     </noscript>
+    <!-- Home-hero LCP preload (site-refinement-1). imagesrcset/imagesizes mirror the
+         <img class="site-hero__bg"> srcset+sizes EXACTLY, so the preload fetches the
+         same candidate the img resolves to at any DPR (mobile picks 960w, desktop
+         1920w) — no double-download. index.html is shared by every route, so this
+         preload is only "used" on `/`; the marginal cost on internal pages is one
+         idle hint, and the LCP win on the common landing (`/`) is the point. -->
+    <link
+      rel="preload"
+      as="image"
+      fetchpriority="high"
+      imagesrcset="/photos/hero-room-960.jpg 960w, /photos/hero-room-1920.jpg 1920w"
+      imagesizes="100vw"
+    />
     <title>BUNKER UNIFIED OS</title>
     <!-- Static default SEO/OpenGraph block (W1). The public site normally manages
          these tags per-route from JS (see modules/website/seo.tsx), but link
