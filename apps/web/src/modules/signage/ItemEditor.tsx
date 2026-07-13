@@ -95,6 +95,7 @@ function ItemForm({
   const isCeleb = template === "celebration";
   const [slotId, setSlotId] = useState<string | null>(editing?.slot_id ?? defaultSlotId ?? slots[0]?.id ?? null);
   const [active, setActive] = useState(editing?.active ?? true);
+  const [showOnWebsite, setShowOnWebsite] = useState(editing?.show_on_website ?? false);
   const [duration, setDuration] = useState(editing?.duration_seconds ?? 12);
   const [fields, setFields] = useState<Record<string, unknown>>(() => {
     const base = { ...(editing?.fields ?? {}) };
@@ -185,6 +186,7 @@ function ItemForm({
         recurrence,
         duration_seconds: duration,
         active,
+        show_on_website: showOnWebsite,
       };
       const id = await saveItem(draft, nextSortOrder(slotId));
       // Only touch the linked moment once its query has resolved (N8) — otherwise a save
@@ -289,6 +291,17 @@ function ItemForm({
           <span>ACTIVE</span>
         </label>
       </div>
+
+      {/* Publish to the public marketing site /events page (0015 flag). */}
+      <label style={{ ...checkLabel, alignItems: "flex-start" }}>
+        <input type="checkbox" checked={showOnWebsite} onChange={(e) => setShowOnWebsite(e.target.checked)} style={{ ...checkbox, marginTop: 2 }} />
+        <span>
+          🌐 SHOW ON WEBSITE
+          <span style={{ display: "block", fontSize: 14, opacity: 0.55, letterSpacing: 0 }}>
+            Publishes this item to the public bunkerokc.com events page.
+          </span>
+        </span>
+      </label>
 
       {err && <div className="u-red" style={{ fontSize: 18 }}>⚠ {err}</div>}
     </Modal>

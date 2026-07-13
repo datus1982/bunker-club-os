@@ -9,6 +9,13 @@ interface DisplayCanvasProps {
   overscanInsetPct?: number;
   /** Per-slot fine scale trim (signage_slots.scale_adjust). */
   scaleAdjust?: number;
+  /**
+   * Apply the no-scaling kiosk viewport lock while mounted (default true). Real
+   * always-on display routes want it; non-display stubs that reuse the canvas
+   * scaler (e.g. DisplayPlaceholder) pass false so they don't leave the global
+   * <meta viewport> pinned for the rest of the SPA session (N9).
+   */
+  kioskViewport?: boolean;
 }
 
 const DIMS: Record<Orientation, { w: number; h: number }> = {
@@ -30,6 +37,7 @@ export function DisplayCanvas({
   children,
   overscanInsetPct = 0,
   scaleAdjust = 1,
+  kioskViewport = true,
 }: DisplayCanvasProps) {
   const { w, h } = DIMS[orientation];
   const [vp, setVp] = useState({ vw: window.innerWidth, vh: window.innerHeight });
@@ -47,6 +55,13 @@ export function DisplayCanvas({
 
   // Nightly self-reload at 04:00 local time (docs/12 display resilience).
   useNightlyReload();
+
+  // Kiosk viewport lock (a11y trade-off, Phase 3.5 task 3). The static index.html
+  // ships a zoomable viewport so the public site + staff app can pinch-zoom. Display
+  // routes are always-on TVs where user scaling would be a liability, so DisplayCanvas
+  // — used ONLY by display routes — re-applies the restrictive viewport on mount and
+  // restores the default on unmount (SPA nav away from a display route).
+  useKioskViewport(kioskViewport);
 
   const insetFactor = 1 - Math.max(0, overscanInsetPct) / 100;
   const scale = Math.min(vp.vw / w, vp.vh / h) * scaleAdjust * insetFactor;
@@ -92,6 +107,39 @@ export function DisplayCanvas({
       </div>
     </div>
   );
+}
+
+const DEFAULT_VIEWPORT = "width=device-width, initial-scale=1.0";
+const KIOSK_VIEWPORT =
+  "width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0";
+
+/**
+ * Mount-scoped kiosk viewport. Swaps the <meta name="viewport"> content to the
+ * no-scaling kiosk value while a display route is mounted, and restores whatever
+ * was there before on unmount. Idempotent — mutates the existing meta if present,
+ * creates one only if the document somehow lacks it.
+ */
+function useKioskViewport(enabled: boolean) {
+  useEffect(() => {
+    if (!enabled) return;
+    let meta = document.querySelector<HTMLMetaElement>('meta[name="viewport"]');
+    let created = false;
+    if (!meta) {
+      meta = document.createElement("meta");
+      meta.name = "viewport";
+      document.head.appendChild(meta);
+      created = true;
+    }
+    const prev = meta.getAttribute("content") ?? DEFAULT_VIEWPORT;
+    meta.setAttribute("content", KIOSK_VIEWPORT);
+    return () => {
+      if (created) {
+        meta!.remove();
+      } else {
+        meta!.setAttribute("content", prev);
+      }
+    };
+  }, [enabled]);
 }
 
 function useNightlyReload() {

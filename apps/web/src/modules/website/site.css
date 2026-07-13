@@ -1,0 +1,574 @@
+/*
+ * BUNKER CLUB — PUBLIC WEBSITE (docs/14, Phase 3.5)
+ *
+ * A marketing site, NOT a display. Same universe as BUNKER UNIFIED OS with
+ * MARKETING RESTRAINT: amber-warm palette, terminal type for HEADERS ONLY
+ * (VT323 large, Share Tech Mono accents), highly readable body stack, Civil
+ * Defense motifs as garnish. NO scanline overlays on body content, NO boot
+ * transitions. Everything is scoped under `.site` so the terminal-theme global
+ * `color: green !important` rules never apply here (the site is never wrapped
+ * in `.terminal-theme`).
+ *
+ * The app's index.css paints html/body/#root black; `.site` sets its own warm
+ * background and min-height:100vh so no black letterboxing shows.
+ */
+
+.site {
+  /* ── palette (warm, atmospheric, high-contrast body) ── */
+  --site-bg: #16110d;          /* warm near-black */
+  --site-bg-raised: #201811;   /* cards / header */
+  --site-bg-sunk: #100c08;     /* footer */
+  --site-ink: #f3ead9;         /* body text — warm cream, high contrast */
+  --site-ink-dim: #bcae97;     /* secondary text */
+  --site-amber: #ffb000;       /* primary accent */
+  --site-amber-bright: #ffca4a;
+  --site-line: #3a2e22;        /* hairline borders */
+  --site-line-strong: #56432f;
+  --site-signal: #ff7a45;      /* Civil Defense warning accent — sparing */
+  --site-live: #6bd07a;        /* "tonight / live" green — sparing */
+
+  --site-font-body: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    Helvetica, Arial, "Apple Color Emoji", sans-serif;
+  --site-font-mono: "Share Tech Mono", ui-monospace, "SFMono-Regular", Menlo,
+    Consolas, monospace;
+  --site-font-display: "VT323", "Share Tech Mono", monospace;
+
+  --site-max: 1080px;
+  --site-pad: clamp(1rem, 4vw, 2.5rem);
+
+  color: var(--site-ink);
+  background: var(--site-bg);
+  font-family: var(--site-font-body);
+  font-size: 17px;
+  line-height: 1.6;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow-x: hidden; /* Phase 4c gate — no horizontal overflow at 390px */
+  -webkit-font-smoothing: antialiased;
+}
+
+.site *,
+.site *::before,
+.site *::after {
+  box-sizing: border-box;
+}
+
+.site a {
+  color: var(--site-amber-bright);
+  text-decoration: none;
+}
+.site a:hover {
+  text-decoration: underline;
+}
+
+/* Shared width container */
+.site-wrap {
+  width: 100%;
+  max-width: var(--site-max);
+  margin: 0 auto;
+  padding-left: var(--site-pad);
+  padding-right: var(--site-pad);
+}
+
+/* ── Terminal type for HEADERS only ──────────────────────────────────────── */
+.site h1,
+.site h2,
+.site h3 {
+  font-family: var(--site-font-display);
+  font-weight: 400;
+  letter-spacing: 0.02em;
+  line-height: 1.05;
+  color: var(--site-ink);
+  margin: 0 0 0.4em;
+}
+.site h1 { font-size: clamp(2.6rem, 9vw, 5rem); }
+.site h2 { font-size: clamp(2rem, 6vw, 3rem); }
+.site h3 { font-size: clamp(1.4rem, 4vw, 1.9rem); }
+/* A semantic <h2> that reads as a compact subsection head (keeps the heading
+   outline sequential — h1 → h2 — without the display-size weight). */
+.site h2.site-h-compact { font-size: clamp(1.3rem, 4vw, 1.7rem); margin-bottom: 0.5em; }
+
+/* Share Tech Mono "system label" — small uppercase accents (kickers, badges) */
+.site-label {
+  font-family: var(--site-font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.22em;
+  font-size: 0.72rem;
+  color: var(--site-amber);
+}
+
+/* ── Header ──────────────────────────────────────────────────────────────── */
+.site-header {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  background: color-mix(in srgb, var(--site-bg-raised) 92%, transparent);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--site-line);
+}
+.site-header__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  min-height: 60px;
+}
+.site-wordmark {
+  font-family: var(--site-font-display);
+  font-size: 1.8rem;
+  letter-spacing: 0.04em;
+  color: var(--site-ink);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  white-space: nowrap;
+}
+.site-wordmark::before {
+  /* Civil Defense triangle garnish */
+  content: "▲";
+  color: var(--site-amber);
+  font-size: 0.85em;
+}
+.site-nav {
+  display: flex;
+  align-items: center;
+  gap: 1.6rem;
+}
+.site-nav a {
+  font-family: var(--site-font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  font-size: 0.82rem;
+  color: var(--site-ink-dim);
+  padding: 0.4rem 0;
+}
+.site-nav a:hover,
+.site-nav a[aria-current="page"] {
+  color: var(--site-amber);
+  text-decoration: none;
+}
+.site-nav a[aria-current="page"] {
+  border-bottom: 2px solid var(--site-amber);
+}
+
+/* Hamburger — hidden on desktop */
+.site-burger {
+  display: none;
+  width: 44px;
+  height: 44px;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid var(--site-line-strong);
+  color: var(--site-ink);
+  cursor: pointer;
+  font-size: 1.3rem;
+  line-height: 1;
+}
+
+/* Mobile drawer */
+.site-drawer {
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--site-line);
+  padding: 0.5rem 0 1rem;
+}
+.site-drawer a {
+  font-family: var(--site-font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  font-size: 0.95rem;
+  color: var(--site-ink);
+  padding: 0.9rem 0.2rem; /* ≥44px tap targets */
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  border-bottom: 1px solid var(--site-line);
+}
+.site-drawer a[aria-current="page"] { color: var(--site-amber); }
+
+@media (max-width: 768px) {
+  .site-nav { display: none; }
+  .site-burger { display: inline-flex; }
+}
+@media (min-width: 769px) {
+  .site-drawer { display: none; }
+}
+
+/* ── Buttons / CTAs ──────────────────────────────────────────────────────── */
+.site-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  min-height: 48px;
+  padding: 0.7rem 1.4rem;
+  font-family: var(--site-font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 0.9rem;
+  border: 1px solid var(--site-amber);
+  cursor: pointer;
+}
+/* Buttons are often <a>; scope under `.site` so these beat the `.site a`
+   link-color rule (equal-specificity `.site a` would otherwise paint the
+   primary button's label amber-on-amber). */
+.site .site-btn--primary {
+  background: var(--site-amber);
+  color: #1a1206;
+  font-weight: 700;
+}
+.site .site-btn--primary:hover { background: var(--site-amber-bright); text-decoration: none; }
+.site .site-btn--ghost {
+  background: transparent;
+  color: var(--site-amber);
+}
+.site .site-btn--ghost:hover { background: rgba(255, 176, 0, 0.1); text-decoration: none; }
+
+/* ── Sections ────────────────────────────────────────────────────────────── */
+/* Reserve viewport-tall content space so client-fetched pages (the live /menu,
+   /events) don't sit short during their loading state — which would place the
+   footer in the viewport and then shove it down when the data arrives, spiking
+   CLS. Keeping the main region at least a screen tall holds the footer below the
+   fold until content fills in. (Menu's 269 live Toast items are the worst case.) */
+.site-main { flex: 1 0 auto; min-height: 80vh; }
+.site-section { padding: clamp(2.5rem, 8vw, 5rem) 0; }
+.site-section--tight { padding: clamp(1.5rem, 5vw, 2.5rem) 0; }
+
+/* ── Hero (CSS-only Civil Defense garnish, no image assets) ──────────────── */
+.site-hero {
+  position: relative;
+  padding: clamp(3.5rem, 14vw, 7rem) 0 clamp(2.5rem, 8vw, 4.5rem);
+  overflow: hidden;
+  border-bottom: 1px solid var(--site-line);
+  background:
+    radial-gradient(120% 90% at 50% -10%, rgba(255, 176, 0, 0.14), transparent 60%),
+    var(--site-bg);
+}
+/* faint concentric "fallout shelter" rings, garnish not chrome */
+.site-hero::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    repeating-radial-gradient(circle at 85% 15%,
+      transparent 0, transparent 38px,
+      rgba(255, 176, 0, 0.05) 38px, rgba(255, 176, 0, 0.05) 40px);
+  pointer-events: none;
+}
+.site-hero__inner { position: relative; }
+.site-hero h1 {
+  color: var(--site-ink);
+  text-shadow: 0 0 24px rgba(255, 176, 0, 0.18);
+}
+.site-hero__sub {
+  max-width: 46ch;
+  font-size: clamp(1.05rem, 2.6vw, 1.3rem);
+  color: var(--site-ink-dim);
+  margin: 0.6rem 0 1.6rem;
+}
+.site-hero__cta { display: flex; flex-wrap: wrap; gap: 0.85rem; }
+
+/* ── This-week strip ─────────────────────────────────────────────────────── */
+.site-strip {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
+}
+.site-card {
+  background: var(--site-bg-raised);
+  border: 1px solid var(--site-line);
+  border-left: 3px solid var(--site-amber);
+  padding: 1.25rem 1.35rem;
+  min-width: 0;
+}
+.site-card--live { border-left-color: var(--site-live); }
+.site-card__kicker {
+  font-family: var(--site-font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  font-size: 0.7rem;
+  color: var(--site-amber);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.site-card--live .site-card__kicker { color: var(--site-live); }
+.site-card__title {
+  font-family: var(--site-font-display);
+  font-size: 1.5rem;
+  margin: 0.35rem 0 0.25rem;
+  color: var(--site-ink);
+}
+.site-card__body { color: var(--site-ink-dim); font-size: 0.95rem; }
+.site-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: currentColor;
+  display: inline-block;
+}
+.site-empty {
+  color: var(--site-ink-dim);
+  font-style: italic;
+  border: 1px dashed var(--site-line-strong);
+  padding: 1.1rem 1.25rem;
+}
+
+/* ── Hours table ─────────────────────────────────────────────────────────── */
+.site-hours {
+  width: 100%;
+  border-collapse: collapse;
+  max-width: 420px;
+  font-variant-numeric: tabular-nums;
+}
+.site-hours th,
+.site-hours td {
+  text-align: left;
+  padding: 0.55rem 0.5rem;
+  border-bottom: 1px solid var(--site-line);
+  font-size: 0.98rem;
+}
+.site-hours th {
+  font-family: var(--site-font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-weight: 400;
+  color: var(--site-ink-dim);
+  font-size: 0.82rem;
+}
+.site-hours td:last-child { text-align: right; color: var(--site-ink); }
+.site-hours tr[data-today="true"] td,
+.site-hours tr[data-today="true"] th { color: var(--site-amber); }
+.site-hours .closed { color: var(--site-ink-dim); }
+
+/* ── Prose (about) ───────────────────────────────────────────────────────── */
+.site-prose { max-width: 62ch; }
+.site-prose p { margin: 0 0 1.15rem; color: var(--site-ink); }
+.site-prose p:first-of-type { font-size: 1.12rem; }
+
+/* ── Map ─────────────────────────────────────────────────────────────────── */
+.site-map {
+  width: 100%;
+  border: 1px solid var(--site-line-strong);
+  aspect-ratio: 16 / 9;
+  display: block;
+}
+.site-grid-2 {
+  display: grid;
+  gap: clamp(1.5rem, 5vw, 3rem);
+  grid-template-columns: 1fr;
+}
+@media (min-width: 720px) {
+  .site-grid-2 { grid-template-columns: 1fr 1fr; align-items: start; }
+}
+
+/* ── Footer ──────────────────────────────────────────────────────────────── */
+.site-footer {
+  flex-shrink: 0;
+  background: var(--site-bg-sunk);
+  border-top: 1px solid var(--site-line);
+  padding: clamp(2rem, 6vw, 3rem) 0 2rem;
+  color: var(--site-ink-dim);
+  font-size: 0.9rem;
+}
+.site-footer__cols {
+  display: grid;
+  gap: 1.75rem;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr));
+}
+/* Footer section labels are semantic <h2>s (top-level sections of the footer
+   landmark) styled small — the selector out-specifies the display `.site h2`. */
+.site-footer h2 {
+  font-family: var(--site-font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  font-size: 0.72rem;
+  color: var(--site-amber);
+  margin: 0 0 0.7rem;
+}
+.site-footer a { color: var(--site-ink); }
+.site-footer__socials { display: flex; gap: 1rem; }
+.site-footer__legal {
+  margin-top: 2rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--site-line);
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.5rem;
+  align-items: center;
+  font-size: 0.78rem;
+}
+.site-footer__legal a { color: var(--site-ink-dim); }
+.site-cred {
+  font-family: var(--site-font-mono);
+  letter-spacing: 0.12em;
+  color: var(--site-ink-dim);
+}
+.site-staff-link {
+  font-family: var(--site-font-mono);
+  letter-spacing: 0.1em;
+  font-size: 0.72rem;
+  /* Subtle but WCAG-AA legible on the sunk footer bg (≥4.5:1) — not 0.55 opacity. */
+  color: #a99c85;
+}
+.site-staff-link:hover { color: var(--site-amber); }
+
+/* ── Menu (/menu) ────────────────────────────────────────────────────────── */
+.site-menu-group {
+  color: var(--site-amber);
+  padding-bottom: 0.4rem;
+  border-bottom: 1px solid var(--site-line-strong);
+  margin-bottom: 1rem;
+}
+.site-menu-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+.site-menu-item {
+  display: flex;
+  gap: 0.9rem;
+  align-items: flex-start;
+  min-width: 0;
+}
+.site-menu-thumb {
+  width: 52px;
+  height: 52px;
+  object-fit: cover;
+  border: 1px solid var(--site-line-strong);
+  flex-shrink: 0;
+  background: var(--site-bg-raised);
+}
+.site-menu-item__body { flex: 1; min-width: 0; }
+.site-menu-item__head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  width: 100%;
+}
+.site-menu-item__name {
+  color: var(--site-ink);
+  font-size: 1.02rem;
+  font-weight: 600;
+  min-width: 0;
+}
+/* Dotted leader between name and price (classic menu look), collapses cleanly on wrap. */
+.site-menu-item__dots {
+  flex: 1;
+  align-self: center;
+  min-width: 1.5rem;
+  height: 0;
+  border-bottom: 1px dotted var(--site-line-strong);
+  transform: translateY(-2px);
+}
+.site-menu-item__price {
+  color: var(--site-amber);
+  font-family: var(--site-font-mono);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.site-menu-item__blurb {
+  color: var(--site-ink-dim);
+  font-size: 0.9rem;
+  margin: 0.15rem 0 0;
+  max-width: 60ch;
+}
+
+/* ── Events (/events) ────────────────────────────────────────────────────── */
+.site-events-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr));
+}
+.site-event {
+  background: var(--site-bg-raised);
+  border: 1px solid var(--site-line);
+  border-left: 3px solid var(--site-amber);
+  padding: 1.35rem 1.5rem;
+  min-width: 0;
+}
+.site-event--feature { border-left-color: var(--site-live); }
+.site-event__kicker {
+  font-family: var(--site-font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  font-size: 0.7rem;
+  color: var(--site-amber);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.35rem;
+}
+.site-event--feature .site-event__kicker { color: var(--site-live); }
+.site-event__title { margin: 0.1rem 0 0.35rem; }
+.site-event__when {
+  font-family: var(--site-font-mono);
+  color: var(--site-ink);
+  font-size: 0.9rem;
+  margin: 0 0 0.5rem;
+}
+.site-event__body { color: var(--site-ink-dim); font-size: 0.95rem; margin: 0 0 0.75rem; }
+
+/* ── Trivia steps (/trivia) ──────────────────────────────────────────────── */
+.site-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 1.5rem;
+  grid-template-columns: 1fr;
+}
+@media (min-width: 720px) {
+  .site-steps { grid-template-columns: 1fr 1fr; gap: 1.75rem 2.5rem; }
+}
+.site-step { display: flex; gap: 1rem; align-items: flex-start; min-width: 0; }
+.site-step__n {
+  font-family: var(--site-font-display);
+  font-size: 2.4rem;
+  line-height: 1;
+  color: var(--site-amber);
+  opacity: 0.55;
+  flex-shrink: 0;
+}
+.site-step__title { margin: 0 0 0.3rem; }
+.site-step__body { color: var(--site-ink-dim); font-size: 0.95rem; margin: 0; max-width: 42ch; }
+
+/* ── Standings table (/trivia) ───────────────────────────────────────────── */
+.site-standings {
+  width: 100%;
+  border-collapse: collapse;
+  max-width: 560px;
+  font-variant-numeric: tabular-nums;
+}
+.site-standings th,
+.site-standings td {
+  text-align: left;
+  padding: 0.6rem 0.6rem;
+  border-bottom: 1px solid var(--site-line);
+}
+.site-standings thead th {
+  font-family: var(--site-font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-weight: 400;
+  color: var(--site-ink-dim);
+  font-size: 0.72rem;
+}
+.site-standings th:nth-child(3),
+.site-standings th:nth-child(4),
+.site-standings td:nth-child(3),
+.site-standings td:nth-child(4) { text-align: right; }
+.site-standings__rank { color: var(--site-ink-dim); font-family: var(--site-font-mono); width: 2.5rem; }
+.site-standings tr[data-top="true"] .site-standings__rank { color: var(--site-amber); font-weight: 700; }
+.site-standings__score { color: var(--site-amber); font-family: var(--site-font-mono); }
+
+/* ── Reduced motion / focus ──────────────────────────────────────────────── */
+.site :where(a, button):focus-visible {
+  outline: 2px solid var(--site-amber);
+  outline-offset: 2px;
+}

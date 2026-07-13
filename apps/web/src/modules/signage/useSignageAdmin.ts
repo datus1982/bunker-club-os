@@ -83,7 +83,7 @@ export function useAllItems() {
     queryFn: async (): Promise<AdminItem[]> => {
       const { data, error } = await supabase
         .from("signage_items")
-        .select("id, slot_id, template, fields, starts_at, ends_at, recurrence, sort_order, duration_seconds, active, created_at")
+        .select("id, slot_id, template, fields, starts_at, ends_at, recurrence, sort_order, duration_seconds, active, show_on_website, created_at")
         .eq("venue_id", VENUE_ID)
         .order("sort_order");
       if (error) throw error;
@@ -203,6 +203,7 @@ export interface ItemDraft {
   recurrence: Recurrence | null;
   duration_seconds: number;
   active: boolean;
+  show_on_website: boolean;
 }
 
 /** Insert or update an item. Returns the row id (new items get an appended sort_order). */
@@ -220,6 +221,7 @@ export async function saveItem(draft: ItemDraft, nextSortOrder: number): Promise
         recurrence: draft.recurrence,
         duration_seconds: draft.duration_seconds,
         active: draft.active,
+        show_on_website: draft.show_on_website,
       })
       .eq("id", draft.id);
     if (error) throw error;
@@ -235,6 +237,7 @@ export async function saveItem(draft: ItemDraft, nextSortOrder: number): Promise
       starts_at: draft.starts_at,
       ends_at: draft.ends_at,
       recurrence: draft.recurrence,
+      show_on_website: draft.show_on_website,
       // DECISION: new items append to the end of the slot (highest sort_order + 1); staff
       // reorder with the ▲/▼ buttons afterward rather than typing a position. Matches the
       // DrinksAdmin group ordering UX; the spec's "sort position (append default)" is honoured

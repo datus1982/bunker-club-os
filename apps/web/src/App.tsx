@@ -1,18 +1,97 @@
-import { useEffect } from "react";
+import { lazy, Suspense, useEffect, type ComponentType } from "react";
 import { Navigate, Routes, Route, useNavigate } from "react-router-dom";
 
 import { supabase } from "./shared/supabaseClient";
 import { RequireAuth, RequireRole, RequireModule } from "./shared/guards";
-import * as Trivia from "./modules/trivia/routes";
+// The PUBLIC marketing website stays in the main chunk — it's the site root and
+// must paint instantly with no chunk round-trip. Everything else (staff tools,
+// display screens, auth, portal, check-in) is route-split with React.lazy so the
+// public site's initial bundle stays small (docs/12 perf; Phase 3.5 task 3).
 import * as Website from "./modules/website/routes";
-import { Checkin, CheckinQRPage } from "./modules/registration/routes";
-import { Login } from "./modules/auth/Login";
-import { ResetPassword } from "./modules/auth/ResetPassword";
-import { Portal } from "./modules/portal/routes";
-import { DrinksDisplay, DrinksAdmin } from "./modules/leaderboard/routes";
-import { SeasonsAdmin } from "./modules/seasons/routes";
-import { SignageAdmin, SlotDisplay } from "./modules/signage/routes";
-import { Dashboard, StaffLayout, Users } from "./modules/dashboard/routes";
+
+/**
+ * Route-level code splitting. Each non-public surface loads as its own chunk on
+ * first navigation. Components that share a `import()` specifier (all the trivia
+ * routes, both drinks routes, …) are bundled together and fetched once — Vite
+ * dedupes the shared dynamic import, so e.g. every `Trivia.*` route is one chunk.
+ *
+ * `namedLazy` adapts a named export to React.lazy's default-export contract while
+ * preserving the single-specifier grouping (the string literal lives in the
+ * per-module loader, which Vite still statically analyses).
+ */
+function namedLazy<M extends Record<string, unknown>, K extends keyof M>(
+  loader: () => Promise<M>,
+  name: K,
+) {
+  return lazy(async () => ({ default: (await loader())[name] as ComponentType }));
+}
+
+const triviaRoutes = () => import("./modules/trivia/routes");
+const leaderboardRoutes = () => import("./modules/leaderboard/routes");
+const signageRoutes = () => import("./modules/signage/routes");
+const dashboardRoutes = () => import("./modules/dashboard/routes");
+const registrationRoutes = () => import("./modules/registration/routes");
+
+// Trivia host tools + public display routes (one shared chunk).
+const Scoring = namedLazy(triviaRoutes, "Scoring");
+const GameSetup = namedLazy(triviaRoutes, "GameSetup");
+const QuestionEntry = namedLazy(triviaRoutes, "QuestionEntry");
+const VideoEntry = namedLazy(triviaRoutes, "VideoEntry");
+const BulkImport = namedLazy(triviaRoutes, "BulkImport");
+const GameTools = namedLazy(triviaRoutes, "GameTools");
+const Teams = namedLazy(triviaRoutes, "Teams");
+const History = namedLazy(triviaRoutes, "History");
+const Settings = namedLazy(triviaRoutes, "Settings");
+const Leaderboard = namedLazy(triviaRoutes, "Leaderboard");
+const GameDisplay = namedLazy(triviaRoutes, "GameDisplay");
+
+// Drinks display + admin.
+const DrinksDisplay = namedLazy(leaderboardRoutes, "DrinksDisplay");
+const DrinksAdmin = namedLazy(leaderboardRoutes, "DrinksAdmin");
+
+// Signage templater + public slot display.
+const SignageAdmin = namedLazy(signageRoutes, "SignageAdmin");
+const SlotDisplay = namedLazy(signageRoutes, "SlotDisplay");
+
+// Admin shell (dashboard, persistent staff layout, users).
+const Dashboard = namedLazy(dashboardRoutes, "Dashboard");
+const StaffLayout = namedLazy(dashboardRoutes, "StaffLayout");
+const Users = namedLazy(dashboardRoutes, "Users");
+
+// Seasons admin, player portal, auth, check-in.
+const SeasonsAdmin = namedLazy(() => import("./modules/seasons/routes"), "SeasonsAdmin");
+const Portal = namedLazy(() => import("./modules/portal/routes"), "Portal");
+const Login = namedLazy(() => import("./modules/auth/Login"), "Login");
+const ResetPassword = namedLazy(() => import("./modules/auth/ResetPassword"), "ResetPassword");
+const Checkin = namedLazy(registrationRoutes, "Checkin");
+const CheckinQRPage = namedLazy(registrationRoutes, "CheckinQRPage");
+
+/**
+ * Minimal themed fallback while a route chunk loads. Only ever shown for the
+ * lazy (non-public) surfaces — the public website is eager — so the terminal
+ * register is always appropriate here (staff tools, display screens, auth).
+ */
+function RouteFallback() {
+  return (
+    <div
+      className="terminal-theme"
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "#000",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        color: "var(--terminal-green, #33ff66)",
+        fontFamily: "'Share Tech Mono', monospace",
+        fontSize: "1.1rem",
+        letterSpacing: "0.12em",
+      }}
+    >
+      LOADING…
+    </div>
+  );
+}
 
 // Did we land with a password-recovery hash on THIS page load? Supabase's implicit
 // recovery link lands as `#…&type=recovery`. When `redirect_to` isn't allow-listed,
@@ -65,6 +144,7 @@ function useRecoveryRedirect() {
 export function App() {
   useRecoveryRedirect();
   return (
+    <Suspense fallback={<RouteFallback />}>
     <Routes>
       {/* Public marketing website (docs/14, Phase 3.5) — no auth */}
       <Route path="/" element={<Website.Home />} />
@@ -81,15 +161,15 @@ export function App() {
         <Route path="/dashboard" element={<RequireRole role="staff"><Dashboard /></RequireRole>} />
 
         {/* Trivia host tools — gated on the TRIVIA module grant (0024) */}
-        <Route path="/scoring" element={<RequireModule module="trivia"><Trivia.Scoring /></RequireModule>} />
-        <Route path="/game/setup" element={<RequireModule module="trivia"><Trivia.GameSetup /></RequireModule>} />
-        <Route path="/game/:gameId/questions" element={<RequireModule module="trivia"><Trivia.QuestionEntry /></RequireModule>} />
-        <Route path="/game/:gameId/videos" element={<RequireModule module="trivia"><Trivia.VideoEntry /></RequireModule>} />
-        <Route path="/game/:gameId/bulk-import" element={<RequireModule module="trivia"><Trivia.BulkImport /></RequireModule>} />
-        <Route path="/game/*" element={<RequireModule module="trivia"><Trivia.GameTools /></RequireModule>} />
-        <Route path="/teams" element={<RequireModule module="trivia"><Trivia.Teams /></RequireModule>} />
-        <Route path="/history" element={<RequireModule module="trivia"><Trivia.History /></RequireModule>} />
-        <Route path="/settings" element={<RequireRole role="admin"><Trivia.Settings /></RequireRole>} />
+        <Route path="/scoring" element={<RequireModule module="trivia"><Scoring /></RequireModule>} />
+        <Route path="/game/setup" element={<RequireModule module="trivia"><GameSetup /></RequireModule>} />
+        <Route path="/game/:gameId/questions" element={<RequireModule module="trivia"><QuestionEntry /></RequireModule>} />
+        <Route path="/game/:gameId/videos" element={<RequireModule module="trivia"><VideoEntry /></RequireModule>} />
+        <Route path="/game/:gameId/bulk-import" element={<RequireModule module="trivia"><BulkImport /></RequireModule>} />
+        <Route path="/game/*" element={<RequireModule module="trivia"><GameTools /></RequireModule>} />
+        <Route path="/teams" element={<RequireModule module="trivia"><Teams /></RequireModule>} />
+        <Route path="/history" element={<RequireModule module="trivia"><History /></RequireModule>} />
+        <Route path="/settings" element={<RequireRole role="admin"><Settings /></RequireRole>} />
 
         {/* Module surfaces — each gated on its own grant; seasons stays admin-only */}
         <Route path="/signage" element={<RequireModule module="signage"><SignageAdmin /></RequireModule>} />
@@ -99,8 +179,8 @@ export function App() {
       </Route>
 
       {/* Public display routes — no auth */}
-      <Route path="/leaderboard" element={<Trivia.Leaderboard />} />
-      <Route path="/game-display" element={<Trivia.GameDisplay />} />
+      <Route path="/leaderboard" element={<Leaderboard />} />
+      <Route path="/game-display" element={<GameDisplay />} />
       <Route path="/drinks" element={<DrinksDisplay />} />
       <Route path="/signage/s/:slug" element={<SlotDisplay />} />
 
@@ -118,5 +198,6 @@ export function App() {
       {/* Fallback — unknown paths land on the public home */}
       <Route path="*" element={<Website.Home />} />
     </Routes>
+    </Suspense>
   );
 }

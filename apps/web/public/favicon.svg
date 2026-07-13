@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="Bunker Club">
+  <rect width="32" height="32" fill="#000000"/>
+  <path d="M16 6 L27 25 L5 25 Z" fill="none" stroke="#33ff66" stroke-width="2.4" stroke-linejoin="round"/>
+  <circle cx="16" cy="19" r="1.7" fill="#33ff66"/>
+  <rect x="15.1" y="12" width="1.8" height="5" fill="#33ff66"/>
+</svg>

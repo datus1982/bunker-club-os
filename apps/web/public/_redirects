@@ -1,1 +1,25 @@
+# Cloudflare Pages redirects. Rules are matched top-to-bottom, FIRST match wins —
+# so every specific 301 MUST sit above the catch-all SPA rewrite at the bottom.
+
+# ── DNS-cutover 301s (see docs/runbooks/website-dns-cutover.md) ───────────────
+# Old Toast single-page site at the apex bunkerokc.com. Its only real server path
+# besides "/" was "/home"; the #AboutUs / #OurProducts / #Events / #Contact /
+# #Directions links were client-side fragments that never reach the server, so they
+# can't be 301'd individually. "/" already resolves to the new home (the section
+# those anchors lived on), so no rule is needed for them.
+/home       /       301
+/home/*     /       301
+
+# Old bunkerclubokc.com WordPress blog — the FOUNDERS' domain, NOT ours to move
+# (SSL expired; see the runbook). These fire only if that domain is ever pointed at
+# this Pages project. Included so the richest legacy URLs land somewhere sensible if
+# it is. Both trailing-slash forms are covered (WordPress served the slashed form).
+/the-legendary-oklahoma-citys-bunker-club    /about    301
+/the-legendary-oklahoma-citys-bunker-club/   /about    301
+/the-bunker-clubs-uniqueness                 /about    301
+/the-bunker-clubs-uniqueness/                /about    301
+/the-signatured-manhattan-project-drink      /menu     301
+/the-signatured-manhattan-project-drink/     /menu     301
+
+# ── SPA fallback (MUST stay last) ────────────────────────────────────────────
 /*  /index.html  200
