@@ -60,7 +60,10 @@ export function Menu() {
                           <div className="site-menu-item__head">
                             <span className="site-menu-item__name">{it.name}</span>
                             <span className="site-menu-item__dots" aria-hidden />
-                            {it.price != null && (
+                            {/* DECISION: hide the price when it's 0 or null. Some Toast
+                                items (e.g. "Bunker Beer", a variable/ask-the-bar item)
+                                carry a $0 base price that shouldn't render as "$0". */}
+                            {it.price != null && it.price > 0 && (
                               <span className="site-menu-item__price">${fmtPrice(it.price)}</span>
                             )}
                           </div>
