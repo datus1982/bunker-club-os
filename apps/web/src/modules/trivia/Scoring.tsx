@@ -74,7 +74,7 @@ export function Scoring() {
             <Link to={`/game/${game.id}/videos`} style={linkBtn}>VIDEOS</Link>
             <Link to={`/game/${game.id}/bulk-import`} style={linkBtn}>IMPORT</Link>
             <Link to="/teams" style={linkBtn}>TEAMS</Link>
-            <Link to="/history" style={linkBtn}>HISTORY</Link>
+            <Link to="/game/history" style={linkBtn}>HISTORY</Link>
             <button type="button" onClick={() => window.open(`/game-display?game=${game.id}`, "_blank")} style={btnGhost}>⧉ DISPLAY</button>
           </nav>
         </div>
