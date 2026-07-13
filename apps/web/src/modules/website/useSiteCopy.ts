@@ -32,6 +32,7 @@ export type SiteCopy = {
   socials: SiteSocials;
   about: string[];
   clubRules: string[];
+  historyIntro: string;
 };
 
 // The FALLBACK MUST mirror the migration-0029 seed exactly — it's the first-paint /
@@ -88,6 +89,11 @@ const FALLBACK: SiteCopy = {
     "Anyone carrying two or more drinks has right-of-way",
     "If you are cut off, be happy we got you drunk in the first place",
   ],
+  // Lead sentence for /history — overridable without a deploy (0032). MUST
+  // byte-match the site_history_intro seed. The rest of /history is hardcoded
+  // editorial in History.tsx.
+  historyIntro:
+    "For fifty-three years — from 1926 to 1979 — the asphalt outside 433 NW 23rd Street was U.S. Route 66. Bunker Club didn't invent this corner; it inherited it.",
 };
 
 const KEYS = [
@@ -99,6 +105,7 @@ const KEYS = [
   "site_socials",
   "site_about",
   "site_club_rules",
+  "site_history_intro",
 ] as const;
 
 export function useSiteCopy() {
@@ -130,6 +137,7 @@ export function useSiteCopy() {
         socials: get("site_socials", FALLBACK.socials),
         about: get("site_about", FALLBACK.about),
         clubRules: get("site_club_rules", FALLBACK.clubRules),
+        historyIntro: get("site_history_intro", FALLBACK.historyIntro),
       };
     },
   });
