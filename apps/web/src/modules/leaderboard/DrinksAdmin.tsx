@@ -110,10 +110,10 @@ export function DrinksAdmin() {
   const addable = [OVERALL, ...(available.data ?? [])].filter((g) => !configuredGuids.has(g.toast_menu_guid));
 
   return (
-    <div className="terminal-theme" style={{ minHeight: "100vh", padding: 32, fontFamily: "'VT323','Share Tech Mono',monospace", color: "var(--terminal-green)" }}>
+    <div className="terminal-theme" style={{ minHeight: "100vh", padding: "clamp(16px, 4vw, 32px)", fontFamily: "'VT323','Share Tech Mono',monospace", color: "var(--terminal-green)" }}>
       <div style={{ maxWidth: 900, margin: "0 auto" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-          <h1 style={{ fontSize: 40, fontWeight: 700, letterSpacing: 2 }}>DRINKS BOARD — CONFIG</h1>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
+          <h1 style={{ fontSize: "clamp(24px, 6vw, 40px)", fontWeight: 700, letterSpacing: 2 }}>DRINKS BOARD — CONFIG</h1>
           <div style={{ display: "flex", gap: 12 }}>
             <Link to="/drinks" style={linkBtn}>OPEN BOARD</Link>
             <Link to="/dashboard" style={linkBtn}>DASHBOARD</Link>
@@ -127,7 +127,7 @@ export function DrinksAdmin() {
         {(configured.data ?? []).length === 0 && <p style={{ opacity: 0.6 }}>No groups yet — add one below. The board shows a group once the sync has sales for it.</p>}
         {(configured.data ?? []).map((g, i, arr) => (
           <div key={g.id} className="terminal-border" style={{ padding: "10px 14px", marginBottom: 8, display: "flex", alignItems: "center", gap: 14 }}>
-            <span style={{ flex: 1, fontSize: 22 }}>{g.name} {g.toast_menu_guid === "MAIN_MENU_ALL" ? "★" : ""}</span>
+            <span style={{ flex: 1, minWidth: 0, fontSize: 22, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{g.name} {g.toast_menu_guid === "MAIN_MENU_ALL" ? "★" : ""}</span>
             <button style={btn} onClick={() => move.mutate({ g, dir: -1 })} disabled={i === 0}>▲</button>
             <button style={btn} onClick={() => move.mutate({ g, dir: 1 })} disabled={i === arr.length - 1}>▼</button>
             <button style={btn} onClick={() => toggleGroup.mutate(g)}>{g.enabled ? "● ON" : "○ OFF"}</button>

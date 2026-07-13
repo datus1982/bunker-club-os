@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
+import { useIsMobile } from "@/shared/useIsMobile";
 import {
   completeSeason, createFinalsNight, createSeason, useSeasonDetail, useSeasons,
   type Season, type StandingRow,
@@ -19,10 +20,10 @@ export function SeasonsAdmin() {
   const refresh = () => qc.invalidateQueries({ queryKey: ["seasons"] });
 
   return (
-    <div className="terminal-theme" style={{ minHeight: "100vh", padding: 32, fontFamily: "'VT323','Share Tech Mono',monospace", color: "var(--terminal-green)" }}>
+    <div className="terminal-theme" style={{ minHeight: "100vh", padding: "clamp(16px, 4vw, 32px)", fontFamily: "'VT323','Share Tech Mono',monospace", color: "var(--terminal-green)" }}>
       <div style={{ maxWidth: 900, margin: "0 auto" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-          <h1 style={{ fontSize: 40, fontWeight: 700, letterSpacing: 2 }}>SEASONS / CAMPAIGNS</h1>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
+          <h1 style={{ fontSize: "clamp(26px, 6vw, 40px)", fontWeight: 700, letterSpacing: 2 }}>SEASONS / CAMPAIGNS</h1>
           <Link to="/dashboard" style={linkBtn}>DASHBOARD</Link>
         </div>
         <div className="terminal-separator" style={{ margin: "16px 0" }} />
@@ -53,6 +54,7 @@ function CreateForm({ onDone }: { onDone: () => void }) {
   const [f, setF] = useState({ name: "", starts_on: "", ends_on: "", scoring_mode: "best_n", best_n: "8", placement_points: "10,7,5,3,2,1", playoff_size: "4" });
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const narrow = useIsMobile();
   const submit = async () => {
     if (!f.name || !f.starts_on || !f.ends_on) return setErr("Name and dates are required.");
     setBusy(true); setErr(null);
@@ -68,7 +70,7 @@ function CreateForm({ onDone }: { onDone: () => void }) {
   return (
     <div className="terminal-border" style={{ padding: 16, marginTop: 14, display: "flex", flexDirection: "column", gap: 12, maxWidth: 560 }}>
       <Field label="NAME"><input style={input} value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} placeholder="Summer Wasteland Circuit" /></Field>
-      <div style={{ display: "flex", gap: 12 }}>
+      <div style={{ display: "flex", flexDirection: narrow ? "column" : "row", gap: 12 }}>
         <Field label="STARTS"><input type="date" style={input} value={f.starts_on} onChange={(e) => setF({ ...f, starts_on: e.target.value })} /></Field>
         <Field label="ENDS"><input type="date" style={input} value={f.ends_on} onChange={(e) => setF({ ...f, ends_on: e.target.value })} /></Field>
       </div>

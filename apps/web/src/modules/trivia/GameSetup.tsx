@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase, VENUE_ID } from "@/shared/supabaseClient";
 import { log } from "@/shared/log";
+import { useIsMobile } from "@/shared/useIsMobile";
 
 /**
  * Create Game — host tool (docs/01 route map, host+; /game/setup). Ported from the
@@ -164,9 +165,10 @@ export function GameSetup() {
     setBonusQuestions((b) => b.map((q) => (q.id === id ? { ...q, ...patch } : q)));
 
   const teams = regularTeams.data ?? [];
+  const narrow = useIsMobile();
 
   return (
-    <div className="terminal-theme" style={{ minHeight: "100vh", padding: 40, fontFamily: "'VT323','Share Tech Mono',monospace" }}>
+    <div className="terminal-theme" style={{ minHeight: "100vh", padding: "clamp(16px, 4vw, 40px)", fontFamily: "'VT323','Share Tech Mono',monospace" }}>
       <div style={{ maxWidth: 820, margin: "0 auto" }}>
         <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 8 }}>
           <h1 style={{ fontSize: 44, fontWeight: 700, letterSpacing: 2 }}>CREATE GAME</h1>
@@ -232,7 +234,7 @@ export function GameSetup() {
                     <span>THREE-CHANCE (one answer across 3 rounds, decreasing points)</span>
                   </label>
                   {b.bonusType === "three-chance" ? (
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
+                    <div style={{ display: "grid", gridTemplateColumns: narrow ? "minmax(0, 1fr)" : "minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr)", gap: 10 }}>
                       {[0, 1, 2].map((idx) => (
                         <div key={idx} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                           <span style={{ fontSize: 18, opacity: 0.7 }}>OPTION {idx + 1}</span>
@@ -265,7 +267,7 @@ export function GameSetup() {
             ) : teams.length === 0 ? (
               <div style={{ fontSize: 22, opacity: 0.6 }}>No regular teams yet.</div>
             ) : (
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: 8 }}>
                 {teams.map((t) => (
                   <label key={t.id} className="terminal-border" style={{ ...checkRow, padding: "8px 12px" }}>
                     <input
@@ -315,7 +317,10 @@ function Section({ title, action, children }: { title: string; action?: React.Re
 }
 
 function Row({ children }: { children: React.ReactNode }) {
-  return <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>{children}</div>;
+  // Two-up on desktop; stack on phones so date/time inputs (which enforce a browser
+  // minimum width larger than a cramped 1fr column) don't force page overflow.
+  const narrow = useIsMobile();
+  return <div style={{ display: "grid", gridTemplateColumns: narrow ? "minmax(0, 1fr)" : "minmax(0, 1fr) minmax(0, 1fr)", gap: 16 }}>{children}</div>;
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
