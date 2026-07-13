@@ -2,9 +2,16 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <!-- SVG favicon (Civil Defense mark). Replaces a dangling /favicon.ico ref that
-         404'd on every page load (dinged Lighthouse best-practices). -->
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <!-- Favicon = the Bunker Club mushroom-cloud badge (cream cloud knocked out of a
+         brand-red disc). PNG set exported from the brand vector (mushroom-cloud spot
+         vector) — the mark is organic curves, not cleanly hand-vectorizable, so PNGs
+         ship instead of an SVG. Explicit icon links present ⇒ browsers don't fall back
+         to a dangling /favicon.ico. Serves the WHOLE app (site + staff + display TVs) —
+         intended: it's the bar's mark. -->
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/favicon-192.png" />
+    <link rel="icon" type="image/png" sizes="512x512" href="/favicon-512.png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <!-- Zoomable by default (a11y: public site + staff app must pinch-zoom). Display
          routes re-apply the kiosk lock (no user scaling) at runtime via DisplayCanvas,
          so always-on screens still get it without penalising the rest of the app. -->
