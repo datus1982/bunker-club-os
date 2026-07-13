@@ -12,6 +12,15 @@
 // hardcoded UTC offset. READ-ONLY Toast access (standard tier) — no writes anywhere.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { businessDateFor } from "./businessDate.ts";
+import {
+  averageUnitsPerDate,
+  countUnitsForGuid,
+  mergeFields,
+  vsAvgPct,
+  type FinalStats,
+  type RawOrder,
+  type SalesRow,
+} from "./eventCounter.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -99,7 +108,12 @@ interface ToastSelection {
   quantity: number;
   voided: boolean;
 }
-interface ToastOrder { checks?: { selections?: ToastSelection[] }[]; excessFood?: boolean }
+interface ToastOrder {
+  checks?: { selections?: ToastSelection[]; voided?: boolean }[];
+  excessFood?: boolean;
+  openedDate?: string | null; // ISO 8601 — used by the event counter's time window
+  voided?: boolean;
+}
 
 async function getOrders(token: string, businessDate: string): Promise<ToastOrder[]> {
   const res = await fetch(`${TOAST_BASE}/orders/v2/ordersBulk?businessDate=${businessDate}`, {
@@ -166,6 +180,132 @@ function withinWindow(now: Date, timeZone: string, win: { open?: string; close?:
   return open <= close ? cur >= open && cur < close : cur >= open || cur < close;
 }
 
+// ── event SALES COUNTER pass (docs/13) ───────────────────────────────────────
+// Runs on EVERY invocation (independent of the drinks_sync_window sales gate). For each
+// venue it (1) refreshes fields.live_count for running toast-linked events, and (2) writes
+// fields.final_stats once for freshly-completed toast-linked events. Orders are fetched by
+// business date and cached within the call so overlapping events share one Toast pull; if a
+// venue has no qualifying events, no Toast orders are fetched at all.
+//
+// deno-lint-ignore no-explicit-any
+type Admin = any;
+interface EventRow {
+  id: string;
+  fields: Record<string, unknown> | null;
+  toast_guid: string;
+  fire_at: string;
+  window_minutes: number;
+}
+
+async function runEventsPass(
+  admin: Admin,
+  venueId: string,
+  tz: string,
+  token: string,
+  closeoutHour: number,
+): Promise<{ live_updated: number; stats_written: number; running: number; completed: number; skips: string[] }> {
+  const now = new Date();
+  const nowMs = now.getTime();
+  const skips: string[] = [];
+
+  // Running toast-linked events (live counter) …
+  const { data: runningRows } = await admin
+    .from("scheduled_events")
+    .select("id, fields, toast_guid, fire_at, window_minutes")
+    .eq("venue_id", venueId)
+    .eq("status", "running")
+    .not("toast_guid", "is", null)
+    .not("fire_at", "is", null);
+  const running = (runningRows ?? []) as EventRow[];
+
+  // … and freshly-completed toast-linked events still needing final_stats (bounded to the
+  // last 6h of window-end so old history is never reprocessed).
+  const sixHoursMs = 6 * 60 * 60 * 1000;
+  const { data: completedRows } = await admin
+    .from("scheduled_events")
+    .select("id, fields, toast_guid, fire_at, window_minutes")
+    .eq("venue_id", venueId)
+    .eq("status", "completed")
+    .not("toast_guid", "is", null)
+    .not("fire_at", "is", null);
+  const completed = ((completedRows ?? []) as EventRow[]).filter((e) => {
+    if (e.fields && (e.fields as Record<string, unknown>).final_stats !== undefined) return false;
+    const endMs = Date.parse(e.fire_at) + (e.window_minutes ?? 0) * 60_000;
+    return endMs <= nowMs && endMs >= nowMs - sixHoursMs;
+  });
+
+  // Per-business-date order cache (fetch each date at most once across all events).
+  const orderCache = new Map<string, RawOrder[]>();
+  async function ordersFor(businessDate: string): Promise<RawOrder[]> {
+    const hit = orderCache.get(businessDate);
+    if (hit) return hit;
+    const fetched = (await getOrders(token, businessDate)) as unknown as RawOrder[];
+    orderCache.set(businessDate, fetched);
+    return fetched;
+  }
+  // Union the orders covering [fromMs, toMs] — usually one business date, two only if the
+  // window straddles the venue's closeout rollover.
+  async function ordersCovering(fromDate: Date, toDate: Date): Promise<RawOrder[]> {
+    const bdSet = new Set<string>([
+      businessDateFor(fromDate, tz, closeoutHour),
+      businessDateFor(toDate, tz, closeoutHour),
+    ]);
+    const out: RawOrder[] = [];
+    for (const bd of bdSet) out.push(...(await ordersFor(bd)));
+    return out;
+  }
+
+  let liveUpdated = 0;
+  for (const ev of running) {
+    const fromMs = Date.parse(ev.fire_at);
+    if (Number.isNaN(fromMs)) continue;
+    const orders = await ordersCovering(new Date(fromMs), now);
+    const count = countUnitsForGuid(orders, ev.toast_guid, fromMs, nowMs);
+    const prev = (ev.fields as Record<string, unknown> | null)?.live_count;
+    if (prev !== count) {
+      const merged = mergeFields(ev.fields, { live_count: count });
+      const { error } = await admin.from("scheduled_events").update({ fields: merged }).eq("id", ev.id);
+      if (error) throw error;
+      liveUpdated++;
+    }
+  }
+
+  let statsWritten = 0;
+  for (const ev of completed) {
+    const fromMs = Date.parse(ev.fire_at);
+    if (Number.isNaN(fromMs)) continue;
+    const endMs = fromMs + (ev.window_minutes ?? 0) * 60_000;
+    const orders = await ordersCovering(new Date(fromMs), new Date(endMs));
+    const units = countUnitsForGuid(orders, ev.toast_guid, fromMs, endMs);
+
+    // Baseline = this item's average units per prior business date from sales_cache history.
+    const eventBusinessDate = businessDateFor(new Date(fromMs), tz, closeoutHour);
+    const { data: hist } = await admin
+      .from("sales_cache")
+      .select("business_date, sales_count")
+      .eq("venue_id", venueId)
+      .eq("item_guid", ev.toast_guid);
+    const { avg, dates } = averageUnitsPerDate((hist ?? []) as SalesRow[], eventBusinessDate);
+    const pct = vsAvgPct(units, avg);
+    if (avg === null) {
+      skips.push(`event ${ev.id}: vs_avg skipped (${dates} prior date(s) < 3)`);
+    }
+
+    const finalStats: FinalStats = {
+      units,
+      window_minutes: ev.window_minutes ?? 0,
+      vs_avg_pct: pct,
+      computed_at: now.toISOString(),
+    };
+    const merged = mergeFields(ev.fields, { final_stats: finalStats });
+    const { error } = await admin.from("scheduled_events").update({ fields: merged }).eq("id", ev.id);
+    if (error) throw error;
+    statsWritten++;
+  }
+
+  return { live_updated: liveUpdated, stats_written: statsWritten, running: running.length, completed: completed.length, skips };
+}
+
 // ── main ─────────────────────────────────────────────────────────────────────
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: cors });
@@ -210,8 +350,16 @@ Deno.serve(async (req) => {
         .eq("key", "drinks_sync_window")
         .maybeSingle();
       const win = (winRow?.value as { open?: string; close?: string } | null) ?? null;
-      if (!force && !withinWindow(new Date(), tz, win)) {
-        results.push({ venue: venue.id, skipped: "outside operating hours" });
+      const inWindow = force || withinWindow(new Date(), tz, win);
+
+      // EVENT COUNTER pass — runs on EVERY invocation, independent of the sales window gate.
+      // (docs/13: the live counter must keep ticking during an event even outside bar hours.)
+      const events = await runEventsPass(admin, venue.id, tz, token, closeoutHour);
+
+      if (!inWindow) {
+        // Sales half is skipped outside operating hours — shape preserved for existing readers,
+        // now additively carrying the events summary.
+        results.push({ venue: venue.id, skipped: "outside operating hours", events });
         continue;
       }
 
@@ -266,7 +414,7 @@ Deno.serve(async (req) => {
         .eq("venue_id", venue.id)
         .not("menu_group_guid", "in", `(${targetGuids.map((g) => `"${g}"`).join(",")})`);
 
-      results.push({ venue: venue.id, businessDate, closeoutHour, orders: orders.length, groups: targetGuids.length, rowsWritten, groupNames: targetGuids.map((g) => groupName.get(g) ?? g) });
+      results.push({ venue: venue.id, businessDate, closeoutHour, orders: orders.length, groups: targetGuids.length, rowsWritten, groupNames: targetGuids.map((g) => groupName.get(g) ?? g), events });
     }
 
     return json({ ok: true, results }, 200);
