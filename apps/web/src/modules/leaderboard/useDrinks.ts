@@ -70,14 +70,36 @@ export function useDrinksBoard() {
   const sales = useQuery({
     queryKey: ["drinks", "sales"],
     queryFn: async (): Promise<Record<string, DrinkItem[]>> => {
-      const { data, error } = await supabase
-        .from("sales_cache")
-        .select("menu_group_guid, rank, item_name, price, sales_count, sales_percentage, business_date")
-        .eq("venue_id", VENUE_ID)
-        .order("rank");
-      if (error) throw error;
+      // POS-visibility gate (0034 / reviewer NOTE-2): the owner never wants a
+      // product advertised unless it's active on the POS view. Fetch the sales
+      // rows and the (small) set of explicitly POS-hidden Toast items in
+      // parallel, then drop any sales row whose item is hidden — matching by
+      // item_guid, or by name for guid-less rows. Unknown items stay visible,
+      // mirroring 0034's default-true, so all-visible data renders identically.
+      const [salesRes, hiddenRes] = await Promise.all([
+        supabase
+          .from("sales_cache")
+          .select("menu_group_guid, rank, item_guid, item_name, price, sales_count, sales_percentage, business_date")
+          .eq("venue_id", VENUE_ID)
+          .order("rank"),
+        supabase
+          .from("toast_menu_cache")
+          .select("guid, name")
+          .eq("venue_id", VENUE_ID)
+          .eq("pos_visible", false),
+      ]);
+      if (salesRes.error) throw salesRes.error;
+      const hidden = (hiddenRes.data ?? []) as { guid: string; name: string | null }[];
+      const hiddenGuids = new Set(hidden.map((h) => h.guid));
+      const hiddenNames = new Set(hidden.map((h) => String(h.name ?? "").trim().toLowerCase()));
+      const rows = ((salesRes.data ?? []) as (DrinkItem & { item_guid: string | null })[]).filter(
+        (r) =>
+          r.item_guid
+            ? !hiddenGuids.has(r.item_guid)
+            : !hiddenNames.has(String(r.item_name).trim().toLowerCase()),
+      );
       const byGroup: Record<string, DrinkItem[]> = {};
-      for (const row of (data ?? []) as DrinkItem[]) {
+      for (const row of rows) {
         (byGroup[row.menu_group_guid] ??= []).push(row);
       }
       return byGroup;
@@ -89,6 +111,10 @@ export function useDrinksBoard() {
     const channel = supabase
       .channel("drinks:board")
       .on("postgres_changes", { event: "*", schema: "public", table: "sales_cache", filter: `venue_id=eq.${VENUE_ID}` },
+        () => qc.invalidateQueries({ queryKey: ["drinks", "sales"] }))
+      // POS-visibility flips live in toast_menu_cache — refresh so a hidden item
+      // drops off the board (0034 / reviewer NOTE-2).
+      .on("postgres_changes", { event: "*", schema: "public", table: "toast_menu_cache", filter: `venue_id=eq.${VENUE_ID}` },
         () => qc.invalidateQueries({ queryKey: ["drinks", "sales"] }))
       .on("postgres_changes", { event: "*", schema: "public", table: "drinks_menu_groups", filter: `venue_id=eq.${VENUE_ID}` },
         () => qc.invalidateQueries({ queryKey: ["drinks", "groups"] }))
