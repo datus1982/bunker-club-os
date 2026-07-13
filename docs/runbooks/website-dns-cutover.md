@@ -162,3 +162,39 @@ Before it lapses entirely:
 Revert the Namecheap apex/`www` records to the values in your Step 1 screenshot. The old
 Toast site returns within propagation time. Email and `os.` were never touched (Option B) or
 are already re-created in Cloudflare (Option A), so neither is affected by the rollback.
+
+---
+
+## ✅ CUTOVER EXECUTED — 2026-07-13 (owner-driven, in-session)
+
+Actual path taken: **Option A (zone moved to Cloudflare)** — required because Cloudflare
+Pages apex custom domains cannot validate through a Namecheap ALIAS (verifier wants a
+literal CNAME; www validated fine, apex stuck "pending: CNAME record not set").
+
+Sequence as executed:
+1. DNS inventory: apex had NO MX records (no email risk); old site = Duda
+   (`multiscreensite.com`); Resend records on `send`/`resend._domainkey` confirmed.
+2. Apex + www added as Pages custom domains (API). Owner deleted the two old apex A
+   records (100.24.208.97, 35.172.94.1 — recorded for rollback) + old www CNAME at
+   Namecheap; interim ALIAS/CNAME → `bunker-club-os.pages.dev` (www served immediately).
+3. Apex pending → zone `bunkerokc.com` created on Cloudflare (dashboard "Add a domain",
+   Free plan) + account API token `CLOUDFLARE_ZONE_TOKEN` in root `.env` (zone-scoped;
+   owner had to widen Zone Resources to all zones).
+4. Zone records reconciled via API (zone id `a7edcb713f5472478639a07b3e1dfe73`): deleted
+   4 imported apex A/AAAA flattening artifacts; apex/www/os → CNAME
+   `bunker-club-os.pages.dev` (proxied); Resend MX/SPF/DKIM imported intact (DKIM
+   byte-verified). ⚠ The auto-scan had MISSED `os` — added manually.
+5. Owner switched Namecheap nameservers → `chance.ns.cloudflare.com` /
+   `harlee.ns.cloudflare.com`. Zone active in ~1 min; apex domain validated; HTTPS 200
+   in ~3 min total.
+6. Post-cutover verification (all green): apex/www/os 200; `/home` → 301 `/`; /menu,
+   /events, /about, /history 200; og-default.jpg + brand/logo-red-512.png 200 (the
+   PR #10 NOTE-5 apex-404s self-resolved); real OTP email Supabase→Resend→delivered
+   post-cutover (19:05Z).
+
+**DNS is now fully API-managed via `CLOUDFLARE_ZONE_TOKEN` — no more Namecheap DNS panel
+for this domain (registrar/renewals only).**
+
+Remaining owner actions: update Google Business Profile website+menu links; cancel the
+Duda subscription (~$100/mo) — email-risk-free since the apex carries no MX; the old
+site remains at Duda's internal URL until cancellation if a copy is ever wanted.
