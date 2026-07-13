@@ -3,6 +3,14 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "@/shared/supabaseClient";
 import { roleAtLeast, useRole } from "@/shared/useRole";
 
+// Does the URL carry a recovery signal? The implicit-flow link lands as `#…&type=recovery`,
+// a query link as `?…&type=recovery`. Captured at module scope: the auth client only clears
+// the hash after a network round-trip, so import-time capture always precedes it (a mount-time
+// read could lose that race and show the confirm gate to a genuine recovery user).
+const urlIsRecovery =
+  new URLSearchParams(window.location.hash.replace(/^#/, "")).get("type") === "recovery" ||
+  new URLSearchParams(window.location.search).get("type") === "recovery";
+
 /**
  * Password-recovery landing (`/reset-password`). A Supabase recovery email links here
  * with a one-time token; the supabase client (detectSessionInUrl) exchanges it and fires
@@ -34,12 +42,6 @@ export function ResetPassword() {
   useEffect(() => {
     const markReady = () => { resolved.current = true; setPhase("ready"); };
 
-    // Captured synchronously at mount, before the client's detectSessionInUrl can strip
-    // the hash: does the URL itself carry a recovery signal? The implicit-flow recovery
-    // link lands as `#…&type=recovery`; a query link as `?…&type=recovery`.
-    const hashType = new URLSearchParams(window.location.hash.replace(/^#/, "")).get("type");
-    const queryType = new URLSearchParams(window.location.search).get("type");
-    const urlIsRecovery = hashType === "recovery" || queryType === "recovery";
 
     // 1) React to the recovery event the client fires once it processes the URL token.
     const { data: sub } = supabase.auth.onAuthStateChange((event) => {

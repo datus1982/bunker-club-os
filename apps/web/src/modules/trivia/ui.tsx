@@ -90,8 +90,9 @@ export function Modal({ title, onClose, children, footer }: { title: string; onC
           <button type="button" onClick={onClose} style={btnGhost} aria-label="Close">✕</button>
         </div>
         <div className="terminal-separator" style={{ margin: 0 }} />
-        {/* Body — the only scrolling region */}
-        <div style={{ flex: "1 1 auto", overflowY: "auto", padding: "16px 24px" }}>{children}</div>
+        {/* Body — the only scrolling region. gap 16 restores the pre-pinned-footer spacing for
+            callers that pass bare siblings (e.g. AddTeamPicker's two Fields). */}
+        <div style={{ flex: "1 1 auto", overflowY: "auto", padding: "16px 24px", display: "flex", flexDirection: "column", gap: 16 }}>{children}</div>
         {/* Footer — pinned bottom, themed background, so CANCEL/SAVE stay visible while the body scrolls (Phase 4c). */}
         {footer && (
           <div style={{ display: "flex", gap: 12, justifyContent: "flex-end", padding: "14px 24px", borderTop: "1px solid var(--terminal-green)", background: "#000" }}>
