@@ -113,7 +113,7 @@ export function DrinksAdmin() {
     <div className="terminal-theme" style={{ minHeight: "100vh", padding: "clamp(16px, 4vw, 32px)", fontFamily: "'VT323','Share Tech Mono',monospace", color: "var(--terminal-green)" }}>
       <div style={{ maxWidth: 900, margin: "0 auto" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
-          <h1 style={{ fontSize: "clamp(24px, 6vw, 40px)", fontWeight: 700, letterSpacing: 2 }}>DRINKS BOARD — CONFIG</h1>
+          <h1 style={{ fontSize: "clamp(24px, 6vw, 40px)", fontWeight: 700, letterSpacing: 2 }}>TOP SELLERS BOARD — CONFIG</h1>
           <div style={{ display: "flex", gap: 12 }}>
             <Link to="/drinks" style={linkBtn}>OPEN BOARD</Link>
             <Link to="/dashboard" style={linkBtn}>DASHBOARD</Link>
