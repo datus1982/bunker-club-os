@@ -1,5 +1,7 @@
-import { Navigate, Routes, Route } from "react-router-dom";
+import { useEffect } from "react";
+import { Navigate, Routes, Route, useNavigate } from "react-router-dom";
 
+import { supabase } from "./shared/supabaseClient";
 import { RequireAuth, RequireRole, RequireModule } from "./shared/guards";
 import * as Trivia from "./modules/trivia/routes";
 import * as Website from "./modules/website/routes";
@@ -12,6 +14,48 @@ import { SeasonsAdmin } from "./modules/seasons/routes";
 import { SignageAdmin, SlotDisplay } from "./modules/signage/routes";
 import { Dashboard, StaffLayout, Users } from "./modules/dashboard/routes";
 
+// Did we land with a password-recovery hash on THIS page load? Supabase's implicit
+// recovery link lands as `#…&type=recovery`. When `redirect_to` isn't allow-listed,
+// Supabase falls back to the Site URL — so the recovery token can arrive at ANY route
+// (the owner hit this on `/`), where the client silently establishes the session and
+// strips the hash, leaving the user signed in with no set-password form in sight.
+// Captured at module scope (import time), before the client's detectSessionInUrl has a
+// chance to consume + strip the hash — a mount-time read could lose that race.
+const landedWithRecoveryHash =
+  new URLSearchParams(window.location.hash.replace(/^#/, "")).get("type") === "recovery";
+
+/**
+ * App-level PASSWORD_RECOVERY safety net. Ensures a recovery session — however it
+ * arrived — ends up at `/reset-password` looking at the set-new-password form, not
+ * silently signed in on whatever page the token landed on.
+ *
+ * Two triggers, because the recovery signal can surface either before or after React
+ * subscribes:
+ *   1) Synchronous capture: if the page loaded with a `type=recovery` hash anywhere but
+ *      `/reset-password`, redirect there — preserving the hash so the auth client can
+ *      still consume the token if it hasn't yet (never strip the token out from under it).
+ *   2) The PASSWORD_RECOVERY auth event, for when the client processes the token after
+ *      we've subscribed.
+ * Error hashes (`#error=…&error_code=otp_expired`) carry no `type` param and establish no
+ * session, so neither trigger fires for them — they fall through to the normal error path.
+ */
+function useRecoveryRedirect() {
+  const navigate = useNavigate();
+  useEffect(() => {
+    if (landedWithRecoveryHash && window.location.pathname !== "/reset-password") {
+      navigate("/reset-password" + window.location.hash, { replace: true });
+    }
+    const { data: sub } = supabase.auth.onAuthStateChange((event) => {
+      if (event === "PASSWORD_RECOVERY" && window.location.pathname !== "/reset-password") {
+        navigate("/reset-password", { replace: true });
+      }
+    });
+    return () => sub.subscription.unsubscribe();
+    // Run once on mount; navigate is stable.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+}
+
 /**
  * Top-level route map (docs/01, updated by docs/14). The public website owns the
  * site root and renders with zero auth; the internal dashboard lives at /dashboard.
@@ -19,6 +63,7 @@ import { Dashboard, StaffLayout, Users } from "./modules/dashboard/routes";
  * (read-only). Staff routes are role-gated.
  */
 export function App() {
+  useRecoveryRedirect();
   return (
     <Routes>
       {/* Public marketing website (docs/14, Phase 3.5) — no auth */}
