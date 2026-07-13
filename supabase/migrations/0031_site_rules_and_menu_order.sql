@@ -11,9 +11,12 @@
 --   site_menu_group_order — the section order for /menu. Listed groups render
 --                           first, in this exact order; unlisted groups fall to
 --                           the end alphabetically. Owner asked for cocktails
---                           first (2026-07-13). Names are the exact `menu_group`
---                           strings in the live toast_menu_cache (20 groups).
---                           Array of strings.
+--                           first (2026-07-13); reordered again same day (19
+--                           groups). "Winter Cocktails" is deliberately unlisted —
+--                           it is POS-hidden in Toast (group visibility []), so the
+--                           pos_visible gate (0034) keeps it off /menu regardless.
+--                           Names are the exact `menu_group` strings in the live
+--                           toast_menu_cache. Array of strings.
 --
 -- THREE-WAY INVARIANT: each array is byte-identical across (1) this seed, (2) the
 -- FALLBACK in the consuming hook (site_club_rules → useSiteCopy.ts FALLBACK;
@@ -27,11 +30,16 @@
 
 insert into public.venue_settings (venue_id, key, value) values
 
+  -- Owner changed the wall 2026-07-13: candles → lamps, plus a NEW rule
+  -- ("Don''t break or steal the lamps") inserted after the disfiguring rule → 8
+  -- rules. The live row was edited directly; this seed + the useSiteCopy.ts
+  -- FALLBACK are re-synced to byte-match it (three-way invariant above).
   ('11111111-1111-1111-1111-111111111111', 'site_club_rules',
    '[
      "Don''t start none, won''t be none",
      "Tipping makes you sexy",
-     "Disfiguring the candles will result in death!",
+     "Disfiguring the lamps will result in death!",
+     "Don''t break or steal the lamps",
      "If you return empties to the bar, the staff will love you forever",
      "Waving cash at bar will not result in quicker service",
      "Anyone carrying two or more drinks has right-of-way",
@@ -42,20 +50,19 @@ insert into public.venue_settings (venue_id, key, value) values
    '[
      "Signature Cocktails",
      "Cocktail Features",
-     "Winter Cocktails",
-     "Classics",
      "Mocktails",
-     "Shots",
      "Draft Beers",
-     "Bottle / Cans",
+     "Vodka",
+     "Gin",
+     "Rum",
+     "Classics",
+     "Shots",
      "N/A Beers",
+     "Bottle / Cans",
      "Wine",
      "Whiskey / Bourbon / Rye",
      "Scotch",
      "Tequila",
-     "Rum",
-     "Vodka",
-     "Gin",
      "Cordials",
      "Soft Drinks",
      "Food",

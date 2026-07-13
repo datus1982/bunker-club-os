@@ -34,26 +34,27 @@ export interface MenuGroup {
 //
 // This constant is the FALLBACK (first-paint / offline / key-missing) and MUST
 // byte-match the 0031 `site_menu_group_order` seed AND the live DB value — the
-// same three-way invariant useSiteCopy holds for its keys. Cocktails-first is the
-// owner's request (2026-07-13); names are the exact `menu_group` strings in the
-// live toast_menu_cache. Update all three together.
+// same three-way invariant useSiteCopy holds for its keys. Owner reorder
+// (2026-07-13); names are the exact `menu_group` strings in the live
+// toast_menu_cache. "Winter Cocktails" is deliberately unlisted — it is POS-hidden
+// in Toast, so the pos_visible gate (0034) keeps it off /menu regardless of order.
+// Update all three together.
 const MENU_GROUP_ORDER_FALLBACK = [
   "Signature Cocktails",
   "Cocktail Features",
-  "Winter Cocktails",
-  "Classics",
   "Mocktails",
-  "Shots",
   "Draft Beers",
-  "Bottle / Cans",
+  "Vodka",
+  "Gin",
+  "Rum",
+  "Classics",
+  "Shots",
   "N/A Beers",
+  "Bottle / Cans",
   "Wine",
   "Whiskey / Bourbon / Rye",
   "Scotch",
   "Tequila",
-  "Rum",
-  "Vodka",
-  "Gin",
   "Cordials",
   "Soft Drinks",
   "Food",

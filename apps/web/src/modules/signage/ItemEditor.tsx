@@ -611,7 +611,7 @@ function ToastPicker({ rows, selected, onSelect }: { rows: ToastCacheRow[]; sele
           {sel.image && <img src={sel.image} alt="" style={{ width: 44, height: 44, objectFit: "cover", border: "1px solid var(--terminal-green)" }} />}
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 20, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{sel.name}</div>
-            <div style={{ fontSize: 14, opacity: 0.6 }}>{sel.menu_group}{sel.price != null ? ` · $${sel.price}` : ""}{sel.out_of_stock ? " · 86'D" : ""}</div>
+            <div style={{ fontSize: 14, opacity: 0.6 }}>{sel.menu_group}{sel.price != null ? ` · $${sel.price}` : ""}{sel.out_of_stock ? " · 86'D" : ""}{sel.pos_visible ? "" : " · POS-HIDDEN"}</div>
           </div>
           <button type="button" onClick={() => setOpen((o) => !o)} style={{ ...btnGhost, fontSize: 15, minHeight: 44 }}>CHANGE</button>
         </div>
@@ -628,13 +628,16 @@ function ToastPicker({ rows, selected, onSelect }: { rows: ToastCacheRow[]; sele
                 key={r.guid}
                 type="button"
                 onClick={() => { onSelect(r.guid); setOpen(false); }}
-                style={{ ...pickRow, alignItems: "center" }}
+                // POS-hidden items are shown (staff want to see why an item can't be
+                // advertised) but dimmed + badged, and picking one auto-hides on-screen.
+                style={{ ...pickRow, alignItems: "center", opacity: r.pos_visible ? 1 : 0.5 }}
               >
                 {r.image
                   ? <img src={r.image} alt="" style={{ width: 36, height: 36, objectFit: "cover", border: "1px solid var(--terminal-green)", flexShrink: 0 }} />
                   : <span style={{ width: 36, height: 36, border: "1px solid var(--terminal-green)", flexShrink: 0, display: "inline-block" }} />}
                 <span style={{ flex: 1, minWidth: 0, textAlign: "left", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", fontSize: 17 }}>{r.name}</span>
                 <span style={{ fontSize: 13, opacity: 0.6, whiteSpace: "nowrap" }}>{r.menu_group}</span>
+                {!r.pos_visible && <span className="u-amber" style={{ fontSize: 11, whiteSpace: "nowrap" }}>POS-HIDDEN</span>}
                 {r.out_of_stock && <span className="u-amber" style={{ fontSize: 12 }}>86</span>}
               </button>
             ))}

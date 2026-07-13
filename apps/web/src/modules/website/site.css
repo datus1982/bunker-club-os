@@ -922,7 +922,12 @@
   background: var(--site-bg-raised);
 }
 .site-pointer:hover { text-decoration: none; border-color: var(--site-line-strong); }
+/* The three lines are <span>s. Without `display:block` they render inline and
+   the __title's vertical margins are ignored — kicker, title and body run
+   together on one wrapped line (the "type spacing" bug). Block each one so the
+   kicker sits on its own line and the title's margins space the stack. */
 .site-pointer__kicker {
+  display: block;
   font-family: var(--site-font-mono);
   text-transform: uppercase;
   letter-spacing: 0.16em;
@@ -930,12 +935,14 @@
   color: var(--site-amber);
 }
 .site-pointer__title {
+  display: block;
   font-family: var(--site-font-display);
   font-size: 1.4rem;
+  line-height: 1.15;
   color: var(--site-ink);
-  margin: 0.25rem 0 0.2rem;
+  margin: 0.35rem 0 0.3rem;
 }
-.site-pointer__body { color: var(--site-ink-dim); font-size: 0.95rem; margin: 0; }
+.site-pointer__body { display: block; color: var(--site-ink-dim); font-size: 0.95rem; margin: 0; }
 
 /* Neighborhood events (/events) — external highlight cards + a source line. */
 .site-event__source {

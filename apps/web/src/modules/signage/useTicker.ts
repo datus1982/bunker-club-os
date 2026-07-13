@@ -68,16 +68,38 @@ export function useTicker(): TickerLine[] {
         }
       }
 
-      // 3) NOW POURING top seller (green) — highest sales_count in sales_cache
+      // 3) NOW POURING top seller (green) — highest sales_count in sales_cache,
+      //    gated on POS visibility (0034 / reviewer NOTE-2): the owner never wants
+      //    a product advertised unless it's active on the POS view. sales_cache
+      //    rows carry item_guid (populated by toast-sync); we drop any whose Toast
+      //    row is explicitly pos_visible=false, matching by guid and (guid-less
+      //    rows) by name. Unknown items stay visible — mirrors 0034's default-true.
       const { data: sales } = await supabase
         .from("sales_cache")
-        .select("item_name, sales_count")
+        .select("item_name, sales_count, item_guid")
         .eq("venue_id", VENUE_ID)
         .order("sales_count", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      if (sales?.item_name) {
-        lines.push({ text: `NOW POURING: ${String(sales.item_name).toUpperCase()}`, live: true });
+        .limit(12);
+      const topSellers = (sales ?? []) as { item_name: string; item_guid: string | null }[];
+      if (topSellers.length) {
+        // Explicitly POS-hidden items only (small set — Winter Cocktails etc.).
+        const { data: hidden } = await supabase
+          .from("toast_menu_cache")
+          .select("guid, name")
+          .eq("venue_id", VENUE_ID)
+          .eq("pos_visible", false);
+        const hiddenGuids = new Set((hidden ?? []).map((h) => h.guid as string));
+        const hiddenNames = new Set(
+          (hidden ?? []).map((h) => String(h.name ?? "").trim().toLowerCase()),
+        );
+        const pouring = topSellers.find((s) =>
+          s.item_guid
+            ? !hiddenGuids.has(s.item_guid)
+            : !hiddenNames.has(String(s.item_name).trim().toLowerCase()),
+        );
+        if (pouring?.item_name) {
+          lines.push({ text: `NOW POURING: ${String(pouring.item_name).toUpperCase()}`, live: true });
+        }
       }
 
       return lines.length ? lines : DEFAULT_LINES.map((text) => ({ text, live: false }));
@@ -90,6 +112,10 @@ export function useTicker(): TickerLine[] {
       .on("postgres_changes", { event: "*", schema: "public", table: "scores" },
         () => qc.invalidateQueries({ queryKey: ["signage", "ticker"] }))
       .on("postgres_changes", { event: "*", schema: "public", table: "sales_cache", filter: `venue_id=eq.${VENUE_ID}` },
+        () => qc.invalidateQueries({ queryKey: ["signage", "ticker"] }))
+      // POS-visibility flips live in toast_menu_cache — refresh so a hidden top
+      // seller stops appearing as NOW POURING (0034 / reviewer NOTE-2).
+      .on("postgres_changes", { event: "*", schema: "public", table: "toast_menu_cache", filter: `venue_id=eq.${VENUE_ID}` },
         () => qc.invalidateQueries({ queryKey: ["signage", "ticker"] }))
       .subscribe();
     return () => { supabase.removeChannel(ch); };

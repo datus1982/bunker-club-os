@@ -119,6 +119,36 @@ export function History() {
         </p>
       </div>
 
+      {/* Centennial + events tie-in — hoisted to the TOP (owner: "should be top of
+          mind"). Sits directly under the 1957 panorama credit, above the thesis. */}
+      <section className="site-section site-section--tight">
+        <div className="site-wrap">
+          <div className="site-centennial">
+            <div className="site-centennial__badge">▲ Route 66 Centennial · 1926–2026</div>
+            <h2 className="site-h-compact">One Hundred Years on the Mother Road</h2>
+            <p className="site-tl__body" style={{ maxWidth: "66ch", marginBottom: "0.9rem" }}>
+              November 11, 2026 marks one hundred years since Route 66 was commissioned — and
+              Oklahoma, home to more drivable miles of Route 66 than any other state, is
+              celebrating all year. Uptown 23rd, our own district, kicked off with Cruisin' 23rd in April, and the
+              statewide calendar runs right through the centennial date.
+            </p>
+            <p className="site-tl__body" style={{ maxWidth: "66ch", margin: 0 }}>
+              We keep a short list of nearby centennial happenings on our{" "}
+              <Link to="/events">Events page, under "Around the Neighborhood"</Link> — plus links
+              to the{" "}
+              <a href="https://oklahomaroute66.com/centennial" target="_blank" rel="noreferrer noopener">
+                Oklahoma Route 66 Association
+              </a>{" "}
+              and{" "}
+              <a href="https://uptown23rd.com/" target="_blank" rel="noreferrer noopener">
+                Uptown 23rd
+              </a>
+              .
+            </p>
+          </div>
+        </div>
+      </section>
+
       {/* Lead / thesis */}
       <section className="site-section site-section--tight">
         <div className="site-wrap">
@@ -501,35 +531,6 @@ export function History() {
               </span>
             </figcaption>
           </figure>
-        </div>
-      </section>
-
-      {/* Centennial + events tie-in */}
-      <section className="site-section site-section--tight">
-        <div className="site-wrap">
-          <div className="site-centennial">
-            <div className="site-centennial__badge">▲ Route 66 Centennial · 1926–2026</div>
-            <h2 className="site-h-compact">One Hundred Years on the Mother Road</h2>
-            <p className="site-tl__body" style={{ maxWidth: "66ch", marginBottom: "0.9rem" }}>
-              November 11, 2026 marks one hundred years since Route 66 was commissioned — and
-              Oklahoma, home to more drivable miles of Route 66 than any other state, is
-              celebrating all year. Uptown 23rd, our own district, kicked off with Cruisin' 23rd in April, and the
-              statewide calendar runs right through the centennial date.
-            </p>
-            <p className="site-tl__body" style={{ maxWidth: "66ch", margin: 0 }}>
-              We keep a short list of nearby centennial happenings on our{" "}
-              <Link to="/events">Events page, under "Around the Neighborhood"</Link> — plus links
-              to the{" "}
-              <a href="https://oklahomaroute66.com/centennial" target="_blank" rel="noreferrer noopener">
-                Oklahoma Route 66 Association
-              </a>{" "}
-              and{" "}
-              <a href="https://uptown23rd.com/" target="_blank" rel="noreferrer noopener">
-                Uptown 23rd
-              </a>
-              .
-            </p>
-          </div>
         </div>
       </section>
 
