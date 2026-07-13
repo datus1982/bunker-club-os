@@ -25,7 +25,10 @@ const STEPS: { n: string; title: string; body: string }[] = [
   {
     n: "03",
     title: "Play The Night",
-    body: "Multiple rounds, a picture round, wildcards, and a wager. Answers go in at your table — no paper, no fuss.",
+    // W3: the product has no player-side answer entry — the host runs scoring and
+    // standings render on the screens. Copy reflects that reality (no "answers go
+    // in at your table").
+    body: "Multiple rounds, a picture round, wildcards, and a wager. Your host runs the night — scores go up live on the screens overhead.",
   },
   {
     n: "04",
@@ -51,7 +54,7 @@ export function Trivia() {
           <p className="site-label">▲ Civil Defense Drill · Wednesdays 8 PM</p>
           <h1>ATOMIC PUB TRIVIA</h1>
           <p className="site-hero__sub">
-            The best night of the week in the Bunker. Six rounds, a picture round, and a wager
+            The best night of the week in the Bunker. A picture round, wildcards, and a wager
             that can blow the whole thing wide open. Free to play — bring your smartest friends
             (or your loudest).
           </p>

@@ -37,7 +37,9 @@ export function DisplayPlaceholder({
   orientation: "landscape" | "portrait";
 }) {
   return (
-    <DisplayCanvas orientation={orientation}>
+    // Stub — not a real always-on display, so don't pin the global kiosk viewport
+    // (N9). Real display routes (Leaderboard/GameDisplay) keep the default lock.
+    <DisplayCanvas orientation={orientation} kioskViewport={false}>
       <div
         style={{
           width: "100%",

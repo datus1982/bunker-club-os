@@ -72,17 +72,32 @@ export function useThisWeek() {
         });
       }
 
-      // Website-flagged screen promos.
+      // Website-flagged screen promos. Apply the same time-window filter as
+      // useEvents (W2): drop items whose ends_at has passed, and items whose
+      // starts_at is still in the future; evergreen (null starts_at/ends_at) always
+      // shows. Fetch a few extra since the window filter runs client-side.
+      const nowMs = Date.now();
       const { data: promos } = await supabase
         .from("signage_items")
-        .select("id, template, fields, sort_order")
+        .select("id, template, fields, starts_at, ends_at, sort_order")
         .eq("venue_id", VENUE_ID)
         .eq("show_on_website", true)
         .eq("active", true)
         .order("sort_order", { ascending: true })
-        .limit(3);
+        .limit(8);
 
-      for (const p of promos ?? []) {
+      let shown = 0;
+      for (const p of (promos ?? []) as Array<{
+        id: string;
+        template: string;
+        fields: Record<string, unknown>;
+        starts_at: string | null;
+        ends_at: string | null;
+      }>) {
+        if (shown >= 3) break;
+        if (p.ends_at && new Date(p.ends_at).getTime() < nowMs) continue; // ended
+        if (p.starts_at && new Date(p.starts_at).getTime() > nowMs) continue; // not yet live
+        shown++;
         const title =
           pickText(p.fields, ["headline", "title", "name", "drink_name"]) ?? "Now On";
         cards.push({

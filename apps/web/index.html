@@ -34,6 +34,24 @@
       <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=VT323&family=Share+Tech+Mono&display=swap" />
     </noscript>
     <title>BUNKER UNIFIED OS</title>
+    <!-- Static default SEO/OpenGraph block (W1). The public site normally manages
+         these tags per-route from JS (see modules/website/seo.tsx), but link
+         scrapers (iMessage, Slack, Facebook, etc.) read the raw HTML head and never
+         run our JS — without this block a shared link previewed as bare
+         "BUNKER UNIFIED OS". useDocumentMeta UPDATES these same tags in place (it
+         matches by name/property, no data-managed qualifier), so no duplicates are
+         produced, and it resets them back to these defaults on unmount. -->
+    <meta name="description" content="An atomic age high-dive bar at 433 NW 23rd St in Oklahoma City. Open 4 PM to 2 AM daily, with Atomic Pub Trivia every Wednesday night." />
+    <meta property="og:title" content="Bunker Club — Atomic Age High-Dive Bar in OKC" />
+    <meta property="og:description" content="An atomic age high-dive bar at 433 NW 23rd St in Oklahoma City. Open 4 PM to 2 AM daily, with Atomic Pub Trivia every Wednesday night." />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://bunkerokc.com/" />
+    <meta property="og:image" content="https://bunkerokc.com/og-default.png" />
+    <meta property="og:site_name" content="Bunker Club" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Bunker Club — Atomic Age High-Dive Bar in OKC" />
+    <meta name="twitter:description" content="An atomic age high-dive bar at 433 NW 23rd St in Oklahoma City. Open 4 PM to 2 AM daily, with Atomic Pub Trivia every Wednesday night." />
+    <meta name="twitter:image" content="https://bunkerokc.com/og-default.png" />
   </head>
   <body>
     <div id="root"></div>

@@ -60,7 +60,7 @@ const FALLBACK: SiteCopy = {
     lng: -97.5227,
   },
   parking:
-    "Street parking runs along NW 23rd and the side streets. Ride-share drop-off is easiest right out front.",
+    "Parking lots are just south across the street and to the northwest behind The Rise. Not sure where to land? Ask us and we'll point you to the closest spot.",
   socials: {
     instagram: "https://instagram.com/bunkerclubokc",
     facebook: "https://facebook.com/bunkerclubokc",
