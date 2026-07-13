@@ -40,7 +40,18 @@ export function SiteLayout({ active, children }: { active: PageId; children: Rea
       <header className="site-header">
         <div className="site-wrap site-header__bar">
           <Link to="/" className="site-wordmark" aria-label="Bunker Club — home">
-            BUNKER CLUB
+            {/* Brand bomb roundel (official 1-color white vector). Explicit dims reserve
+                the box (zero CLS); alt="" because the adjacent text + link aria-label
+                already name it. Never recolored — white is the sanctioned dark-ground
+                reduction of the mark. */}
+            <img
+              className="site-wordmark__mark"
+              src="/brand/roundel-white.svg"
+              alt=""
+              width={40}
+              height={45}
+            />
+            <span className="site-wordmark__text">BUNKER CLUB</span>
           </Link>
 
           <nav className="site-nav" aria-label="Primary">
@@ -82,6 +93,11 @@ export function SiteLayout({ active, children }: { active: PageId; children: Rea
 
       <footer className="site-footer">
         <div className="site-wrap">
+          <Link to="/" className="site-footer__brand" aria-label="Bunker Club — home">
+            <img src="/brand/roundel-white.svg" alt="" width={30} height={34} />
+            <span>BUNKER CLUB</span>
+          </Link>
+
           <div className="site-footer__cols">
             <div>
               <h2>Find Us</h2>

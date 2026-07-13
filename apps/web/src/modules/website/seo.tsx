@@ -16,6 +16,10 @@ export const SITE_NAME = "Bunker Club";
 // keeps the photographic card small. Matches the static og:image in index.html
 // so the JS updater overwrites the same tag.
 export const OG_IMAGE = `${SITE_ORIGIN}/og-default.jpg`;
+// Square brand mark for structured data (schema.org `logo`): the bomb roundel on
+// a brand-red field (512×512 PNG). A raster that reads on a white search surface
+// (the white-on-transparent roundel would vanish there).
+export const LOGO_IMAGE = `${SITE_ORIGIN}/brand/logo-red-512.png`;
 
 // Static defaults — MUST byte-match the static head block in index.html (W1/N8).
 // useDocumentMeta writes these back on unmount so staff routes (/login, /scoring…)

@@ -10,6 +10,7 @@ import {
   SITE_ORIGIN,
   SITE_NAME,
   OG_IMAGE,
+  LOGO_IMAGE,
 } from "../seo";
 
 /**
@@ -81,6 +82,7 @@ export function Home() {
         name: SITE_NAME,
         url: SITE_ORIGIN,
         image: OG_IMAGE,
+        logo: LOGO_IMAGE,
         description:
           "Neighborhood bar on NW 23rd Street in Oklahoma City, home of Atomic Pub Trivia every Wednesday.",
         address: {
