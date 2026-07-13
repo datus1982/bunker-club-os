@@ -81,6 +81,13 @@ for the clean URL.
 Per-physical-screen slot inventory (terminal #, location, inset) is recorded here
 as screens are calibrated in Phase 5.
 
+**★ SCREENS visibility caveat (Toast):** the featured drink rotation is driven by
+the **★ SCREENS** menu group in Toast, gated on POS visibility (0034). If you ever
+delete and re-create that group, its **group** visibility must include **POS** — a
+channel-hidden group cascades `pos_visible = false` onto every item inside it, and
+the featured rotation goes empty with no error. When in doubt, confirm ★ SCREENS
+shows on the POS view in Toast.
+
 ## What Claude needs from you (Phase 0 gate)
 
 1. **New Supabase project:** URL, anon key, service role key, direct `DATABASE_URL`. Supabase **Pro** tier enabled (daily backups + PITR; no free-tier pausing).

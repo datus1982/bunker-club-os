@@ -23,6 +23,12 @@
 --
 -- This migration is additive: it adds the columns + folds `pos_visible` into the
 -- public_menu view. The sync (deployed separately) populates the columns.
+--
+-- ⚠ ★ SCREENS CAVEAT (reviewer WARN-1): the featured-drink signage rotation is
+-- driven by the ★ SCREENS Toast group and gated on pos_visible here. Because the
+-- group's visibility cascades to its items, if ★ SCREENS is ever re-created in
+-- Toast its GROUP visibility MUST include "POS" — a channel-hidden group flips
+-- pos_visible=false on every item inside it and the rotation goes empty silently.
 
 -- ── Columns ─────────────────────────────────────────────────────────────────
 -- pos_visible: the semantic gate — TRUE means "visible/active on the POS view",
