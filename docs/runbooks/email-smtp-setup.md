@@ -33,7 +33,7 @@ not for production.
 | `mailer_otp_length` | 6 |
 | `mailer_otp_exp` | 3600s (1h) |
 | Site URL | `https://os.bunkerokc.com` |
-| redirect allow list | `https://os.bunkerokc.com/**` |
+| redirect allow list | `https://os.bunkerokc.com/**` + `https://*.bunker-club-os.pages.dev/**` (previews, owner-approved 2026-07-12) |
 | DNS registrar | Namecheap (holds `bunkerokc.com`) |
 
 ## The fix — configure custom SMTP (~10 min, one-time)
