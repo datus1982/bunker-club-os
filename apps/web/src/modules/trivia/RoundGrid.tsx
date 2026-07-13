@@ -15,6 +15,7 @@ import {
   type useGameScores,
 } from "./useScoring";
 import { Modal, Field, input, btnGhost, btnPrimary, btnActive, btnDanger, checkRow } from "./ui";
+import { useIsMobile } from "@/shared/useIsMobile";
 
 type Scores = ReturnType<typeof useGameScores>;
 
@@ -46,11 +47,19 @@ export function RoundGrid({
   const cols = useMemo(() => scoringRounds(rounds), [rounds]);
   const ranked = useMemo(() => getTeamRankings(teams, rounds, scores), [teams, rounds, scores]);
   const ties = useMemo(() => getTop3Ties(ranked), [ranked]);
+  const narrow = useIsMobile();
 
   const [cell, setCell] = useState<{ team: Team; round: Round } | null>(null);
 
+  // Phone-only: expand the small in-grid controls to ≥44px tap targets. Desktop keeps
+  // its dense layout (the host runs the grid on a laptop — density must not regress).
+  const roundBtnPad = narrow ? "8px 12px" : "1px 8px";
+  const iconBtn = narrow ? { padding: "6px", minWidth: 44, minHeight: 44 } : { padding: "2px 8px" };
+
   return (
-    <div style={{ overflowX: "auto" }}>
+    <div>
+      {narrow && <div className="u-scrollcue">◂ SCROLL ROUNDS ▸</div>}
+      <div style={{ overflowX: "auto" }}>
       <table style={{ borderCollapse: "collapse", width: "100%", fontSize: 20 }}>
         <thead>
           <tr>
@@ -64,7 +73,7 @@ export function RoundGrid({
                     type="button"
                     title={r.is_complete ? "Mark round incomplete" : "Mark round complete"}
                     onClick={() => mutations.toggleRoundComplete.mutate(r)}
-                    style={{ ...(r.is_complete ? btnActive : btnGhost), padding: "1px 8px", fontSize: 16 }}
+                    style={{ ...(r.is_complete ? btnActive : btnGhost), padding: roundBtnPad, fontSize: 16 }}
                   >
                     {r.is_complete ? "✓ DONE" : "OPEN"}
                   </button>
@@ -145,8 +154,8 @@ export function RoundGrid({
                 )}
                 <Td>
                   <div style={{ display: "flex", gap: 4, justifyContent: "center" }}>
-                    <button type="button" onClick={() => onEditTeam(team)} style={{ ...btnGhost, padding: "2px 8px", fontSize: 16 }} title="Edit team">✎</button>
-                    <button type="button" onClick={() => onRemoveTeam(team)} style={{ ...btnDanger, padding: "2px 8px", fontSize: 16 }} title="Remove from game">🗑</button>
+                    <button type="button" onClick={() => onEditTeam(team)} style={{ ...btnGhost, ...iconBtn, fontSize: 16 }} title="Edit team">✎</button>
+                    <button type="button" onClick={() => onRemoveTeam(team)} style={{ ...btnDanger, ...iconBtn, fontSize: 16 }} title="Remove from game">🗑</button>
                   </div>
                 </Td>
               </tr>
@@ -159,6 +168,7 @@ export function RoundGrid({
           </tr>
         </tbody>
       </table>
+      </div>
 
       {cell && (
         <ScoreDialog

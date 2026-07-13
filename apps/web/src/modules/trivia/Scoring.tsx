@@ -293,7 +293,7 @@ function AddTeamPicker({
 
 function StatusButton({ label, active, onClick, disabled }: { label: string; active?: boolean; onClick: () => void; disabled?: boolean }) {
   return (
-    <button type="button" onClick={onClick} disabled={disabled} style={{ ...(active ? btnActive : btnGhost), opacity: disabled ? 0.4 : 1 }}>
+    <button type="button" onClick={onClick} disabled={disabled} style={{ ...(active ? btnActive : btnGhost), opacity: disabled ? 0.4 : 1, minHeight: 44 }}>
       {label}
     </button>
   );

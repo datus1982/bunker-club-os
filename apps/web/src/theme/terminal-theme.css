@@ -477,3 +477,28 @@ div[data-radix-select-viewport] {
   from { opacity: 0; transform: translateY(-6px); }
   to   { opacity: 1; transform: translateY(0); }
 }
+
+/* ===== Checkbox tap targets (Phase 4c) =====
+ * Native checkboxes render ~13px — too small to tap on a phone (audit root cause 4).
+ * Size them up and tint the check with the theme green. Desktop-safe (larger, clearer
+ * boxes). The parent `.terminal-theme input` rule sets font-size/background but leaves
+ * width/height/accent-color free for us to set here. Paired with ≥44px label rows
+ * (checkRow) / padded wrapper labels (Users) so the whole control is a real target. */
+.terminal-theme input[type="checkbox"] {
+  width: 20px;
+  height: 20px;
+  min-width: 20px;
+  flex: 0 0 auto;
+  accent-color: var(--terminal-green);
+  cursor: pointer;
+}
+
+/* Mobile-only horizontal-scroll hint shown above wide tables (Phase 4c). Static text,
+ * no animation — a cheap, terminal-flavored cue that the table scrolls sideways. */
+.terminal-theme .u-scrollcue {
+  font-size: 15px;
+  letter-spacing: 3px;
+  opacity: 0.55;
+  margin-bottom: 6px;
+  user-select: none;
+}

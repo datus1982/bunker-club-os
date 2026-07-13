@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase, VENUE_ID } from "@/shared/supabaseClient";
 import type { ModuleKey, StaffRole } from "@/shared/useRole";
+import { useIsMobile } from "@/shared/useIsMobile";
 
 /**
  * USERS (admin only) — staff accounts + module grants (Phase 4b, migration 0025).
@@ -30,6 +31,7 @@ function useStaff() {
 export function Users() {
   const qc = useQueryClient();
   const staff = useStaff();
+  const narrow = useIsMobile();
   const [email, setEmail] = useState("");
   const [newRole, setNewRole] = useState<StaffRole>("staff");
   const [notice, setNotice] = useState<string | null>(null);
@@ -110,6 +112,8 @@ export function Users() {
       ) : staff.isError ? (
         <div style={{ fontSize: 20 }}>⚠ {(staff.error as Error)?.message ?? "Unable to load staff."}</div>
       ) : (
+        <>
+        {narrow && <div className="u-scrollcue">◂ SCROLL TABLE ▸</div>}
         <div style={{ overflowX: "auto" }}>
           <table style={{ borderCollapse: "collapse", width: "100%", minWidth: 720, fontSize: 18 }}>
             <thead>
@@ -125,7 +129,7 @@ export function Users() {
                 <tr key={row.profile_id}>
                   <td style={td}>{row.email}{row.is_self && <span style={{ opacity: 0.6 }}> (you)</span>}</td>
                   <td style={td}>
-                    <select value={row.role} disabled={row.is_self} onChange={(e) => changeRole(row, e.target.value as StaffRole)} style={{ ...input, fontSize: 16, padding: "4px 6px" }}>
+                    <select value={row.role} disabled={row.is_self} onChange={(e) => changeRole(row, e.target.value as StaffRole)} style={{ ...input, fontSize: 16, padding: "10px 6px", minHeight: 44 }}>
                       <option value="staff">staff</option>
                       <option value="host">host</option>
                       <option value="admin">admin</option>
@@ -134,15 +138,18 @@ export function Users() {
                   {ALL_MODULES.map((m) => {
                     const on = row.role === "admin" || row.modules.includes(m);
                     return (
-                      <td key={m} style={{ ...td, textAlign: "center" }}>
-                        <input
-                          type="checkbox"
-                          checked={on}
-                          disabled={row.role === "admin"}
-                          onChange={() => toggleModule(row, m)}
-                          aria-label={`${m} for ${row.email}`}
-                          style={{ width: 20, height: 20, cursor: row.role === "admin" ? "default" : "pointer", accentColor: "var(--terminal-green)" }}
-                        />
+                      <td key={m} style={{ ...td, textAlign: "center", padding: "2px 4px" }}>
+                        {/* Padded label so the effective tap target is ≥44px square (Phase 4c). */}
+                        <label style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", minWidth: 44, minHeight: 44, padding: 10, cursor: row.role === "admin" ? "default" : "pointer" }}>
+                          <input
+                            type="checkbox"
+                            checked={on}
+                            disabled={row.role === "admin"}
+                            onChange={() => toggleModule(row, m)}
+                            aria-label={`${m} for ${row.email}`}
+                            style={{ width: 20, height: 20, cursor: row.role === "admin" ? "default" : "pointer", accentColor: "var(--terminal-green)" }}
+                          />
+                        </label>
                       </td>
                     );
                   })}
@@ -156,6 +163,7 @@ export function Users() {
             </tbody>
           </table>
         </div>
+        </>
       )}
       <div style={{ fontSize: 15, opacity: 0.55, marginTop: 18 }}>
         Admins implicitly hold every module (checkboxes shown ticked &amp; locked). Changes save instantly — no redeploy.

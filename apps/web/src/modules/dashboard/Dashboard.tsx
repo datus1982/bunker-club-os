@@ -272,9 +272,11 @@ const tileBase: React.CSSProperties = {
 };
 const jumpLink: React.CSSProperties = {
   fontSize: 18, color: "#000", background: GREEN, fontWeight: 700,
-  padding: "4px 10px", textDecoration: "none", marginTop: 8, alignSelf: "flex-start", letterSpacing: 1,
+  padding: "0 14px", minHeight: 44, display: "inline-flex", alignItems: "center",
+  textDecoration: "none", marginTop: 8, alignSelf: "flex-start", letterSpacing: 1,
 };
 const screenLink: React.CSSProperties = {
   fontSize: 16, color: GREEN, border: "1px solid var(--terminal-green)",
-  padding: "4px 8px", textDecoration: "none", letterSpacing: 1,
+  padding: "0 12px", minHeight: 44, display: "inline-flex", alignItems: "center",
+  textDecoration: "none", letterSpacing: 1,
 };

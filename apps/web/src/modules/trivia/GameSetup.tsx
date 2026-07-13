@@ -365,4 +365,6 @@ const checkRow: React.CSSProperties = {
   gap: 10,
   fontSize: 22,
   cursor: "pointer",
+  minHeight: 44, // whole label row is a ≥44px tap target (Phase 4c)
+  padding: "4px 0",
 };
