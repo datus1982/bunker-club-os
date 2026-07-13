@@ -78,12 +78,15 @@ const FALLBACK: SiteCopy = {
   // DECISION: the wall is hand-lettered ALL-CAPS; stored here in sentence case
   // (a11y + owner-editable) and rendered uppercase via CSS `text-transform` on
   // `.site-rules` so it reproduces the wall's look. Words + punctuation are
-  // verbatim from the photo (IMG_4678): "death!", the "right-of-way" hyphens,
-  // "Don't"/"won't" apostrophes. MUST byte-match the 0031 `site_club_rules` seed.
+  // verbatim from the wall: "death!", the "right-of-way" hyphens, "Don't"/"won't"
+  // apostrophes. Owner changed the wall 2026-07-13 (candles → lamps, plus a new
+  // "Don't break or steal the lamps" rule after the disfiguring rule → 8 rules).
+  // MUST byte-match the live `site_club_rules` row AND the 0031 seed.
   clubRules: [
     "Don't start none, won't be none",
     "Tipping makes you sexy",
-    "Disfiguring the candles will result in death!",
+    "Disfiguring the lamps will result in death!",
+    "Don't break or steal the lamps",
     "If you return empties to the bar, the staff will love you forever",
     "Waving cash at bar will not result in quicker service",
     "Anyone carrying two or more drinks has right-of-way",

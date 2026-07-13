@@ -30,11 +30,16 @@
 
 insert into public.venue_settings (venue_id, key, value) values
 
+  -- Owner changed the wall 2026-07-13: candles → lamps, plus a NEW rule
+  -- ("Don''t break or steal the lamps") inserted after the disfiguring rule → 8
+  -- rules. The live row was edited directly; this seed + the useSiteCopy.ts
+  -- FALLBACK are re-synced to byte-match it (three-way invariant above).
   ('11111111-1111-1111-1111-111111111111', 'site_club_rules',
    '[
      "Don''t start none, won''t be none",
      "Tipping makes you sexy",
-     "Disfiguring the candles will result in death!",
+     "Disfiguring the lamps will result in death!",
+     "Don''t break or steal the lamps",
      "If you return empties to the bar, the staff will love you forever",
      "Waving cash at bar will not result in quicker service",
      "Anyone carrying two or more drinks has right-of-way",
