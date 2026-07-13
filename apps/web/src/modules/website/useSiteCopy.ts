@@ -33,10 +33,15 @@ export type SiteCopy = {
   about: string[];
 };
 
+// The FALLBACK MUST mirror the migration-0029 seed exactly — it's the first-paint /
+// offline copy, and (critically) it's also React Query's `placeholderData`. If it
+// diverges from the live DB value, the placeholder→data swap reflows the page and
+// spikes CLS (measured 0.6 on /about when this was a stub). Keeping it identical to
+// the seed means the swap changes no layout. Update both together (see 0029 header).
 const FALLBACK: SiteCopy = {
   heroTitle: "BUNKER CLUB",
   heroSub:
-    "A shelter for the thirsty on NW 23rd. Cold drinks, warm company, and Atomic Pub Trivia every Wednesday night.",
+    "An atomic age high-dive on NW 23rd — cold drinks, warm company, and Atomic Pub Trivia every Wednesday night.",
   hours: {
     mon: { open: "16:00", close: "02:00" },
     tue: { open: "16:00", close: "02:00" },
@@ -62,7 +67,10 @@ const FALLBACK: SiteCopy = {
     tiktok: "https://tiktok.com/@bunkerclubokc",
   },
   about: [
-    "Bunker Club is a neighborhood bar on NW 23rd Street in Oklahoma City.",
+    "Bunker Club opened April 2, 2017, on NW 23rd Street — its doors first swinging wide during Open Streets OKC. It was the work of Hailey and Ian McDermid, the couple behind The Pump Bar just up the block, who took a long-shuttered jewel-box storefront in the Tower Theater building and gave it new life. Its rare green Vitrolite glass, freshly restored, still catches the light out front.",
+    "The idea, in Ian's words, was a post-war atomic-era dive bar — design elements and sounds borrowed from the Cold War, and most of it built by hand. Local artists gave the room its character: the painters at Mind Bender Tattoo, and the murals and hand-lettering of Tanner Fraidy at Fraidy Cat Signs. The result is warm and dim and lush rather than stark — an immersive place, and never a museum.",
+    'The founders were always clear about what the theme meant. It was never politics; it was an affection for a moment in time. As they put it: "It\'s an ode to the preparedness, it\'s an ode to the propaganda, it\'s an ode to the art, the fear of what\'s to come, the hope of a future, and what that inspired in the daily lives of people."',
+    "In 2023 the Bunker passed to the crew who run it now, who restocked the bar and widened the calendar without losing the room's original spirit. Today the heart of the week is Wednesday — Atomic Pub Trivia, teams squaring off across the season on the BUNKER UNIFIED OS screens overhead. The lights are still low and the drinks still honest: an atomic age high-dive on 23rd, same as ever.",
   ],
 };
 
