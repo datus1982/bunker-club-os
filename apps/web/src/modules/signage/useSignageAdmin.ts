@@ -171,6 +171,7 @@ export function useTakeovers() {
 export interface ScheduledEvent {
   id: string;
   name: string;
+  kind: "window" | "message" | "moment";
   skin: string;
   fire_at: string | null;
   recurrence: { daysOfWeek?: string[]; time?: string } | null;
@@ -187,7 +188,7 @@ export function useScheduledEvents() {
     queryFn: async (): Promise<ScheduledEvent[]> => {
       const { data, error } = await supabase
         .from("scheduled_events")
-        .select("id, name, skin, fire_at, recurrence, interrupt_game, status")
+        .select("id, name, kind, skin, fire_at, recurrence, interrupt_game, status")
         .eq("venue_id", VENUE_ID)
         .order("fire_at", { nullsFirst: false });
       if (error) throw error;

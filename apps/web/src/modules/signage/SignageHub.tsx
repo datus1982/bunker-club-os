@@ -7,7 +7,7 @@ import {
   type AdminItem, type AdminSlot, type ScheduledEvent,
 } from "./useSignageAdmin";
 import {
-  resolveRotation, resolveSlotMode,
+  resolveRotation, resolveSlotMode, useLiveEvents, activeMoment,
   type SlotMode, type SignageItem, type ToastCacheRow, type Template,
 } from "./useSignage";
 import {
@@ -35,6 +35,9 @@ export function SignageHub() {
   const toastQ = useToastCache();
   const eventsQ = useScheduledEvents();
   const liveGameQ = useLiveGame();
+  // Same horizon-gated live-event feed the TVs read (signage_events_live) — so the MODE
+  // chip resolves the EXACT ladder SlotDisplay renders (hub/TV must never disagree, PR #12).
+  const liveEventsQ = useLiveEvents();
 
   const slots = slotsQ.data ?? [];
   const items = itemsQ.data ?? [];
@@ -46,7 +49,13 @@ export function SignageHub() {
   // renders (resolveSlotMode is the single source of that ladder).
   const active = activeTakeover(takeoversQ.data ?? []);
   const liveGame = liveGameQ.data ?? null;
-  const mode: SlotMode = resolveSlotMode({ takeover: !!active, liveGame: !!liveGame });
+  const moment = activeMoment(liveEventsQ.data ?? []);
+  const mode: SlotMode = resolveSlotMode({
+    takeover: !!active,
+    liveGame: !!liveGame,
+    moment: moment ? { stage: moment.stage, interruptGame: moment.event.interrupt_game } : null,
+  });
+  const eventLabel = moment ? `${moment.event.name.toUpperCase()} · ${moment.stage.toUpperCase()}` : null;
 
   // Reveal a stale game date on the game-mode card (a past-dated `active` game still pins
   // the screens into game mode — surfacing that date is a feature, not a bug).
@@ -113,6 +122,7 @@ export function SignageHub() {
                 mode={mode}
                 takeoverMessage={active?.message ?? null}
                 staleGameDate={staleGameDate}
+                eventLabel={eventLabel}
                 slotItems={itemsBySlot.get(s.id) ?? []}
                 tmap={tmap}
               />
@@ -178,12 +188,13 @@ export function SignageHub() {
 
 /* ── A · screen card ────────────────────────────────────────────────────────── */
 function ScreenCard({
-  slot, mode, takeoverMessage, staleGameDate, slotItems, tmap,
+  slot, mode, takeoverMessage, staleGameDate, eventLabel, slotItems, tmap,
 }: {
   slot: AdminSlot;
   mode: SlotMode;
   takeoverMessage: string | null;
   staleGameDate: string | null;
+  eventLabel: string | null;
   slotItems: AdminItem[];
   tmap: Map<string, ToastCacheRow>;
 }) {
@@ -200,11 +211,15 @@ function ScreenCard({
         {slot.orientation.toUpperCase()} · TERMINAL {String(slot.terminal_number ?? 0).padStart(2, "0")}{slot.location_label ? ` — ${slot.location_label}` : ""}
       </div>
 
-      <ModeChip mode={mode} />
+      <ModeChip mode={mode} eventLabel={eventLabel} />
 
       {/* Body varies by mode — the same ladder SlotDisplay renders. */}
       {mode === "rotation" ? (
         <div style={{ fontSize: 14, opacity: 0.75, lineHeight: 1.5, minHeight: 40 }}>{summary}</div>
+      ) : mode === "event" ? (
+        <div style={{ fontSize: 14, opacity: 0.75, lineHeight: 1.5, minHeight: 40 }}>
+          <span className="u-amber">Scheduled event holding the screens{eventLabel ? `: ${eventLabel}` : ""}.</span> Returns to rotation when the window ends.
+        </div>
       ) : mode === "game" ? (
         <div style={{ fontSize: 14, opacity: 0.75, lineHeight: 1.5, minHeight: 40 }}>
           <span className="u-amber">Showing the game display.</span> Returns to rotation automatically when the game ends.
@@ -233,9 +248,13 @@ function ScreenCard({
   );
 }
 
-function ModeChip({ mode }: { mode: SlotMode }) {
-  const label = mode === "rotation" ? "MODE: ROTATION" : mode === "game" ? "MODE: LIVE GAME" : "MODE: TAKEOVER";
-  const cls = mode === "game" ? "u-amber" : mode === "takeover" ? "u-red" : "";
+function ModeChip({ mode, eventLabel }: { mode: SlotMode; eventLabel?: string | null }) {
+  const label =
+    mode === "rotation" ? "MODE: ROTATION"
+    : mode === "game" ? "MODE: LIVE GAME"
+    : mode === "event" ? `EVENT: ${eventLabel ?? "SCHEDULED"}`
+    : "MODE: TAKEOVER";
+  const cls = mode === "game" || mode === "event" ? "u-amber" : mode === "takeover" ? "u-red" : "";
   return (
     <span className={cls} style={{ display: "inline-block", alignSelf: "flex-start", fontSize: 12, letterSpacing: 2, border: "1px solid currentColor", padding: "2px 8px", opacity: mode === "rotation" ? 0.7 : 1 }}>
       {label}
@@ -312,9 +331,9 @@ function EventScheduleRow({ event }: { event: ScheduledEvent }) {
         <div style={{ fontSize: 20, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{event.name}</div>
         <div style={{ fontSize: 13, opacity: 0.6 }}>{event.skin} · {rec}{event.interrupt_game ? " · interrupts game" : ""}</div>
       </div>
-      <span className="u-amber" style={{ ...badge, borderColor: "currentColor" }}>MOMENT</span>
+      <span className="u-amber" style={{ ...badge, borderColor: "currentColor" }}>{(event.kind ?? "moment").toUpperCase()}</span>
       <span style={{ fontSize: 13, whiteSpace: "nowrap", letterSpacing: 1, opacity: 0.7 }}>{event.status.toUpperCase()}</span>
-      {/* No EDIT — scheduled_events are read-only until the events engine ships. */}
+      {/* No EDIT — scheduled_events editor lands in the events staff-UI task. */}
     </div>
   );
 }
