@@ -18,7 +18,8 @@
     "test:seasons": "tsx scripts/test-season-leaderboard.ts",
     "test:neighborhood": "tsx scripts/test-neighborhood-events.ts",
     "test:eventstick": "tsx scripts/test-events-tick.ts",
-    "test:eventstage": "tsx scripts/test-event-stage.ts"
+    "test:eventstage": "tsx scripts/test-event-stage.ts",
+    "test:eventcounter": "tsx scripts/test-event-counter.ts"
   },
   "devDependencies": {
     "@supabase/supabase-js": "2.97.0",
