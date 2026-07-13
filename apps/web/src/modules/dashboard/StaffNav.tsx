@@ -121,7 +121,7 @@ export function StaffLayout() {
   const roleLabel = `VIEWING AS ${(role ?? "—").toUpperCase()}`;
 
   return (
-    <div className="terminal-theme" style={{ minHeight: "100vh" }}>
+    <div className="terminal-theme staff-ui" style={{ minHeight: "100vh" }}>
       {showNav && (isMobile ? (
         /* ---- Mobile: compact header + grouped drawer ---- */
         <nav style={mobileNav}>
