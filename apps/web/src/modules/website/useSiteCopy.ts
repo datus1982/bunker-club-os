@@ -31,6 +31,7 @@ export type SiteCopy = {
   parking: string;
   socials: SiteSocials;
   about: string[];
+  clubRules: string[];
 };
 
 // The FALLBACK MUST mirror the migration-0029 seed exactly — it's the first-paint /
@@ -72,6 +73,21 @@ const FALLBACK: SiteCopy = {
     "That ode keeps evolving. These days the Bunker leans into the pop culture the atomic age set off — the retro-future of blast doors and ray guns, duck-and-cover kitsch, the movies and games that turned fallout into a playground. Less time capsule, more clubhouse for everyone who grew up loving the bunker fantasy.",
     "It's still a neighborhood dive at heart: open 4 PM to 2 AM every single day, Atomic Pub Trivia every Wednesday at 8, karaoke most Saturdays, and a bar that runs on its own screens — standings, specials, and the occasional all-screen birthday shout-out. The lights are low and the drinks are honest. The bunker's open.",
   ],
+  // The house rules painted on the barroom wall (owner-approved brand voice).
+  // DECISION: the wall is hand-lettered ALL-CAPS; stored here in sentence case
+  // (a11y + owner-editable) and rendered uppercase via CSS `text-transform` on
+  // `.site-rules` so it reproduces the wall's look. Words + punctuation are
+  // verbatim from the photo (IMG_4678): "death!", the "right-of-way" hyphens,
+  // "Don't"/"won't" apostrophes. MUST byte-match the 0031 `site_club_rules` seed.
+  clubRules: [
+    "Don't start none, won't be none",
+    "Tipping makes you sexy",
+    "Disfiguring the candles will result in death!",
+    "If you return empties to the bar, the staff will love you forever",
+    "Waving cash at bar will not result in quicker service",
+    "Anyone carrying two or more drinks has right-of-way",
+    "If you are cut off, be happy we got you drunk in the first place",
+  ],
 };
 
 const KEYS = [
@@ -82,6 +98,7 @@ const KEYS = [
   "site_parking",
   "site_socials",
   "site_about",
+  "site_club_rules",
 ] as const;
 
 export function useSiteCopy() {
@@ -112,6 +129,7 @@ export function useSiteCopy() {
         parking: get("site_parking", FALLBACK.parking),
         socials: get("site_socials", FALLBACK.socials),
         about: get("site_about", FALLBACK.about),
+        clubRules: get("site_club_rules", FALLBACK.clubRules),
       };
     },
   });

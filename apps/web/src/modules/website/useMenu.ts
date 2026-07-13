@@ -27,18 +27,27 @@ export interface MenuGroup {
   items: MenuItem[];
 }
 
-// Preferred section order for a bar menu (drinks first, then spirits, then food/merch).
-// Groups not listed here fall to the end, alphabetically — new Toast groups never break.
-const GROUP_ORDER = [
-  "Draft Beers",
-  "Bottle / Cans",
-  "N/A Beers",
+// Section order for the menu, owner-configurable via the venue_settings
+// `site_menu_group_order` key (seeded by migration 0031). Groups listed there
+// render first in exact order; any group NOT listed (e.g. a brand-new Toast group)
+// falls to the end, alphabetically — the menu never breaks on an unknown group.
+//
+// This constant is the FALLBACK (first-paint / offline / key-missing) and MUST
+// byte-match the 0031 `site_menu_group_order` seed AND the live DB value — the
+// same three-way invariant useSiteCopy holds for its keys. Cocktails-first is the
+// owner's request (2026-07-13); names are the exact `menu_group` strings in the
+// live toast_menu_cache. Update all three together.
+const MENU_GROUP_ORDER_FALLBACK = [
   "Signature Cocktails",
   "Cocktail Features",
   "Winter Cocktails",
   "Classics",
   "Mocktails",
   "Shots",
+  "Draft Beers",
+  "Bottle / Cans",
+  "N/A Beers",
+  "Wine",
   "Whiskey / Bourbon / Rye",
   "Scotch",
   "Tequila",
@@ -46,15 +55,16 @@ const GROUP_ORDER = [
   "Vodka",
   "Gin",
   "Cordials",
-  "Wine",
   "Soft Drinks",
   "Food",
   "Merch",
 ];
 
-function groupRank(name: string): number {
-  const i = GROUP_ORDER.indexOf(name);
-  return i === -1 ? GROUP_ORDER.length : i;
+function rankFn(order: string[]) {
+  return (name: string): number => {
+    const i = order.indexOf(name);
+    return i === -1 ? order.length : i;
+  };
 }
 
 export function useMenu() {
@@ -62,11 +72,29 @@ export function useMenu() {
     queryKey: ["site-menu", VENUE_ID],
     staleTime: 5 * 60_000,
     queryFn: async (): Promise<MenuGroup[]> => {
-      const { data, error } = await supabase
-        .from("public_menu")
-        .select('guid, "group", name, public_blurb, price, image, in_stock')
-        .eq("venue_id", VENUE_ID);
+      // Pull the menu rows and the owner's group-order key in parallel (no waterfall).
+      const [menuRes, orderRes] = await Promise.all([
+        supabase
+          .from("public_menu")
+          .select('guid, "group", name, public_blurb, price, image, in_stock')
+          .eq("venue_id", VENUE_ID),
+        supabase
+          .from("venue_settings")
+          .select("value")
+          .eq("venue_id", VENUE_ID)
+          .eq("key", "site_menu_group_order")
+          .maybeSingle(),
+      ]);
+      const { data, error } = menuRes;
       if (error) throw error;
+
+      // Use the configured order when present + well-formed; else the fallback.
+      const configured = orderRes.data?.value;
+      const order =
+        Array.isArray(configured) && configured.every((s) => typeof s === "string")
+          ? (configured as string[])
+          : MENU_GROUP_ORDER_FALLBACK;
+      const groupRank = rankFn(order);
 
       type Row = {
         guid: string;

@@ -25,11 +25,40 @@ export function About() {
           <p className="site-label">Our Story</p>
           <h1>ABOUT</h1>
 
-          <div className="site-prose" style={{ marginTop: "1.5rem" }}>
+          {/* The bar + hand-lettered CLUB RULES wall. Lazy + reserved 16:9 box (no CLS). */}
+          <figure style={{ margin: "1.5rem 0 0" }}>
+            <img
+              className="site-photo"
+              src="/photos/bar-rules-1400.jpg"
+              srcSet="/photos/bar-rules-700.jpg 700w, /photos/bar-rules-1400.jpg 1400w"
+              sizes="(max-width: 1080px) 100vw, 1080px"
+              width={1400}
+              height={787}
+              loading="lazy"
+              decoding="async"
+              alt="The Bunker Club bar — gold stools along a pewter counter, backbar bottles, and the hand-lettered CLUB RULES painted on the deep-red wall"
+            />
+          </figure>
+
+          <div className="site-prose" style={{ marginTop: "1.75rem" }}>
             {(copy?.about ?? []).map((para, i) => (
               <p key={i}>{para}</p>
             ))}
           </div>
+
+          {/* ── CLUB RULES (owner-approved brand voice; transcribed from the wall) ── */}
+          {copy?.clubRules && copy.clubRules.length > 0 && (
+            <section className="site-rules" aria-labelledby="club-rules-h">
+              <h2 id="club-rules-h" className="site-rules__head">
+                • Club Rules •
+              </h2>
+              <ul className="site-rules__list">
+                {copy.clubRules.map((rule, i) => (
+                  <li key={i}>{rule}</li>
+                ))}
+              </ul>
+            </section>
+          )}
 
           <div style={{ marginTop: "2rem", display: "flex", gap: "0.85rem", flexWrap: "wrap" }}>
             <Link to="/trivia" className="site-btn site-btn--primary">
