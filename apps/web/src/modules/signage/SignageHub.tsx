@@ -2,7 +2,7 @@ import { useMemo, useState, type CSSProperties } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "react-router-dom";
 import {
-  useAdminSlots, useAllItems, useTakeovers, useToastCache, useScheduledEvents,
+  useAdminSlots, useAllItems, useTakeovers, useToastCache, useScheduledEvents, useLiveGame,
   screenHealth, activeTakeover, featuredItems, toastMap,
   type AdminItem, type AdminSlot, type ScheduledEvent,
 } from "./useSignageAdmin";
@@ -10,10 +10,9 @@ import {
   resolveRotation, resolveSlotMode,
   type SlotMode, type SignageItem, type ToastCacheRow, type Template,
 } from "./useSignage";
-import { useTonight } from "@/modules/dashboard/useDashboard";
 import {
   MONO, SectionLabel, HealthDot, CopyKioskButton,
-  ghost, badge, summarize, scheduleLabel, recurrencePhrase,
+  ghost, badge, summarize, scheduleLabel, recurrencePhrase, sourceHideReason,
 } from "./signageAdminShared";
 import { ItemEditor } from "./ItemEditor";
 import "./signage.css";
@@ -35,7 +34,7 @@ export function SignageHub() {
   const takeoversQ = useTakeovers();
   const toastQ = useToastCache();
   const eventsQ = useScheduledEvents();
-  const tonightQ = useTonight();
+  const liveGameQ = useLiveGame();
 
   const slots = slotsQ.data ?? [];
   const items = itemsQ.data ?? [];
@@ -46,9 +45,19 @@ export function SignageHub() {
   // screen), so every slot resolves to the same mode — the same precedence SlotDisplay
   // renders (resolveSlotMode is the single source of that ladder).
   const active = activeTakeover(takeoversQ.data ?? []);
-  const tonight = tonightQ.data ?? null;
-  const liveGame = !!tonight && (tonight.status === "active" || tonight.status === "paused");
-  const mode: SlotMode = resolveSlotMode({ takeover: !!active, liveGame });
+  const liveGame = liveGameQ.data ?? null;
+  const mode: SlotMode = resolveSlotMode({ takeover: !!active, liveGame: !!liveGame });
+
+  // Reveal a stale game date on the game-mode card (a past-dated `active` game still pins
+  // the screens into game mode — surfacing that date is a feature, not a bug).
+  // DECISION: compare against the browser-local date (en-CA = YYYY-MM-DD). The venue is
+  // single-tz (America/Chicago) and staff run this locally, so this matches games.game_date
+  // in practice without a venue-timezone fetch; worst case it's off only at the midnight
+  // boundary from another tz, which still correctly flags the date as not "today".
+  const staleGameDate =
+    liveGame?.game_date && liveGame.game_date !== new Date().toLocaleDateString("en-CA")
+      ? liveGame.game_date
+      : null;
 
   // Quick-action editor: preset a template, skip the picker.
   const [editorOpen, setEditorOpen] = useState(false);
@@ -103,6 +112,7 @@ export function SignageHub() {
                 slot={s}
                 mode={mode}
                 takeoverMessage={active?.message ?? null}
+                staleGameDate={staleGameDate}
                 slotItems={itemsBySlot.get(s.id) ?? []}
                 tmap={tmap}
               />
@@ -132,7 +142,7 @@ export function SignageHub() {
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {scheduledItems.map((it) => (
-                <ItemScheduleRow key={it.id} item={it} onEdit={() => openEdit(it)} />
+                <ItemScheduleRow key={it.id} item={it} toastRows={toastRows} onEdit={() => openEdit(it)} />
               ))}
               {events.map((ev) => (
                 <EventScheduleRow key={ev.id} event={ev} />
@@ -168,11 +178,12 @@ export function SignageHub() {
 
 /* ── A · screen card ────────────────────────────────────────────────────────── */
 function ScreenCard({
-  slot, mode, takeoverMessage, slotItems, tmap,
+  slot, mode, takeoverMessage, staleGameDate, slotItems, tmap,
 }: {
   slot: AdminSlot;
   mode: SlotMode;
   takeoverMessage: string | null;
+  staleGameDate: string | null;
   slotItems: AdminItem[];
   tmap: Map<string, ToastCacheRow>;
 }) {
@@ -197,6 +208,7 @@ function ScreenCard({
       ) : mode === "game" ? (
         <div style={{ fontSize: 14, opacity: 0.75, lineHeight: 1.5, minHeight: 40 }}>
           <span className="u-amber">Showing the game display.</span> Returns to rotation automatically when the game ends.
+          {staleGameDate ? <span className="u-amber"> · game dated {staleGameDate}</span> : null}
         </div>
       ) : (
         <div style={{ fontSize: 14, opacity: 0.75, lineHeight: 1.5, minHeight: 40 }}>
@@ -263,11 +275,18 @@ function rotationName(it: SignageItem, tmap: Map<string, ToastCacheRow>): string
 }
 
 /* ── C · schedule rows ──────────────────────────────────────────────────────── */
-function ItemScheduleRow({ item, onEdit }: { item: AdminItem; onEdit: () => void }) {
+function ItemScheduleRow({ item, toastRows, onEdit }: { item: AdminItem; toastRows: ToastCacheRow[]; onEdit: () => void }) {
   const type = typeBadge(item);
   const rec = recurrencePhrase(item.recurrence);
   const when = [scheduleLabel(item), rec].filter((x) => x && x !== "EVERGREEN").join(" · ") || "evergreen";
-  const status = itemStatus(item);
+  const base = itemStatus(item);
+  // An item in its window still won't reach the screens if its Toast source is 86'd or
+  // pulled from the POS view (resolveRotation drops it) — so "ACTIVE NOW" would lie.
+  // sourceHideReason is the same gate the public board + EDIT ROTATION apply.
+  const hideReason = base.active ? sourceHideReason(item, toastRows) : null;
+  const status = hideReason
+    ? { label: `▲ HIDDEN — ${hideReason.startsWith("86") ? "86'd on POS" : "off POS view"}`, active: false }
+    : base;
   return (
     <div className="terminal-border" style={{ padding: "10px 12px", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
       <div style={{ flex: "1 1 200px", minWidth: 0 }}>
@@ -275,7 +294,7 @@ function ItemScheduleRow({ item, onEdit }: { item: AdminItem; onEdit: () => void
         <div style={{ fontSize: 13, opacity: 0.6 }}>{when}</div>
       </div>
       <span style={badge}>{type}</span>
-      <span style={{ fontSize: 13, whiteSpace: "nowrap", letterSpacing: 1, opacity: status.active ? 1 : 0.6 }}>{status.label}</span>
+      <span className={hideReason ? "u-amber" : undefined} style={{ fontSize: 13, whiteSpace: "nowrap", letterSpacing: 1, opacity: hideReason ? 1 : status.active ? 1 : 0.6 }}>{status.label}</span>
       <button type="button" onClick={onEdit} style={{ ...ghost, fontSize: 14, padding: "6px 12px" }}>EDIT</button>
     </div>
   );

@@ -76,6 +76,38 @@ export function useAdminSlots() {
   });
 }
 
+export interface LiveGameRow {
+  id: string;
+  status: "active" | "paused";
+  game_date: string | null;
+}
+
+/** The venue's live game resolved EXACTLY as the public SlotDisplay resolves it
+ *  (useSignage.ts liveGame query): status active/paused, venue-wide, date IGNORED.
+ *  The hub MUST source game-mode from this — NOT useTonight() (which is tonight-only by
+ *  venue date) — so the MODE chip can never disagree with what the screens actually show.
+ *  A stale `active` game left over from a past date (this venue has hit exactly that) still
+ *  pins every screen into game mode; the hub surfaces that date rather than hiding it. */
+export function useLiveGame() {
+  return useQuery({
+    queryKey: ["signage-admin", "live-game"],
+    // No sub-30s poll (docs/01) — game start/stop arrives via realtime elsewhere; this
+    // slow poll just re-confirms a stale-active game hasn't been cleared out-of-band.
+    refetchInterval: 60_000,
+    queryFn: async (): Promise<LiveGameRow | null> => {
+      const { data, error } = await supabase
+        .from("games")
+        .select("id, status, game_date")
+        .eq("venue_id", VENUE_ID)
+        .in("status", ["active", "paused"])
+        .limit(1)
+        .maybeSingle();
+      if (error) throw error;
+      return (data as LiveGameRow | null) ?? null;
+    },
+  });
+}
+
 export function useAllItems() {
   const qc = useQueryClient();
   const q = useQuery({
