@@ -131,7 +131,12 @@ export function SignageAdmin() {
           toastRows={toastQ.data ?? []}
           defaultSlotId={currentSlotId}
           editing={editing}
-          itemCount={(slotId) => (itemsBySlot.get(slotId) ?? []).length}
+          nextSortOrder={(slotId) => {
+            const items = itemsBySlot.get(slotId) ?? [];
+            // Append after the current max, not the row count — a count collides with an
+            // existing sort_order once a delete has left a gap (N7).
+            return items.length ? Math.max(...items.map((i) => i.sort_order)) + 1 : 0;
+          }}
           onClose={() => setEditorOpen(false)}
           onSaved={invalidate}
         />
@@ -165,8 +170,49 @@ function SlotCard({ slot, count, selected, onSelect }: { slot: AdminSlot; count:
           onClick={(e) => e.stopPropagation()}
           style={{ ...ghost, textDecoration: "none", fontSize: 15, padding: "6px 10px" }}
         >
-          PREVIEW SLOT →
+          PREVIEW (rotation only) →
         </a>
+      </div>
+      <KioskUrl slug={slot.slug} />
+    </div>
+  );
+}
+
+/** The clean kiosk URL for a slot (NO ?preview=1 — a preview link on a TV never shows
+ *  takeovers or game mode). COPY writes to the clipboard, with a legacy fallback. W3. */
+function KioskUrl({ slug }: { slug: string }) {
+  const [copied, setCopied] = useState(false);
+  const url = `${window.location.origin}/signage/s/${slug}`;
+
+  const copy = async () => {
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(url);
+      } else {
+        const ta = document.createElement("textarea");
+        ta.value = url;
+        ta.style.position = "fixed";
+        ta.style.opacity = "0";
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand("copy");
+        document.body.removeChild(ta);
+      }
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1600);
+    } catch {
+      setCopied(false);
+    }
+  };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 2 }} onClick={(e) => e.stopPropagation()}>
+      <div style={{ fontSize: 12, letterSpacing: 2, opacity: 0.55 }}>KIOSK URL — point the TV at this</div>
+      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+        <span style={{ flex: 1, minWidth: 0, fontSize: 13, opacity: 0.75, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{url}</span>
+        <button type="button" onClick={copy} className={copied ? "u-fill u-ink" : ""} style={{ ...ghost, fontSize: 14, padding: "0 12px", flexShrink: 0 }}>
+          {copied ? "COPIED" : "COPY"}
+        </button>
       </div>
     </div>
   );
@@ -356,7 +402,7 @@ function SectionLabel({ children, style }: { children: React.ReactNode; style?: 
   return <div style={{ fontSize: 20, letterSpacing: 3, opacity: 0.7, margin: "0 0 10px", ...style }}>{children}</div>;
 }
 
-const ghost: CSSProperties = { background: "transparent", color: "var(--terminal-green)", border: "1px solid var(--terminal-green)", padding: "8px 12px", fontSize: 18, cursor: "pointer", fontFamily: MONO, minHeight: 40 };
+const ghost: CSSProperties = { background: "transparent", color: "var(--terminal-green)", border: "1px solid var(--terminal-green)", padding: "8px 12px", fontSize: 18, cursor: "pointer", fontFamily: MONO, minHeight: 44 };
 const primary: CSSProperties = { background: "var(--terminal-green)", color: "#000", border: "1px solid var(--terminal-green)", padding: "10px 18px", fontSize: 20, fontWeight: 700, cursor: "pointer", fontFamily: MONO, minHeight: 44 };
 const iconBtn: CSSProperties = { background: "transparent", color: "var(--terminal-green)", border: "1px solid var(--terminal-green)", padding: "0 10px", fontSize: 16, cursor: "pointer", fontFamily: MONO, minHeight: 44, minWidth: 44 };
 const field: CSSProperties = { background: "#000", color: "var(--terminal-green)", border: "1px solid var(--terminal-green)", padding: "10px 12px", fontSize: 20, fontFamily: MONO, minHeight: 44 };

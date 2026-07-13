@@ -31,13 +31,13 @@ const SKINS = ["birthday", "bachelor", "bachelorette", "anniversary", "congrats"
 const DOW = ["SU", "MO", "TU", "WE", "TH", "FR", "SA"];
 
 export function ItemEditor({
-  slots, toastRows, defaultSlotId, editing, itemCount, onClose, onSaved,
+  slots, toastRows, defaultSlotId, editing, nextSortOrder, onClose, onSaved,
 }: {
   slots: AdminSlot[];
   toastRows: ToastCacheRow[];
   defaultSlotId: string | null;
   editing: AdminItem | null;
-  itemCount: (slotId: string | null) => number;
+  nextSortOrder: (slotId: string | null) => number;
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -72,7 +72,7 @@ export function ItemEditor({
       toastRows={toastRows}
       defaultSlotId={defaultSlotId}
       editing={editing}
-      itemCount={itemCount}
+      nextSortOrder={nextSortOrder}
       onClose={onClose}
       onSaved={onSaved}
     />
@@ -81,14 +81,14 @@ export function ItemEditor({
 
 /* ── the form ───────────────────────────────────────────────────────────── */
 function ItemForm({
-  template, slots, toastRows, defaultSlotId, editing, itemCount, onClose, onSaved,
+  template, slots, toastRows, defaultSlotId, editing, nextSortOrder, onClose, onSaved,
 }: {
   template: Template;
   slots: AdminSlot[];
   toastRows: ToastCacheRow[];
   defaultSlotId: string | null;
   editing: AdminItem | null;
-  itemCount: (slotId: string | null) => number;
+  nextSortOrder: (slotId: string | null) => number;
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -117,17 +117,23 @@ function ItemForm({
   const [momentOn, setMomentOn] = useState(false);
   const [momentTime, setMomentTime] = useState("21:00");
   const [momentDur, setMomentDur] = useState(60);
+  // The linked-moment query is async. Until it resolves we must NOT write the moment —
+  // an early save would call saveMoment(id, null) and silently delete an existing shout-out
+  // (N8). For a new item or a non-celebration there is nothing to load, so start "loaded".
+  const [momentLoaded, setMomentLoaded] = useState(!(isCeleb && editing));
   useEffect(() => {
     if (!isCeleb || !editing) return;
     linkedMoment(editing.id).then((m) => {
-      if (!m) return;
-      setMomentOn(true);
-      const d = new Date(m.starts_at);
-      setMomentTime(`${pad2(d.getHours())}:${pad2(d.getMinutes())}`);
-      if (m.ends_at) {
-        setMomentDur(Math.round((new Date(m.ends_at).getTime() - d.getTime()) / 1000));
+      if (m) {
+        setMomentOn(true);
+        const d = new Date(m.starts_at);
+        setMomentTime(`${pad2(d.getHours())}:${pad2(d.getMinutes())}`);
+        if (m.ends_at) {
+          setMomentDur(Math.round((new Date(m.ends_at).getTime() - d.getTime()) / 1000));
+        }
       }
-    }).catch(() => {});
+      setMomentLoaded(true);
+    }).catch(() => setMomentLoaded(true));
   }, [isCeleb, editing]);
 
   const [busy, setBusy] = useState(false);
@@ -180,8 +186,11 @@ function ItemForm({
         duration_seconds: duration,
         active,
       };
-      const id = await saveItem(draft, itemCount(slotId));
-      if (isCeleb) {
+      const id = await saveItem(draft, nextSortOrder(slotId));
+      // Only touch the linked moment once its query has resolved (N8) — otherwise a save
+      // that races the load would delete an existing shout-out. The submit button is also
+      // disabled until momentLoaded, so this is belt-and-suspenders.
+      if (isCeleb && momentLoaded) {
         const honoree = (str(outFields.honoree) ?? "OUR GUEST").toUpperCase();
         await saveMoment(
           id,
@@ -211,8 +220,8 @@ function ItemForm({
       footer={
         <>
           <button type="button" onClick={onClose} style={btnGhost}>CANCEL</button>
-          <button type="button" onClick={submit} disabled={busy} className="u-fill u-ink" style={btnPrimary}>
-            {busy ? "SAVING…" : editing ? "SAVE" : "CREATE"}
+          <button type="button" onClick={submit} disabled={busy || !momentLoaded} className="u-fill u-ink" style={{ ...btnPrimary, opacity: busy || !momentLoaded ? 0.5 : 1 }}>
+            {busy ? "SAVING…" : !momentLoaded ? "LOADING…" : editing ? "SAVE" : "CREATE"}
           </button>
         </>
       }
@@ -582,7 +591,7 @@ function ToastPicker({ rows, selected, onSelect }: { rows: ToastCacheRow[]; sele
     <div className="terminal-border" style={{ padding: "10px 12px", display: "flex", flexDirection: "column", gap: 8 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
         <span style={caption}>SOURCE FROM TOAST</span>
-        {sel && <button type="button" onClick={() => onSelect("")} style={{ ...btnGhost, fontSize: 15, padding: "4px 8px" }}>CLEAR</button>}
+        {sel && <button type="button" onClick={() => onSelect("")} style={{ ...btnGhost, fontSize: 15, padding: "4px 10px", minHeight: 44 }}>CLEAR</button>}
       </div>
       {sel ? (
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -591,7 +600,7 @@ function ToastPicker({ rows, selected, onSelect }: { rows: ToastCacheRow[]; sele
             <div style={{ fontSize: 20, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{sel.name}</div>
             <div style={{ fontSize: 14, opacity: 0.6 }}>{sel.menu_group}{sel.price != null ? ` · $${sel.price}` : ""}{sel.out_of_stock ? " · 86'D" : ""}</div>
           </div>
-          <button type="button" onClick={() => setOpen((o) => !o)} style={{ ...btnGhost, fontSize: 15 }}>CHANGE</button>
+          <button type="button" onClick={() => setOpen((o) => !o)} style={{ ...btnGhost, fontSize: 15, minHeight: 44 }}>CHANGE</button>
         </div>
       ) : (
         <button type="button" onClick={() => setOpen((o) => !o)} style={btnGhost}>{open ? "CLOSE PICKER" : "PICK A TOAST ITEM"}</button>

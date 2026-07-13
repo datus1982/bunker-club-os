@@ -109,7 +109,7 @@ export function useTakeovers() {
   const q = useQuery({
     queryKey: ["signage-admin", "takeovers"],
     // Countdown + expiry need to re-evaluate even without a realtime event on ends_at.
-    refetchInterval: 20_000,
+    refetchInterval: 30_000,
     queryFn: async (): Promise<AdminTakeover[]> => {
       const { data, error } = await supabase
         .from("screen_takeovers")
@@ -206,7 +206,7 @@ export interface ItemDraft {
 }
 
 /** Insert or update an item. Returns the row id (new items get an appended sort_order). */
-export async function saveItem(draft: ItemDraft, appendAfterCount: number): Promise<string> {
+export async function saveItem(draft: ItemDraft, nextSortOrder: number): Promise<string> {
   const { data: auth } = await supabase.auth.getUser();
   if (draft.id) {
     const { error } = await supabase
@@ -238,8 +238,9 @@ export async function saveItem(draft: ItemDraft, appendAfterCount: number): Prom
       // DECISION: new items append to the end of the slot (highest sort_order + 1); staff
       // reorder with the ▲/▼ buttons afterward rather than typing a position. Matches the
       // DrinksAdmin group ordering UX; the spec's "sort position (append default)" is honoured
-      // as append-only, keeping the mobile form short.
-      sort_order: appendAfterCount,
+      // as append-only, keeping the mobile form short. Caller passes max(sort_order)+1 — NOT
+      // the row count, which collides after a delete leaves a gap (two items on the same order).
+      sort_order: nextSortOrder,
       duration_seconds: draft.duration_seconds,
       active: draft.active,
       created_by: auth.user?.id ?? null,
@@ -312,7 +313,11 @@ export async function saveMoment(
   moment: { startsAt: string; durationSeconds: number; message: string; sub: string | null } | null,
 ): Promise<void> {
   // A celebration owns at most one linked moment; delete any existing then (re)create.
-  await supabase.from("screen_takeovers").delete().eq("signage_item_id", itemId);
+  // supabase-js returns errors rather than throwing — a silently-failed delete followed by
+  // an insert would leave TWO linked moments (the stray hidden by linkedMoment's limit 1 but
+  // still firing on screens), so surface it and abort before re-inserting.
+  const { error: delErr } = await supabase.from("screen_takeovers").delete().eq("signage_item_id", itemId);
+  if (delErr) throw delErr;
   if (!moment) return;
   const { data: auth } = await supabase.auth.getUser();
   const ends = new Date(new Date(moment.startsAt).getTime() + moment.durationSeconds * 1000);

@@ -3,8 +3,10 @@ import { Link } from "react-router-dom";
 import { hasModule, roleAtLeast, useRole, type ModuleKey, type StaffRole } from "@/shared/useRole";
 import { useIsMobile } from "@/shared/useIsMobile";
 import {
-  useSyncStatus, useTonight, useActiveSeason, formatAge, type Freshness,
+  useSyncStatus, useTonight, useActiveSeason, useScreens, formatAge,
+  type Freshness, type ScreenSlot,
 } from "./useDashboard";
+import { screenHealth, type ScreenHealth } from "@/modules/signage/useSignageAdmin";
 
 /**
  * BUNKER UNIFIED OS home (Phase 4b — the admin shell). One staff-facing landing that
@@ -44,6 +46,7 @@ export function Dashboard() {
   const sync = useSyncStatus();
   const tonight = useTonight();
   const season = useActiveSeason();
+  const screens = useScreens();
   const narrow = useIsMobile();
 
   const clock = now.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
@@ -127,10 +130,22 @@ export function Dashboard() {
           )}
         </StatusPanel>
 
-        {/* Screens heartbeat — Phase 5 placeholder */}
+        {/* Screens heartbeat — signage_slots.last_seen via screenHealth() (docs/09/12) */}
         <StatusPanel title="SCREENS">
-          <div style={{ fontSize: 22, opacity: 0.5 }}>HEARTBEAT</div>
-          <Dim>Phase 5</Dim>
+          {screens.isLoading ? (
+            <Dim>checking…</Dim>
+          ) : screens.data && screens.data.length > 0 ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              {screens.data.map((s) => (
+                <div key={s.id} style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8 }}>
+                  <span style={{ fontSize: 18, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{screenName(s)}</span>
+                  <ScreenBadge health={screenHealth(s.last_seen)} />
+                </div>
+              ))}
+            </div>
+          ) : (
+            <Dim>NO SCREENS PROVISIONED</Dim>
+          )}
         </StatusPanel>
       </div>
 
@@ -140,7 +155,7 @@ export function Dashboard() {
         {TILES.filter((t) => (t.module ? hasModule(role, modules, t.module) : roleAtLeast(role, t.minRole ?? "staff"))).map((t) => (
           <ModuleTile key={t.label} tile={t} tonight={tonight.data} season={season.data} />
         ))}
-        <DisplaysTile />
+        <DisplaysTile screens={screens.data ?? []} />
       </div>
     </div>
   );
@@ -198,23 +213,38 @@ function ModuleTile({ tile, tonight, season }: { tile: Tile; tonight: ReturnType
 }
 
 /** DISPLAYS tile — the public screen URLs, opened in new tabs (kiosk targets). */
-function DisplaysTile() {
-  const screens = [
+function DisplaysTile({ screens }: { screens: ScreenSlot[] }) {
+  const links = [
     { label: "LEADERBOARD", href: "/leaderboard" },
     { label: "GAME DISPLAY", href: "/game-display" },
     { label: "DRINKS", href: "/drinks" },
+    // Signage slot boards — clean kiosk URLs (no ?preview=1, so takeovers/game mode render).
+    ...screens.map((s) => ({ label: s.name.toUpperCase(), href: `/signage/s/${s.slug}` })),
   ];
   return (
     <div style={{ ...tileBase, cursor: "default" }}>
       <div style={{ fontSize: 26, fontWeight: 700, letterSpacing: 1 }}>DISPLAYS</div>
       <div style={{ fontSize: 18, opacity: 0.7, marginTop: 4 }}>Public screen URLs — open on the TVs</div>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
-        {screens.map((s) => (
+        {links.map((s) => (
           <a key={s.href} href={s.href} target="_blank" rel="noreferrer" style={screenLink}>{s.label} ↗</a>
         ))}
       </div>
     </div>
   );
+}
+
+/** Screen label for the STATUS BOARD: name, else TERMINAL n — location. */
+function screenName(s: ScreenSlot): string {
+  if (s.name) return s.name;
+  const n = String(s.terminal_number ?? 0).padStart(2, "0");
+  return `TERMINAL ${n}${s.location_label ? ` — ${s.location_label}` : ""}`;
+}
+
+function ScreenBadge({ health }: { health: ScreenHealth }) {
+  const label = health === "online" ? "● ONLINE" : health === "stale" ? "◐ STALE" : "○ OFFLINE";
+  const cls = health === "online" ? "" : health === "stale" ? "u-amber" : "u-red";
+  return <span className={cls} style={{ fontSize: 16, fontWeight: 700, letterSpacing: 1, whiteSpace: "nowrap" }}>{label}</span>;
 }
 
 // ── small presentational bits ───────────────────────────────────────────
