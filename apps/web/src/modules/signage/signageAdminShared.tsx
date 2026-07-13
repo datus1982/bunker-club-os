@@ -1,9 +1,10 @@
-import { useState, type CSSProperties } from "react";
+import { useMemo, useState, type CSSProperties } from "react";
 import { useMutation } from "@tanstack/react-query";
 import {
   activeTakeover, dismissTakeover, sendTakeover, deleteItem, setItemActive, reorderItem, featuredItems,
   type AdminItem, type AdminTakeover, type Recurrence, type ScreenHealth,
 } from "./useSignageAdmin";
+import type { EventKind, ToastCacheRow } from "./useSignage";
 
 /**
  * Shared staff-signage UI, lifted verbatim out of the old single-page templater so the
@@ -252,4 +253,102 @@ export function recurrencePhrase(rec: Recurrence | null): string | null {
   if (rec.kind === "weekly") return rec.daysOfWeek.length ? rec.daysOfWeek.join(" · ") : "weekly";
   if (rec.kind === "annual") return `annually ${rec.month}/${rec.day}`;
   return null;
+}
+
+/* ── scheduled-events kind badge (matches ux-refinement-mockup.html view 5) ──── */
+// WINDOW = calm green-dim outline · MESSAGE = green outline · MOMENT = amber-filled
+// (the choreographed one draws the eye). Shared so the hub strip + the events page
+// never drift on colour/label.
+export function EventKindBadge({ kind, style }: { kind: EventKind; style?: CSSProperties }) {
+  const base: CSSProperties = {
+    fontSize: 12, letterSpacing: 2, padding: "2px 7px", whiteSpace: "nowrap",
+    border: "1px solid currentColor", ...style,
+  };
+  if (kind === "moment") {
+    // Amber-filled — the choreographed one draws the eye (u-ink beats the theme's
+    // color:green !important; a span isn't forced transparent like buttons are).
+    return <span className="u-ink" style={{ ...base, background: "var(--terminal-amber,#ffb000)", borderColor: "var(--terminal-amber,#ffb000)", fontWeight: 700 }}>MOMENT</span>;
+  }
+  if (kind === "message") {
+    return <span style={{ ...base, opacity: 1 }}>MESSAGE</span>;
+  }
+  return <span style={{ ...base, opacity: 0.72 }}>WINDOW</span>;
+}
+
+/* ── Toast source picker (live price + POS/86 warning state) ──────────────────── */
+// The same read-only picker pattern ItemEditor uses for drink specials: pick a Toast
+// item, its name/price render LIVE green, and an 86'd / off-POS item shows a warning so a
+// manager sees why a linked promo would auto-hide on screen (docs/13 POS-visibility rule).
+export function ToastSourcePicker({
+  rows, selected, onSelect, label = "LINK A DRINK (optional)",
+}: {
+  rows: ToastCacheRow[];
+  selected: string | null;
+  onSelect: (guid: string | null) => void;
+  label?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState("");
+  const sel = selected ? rows.find((r) => r.guid === selected) : undefined;
+
+  const filtered = useMemo(() => {
+    const needle = q.trim().toLowerCase();
+    return rows
+      .filter((r) => r.menu_group !== "★ SCREENS") // featured duplicates aren't picker sources
+      .filter((r) => !needle || (r.name ?? "").toLowerCase().includes(needle) || (r.menu_group ?? "").toLowerCase().includes(needle))
+      .slice(0, 60);
+  }, [rows, q]);
+
+  const warn = sel?.out_of_stock ? "86'D — this card auto-hides on screen" : sel && !sel.pos_visible ? "OFF POS VIEW — this card auto-hides on screen" : null;
+
+  return (
+    <div className="terminal-border" style={{ padding: "10px 12px", display: "flex", flexDirection: "column", gap: 8 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+        <span style={caption}>{label}</span>
+        {sel && <button type="button" onClick={() => onSelect(null)} style={{ ...ghost, fontSize: 15, padding: "4px 10px" }}>CLEAR</button>}
+      </div>
+      {sel ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            {sel.image && <img src={sel.image} alt="" style={{ width: 44, height: 44, objectFit: "cover", border: "1px solid var(--terminal-green)" }} />}
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div className="sig-live" style={{ fontSize: 20, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{sel.name}</div>
+              <div style={{ fontSize: 14, opacity: 0.6 }}>
+                {sel.menu_group}{sel.price != null ? <> · <span className="sig-live">${sel.price}</span></> : null}
+              </div>
+            </div>
+            <button type="button" onClick={() => setOpen((o) => !o)} style={{ ...ghost, fontSize: 15 }}>CHANGE</button>
+          </div>
+          {warn && <div className="u-amber" style={{ fontSize: 14 }}>⚠ {warn}</div>}
+        </div>
+      ) : (
+        <button type="button" onClick={() => setOpen((o) => !o)} style={ghost}>{open ? "CLOSE PICKER" : "PICK A TOAST ITEM"}</button>
+      )}
+      {open && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <input autoFocus placeholder="search name or group…" value={q} onChange={(e) => setQ(e.target.value)}
+            style={{ background: "#000", color: "var(--terminal-green)", border: "1px solid var(--terminal-green)", padding: "10px 12px", fontSize: 18, fontFamily: MONO, minHeight: 44 }} />
+          <div style={{ maxHeight: 220, overflowY: "auto", display: "flex", flexDirection: "column", gap: 4 }}>
+            {filtered.length === 0 && <div style={{ opacity: 0.6, fontSize: 16 }}>No matches (has the menu synced yet?).</div>}
+            {filtered.map((r) => (
+              <button
+                key={r.guid}
+                type="button"
+                onClick={() => { onSelect(r.guid); setOpen(false); }}
+                style={{ display: "flex", gap: 10, alignItems: "center", background: "transparent", color: "var(--terminal-green)", border: "1px solid rgba(0,255,65,0.25)", padding: "6px 8px", cursor: "pointer", fontFamily: MONO, minHeight: 48, opacity: r.pos_visible ? 1 : 0.5 }}
+              >
+                {r.image
+                  ? <img src={r.image} alt="" style={{ width: 36, height: 36, objectFit: "cover", border: "1px solid var(--terminal-green)", flexShrink: 0 }} />
+                  : <span style={{ width: 36, height: 36, border: "1px solid var(--terminal-green)", flexShrink: 0, display: "inline-block" }} />}
+                <span style={{ flex: 1, minWidth: 0, textAlign: "left", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", fontSize: 17 }}>{r.name}</span>
+                <span style={{ fontSize: 13, opacity: 0.6, whiteSpace: "nowrap" }}>{r.menu_group}</span>
+                {!r.pos_visible && <span className="u-amber" style={{ fontSize: 11, whiteSpace: "nowrap" }}>POS-HIDDEN</span>}
+                {r.out_of_stock && <span className="u-amber" style={{ fontSize: 12 }}>86</span>}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
