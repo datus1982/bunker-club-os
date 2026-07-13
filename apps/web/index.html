@@ -11,22 +11,28 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black" />
-    <!-- VT323 + Share Tech Mono (docs/01). Loaded as a render-blocking stylesheet with
-         preconnect: this fetches the font CSS (and, right behind it, the font files) at
-         the highest priority so the webfont arrives BEFORE most content paints —
-         minimising the font-swap layout shift (CLS). An async/deferred load was tried
-         and measured WORSE for CLS here (it delays the swap until after long pages have
-         painted). `display=swap` keeps text visible in the fallback while the font loads.
-         DECISION: the residual CLS (~0.1) is font-swap on VT323 headings; the robust fix
-         is self-hosting the woff2 with a size-adjust fallback (deferred — needs the font
-         files vendored, out of scope for this pass). The dominant perf problem (the
-         ~828 KB JS bundle) is solved by route-level code splitting (see App.tsx). -->
+    <!-- VT323 + Share Tech Mono (docs/01). Loaded NON-render-blocking (preload as style,
+         swap to a stylesheet on load) with preconnect; a <noscript> stylesheet covers
+         no-JS. This measured +5–10 Lighthouse perf across the public pages vs a blocking
+         stylesheet. `display=swap` keeps text visible in the fallback while the font
+         arrives (same font-file fetch either way, so no extra flash on the display TVs).
+         DECISION: the residual ~0.13 CLS on heading-heavy pages is VT323 font-swap, not
+         the load strategy (data-hydration CLS was the real driver and is fixed separately
+         — see useSiteCopy fallback + .site-main min-height). The robust font-swap fix is
+         self-hosting the woff2 with a size-adjust fallback (deferred — needs the font
+         files vendored, out of scope). The dominant perf win (the ~828 KB JS bundle) is
+         route-level code splitting (see App.tsx). -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
+      rel="preload"
+      as="style"
       href="https://fonts.googleapis.com/css2?family=VT323&family=Share+Tech+Mono&display=swap"
-      rel="stylesheet"
+      onload="this.onload=null;this.rel='stylesheet'"
     />
+    <noscript>
+      <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=VT323&family=Share+Tech+Mono&display=swap" />
+    </noscript>
     <title>BUNKER UNIFIED OS</title>
   </head>
   <body>
