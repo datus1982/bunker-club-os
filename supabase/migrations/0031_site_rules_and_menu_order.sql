@@ -11,9 +11,12 @@
 --   site_menu_group_order — the section order for /menu. Listed groups render
 --                           first, in this exact order; unlisted groups fall to
 --                           the end alphabetically. Owner asked for cocktails
---                           first (2026-07-13). Names are the exact `menu_group`
---                           strings in the live toast_menu_cache (20 groups).
---                           Array of strings.
+--                           first (2026-07-13); reordered again same day (19
+--                           groups). "Winter Cocktails" is deliberately unlisted —
+--                           it is POS-hidden in Toast (group visibility []), so the
+--                           pos_visible gate (0034) keeps it off /menu regardless.
+--                           Names are the exact `menu_group` strings in the live
+--                           toast_menu_cache. Array of strings.
 --
 -- THREE-WAY INVARIANT: each array is byte-identical across (1) this seed, (2) the
 -- FALLBACK in the consuming hook (site_club_rules → useSiteCopy.ts FALLBACK;
@@ -42,20 +45,19 @@ insert into public.venue_settings (venue_id, key, value) values
    '[
      "Signature Cocktails",
      "Cocktail Features",
-     "Winter Cocktails",
-     "Classics",
      "Mocktails",
-     "Shots",
      "Draft Beers",
-     "Bottle / Cans",
+     "Vodka",
+     "Gin",
+     "Rum",
+     "Classics",
+     "Shots",
      "N/A Beers",
+     "Bottle / Cans",
      "Wine",
      "Whiskey / Bourbon / Rye",
      "Scotch",
      "Tequila",
-     "Rum",
-     "Vodka",
-     "Gin",
      "Cordials",
      "Soft Drinks",
      "Food",
