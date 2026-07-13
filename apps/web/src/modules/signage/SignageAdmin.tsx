@@ -243,6 +243,7 @@ function ItemRow({
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           <span style={badge}>{item.template.replace("_", " ").toUpperCase()}</span>
           {item.recurrence && <span className="u-amber" style={{ fontSize: 13, letterSpacing: 1 }}>↻ RECURS</span>}
+          {item.show_on_website && <span style={{ fontSize: 13, letterSpacing: 1 }} title="Published to the public website">🌐 WEB</span>}
           {oos && <span className="u-amber" style={{ fontSize: 13 }}>86'D — HIDDEN</span>}
         </div>
         <div style={{ fontSize: 20, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{summarize(item)}</div>

@@ -39,6 +39,8 @@ export interface SignageItem {
   sort_order: number;
   duration_seconds: number;
   active: boolean;
+  /** Published to the public website /events page (0015 flag). */
+  show_on_website?: boolean;
   /** True for presentation-layer ★ SCREENS entries materialized at render time
    *  (docs/09) — never a DB row. */
   materialized?: boolean;
