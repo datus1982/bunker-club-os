@@ -1,0 +1,95 @@
+/*
+ * Signage slot styles (docs/09). Designed at the fixed DisplayCanvas (portrait
+ * 1080×1920 / landscape 1920×1080); scale-to-fit does the rest (docs/01).
+ *
+ * COLOR-STATE (docs/09, LOCKED): amber = ambient, green = live. Implemented by
+ * re-pointing the theme custom properties. Because terminal-theme.css paints every
+ * descendant with `color: var(--terminal-green) !important`, re-defining that
+ * variable on a subtree flips the whole subtree's ink WITHOUT fighting !important —
+ * the cascade resolves the var at each element. So:
+ *   .signage-amber  → the ambient building state (default)
+ *   .signage-green  → the live game re-theme (room-wide green moment)
+ *   .sig-live       → a single live-feed element rendered green inside amber mode
+ *                     (Toast price/name, ticker standings, NOW POURING)
+ */
+.signage-amber {
+  --terminal-green: #ffb000;
+  --terminal-glow: rgba(255, 176, 0, 0.5);
+}
+.signage-green,
+.sig-live {
+  --terminal-green: #00ff41;
+  --terminal-glow: rgba(0, 255, 65, 0.5);
+}
+
+/* Static scanline + vignette come from the shared `.terminal-theme::before/::after`
+   overlays (DisplayCanvas) that already blanket the surface — no panel-local pass;
+   stacking a second set dims the amber ink to brown. Only the OPTICAL FEED photo
+   window keeps its own light localized pass (below). */
+
+/* ── Photo treatments (docs/09) ─────────────────────────────────────────────── */
+/* VIEWPORT: full-colour photo in a bordered OPTICAL FEED window (default). */
+.sig-viewport {
+  position: relative;
+  overflow: hidden;
+  background: #000;
+  border: 2px solid var(--terminal-green);
+  box-shadow: 0 0 18px var(--terminal-glow), inset 0 0 40px rgba(0, 0, 0, 0.6);
+}
+.sig-viewport > img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.sig-viewport .sig-feedcap {
+  position: absolute;
+  top: 10px;
+  left: 14px;
+  z-index: 3;
+  letter-spacing: 3px;
+  opacity: 0.85;
+}
+.sig-viewport::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.18) 0 2px, transparent 2px 6px),
+    radial-gradient(ellipse at center, transparent 60%, rgba(0, 0, 0, 0.45) 100%);
+}
+/* PHOSPHOR: tint the photo toward the current ink for atmosphere pieces. */
+.sig-phosphor > img {
+  filter: grayscale(1) brightness(1.05) sepia(1) hue-rotate(75deg) saturate(4);
+}
+.signage-amber .sig-phosphor > img {
+  filter: grayscale(1) brightness(1.05) sepia(1) hue-rotate(-8deg) saturate(4);
+}
+
+/* ── Finite transitions (perf rule: one-shot per content entry; no loops) ────── */
+.sig-enter {
+  animation: sigEnter 380ms ease-out;
+}
+@keyframes sigEnter {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+/* Fast boot-line reveal used by the game-mode transition + announcements. */
+.sig-boot {
+  animation: sigBoot 900ms steps(24, end);
+}
+@keyframes sigBoot {
+  from { clip-path: inset(0 100% 0 0); }
+  to { clip-path: inset(0 0 0 0); }
+}
+/* Static cursor block — NO blink loop (perf rule: no infinite animations). The
+   typewriter reveals once on entry, then this idles as a solid caret. */
+.sig-cursor::after {
+  content: "▮";
+  opacity: 0.85;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sig-enter,
+  .sig-boot { animation: none; }
+}
