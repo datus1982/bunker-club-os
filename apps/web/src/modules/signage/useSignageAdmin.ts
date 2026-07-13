@@ -154,7 +154,7 @@ export function useToastCache() {
       const [{ data: cache }, { data: menu }] = await Promise.all([
         supabase
           .from("toast_menu_cache")
-          .select("guid, name, price, image_storage_path, image_url, menu_group, out_of_stock")
+          .select("guid, name, price, image_storage_path, image_url, menu_group, out_of_stock, pos_visible")
           .eq("venue_id", VENUE_ID)
           .order("menu_group"),
         supabase.from("public_menu").select("guid, public_blurb"),
@@ -165,7 +165,7 @@ export function useToastCache() {
       return ((cache ?? []) as Array<{
         guid: string; name: string | null; price: number | null;
         image_storage_path: string | null; image_url: string | null;
-        menu_group: string | null; out_of_stock: boolean;
+        menu_group: string | null; out_of_stock: boolean; pos_visible: boolean | null;
       }>).map((r) => ({
         guid: r.guid,
         name: r.name,
@@ -173,6 +173,7 @@ export function useToastCache() {
         image: r.image_storage_path ?? r.image_url,
         menu_group: r.menu_group,
         out_of_stock: r.out_of_stock,
+        pos_visible: r.pos_visible ?? true, // default-visible if unsynced (mirrors 0034)
         public_blurb: blurbs.get(r.guid) ?? null,
       }));
     },
@@ -186,9 +187,10 @@ export function toastMap(rows: ToastCacheRow[] | undefined): Map<string, ToastCa
   return m;
 }
 
-/** In-stock ★ SCREENS featured items (read-only reality panel, docs/09). */
+/** In-stock, POS-visible ★ SCREENS featured items (read-only reality panel, docs/09;
+ *  POS-visibility gate per 0034 — matches the public slot page's materialization). */
 export function featuredItems(rows: ToastCacheRow[] | undefined): ToastCacheRow[] {
-  return (rows ?? []).filter((r) => r.menu_group === SCREENS_GROUP && !r.out_of_stock);
+  return (rows ?? []).filter((r) => r.menu_group === SCREENS_GROUP && !r.out_of_stock && r.pos_visible);
 }
 
 /* ── mutation helpers (plain async — components wrap in useMutation) ──────── */

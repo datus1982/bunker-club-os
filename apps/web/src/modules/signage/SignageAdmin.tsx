@@ -103,7 +103,7 @@ export function SignageAdmin() {
                   item={it}
                   first={i === 0}
                   last={i === arr.length - 1}
-                  oos={isOos(it, toastQ.data)}
+                  hideReason={sourceHideReason(it, toastQ.data)}
                   onEdit={() => openEdit(it)}
                   onChanged={invalidate}
                   prev={arr[i - 1]}
@@ -226,9 +226,9 @@ function HealthDot({ health }: { health: ScreenHealth }) {
 
 /* ── B · item row ───────────────────────────────────────────────────────── */
 function ItemRow({
-  item, first, last, oos, prev, next, onEdit, onChanged,
+  item, first, last, hideReason, prev, next, onEdit, onChanged,
 }: {
-  item: AdminItem; first: boolean; last: boolean; oos: boolean;
+  item: AdminItem; first: boolean; last: boolean; hideReason: string | null;
   prev?: AdminItem; next?: AdminItem;
   onEdit: () => void; onChanged: () => void;
 }) {
@@ -244,7 +244,7 @@ function ItemRow({
           <span style={badge}>{item.template.replace("_", " ").toUpperCase()}</span>
           {item.recurrence && <span className="u-amber" style={{ fontSize: 13, letterSpacing: 1 }}>↻ RECURS</span>}
           {item.show_on_website && <span style={{ fontSize: 13, letterSpacing: 1 }} title="Published to the public website">🌐 WEB</span>}
-          {oos && <span className="u-amber" style={{ fontSize: 13 }}>86'D — HIDDEN</span>}
+          {hideReason && <span className="u-amber" style={{ fontSize: 13 }}>{hideReason}</span>}
         </div>
         <div style={{ fontSize: 20, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{summarize(item)}</div>
         <div style={{ fontSize: 14, opacity: 0.6 }}>{scheduleLabel(item)}</div>
@@ -369,12 +369,18 @@ function FeaturedPanel({ featured }: { featured: ReturnType<typeof featuredItems
 }
 
 /* ── helpers ────────────────────────────────────────────────────────────── */
-function isOos(item: AdminItem, rows: ReturnType<typeof featuredItems> | undefined): boolean {
+// Why the slot page auto-hides an item's Toast source, if at all: 86'd (out of
+// stock) or POS-HIDDEN (not active on the POS view — 0034). Either reason hides it
+// on-screen, so the admin row badges the actual cause.
+function sourceHideReason(item: AdminItem, rows: ReturnType<typeof featuredItems> | undefined): string | null {
   const guid = typeof item.fields?.source_toast_guid === "string" ? (item.fields.source_toast_guid as string) : undefined;
-  if (!guid || !rows) return false;
+  if (!guid || !rows) return null;
   // rows here is the full toast cache list passed as toastQ.data; find the guid.
-  const r = (rows as { guid: string; out_of_stock?: boolean }[]).find((x) => x.guid === guid);
-  return !!(r && (r as { out_of_stock?: boolean }).out_of_stock);
+  const r = (rows as { guid: string; out_of_stock?: boolean; pos_visible?: boolean }[]).find((x) => x.guid === guid);
+  if (!r) return null;
+  if (r.out_of_stock) return "86'D — HIDDEN";
+  if (r.pos_visible === false) return "POS-HIDDEN";
+  return null;
 }
 
 function summarize(item: AdminItem): string {

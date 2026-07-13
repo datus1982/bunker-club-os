@@ -61,6 +61,7 @@ export interface ToastCacheRow {
   image: string | null; // mirrored (signage bucket) URL, else Toast CDN
   menu_group: string | null;
   out_of_stock: boolean;
+  pos_visible: boolean; // active on the POS view = advertisable (0034 owner principle)
   public_blurb: string | null; // description-safe blurb (text before `---`), from public_menu
 }
 
@@ -161,7 +162,7 @@ export function useSlot(slug: string) {
       const [{ data: cache }, { data: menu }] = await Promise.all([
         supabase
           .from("toast_menu_cache")
-          .select("guid, name, price, image_storage_path, image_url, menu_group, out_of_stock")
+          .select("guid, name, price, image_storage_path, image_url, menu_group, out_of_stock, pos_visible")
           .eq("venue_id", VENUE_ID),
         supabase.from("public_menu").select("guid, public_blurb"),
       ]);
@@ -172,7 +173,7 @@ export function useSlot(slug: string) {
       for (const r of (cache ?? []) as Array<{
         guid: string; name: string | null; price: number | null;
         image_storage_path: string | null; image_url: string | null;
-        menu_group: string | null; out_of_stock: boolean;
+        menu_group: string | null; out_of_stock: boolean; pos_visible: boolean | null;
       }>) {
         map.set(r.guid, {
           guid: r.guid,
@@ -181,6 +182,7 @@ export function useSlot(slug: string) {
           image: r.image_storage_path ?? r.image_url,
           menu_group: r.menu_group,
           out_of_stock: r.out_of_stock,
+          pos_visible: r.pos_visible ?? true, // default-visible if unsynced (mirrors 0034)
           public_blurb: blurbs.get(r.guid) ?? null,
         });
       }
@@ -223,12 +225,15 @@ export function resolveRotation(
     (!it.starts_at || new Date(it.starts_at).getTime() <= t) &&
     (!it.ends_at || new Date(it.ends_at).getTime() > t);
 
-  // Auto-hide rule (docs/09): skip any item sourced from an out-of-stock Toast item.
+  // Auto-hide rule (docs/09 + 0034): skip any item sourced from a Toast item that is
+  // out-of-stock OR not POS-visible. The owner's principle — never advertise what
+  // isn't active on the POS view — so a POS-hidden source is treated like an 86.
   const notHidden = (it: SignageItem) => {
     const guid = it.fields?.source_toast_guid as string | undefined;
     if (!guid) return true;
     const row = toast.get(guid);
-    return !row?.out_of_stock;
+    if (!row) return true; // unknown guid: don't over-hide authored copy
+    return !row.out_of_stock && row.pos_visible;
   };
 
   const scheduled = items.filter((it) => inWindow(it) && notHidden(it));
@@ -238,7 +243,8 @@ export function resolveRotation(
   // rows — they exist only for this render (docs/09 anti-goal: no sync writes).
   const materialized: SignageItem[] = [];
   for (const [guid, row] of toast) {
-    if (row.menu_group !== SCREENS_GROUP || row.out_of_stock) continue;
+    // Only in-stock AND POS-visible ★ SCREENS items advertise (0034 owner principle).
+    if (row.menu_group !== SCREENS_GROUP || row.out_of_stock || !row.pos_visible) continue;
     materialized.push({
       id: `screens:${guid}`,
       slot_id: null,
