@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { Link } from "react-router-dom";
 
 import { SiteLayout } from "../SiteLayout";
@@ -28,6 +29,45 @@ const LOC_CREDIT = "John Margolies / Library of Congress, Prints & Photographs D
 
 const P = "/photos/history";
 
+// Banner (1957 panorama) LCP candidate set — the <img> srcset and the route-
+// scoped preload below MUST match EXACTLY so the browser fetches the same
+// candidate. Full-bleed (100vw): a 412px/DPR-1.75 phone needs ~721 device px, so
+// it picks banner-800 (~60 KB) — the LCP resource, kept small.
+const BANNER_SRCSET = `${P}/banner-800.jpg 800w, ${P}/banner-1200.jpg 1200w, ${P}/banner-2400.jpg 2400w`;
+const BANNER_SIZES = "100vw";
+
+// Honest `sizes` for historic photos INSIDE .site-wrap (max-width 1080px, padding
+// clamp(1rem,4vw,2.5rem) per side). Declaring the true padded content width — not a
+// naive 100vw — lets a phone pick the 700w derivative (slot ≈379px × 1.75 ≈663 dev
+// px ≤ 700) instead of the 1400w, cutting ~200 KB/image with no visible change.
+// Desktop still resolves to 1400w (1000px slot). See site.css --site-max/--site-pad.
+const HP_SIZES_FULL = "(max-width: 1080px) calc(100vw - 2 * clamp(1rem, 4vw, 2.5rem)), 1000px";
+// Same, for photos in the 2-col .site-grid-2 (stacks to 1 col < 720px, so full
+// content width on mobile; ~520px per column on desktop).
+const HP_SIZES_GRID = "(max-width: 720px) calc(100vw - 2 * clamp(1rem, 4vw, 2.5rem)), 520px";
+
+/**
+ * Route-scoped LCP preload for the banner (W1). The banner is rendered by React
+ * (SPA), so without a preload the browser only discovers it after hydration —
+ * measured LCP ~5.6 s on mobile. This injects a matching <link rel=preload
+ * as=image fetchpriority=high> while /history is mounted (removed on unmount), so
+ * only this page pays for it. imagesrcset/imagesizes mirror the <img> EXACTLY.
+ */
+function useBannerPreload() {
+  useEffect(() => {
+    const link = document.createElement("link");
+    link.rel = "preload";
+    link.as = "image";
+    link.setAttribute("imagesrcset", BANNER_SRCSET);
+    link.setAttribute("imagesizes", BANNER_SIZES);
+    link.setAttribute("fetchpriority", "high");
+    document.head.appendChild(link);
+    return () => {
+      link.remove();
+    };
+  }, []);
+}
+
 // Visible FAQ — mirrored verbatim into the FAQPage JSON-LD below.
 const FAQ: { q: string; a: string }[] = [
   {
@@ -40,15 +80,12 @@ const FAQ: { q: string; a: string }[] = [
   },
   {
     q: "What was on NW 23rd Street before Bunker Club?",
-    a: "In the Route 66 era the 400 block of NW 23rd was a busy retail strip — drug stores, hardware, groceries, furniture, and the Tower Theatre next door at 425 NW 23rd. After the highway years the storefront at 433 sat mostly quiet for decades before Bunker Club opened here in 2017.",
-  },
-  {
-    q: "What is the Tower Theatre next to Bunker Club?",
-    a: "The Tower Theatre (425 NW 23rd) opened in 1937 as a first-run movie house on Route 66. It ran films for decades, survived a fire in 1967, dimmed through the 1980s, and reopened as a live-music venue in 2016. Its neon marquee is the landmark of the block.",
+    a: "In the Route 66 era the 400 block of NW 23rd was a busy retail strip — drug stores, hardware, groceries, furniture, and the Tower Theatre next door at 425 NW 23rd. After the highway years, by most accounts, the storefront at 433 saw quieter decades before Bunker Club opened here in 2017.",
   },
 ];
 
 export function History() {
+  useBannerPreload();
   const { data: copy } = useSiteCopy();
 
   useDocumentMeta({
@@ -67,8 +104,8 @@ export function History() {
       <div className="site-banner">
         <img
           src={`${P}/banner-2400.jpg`}
-          srcSet={`${P}/banner-1200.jpg 1200w, ${P}/banner-2400.jpg 2400w`}
-          sizes="100vw"
+          srcSet={BANNER_SRCSET}
+          sizes={BANNER_SIZES}
           width={2400}
           height={1084}
           fetchPriority="high"
@@ -99,7 +136,7 @@ export function History() {
               highway.
             </p>
             <p>
-              That heritage is still on the map. National Geographic's 2026 Route 66 guide to
+              That heritage is still on the map. A National Geographic Route 66 guide to
               Oklahoma City names Bunker Club by name among the street's{" "}
               <a
                 href="https://www.nationalgeographic.com/travel/article/paid-content-creative-guide-route-66-oklahoma-city"
@@ -118,7 +155,7 @@ export function History() {
               className="site-hphoto"
               src={`${P}/block-veazey-1400.jpg`}
               srcSet={`${P}/block-veazey-700.jpg 700w, ${P}/block-veazey-1400.jpg 1400w`}
-              sizes="(max-width: 1080px) 100vw, 1080px"
+              sizes={HP_SIZES_FULL}
               width={1400}
               height={1163}
               loading="lazy"
@@ -159,15 +196,7 @@ export function History() {
               <p className="site-tl__title">The Tower Theatre opens</p>
               <p className="site-tl__body">
                 A block anchor arrives next door at 425 NW 23rd: an Art-Deco movie palace whose
-                neon tower still names the street. Its full story lives at{" "}
-                <a
-                  href="https://www.retrometrookc.org/tower-theatre/"
-                  target="_blank"
-                  rel="noreferrer noopener"
-                >
-                  Retro Metro OKC
-                </a>
-                .
+                neon tower still names the street.
               </p>
             </li>
 
@@ -185,7 +214,7 @@ export function History() {
                   className="site-hphoto"
                   src={`${P}/street-1940s-1400.jpg`}
                   srcSet={`${P}/street-1940s-700.jpg 700w, ${P}/street-1940s-1400.jpg 1400w`}
-                  sizes="(max-width: 1080px) 100vw, 1080px"
+                  sizes={HP_SIZES_FULL}
                   width={1400}
                   height={1109}
                   loading="lazy"
@@ -207,7 +236,7 @@ export function History() {
                     className="site-hphoto"
                     src={`${P}/golden-pano-2000.jpg`}
                     srcSet={`${P}/golden-pano-1000.jpg 1000w, ${P}/golden-pano-2000.jpg 2000w`}
-                    sizes="(max-width: 720px) 100vw, 520px"
+                    sizes={HP_SIZES_GRID}
                     width={2000}
                     height={903}
                     loading="lazy"
@@ -226,7 +255,7 @@ export function History() {
                     className="site-hphoto"
                     src={`${P}/retail-modern-1400.jpg`}
                     srcSet={`${P}/retail-modern-700.jpg 700w, ${P}/retail-modern-1400.jpg 1400w`}
-                    sizes="(max-width: 720px) 100vw, 520px"
+                    sizes={HP_SIZES_GRID}
                     width={1400}
                     height={1097}
                     loading="lazy"
@@ -259,7 +288,7 @@ export function History() {
                   className="site-hphoto"
                   src={`${P}/phillips66-1400.jpg`}
                   srcSet={`${P}/phillips66-700.jpg 700w, ${P}/phillips66-1400.jpg 1400w`}
-                  sizes="(max-width: 1080px) 100vw, 1080px"
+                  sizes={HP_SIZES_FULL}
                   width={1400}
                   height={1117}
                   loading="lazy"
@@ -289,8 +318,8 @@ export function History() {
               <p className="site-tl__title">The quiet decades</p>
               <p className="site-tl__body">
                 The strip fades as the highway crowds move on. Storefronts empty; the Tower dims.
-                The building at 433 NW 23rd sits mostly quiet for decades — waiting, as it turns
-                out, for a very specific idea.
+                As the current owners tell it, the building at 433 NW 23rd saw quieter decades
+                through this stretch — waiting, as it turns out, for a very specific idea.
               </p>
             </li>
 
@@ -318,7 +347,7 @@ export function History() {
               className="site-hphoto"
               src={`${P}/night-liquor-1600.jpg`}
               srcSet={`${P}/night-liquor-800.jpg 800w, ${P}/night-liquor-1600.jpg 1600w`}
-              sizes="(max-width: 1080px) 100vw, 1080px"
+              sizes={HP_SIZES_FULL}
               width={1600}
               height={1197}
               loading="lazy"
@@ -408,7 +437,7 @@ export function History() {
         </div>
       </section>
 
-      {/* One block west — the Milk Bottle (LOC) + roadside neon (LOC) */}
+      {/* One block west — the Milk Bottle (LOC) */}
       <section className="site-section site-section--tight">
         <div className="site-wrap">
           <p className="site-label">On the same road</p>
@@ -439,6 +468,16 @@ export function History() {
               </p>
             </div>
           </div>
+        </div>
+      </section>
+
+      {/* Roadside Oklahoma City — the Flamingo (LOC). NOT on our block: the sign
+          stood on Lincoln Blvd, so it lives in its own section as general OKC
+          Route 66 atmosphere, not a "one block west" neighbor. */}
+      <section className="site-section site-section--tight">
+        <div className="site-wrap">
+          <p className="site-label">The look of the road</p>
+          <h2 className="site-h-compact">Roadside Oklahoma City</h2>
 
           <figure className="site-hfig">
             <img
@@ -454,9 +493,9 @@ export function History() {
               alt="A neon Flamingo Motel sign in Oklahoma City, classic Route 66 roadside signage advertising refrigerated air and color TV"
             />
             <figcaption className="site-hcap">
-              <b>The look of the road.</b> Oklahoma City's Route 66 was all neon and promise —
-              refrigerated air, room phones, color TV. The Flamingo Motel's sign, the exact
-              roadside idiom the bunker fantasy grew out of.
+              <b>The look of the road.</b> Across mid-century Oklahoma City, Route 66 was all neon
+              and promise — refrigerated air, room phones, color TV. The Flamingo Motel's sign,
+              on Lincoln Boulevard, is the exact roadside idiom the bunker fantasy grew out of.
               <span className="site-credit" style={{ display: "block" }}>
                 Flamingo Motel, Oklahoma City, 1979. {LOC_CREDIT}.
               </span>
@@ -473,8 +512,8 @@ export function History() {
             <h2 className="site-h-compact">One Hundred Years on the Mother Road</h2>
             <p className="site-tl__body" style={{ maxWidth: "66ch", marginBottom: "0.9rem" }}>
               November 11, 2026 marks one hundred years since Route 66 was commissioned — and
-              Oklahoma, home to more original 66 miles than any other state, is celebrating all
-              year. Uptown 23rd, our own district, kicked off with Cruisin' 23rd in April, and the
+              Oklahoma, home to more drivable miles of Route 66 than any other state, is
+              celebrating all year. Uptown 23rd, our own district, kicked off with Cruisin' 23rd in April, and the
               statewide calendar runs right through the centennial date.
             </p>
             <p className="site-tl__body" style={{ maxWidth: "66ch", margin: 0 }}>

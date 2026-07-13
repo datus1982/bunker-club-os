@@ -13,10 +13,21 @@ export interface NeighborhoodEvent {
   date: string;
   url: string;
   blurb: string;
+  /**
+   * Optional attribution line, e.g. "Oklahoma Route 66 Association". OPTIONAL by
+   * design: the renderer must tolerate rows both with and without it, because the
+   * LIVE DB row still carries the old (source-less) shape until 0032 is re-applied
+   * (the Management API PAT is revoked — see 0032's loud comment). Render only when
+   * present.
+   */
+  source?: string;
 }
 
 // THREE-WAY INVARIANT: byte-identical to the 0032 seed + the live DB row. Also
 // React Query placeholderData — drift reflows /events and spikes CLS. See 0032.
+// ⚠ TEMPORARILY 2-WAY: this + the 0032 seed now carry `source`, but the LIVE row
+// does NOT yet (no DB write path this session). The renderer is defensive, so live
+// simply shows no attribution line until the orchestrator re-syncs 0032.
 export const FALLBACK: NeighborhoodEvent[] = [
   {
     title: "Oklahoma Route 66 Muralfest",
@@ -24,6 +35,7 @@ export const FALLBACK: NeighborhoodEvent[] = [
     url: "https://oklahomaroute66.com/centennial",
     blurb:
       "Statewide mural celebration for the Mother Road's 100th year — new roadside art commissioned up and down the route.",
+    source: "Oklahoma Route 66 Association",
   },
   {
     title: "Route 66 Hall of Fame Induction",
@@ -31,6 +43,7 @@ export const FALLBACK: NeighborhoodEvent[] = [
     url: "https://oklahomaroute66.com/centennial",
     blurb:
       "The annual induction ceremony in Clinton, honoring the people and places that made Oklahoma's stretch of 66.",
+    source: "Oklahoma Route 66 Association",
   },
   {
     title: "Route 66 Centennial Day",
@@ -38,6 +51,7 @@ export const FALLBACK: NeighborhoodEvent[] = [
     url: "https://oklahomaroute66.com/centennial",
     blurb:
       "One hundred years to the day since Route 66 was commissioned on November 11, 1926. Statewide celebrations mark the milestone.",
+    source: "Oklahoma Route 66 Association",
   },
 ];
 

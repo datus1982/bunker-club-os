@@ -63,8 +63,18 @@ Source folders: `~/Desktop/bunker-photos/` (3 duplicated here) and
 `~/Desktop/bunker-photos/full history/` (all 14). Each entry: subject · best-guess date +
 dating clue · orientation/native px · page use. All read directly from the scans; the
 TIFFs were previewed via `sips` JPEG conversions. Optimized web derivatives live in
-`apps/web/public/photos/history/`; originals archived to Supabase storage
-`signage/site/originals/` for provenance.
+`apps/web/public/photos/history/`; the full-res originals are archived to Supabase
+storage for provenance.
+
+**Originals archive (updated site-refinement-1, 2026-07-13):** all **20** full-res
+originals now live in the **PRIVATE** `archive` bucket under `site-originals/`
+(`public=false`, service-role only — no anon access). They were originally in the
+PUBLIC `signage` bucket at `site/originals/`, where they were anonymously downloadable
+(full-res OHS scans + iPhone interior originals carrying device EXIF); W3 moved them to
+`archive` and deleted the public copies (anon fetch of a moved original now → HTTP 400).
+The 20 = **14** historic scans (batch-2 catalog below) + **3** LOC Margolies downloads
+(`loc-margolies-*`) + **3** owner-shot interior originals (`IMG_4678/4689/4690.jpeg`,
+the batch-2 interiors incl. the Home hero source).
 
 | # | File | Subject | Date · clue | Orientation · px | Page use |
 |---|------|---------|-------------|------------------|----------|

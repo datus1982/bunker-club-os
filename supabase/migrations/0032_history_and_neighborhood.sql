@@ -17,9 +17,19 @@
 --
 -- THREE-WAY INVARIANT: each value is byte-identical across (1) this seed, (2) the
 -- FALLBACK in the consuming hook (site_history_intro → useSiteCopy.ts FALLBACK;
--- site_neighborhood_events → useNeighborhoodEvents.ts FALLBACK), and (3) the live
+-- site_neighborhood_events → neighborhoodEvents.ts FALLBACK), and (3) the live
 -- DB row. The fallback doubles as React Query placeholderData, so any drift reflows
 -- the page and spikes CLS. Update all three together.
+--
+-- ⚠⚠ INVARIANT TEMPORARILY BROKEN (site-refinement-1, N11): each neighborhood event
+-- gained an optional `source` field. This seed + the neighborhoodEvents.ts FALLBACK
+-- now carry it, but the LIVE `site_neighborhood_events` row does NOT — it was written
+-- by the ORIGINAL 0032 apply and `on conflict do nothing` here will NOT overwrite it,
+-- and there is no live DB write path this session (Management API PAT revoked → 403).
+-- The Events.tsx renderer is DEFENSIVE (renders `via {source}` only when present), so
+-- live simply shows no attribution line until this is re-synced. ACTION FOR THE
+-- ORCHESTRATOR: once a DB path exists, run an explicit UPDATE (not this idempotent
+-- insert) to push the `source` fields onto the live row, restoring the 3-way invariant.
 --
 -- IDEMPOTENT + NON-DESTRUCTIVE: `on conflict do nothing` — never clobbers copy the
 -- owner has since edited. venue_settings is already anon-readable via the 0011
@@ -36,19 +46,22 @@ insert into public.venue_settings (venue_id, key, value) values
        "title": "Oklahoma Route 66 Muralfest",
        "date": "2026-07-18",
        "url": "https://oklahomaroute66.com/centennial",
-       "blurb": "Statewide mural celebration for the Mother Road''s 100th year — new roadside art commissioned up and down the route."
+       "blurb": "Statewide mural celebration for the Mother Road''s 100th year — new roadside art commissioned up and down the route.",
+       "source": "Oklahoma Route 66 Association"
      },
      {
        "title": "Route 66 Hall of Fame Induction",
        "date": "2026-07-25",
        "url": "https://oklahomaroute66.com/centennial",
-       "blurb": "The annual induction ceremony in Clinton, honoring the people and places that made Oklahoma''s stretch of 66."
+       "blurb": "The annual induction ceremony in Clinton, honoring the people and places that made Oklahoma''s stretch of 66.",
+       "source": "Oklahoma Route 66 Association"
      },
      {
        "title": "Route 66 Centennial Day",
        "date": "2026-11-11",
        "url": "https://oklahomaroute66.com/centennial",
-       "blurb": "One hundred years to the day since Route 66 was commissioned on November 11, 1926. Statewide celebrations mark the milestone."
+       "blurb": "One hundred years to the day since Route 66 was commissioned on November 11, 1926. Statewide celebrations mark the milestone.",
+       "source": "Oklahoma Route 66 Association"
      }
    ]'::jsonb)
 

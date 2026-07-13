@@ -11,10 +11,11 @@ import { useEffect } from "react";
 /** Canonical production origin (the site will live at the apex, not os.*). */
 export const SITE_ORIGIN = "https://bunkerokc.com";
 export const SITE_NAME = "Bunker Club";
-// 1200×630 raster (og-default.png) — real OG images must be a bitmap; scrapers
-// (iMessage/Slack/Facebook) do not render SVG previews. Matches the static
-// og:image in index.html so the JS updater overwrites the same tag.
-export const OG_IMAGE = `${SITE_ORIGIN}/og-default.png`;
+// 1200×630 raster (og-default.jpg, ~180 KB) — real OG images must be a bitmap;
+// scrapers (iMessage/Slack/Facebook) do not render SVG previews. JPEG (not PNG)
+// keeps the photographic card small. Matches the static og:image in index.html
+// so the JS updater overwrites the same tag.
+export const OG_IMAGE = `${SITE_ORIGIN}/og-default.jpg`;
 
 // Static defaults — MUST byte-match the static head block in index.html (W1/N8).
 // useDocumentMeta writes these back on unmount so staff routes (/login, /scoring…)

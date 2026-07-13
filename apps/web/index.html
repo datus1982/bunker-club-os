@@ -33,19 +33,12 @@
     <noscript>
       <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=VT323&family=Share+Tech+Mono&display=swap" />
     </noscript>
-    <!-- Home-hero LCP preload (site-refinement-1). imagesrcset/imagesizes mirror the
-         <img class="site-hero__bg"> srcset+sizes EXACTLY, so the preload fetches the
-         same candidate the img resolves to at any DPR (mobile picks 960w, desktop
-         1920w) — no double-download. index.html is shared by every route, so this
-         preload is only "used" on `/`; the marginal cost on internal pages is one
-         idle hint, and the LCP win on the common landing (`/`) is the point. -->
-    <link
-      rel="preload"
-      as="image"
-      fetchpriority="high"
-      imagesrcset="/photos/hero-room-960.jpg 960w, /photos/hero-room-1920.jpg 1920w"
-      imagesizes="100vw"
-    />
+    <!-- Home-hero LCP preload was here; it is now injected route-scoped by the Home
+         component (see modules/website/pages/Home.tsx useHeroPreload). index.html is
+         shared by EVERY route — a static preload fired on /scoring, /leaderboard, and
+         the display TVs too, wasting bandwidth (and, on the always-on display screens,
+         a needless high-priority fetch). The Home page now adds the exact same hint on
+         mount and removes it on unmount, so only `/` pays for it. -->
     <title>BUNKER UNIFIED OS</title>
     <!-- Static default SEO/OpenGraph block (W1). The public site normally manages
          these tags per-route from JS (see modules/website/seo.tsx), but link
@@ -59,12 +52,12 @@
     <meta property="og:description" content="An atomic age high-dive bar at 433 NW 23rd St in Oklahoma City. Open 4 PM to 2 AM daily, with Atomic Pub Trivia every Wednesday night." />
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://bunkerokc.com/" />
-    <meta property="og:image" content="https://bunkerokc.com/og-default.png" />
+    <meta property="og:image" content="https://bunkerokc.com/og-default.jpg" />
     <meta property="og:site_name" content="Bunker Club" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="Bunker Club — Atomic Age High-Dive Bar in OKC" />
     <meta name="twitter:description" content="An atomic age high-dive bar at 433 NW 23rd St in Oklahoma City. Open 4 PM to 2 AM daily, with Atomic Pub Trivia every Wednesday night." />
-    <meta name="twitter:image" content="https://bunkerokc.com/og-default.png" />
+    <meta name="twitter:image" content="https://bunkerokc.com/og-default.jpg" />
   </head>
   <body>
     <div id="root"></div>

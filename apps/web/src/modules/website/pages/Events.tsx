@@ -118,7 +118,9 @@ export function Events() {
                     >
                       Details
                     </a>
-                    <p className="site-event__source">via Oklahoma Route 66 Association</p>
+                    {/* Defensive: `source` is optional — live DB rows may predate it
+                        (see neighborhoodEvents.ts). Render the attribution only when present. */}
+                    {n.source && <p className="site-event__source">via {n.source}</p>}
                   </article>
                 ))}
               </div>

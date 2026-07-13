@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { Link } from "react-router-dom";
 
 import { SiteLayout } from "../SiteLayout";
@@ -12,11 +13,44 @@ import {
 } from "../seo";
 
 /**
+ * Home-hero LCP candidate set. The <img> srcset and the route-scoped preload
+ * MUST use this EXACT string so the preload fetches the same candidate the img
+ * resolves to at any DPR (mobile → 640w, larger → 960w/1920w) — no double
+ * download. Mobile's LCP was the 960w (158 KB); the 640w (~98 KB) shaves it.
+ */
+const HERO_SRCSET =
+  "/photos/hero-room-640.jpg 640w, /photos/hero-room-960.jpg 960w, /photos/hero-room-1920.jpg 1920w";
+const HERO_SIZES = "100vw";
+
+/**
+ * Route-scoped LCP preload (N8/W1). index.html is shared by every route — a
+ * static <link rel=preload> there fired on /scoring, /leaderboard and the display
+ * TVs too. This injects the hint only while Home is mounted and removes it on
+ * unmount. imagesrcset/imagesizes mirror the <img> EXACTLY (HERO_SRCSET/SIZES)
+ * + fetchpriority=high, so the browser picks the identical candidate.
+ */
+function useHeroPreload() {
+  useEffect(() => {
+    const link = document.createElement("link");
+    link.rel = "preload";
+    link.as = "image";
+    link.setAttribute("imagesrcset", HERO_SRCSET);
+    link.setAttribute("imagesizes", HERO_SIZES);
+    link.setAttribute("fetchpriority", "high");
+    document.head.appendChild(link);
+    return () => {
+      link.remove();
+    };
+  }, []);
+}
+
+/**
  * Home (`/`) — hero, "this week" strip (trivia night / published events /
  * website promos, empty-state tolerant), an hours block, and CTAs to /menu and
  * /visit. Carries the LocalBusiness (BarOrPub) JSON-LD built from seeded copy.
  */
 export function Home() {
+  useHeroPreload();
   const { data: copy } = useSiteCopy();
   const { data: cards } = useThisWeek();
   useDocumentMeta({
@@ -79,14 +113,15 @@ export function Home() {
         {/* Owner interior photo as the hero backdrop. Absolutely positioned + object-fit
             cover so it never participates in layout (zero CLS); the .site-hero box height
             is still set by its padding + the text content. Eager + fetchpriority=high +
-            the index.html imagesrcset preload make it the LCP. srcset/sizes here MUST match
-            the preload's imagesrcset/imagesizes. DECISION: descriptive alt (real editorial
-            photo of the venue, not decoration) rather than empty. */}
+            the route-scoped preload (useHeroPreload) make it the LCP. srcset/sizes here
+            share HERO_SRCSET/HERO_SIZES with that preload so both resolve the SAME
+            candidate. DECISION: descriptive alt (real editorial photo of the venue, not
+            decoration) rather than empty. */}
         <img
           className="site-hero__bg"
           src="/photos/hero-room-1920.jpg"
-          srcSet="/photos/hero-room-960.jpg 960w, /photos/hero-room-1920.jpg 1920w"
-          sizes="100vw"
+          srcSet={HERO_SRCSET}
+          sizes={HERO_SIZES}
           width={1920}
           height={1080}
           fetchPriority="high"
