@@ -60,6 +60,20 @@ const MENU_GROUP_ORDER_FALLBACK = [
   "Merch",
 ];
 
+// GUIDs of toast_menu_cache items to suppress from the public /menu — POS
+// register-convenience rows (e.g. a "Sputnik 1/2 off" priced-down duplicate) that
+// are real menu items but shouldn't be marketed publicly. Owner-configurable via
+// the venue_settings `site_menu_hidden_guids` key (seeded by migration 0033).
+//
+// This constant is the FALLBACK (first-paint / offline / key-missing) and MUST
+// byte-match the 0033 `site_menu_hidden_guids` seed AND the live DB value — the
+// same three-way invariant the group-order list holds. Update all three together.
+//
+// NOTE: this only affects the public /menu. The drinks display board reads
+// sales_cache top-sellers via a different path and does NOT consult this list, so
+// a hidden item that is also a top seller would still appear there (future owner call).
+const MENU_HIDDEN_GUIDS_FALLBACK = ["fa3603be-0965-42d0-9cca-6e0708cce1f0"];
+
 function rankFn(order: string[]) {
   return (name: string): number => {
     const i = order.indexOf(name);
@@ -72,8 +86,9 @@ export function useMenu() {
     queryKey: ["site-menu", VENUE_ID],
     staleTime: 5 * 60_000,
     queryFn: async (): Promise<MenuGroup[]> => {
-      // Pull the menu rows and the owner's group-order key in parallel (no waterfall).
-      const [menuRes, orderRes] = await Promise.all([
+      // Pull the menu rows, the owner's group-order key, and the hidden-guids key
+      // in parallel (no waterfall).
+      const [menuRes, orderRes, hiddenRes] = await Promise.all([
         supabase
           .from("public_menu")
           .select('guid, "group", name, public_blurb, price, image, in_stock')
@@ -83,6 +98,12 @@ export function useMenu() {
           .select("value")
           .eq("venue_id", VENUE_ID)
           .eq("key", "site_menu_group_order")
+          .maybeSingle(),
+        supabase
+          .from("venue_settings")
+          .select("value")
+          .eq("venue_id", VENUE_ID)
+          .eq("key", "site_menu_hidden_guids")
           .maybeSingle(),
       ]);
       const { data, error } = menuRes;
@@ -96,6 +117,19 @@ export function useMenu() {
           : MENU_GROUP_ORDER_FALLBACK;
       const groupRank = rankFn(order);
 
+      // GUIDs to suppress from the public menu. Defensive: a missing or malformed
+      // key means NO filtering (never crash, never over-hide) — fall back to the
+      // constant only when the key is entirely absent, and to no-op when present
+      // but the wrong shape.
+      const hiddenRaw = hiddenRes.data?.value;
+      const hidden = new Set<string>(
+        hiddenRes.data === null
+          ? MENU_HIDDEN_GUIDS_FALLBACK
+          : Array.isArray(hiddenRaw)
+            ? hiddenRaw.filter((s): s is string => typeof s === "string")
+            : [],
+      );
+
       type Row = {
         guid: string;
         group: string | null;
@@ -108,6 +142,7 @@ export function useMenu() {
 
       const byGroup = new Map<string, MenuItem[]>();
       for (const r of (data ?? []) as Row[]) {
+        if (hidden.has(r.guid)) continue; // owner-hidden POS-convenience item (0033).
         if (!r.in_stock) continue; // DECISION: hide 86'd items.
         if (!r.name) continue;
         const g = r.group?.trim() || "Other";

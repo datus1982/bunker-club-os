@@ -21,25 +21,37 @@ import {
 const HERO_SRCSET =
   "/photos/hero-room-640.jpg 640w, /photos/hero-room-960.jpg 960w, /photos/hero-room-1920.jpg 1920w";
 const HERO_SIZES = "100vw";
+/** Must match the id used by the pre-hydration inline script in index.html. */
+const HERO_PRELOAD_ID = "hero-lcp-preload";
 
 /**
- * Route-scoped LCP preload (N8/W1). index.html is shared by every route — a
- * static <link rel=preload> there fired on /scoring, /leaderboard and the display
- * TVs too. This injects the hint only while Home is mounted and removes it on
- * unmount. imagesrcset/imagesizes mirror the <img> EXACTLY (HERO_SRCSET/SIZES)
- * + fetchpriority=high, so the browser picks the identical candidate.
+ * Route-scoped LCP preload (N8/W1/WARN-A). The FIRST paint of "/" is handled by a
+ * tiny pre-hydration inline script in index.html (fires during HTML parse, before
+ * React mounts — the only way to beat the <img>'s own discovery on mobile). This
+ * hook exists for the SPA lifecycle:
+ *   • initial "/" load  → the element already exists (injected by that script); we
+ *     ADOPT it and only register cleanup, so there's no double-injection.
+ *   • client-side nav INTO Home (the inline script does not re-run) → we inject it.
+ *   • nav AWAY from Home → cleanup removes it, so /scoring, /leaderboard and the
+ *     always-on display TVs never carry the hint.
+ * imagesrcset/imagesizes mirror the <img> EXACTLY (HERO_SRCSET/SIZES) — and MUST
+ * byte-match the strings in index.html's inline script (single source of truth).
  */
 function useHeroPreload() {
   useEffect(() => {
-    const link = document.createElement("link");
-    link.rel = "preload";
-    link.as = "image";
-    link.setAttribute("imagesrcset", HERO_SRCSET);
-    link.setAttribute("imagesizes", HERO_SIZES);
-    link.setAttribute("fetchpriority", "high");
-    document.head.appendChild(link);
+    let link = document.getElementById(HERO_PRELOAD_ID) as HTMLLinkElement | null;
+    if (!link) {
+      link = document.createElement("link");
+      link.id = HERO_PRELOAD_ID;
+      link.rel = "preload";
+      link.as = "image";
+      link.setAttribute("imagesrcset", HERO_SRCSET);
+      link.setAttribute("imagesizes", HERO_SIZES);
+      link.setAttribute("fetchpriority", "high");
+      document.head.appendChild(link);
+    }
     return () => {
-      link.remove();
+      link?.remove();
     };
   }, []);
 }

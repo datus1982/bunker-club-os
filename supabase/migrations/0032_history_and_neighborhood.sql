@@ -21,15 +21,14 @@
 -- DB row. The fallback doubles as React Query placeholderData, so any drift reflows
 -- the page and spikes CLS. Update all three together.
 --
--- ⚠⚠ INVARIANT TEMPORARILY BROKEN (site-refinement-1, N11): each neighborhood event
--- gained an optional `source` field. This seed + the neighborhoodEvents.ts FALLBACK
--- now carry it, but the LIVE `site_neighborhood_events` row does NOT — it was written
--- by the ORIGINAL 0032 apply and `on conflict do nothing` here will NOT overwrite it,
--- and there is no live DB write path this session (Management API PAT revoked → 403).
--- The Events.tsx renderer is DEFENSIVE (renders `via {source}` only when present), so
--- live simply shows no attribution line until this is re-synced. ACTION FOR THE
--- ORCHESTRATOR: once a DB path exists, run an explicit UPDATE (not this idempotent
--- insert) to push the `source` fields onto the live row, restoring the 3-way invariant.
+-- `source` field (N11): each neighborhood event carries an optional `source`
+-- attribution field. The 3-way invariant HOLDS — this seed, the neighborhoodEvents.ts
+-- FALLBACK, and the LIVE `site_neighborhood_events` row all carry `source` (the live
+-- row was re-synced via an explicit UPDATE on 2026-07-13 and deep-equal verified; the
+-- earlier "PAT revoked → 403" note was a false alarm — a Cloudflare WAF User-Agent
+-- block on one client, not a revoked token). `on conflict do nothing` here will not
+-- clobber that live row. Events.tsx still renders `via {source}` defensively (only
+-- when present), which is correct regardless.
 --
 -- IDEMPOTENT + NON-DESTRUCTIVE: `on conflict do nothing` — never clobbers copy the
 -- owner has since edited. venue_settings is already anon-readable via the 0011
