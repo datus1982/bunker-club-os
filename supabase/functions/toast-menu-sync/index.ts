@@ -10,6 +10,11 @@
 //      price, image, group, tags). Mirror images into the `signage` bucket so screens never
 //      depend on Toast's CDN.
 //   3. Poll stock (86) status → out_of_stock (best-effort; defaults to in-stock).
+//   4. Compute pos_visible from Menus V2 `visibility` channel arrays (0034): "POS"
+//      present = active on the register (advertisable, per the owner's principle).
+//      The GROUP test cascades into its items — the owner hides a whole group
+//      (e.g. "Winter Cocktails", group visibility []) even while its items still
+//      list POS on their own, so item-level visibility alone would miss it.
 // Description safety (docs/09): only text before `---` is shown; see menuText.publicBlurb.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { publicBlurb } from "./menuText.ts";
@@ -42,6 +47,19 @@ async function getToastToken(): Promise<string> {
 
 function headers(token: string) {
   return { Authorization: `Bearer ${token}`, "Toast-Restaurant-External-ID": TOAST_RESTAURANT_GUID, "Content-Type": "application/json" };
+}
+
+// Menus V2 `visibility` is an array of channel strings (e.g.
+// ["ORDERING_PARTNERS","TOAST_ONLINE_ORDERING","POS","KIOSK"]). "POS" present =
+// active on the register = advertisable (owner's principle). Defensive: a missing
+// visibility (undefined/null) is treated as visible so a schema surprise never
+// over-hides — mirrors the default-in-stock stance. An explicit empty array means
+// hidden on every channel (how the owner hid Winter Cocktails) → not visible. A
+// legacy scalar enum ("NONE") is honored as a fallback.
+function isPosVisible(vis: unknown): boolean {
+  if (vis === undefined || vis === null) return true;
+  if (Array.isArray(vis)) return vis.includes("POS");
+  return String(vis).toUpperCase() !== "NONE";
 }
 
 // Mirror a Toast CDN image into our storage bucket; return the public URL (or null).
@@ -121,8 +139,14 @@ Deno.serve(async (req) => {
 
       const rows: Record<string, unknown>[] = [];
       // Groups can nest sub-groups; walk the tree and collect items from every level.
-      const walk = async (group: Record<string, any>) => {
-        if (group.visibility === "NONE") return;
+      // `groupVisible` carries the POS-visibility cascade: once a hidden group is
+      // entered, every descendant item inherits pos_visible=false regardless of its
+      // own visibility (that's exactly how the owner hides a whole section). We no
+      // longer early-return on a hidden group — hidden items stay in the cache
+      // (staff picker shows them badged; the public_menu view filters them) rather
+      // than vanishing, which would strand references to them.
+      const walk = async (group: Record<string, any>, groupVisible: boolean) => {
+        const here = groupVisible && isPosVisible(group.visibility);
         for (const item of group.menuItems ?? []) {
           if (!item.guid) continue;
           const imageUrl = item.image ?? item.imageUrl ?? null;
@@ -138,13 +162,19 @@ Deno.serve(async (req) => {
             menu_group: group.name ?? null,
             item_tags: (item.itemTags ?? []).map((t: { name?: string }) => t.name ?? "").filter(Boolean),
             out_of_stock: stock.get(item.guid) ?? false,
+            // pos_visible (0034) = group cascade AND item's own POS visibility.
+            pos_visible: here && isPosVisible(item.visibility),
+            // raw item channel array, for future per-channel granularity.
+            visibility: Array.isArray(item.visibility) ? item.visibility : null,
             updated_at: new Date().toISOString(),
           });
         }
-        for (const sub of group.menuGroups ?? []) await walk(sub);
+        for (const sub of group.menuGroups ?? []) await walk(sub, here);
       };
       for (const menu of menusData.menus ?? []) {
-        for (const group of menu.menuGroups ?? []) await walk(group);
+        // A menu can itself be POS-hidden; seed the cascade from the menu's visibility.
+        const menuVisible = isPosVisible(menu.visibility);
+        for (const group of menu.menuGroups ?? []) await walk(group, menuVisible);
       }
       // De-dupe by guid (an item can appear in multiple menus) — upsert needs unique keys.
       const byGuid = new Map(rows.map((r) => [r.guid as string, r]));
