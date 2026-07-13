@@ -173,22 +173,26 @@ export interface ScheduledEvent {
   name: string;
   kind: "window" | "message" | "moment";
   skin: string;
+  fields: Record<string, unknown>;
   fire_at: string | null;
   recurrence: { daysOfWeek?: string[]; time?: string } | null;
+  window_minutes: number;
+  tease_minutes: number;
+  alert_minutes: number;
   interrupt_game: boolean;
   status: "scheduled" | "running" | "completed" | "aborted" | "disabled";
 }
 
-/** scheduled_events for this venue (read-only). public_read grants SELECT (0011); the
- *  events engine writes them later. Empty today — the hub renders the honest empty state. */
+/** scheduled_events for this venue (staff read via has_module('events'), 0035). Feeds the
+ *  hub's RUNNING & UPCOMING strip; the full console lives at /signage/events. */
 export function useScheduledEvents() {
   return useQuery({
     queryKey: ["signage-admin", "events"],
-    refetchInterval: 60_000,
+    refetchInterval: 30_000,
     queryFn: async (): Promise<ScheduledEvent[]> => {
       const { data, error } = await supabase
         .from("scheduled_events")
-        .select("id, name, kind, skin, fire_at, recurrence, interrupt_game, status")
+        .select("id, name, kind, skin, fields, fire_at, recurrence, window_minutes, tease_minutes, alert_minutes, interrupt_game, status")
         .eq("venue_id", VENUE_ID)
         .order("fire_at", { nullsFirst: false });
       if (error) throw error;

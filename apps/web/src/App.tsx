@@ -53,6 +53,7 @@ const DrinksAdmin = namedLazy(leaderboardRoutes, "DrinksAdmin");
 const SignageHub = namedLazy(signageRoutes, "SignageHub");
 const EditRotation = namedLazy(signageRoutes, "EditRotation");
 const Broadcast = namedLazy(signageRoutes, "Broadcast");
+const EventsAdmin = namedLazy(signageRoutes, "EventsAdmin");
 const SlotDisplay = namedLazy(signageRoutes, "SlotDisplay");
 
 // Admin shell (dashboard, persistent staff layout, users).
@@ -184,6 +185,7 @@ export function App() {
         <Route path="/signage" element={<RequireModule module="signage"><SignageHub /></RequireModule>} />
         <Route path="/signage/screens/:slug" element={<RequireModule module="signage"><EditRotation /></RequireModule>} />
         <Route path="/signage/broadcast" element={<RequireModule module="signage"><Broadcast /></RequireModule>} />
+        <Route path="/signage/events" element={<RequireModule module="events"><EventsAdmin /></RequireModule>} />
         <Route path="/admin/drinks" element={<RequireModule module="drinks"><DrinksAdmin /></RequireModule>} />
         <Route path="/admin/seasons" element={<RequireRole role="admin"><SeasonsAdmin /></RequireRole>} />
         <Route path="/admin/users" element={<RequireRole role="admin"><Users /></RequireRole>} />

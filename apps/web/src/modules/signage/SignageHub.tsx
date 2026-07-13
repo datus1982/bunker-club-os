@@ -11,9 +11,10 @@ import {
   type SlotMode, type SignageItem, type ToastCacheRow, type Template,
 } from "./useSignage";
 import {
-  MONO, SectionLabel, HealthDot, CopyKioskButton,
+  MONO, SectionLabel, HealthDot, CopyKioskButton, EventKindBadge,
   ghost, badge, summarize, scheduleLabel, recurrencePhrase, sourceHideReason,
 } from "./signageAdminShared";
+import { schedulePhrase, statusInfo } from "./useEventsAdmin";
 import { ItemEditor } from "./ItemEditor";
 import "./signage.css";
 
@@ -133,7 +134,7 @@ export function SignageHub() {
         {/* ── B · QUICK ACTIONS ──────────────────────────────────────────── */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,220px),1fr))", gap: 10, marginTop: 18 }}>
           <button type="button" onClick={() => openQuick("drink_special")} className="u-fill u-ink" style={quickPrimary}>★ PROMO A DRINK</button>
-          <button type="button" onClick={() => openQuick("announcement")} style={quickBtn}>📅 SCHEDULE A MESSAGE</button>
+          <button type="button" onClick={() => navigate("/signage/events?new=message")} style={quickBtn}>📅 SCHEDULE A MESSAGE</button>
           <button type="button" onClick={() => navigate("/signage/broadcast")} style={quickBtn}>📢 BROADCAST NOW</button>
         </div>
         <div style={{ fontSize: 13, opacity: 0.5, textAlign: "center", marginTop: 8, letterSpacing: 1 }}>
@@ -146,8 +147,9 @@ export function SignageHub() {
           {eventsQ.isLoading || itemsQ.isLoading ? (
             <div style={{ fontSize: 18, opacity: 0.7 }}>LOADING…</div>
           ) : nothingScheduled ? (
-            <div className="terminal-border" style={{ padding: "18px 16px", opacity: 0.7, fontSize: 17, lineHeight: 1.5 }}>
-              NOTHING SCHEDULED — the events engine (windows, moments, recurring promos) lands in the next phase.
+            <div className="terminal-border" style={{ padding: "18px 16px", opacity: 0.85, fontSize: 17, lineHeight: 1.5, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+              <span>NOTHING SCHEDULED.</span>
+              <Link to="/signage/events?new=window" className="u-fill u-ink" style={{ ...ghost, textDecoration: "none", fontWeight: 700 }}>+ NEW EVENT</Link>
             </div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -320,21 +322,22 @@ function ItemScheduleRow({ item, toastRows, onEdit }: { item: AdminItem; toastRo
 }
 
 function EventScheduleRow({ event }: { event: ScheduledEvent }) {
-  const rec = event.recurrence?.daysOfWeek?.length
-    ? `${event.recurrence.daysOfWeek.join(" · ")}${event.recurrence.time ? ` ${event.recurrence.time}` : ""}`
-    : event.fire_at
-      ? new Date(event.fire_at).toLocaleString([], { month: "numeric", day: "numeric", hour: "numeric", minute: "2-digit" })
-      : "one-shot";
+  const phrase = schedulePhrase(event);
+  const st = statusInfo(event);
+  const done = event.status === "completed" || event.status === "aborted";
   return (
-    <div className="terminal-border" style={{ padding: "10px 12px", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", opacity: event.status === "completed" || event.status === "aborted" ? 0.6 : 1 }}>
+    <Link
+      to="/signage/events"
+      className="terminal-border"
+      style={{ padding: "10px 12px", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", opacity: done ? 0.65 : 1, textDecoration: "none", color: "var(--terminal-green)" }}
+    >
       <div style={{ flex: "1 1 200px", minWidth: 0 }}>
         <div style={{ fontSize: 20, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{event.name}</div>
-        <div style={{ fontSize: 13, opacity: 0.6 }}>{event.skin} · {rec}{event.interrupt_game ? " · interrupts game" : ""}</div>
+        <div style={{ fontSize: 13, opacity: 0.6 }}>{phrase}{event.interrupt_game ? " · interrupts game" : ""}</div>
       </div>
-      <span className="u-amber" style={{ ...badge, borderColor: "currentColor" }}>{(event.kind ?? "moment").toUpperCase()}</span>
-      <span style={{ fontSize: 13, whiteSpace: "nowrap", letterSpacing: 1, opacity: 0.7 }}>{event.status.toUpperCase()}</span>
-      {/* No EDIT — scheduled_events editor lands in the events staff-UI task. */}
-    </div>
+      <EventKindBadge kind={event.kind} />
+      <span className={st.tone === "one" ? "u-amber" : undefined} style={{ fontSize: 13, whiteSpace: "nowrap", letterSpacing: 1, opacity: st.tone === "up" || st.tone === "done" ? 0.7 : 1 }}>{st.label}</span>
+    </Link>
   );
 }
 

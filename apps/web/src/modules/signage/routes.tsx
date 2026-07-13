@@ -3,6 +3,7 @@
 export { SignageHub } from "./SignageHub";
 export { EditRotation } from "./EditRotation";
 export { Broadcast } from "./Broadcast";
+export { EventsAdmin } from "./EventsAdmin";
 
 // The public rendered slot page (/signage/s/:slug) — built in Phase 5 task 1.
 export { SlotDisplay } from "./SlotDisplay";
