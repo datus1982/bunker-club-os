@@ -153,6 +153,7 @@ export function App() {
       <Route path="/trivia" element={<Website.Trivia />} />
       <Route path="/visit" element={<Website.Visit />} />
       <Route path="/about" element={<Website.About />} />
+      <Route path="/history" element={<Website.History />} />
 
       {/* Staff routes — wrapped in StaffLayout so the persistent staff nav (Phase 4b)
           renders above every tool. RequireRole inside each route still gates access. */}
@@ -168,7 +169,13 @@ export function App() {
         <Route path="/game/:gameId/bulk-import" element={<RequireModule module="trivia"><BulkImport /></RequireModule>} />
         <Route path="/game/*" element={<RequireModule module="trivia"><GameTools /></RequireModule>} />
         <Route path="/teams" element={<RequireModule module="trivia"><Teams /></RequireModule>} />
-        <Route path="/history" element={<RequireModule module="trivia"><History /></RequireModule>} />
+        {/* DECISION: the public Route 66 history page claims the bare `/history`
+            (docs/14 — the public site owns the root; the task specifies `/history`).
+            The staff trivia game-archive tool moves into the existing `/game/*`
+            namespace at `/game/history` — consistent with the other host tools and
+            already kept out of the index by `Disallow: /game` in robots.txt. Static
+            segment ranks above the `/game/*` splat below, so no ordering hazard. */}
+        <Route path="/game/history" element={<RequireModule module="trivia"><History /></RequireModule>} />
         <Route path="/settings" element={<RequireRole role="admin"><Settings /></RequireRole>} />
 
         {/* Module surfaces — each gated on its own grant; seasons stays admin-only */}

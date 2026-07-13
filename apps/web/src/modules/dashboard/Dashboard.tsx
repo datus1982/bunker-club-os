@@ -175,7 +175,7 @@ const TILES: Tile[] = [
   { label: "TRIVIA CONTROL", to: "/scoring", desc: "Live scoring console — run the game", module: "trivia", hint: "tonight" },
   { label: "GAME SETUP", to: "/game/setup", desc: "Create a game, rounds & questions", module: "trivia" },
   { label: "TEAMS", to: "/teams", desc: "Regular-team roster & PINs", module: "trivia" },
-  { label: "HISTORY", to: "/history", desc: "Past games & final boards", module: "trivia" },
+  { label: "HISTORY", to: "/game/history", desc: "Past games & final boards", module: "trivia" },
   { label: "SEASONS", to: "/admin/seasons", desc: "Standings, playoffs & finals", minRole: "admin", hint: "season" },
   { label: "DRINKS BOARD", to: "/admin/drinks", desc: "Configure the top-drinks screen", module: "drinks" },
   { label: "USERS", to: "/admin/users", desc: "Staff accounts & module grants", minRole: "admin" },

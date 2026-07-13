@@ -11,6 +11,33 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black" />
+    <!-- Home-hero LCP preload, injected PRE-HYDRATION so it beats the <img>'s own
+         discovery on the first paint of "/" (a React-mount-time hint fires too late
+         to move mobile LCP; measured 76–83 → target ≥90). Route-scoped on purpose:
+         index.html is shared by EVERY route incl. the always-on display TVs, so we
+         gate on location.pathname and only "/" pays for the fetch. The React hook
+         (modules/website/pages/Home.tsx useHeroPreload) ADOPTS this same element by
+         id — it won't double-inject on first load, and it removes the element on SPA
+         nav away / re-injects on client-side nav back into Home.
+         ⚠ SINGLE SOURCE OF TRUTH: the imagesrcset/imagesizes below MUST byte-match
+         HERO_SRCSET / HERO_SIZES and the id must match HERO_PRELOAD_ID in Home.tsx.
+         Update both together. -->
+    <script>
+      (function () {
+        if (location.pathname !== "/") return;
+        var l = document.createElement("link");
+        l.id = "hero-lcp-preload";
+        l.rel = "preload";
+        l.as = "image";
+        l.setAttribute(
+          "imagesrcset",
+          "/photos/hero-room-640.jpg 640w, /photos/hero-room-960.jpg 960w, /photos/hero-room-1920.jpg 1920w"
+        );
+        l.setAttribute("imagesizes", "100vw");
+        l.setAttribute("fetchpriority", "high");
+        document.head.appendChild(l);
+      })();
+    </script>
     <!-- VT323 + Share Tech Mono (docs/01). Loaded NON-render-blocking (preload as style,
          swap to a stylesheet on load) with preconnect; a <noscript> stylesheet covers
          no-JS. This measured +5–10 Lighthouse perf across the public pages vs a blocking
@@ -46,12 +73,12 @@
     <meta property="og:description" content="An atomic age high-dive bar at 433 NW 23rd St in Oklahoma City. Open 4 PM to 2 AM daily, with Atomic Pub Trivia every Wednesday night." />
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://bunkerokc.com/" />
-    <meta property="og:image" content="https://bunkerokc.com/og-default.png" />
+    <meta property="og:image" content="https://bunkerokc.com/og-default.jpg" />
     <meta property="og:site_name" content="Bunker Club" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="Bunker Club — Atomic Age High-Dive Bar in OKC" />
     <meta name="twitter:description" content="An atomic age high-dive bar at 433 NW 23rd St in Oklahoma City. Open 4 PM to 2 AM daily, with Atomic Pub Trivia every Wednesday night." />
-    <meta name="twitter:image" content="https://bunkerokc.com/og-default.png" />
+    <meta name="twitter:image" content="https://bunkerokc.com/og-default.jpg" />
   </head>
   <body>
     <div id="root"></div>

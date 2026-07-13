@@ -39,6 +39,23 @@ export function Visit() {
           <p className="site-label">Plan Your Visit</p>
           <h1>VISIT</h1>
 
+          {/* "This is what it feels like inside." Lazy + explicit dims (16:9 box
+              reserved by width/height) so it never shifts the page as it loads. */}
+          <figure style={{ margin: "1.5rem 0 0" }}>
+            <img
+              className="site-photo"
+              src="/photos/booths-daylight-1400.jpg"
+              srcSet="/photos/booths-daylight-700.jpg 700w, /photos/booths-daylight-1400.jpg 1400w"
+              sizes="(max-width: 1080px) 100vw, 1080px"
+              width={1400}
+              height={787}
+              loading="lazy"
+              decoding="async"
+              alt="Bunker Club's red vinyl booths under warm light, with daylight coming through the front windows onto the bar"
+            />
+            <figcaption className="site-photo__cap">Inside the Bunker — booths, red glow, and a window on NW 23rd</figcaption>
+          </figure>
+
           <div className="site-grid-2" style={{ marginTop: "2rem" }}>
             {/* Left — address, hours, parking, contact */}
             <div>

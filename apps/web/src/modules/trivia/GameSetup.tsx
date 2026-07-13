@@ -143,7 +143,7 @@ export function GameSetup() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["history"] });
       qc.invalidateQueries({ queryKey: ["leaderboard"] });
-      navigate("/history");
+      navigate("/game/history");
     },
     onError: (e: unknown) => setError(e instanceof Error ? e.message : "Failed to create game"),
   });

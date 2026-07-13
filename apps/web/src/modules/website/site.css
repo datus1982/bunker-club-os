@@ -87,7 +87,8 @@
 .site h3 { font-size: clamp(1.4rem, 4vw, 1.9rem); }
 /* A semantic <h2> that reads as a compact subsection head (keeps the heading
    outline sequential — h1 → h2 — without the display-size weight). */
-.site h2.site-h-compact { font-size: clamp(1.3rem, 4vw, 1.7rem); margin-bottom: 0.5em; }
+.site h2.site-h-compact,
+.site h3.site-h-compact { font-size: clamp(1.3rem, 4vw, 1.7rem); margin-bottom: 0.5em; }
 
 /* Share Tech Mono "system label" — small uppercase accents (kickers, badges) */
 .site-label {
@@ -257,10 +258,36 @@
       rgba(255, 176, 0, 0.05) 38px, rgba(255, 176, 0, 0.05) 40px);
   pointer-events: none;
 }
-.site-hero__inner { position: relative; }
+/* Owner interior photo behind the hero. Absolute + cover = no layout box = no CLS.
+   The CSS radial-ring garnish (::before) and gradient background survive as the
+   fallback if the image 404s or is still loading. */
+.site-hero__bg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 70%;
+  z-index: 0;
+}
+/* Darkening scrim so the cream headline + dim sub-copy clear WCAG-AA over the
+   photo's bright spots (gold bar, red glow) while the room stays clearly visible.
+   Left-weighted (text is left-aligned) so the right side keeps more of the photo;
+   a bottom lift seats the CTAs. Tuned so #f3ead9 and #bcae97 both pass ≥4.5:1 in
+   the text column (a text-shadow on the h1 covers the brightest gold highlights). */
+.site-hero__scrim {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background:
+    linear-gradient(90deg, rgba(11, 8, 5, 0.85) 0%, rgba(11, 8, 5, 0.55) 44%, rgba(11, 8, 5, 0.16) 100%),
+    linear-gradient(to top, rgba(11, 8, 5, 0.72) 0%, rgba(11, 8, 5, 0) 50%);
+  pointer-events: none;
+}
+.site-hero__inner { position: relative; z-index: 2; }
 .site-hero h1 {
   color: var(--site-ink);
-  text-shadow: 0 0 24px rgba(255, 176, 0, 0.18);
+  text-shadow: 0 2px 18px rgba(0, 0, 0, 0.6);
 }
 .site-hero__sub {
   max-width: 46ch;
@@ -341,10 +368,82 @@
 .site-hours tr[data-today="true"] th { color: var(--site-amber); }
 .site-hours .closed { color: var(--site-ink-dim); }
 
+/* ── Content photo (about / visit) ───────────────────────────────────────── */
+/* Full-width editorial image. width/height on the <img> reserve the 16:9 box so
+   the lazy load never shifts layout (zero CLS). Sharp corners + a hairline frame
+   keep the terminal aesthetic. */
+.site-photo {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  border: 1px solid var(--site-line-strong);
+  background: var(--site-bg-raised);
+}
+.site-photo__cap {
+  font-family: var(--site-font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  font-size: 0.68rem;
+  color: var(--site-ink-dim);
+  margin: 0.5rem 0 0;
+}
+
 /* ── Prose (about) ───────────────────────────────────────────────────────── */
 .site-prose { max-width: 62ch; }
 .site-prose p { margin: 0 0 1.15rem; color: var(--site-ink); }
 .site-prose p:first-of-type { font-size: 1.12rem; }
+
+/* ── CLUB RULES (about) ──────────────────────────────────────────────────── */
+/* Echoes the hand-lettered house rules painted on the barroom wall: the display
+   font (VT323), forced uppercase (the wall is all-caps), amber glow on dark, one
+   rule per centered line, Civil-Defense triangle markers. Owner-editable copy
+   comes from site_club_rules; the styling lives here. */
+.site-rules {
+  margin-top: 2.75rem;
+  padding: clamp(1.5rem, 5vw, 2.5rem) clamp(1.25rem, 5vw, 2.5rem) clamp(1.75rem, 5vw, 2.75rem);
+  border: 1px solid var(--site-line-strong);
+  border-left: 3px solid var(--site-signal);
+  background:
+    radial-gradient(130% 100% at 0% 0%, rgba(255, 122, 69, 0.07), transparent 60%),
+    var(--site-bg-raised);
+}
+.site-rules__head {
+  font-family: var(--site-font-display);
+  color: var(--site-amber);
+  text-align: center;
+  font-size: clamp(1.9rem, 7vw, 2.8rem);
+  letter-spacing: 0.05em;
+  margin: 0 0 1.4rem;
+  text-shadow: 0 0 20px rgba(255, 176, 0, 0.25);
+}
+.site-rules__list {
+  list-style: none;
+  margin: 0 auto;
+  padding: 0;
+  max-width: 42ch;
+  display: flex;
+  flex-direction: column;
+  gap: 0.95rem;
+}
+.site-rules__list li {
+  font-family: var(--site-font-display);
+  text-transform: uppercase;
+  font-size: clamp(1.25rem, 4.4vw, 1.7rem);
+  line-height: 1.12;
+  letter-spacing: 0.03em;
+  color: var(--site-amber-bright);
+  text-align: center;
+  text-wrap: balance;
+}
+.site-rules__list li::before {
+  content: "▲";
+  color: var(--site-signal);
+  font-size: 0.62em;
+  margin-right: 0.5em;
+  vertical-align: 0.18em;
+}
 
 /* ── Map ─────────────────────────────────────────────────────────────────── */
 .site-map {
@@ -566,6 +665,252 @@
 .site-standings__rank { color: var(--site-ink-dim); font-family: var(--site-font-mono); width: 2.5rem; }
 .site-standings tr[data-top="true"] .site-standings__rank { color: var(--site-amber); font-weight: 700; }
 .site-standings__score { color: var(--site-amber); font-family: var(--site-font-mono); }
+
+/* Inline links inside running text must be distinguishable by more than colour
+   (WCAG 1.4.1) — underline them, while nav/buttons/cards keep the flat look. */
+.site-prose a,
+.site-tl__body a,
+.site-hcap a,
+.site-faq__a a,
+.site-callout__body a,
+.site-centennial a,
+.site-sources a,
+.site-event__body a {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* ── History (/history) — Route 66 & the Neighborhood ────────────────────── */
+/* Full-bleed 1957 panorama banner. Sits OUTSIDE .site-wrap to span edge-to-edge;
+   aspect-ratio locks the box (zero CLS) and keeps the whole street sweep (no crop). */
+.site-banner {
+  width: 100%;
+  border-bottom: 1px solid var(--site-line-strong);
+  background: var(--site-bg-sunk);
+  line-height: 0;
+}
+.site-banner img {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 2400 / 1084;
+  object-fit: cover;
+}
+
+/* A credit line — small, mono, consistent under every historic image. */
+.site-credit {
+  font-family: var(--site-font-mono);
+  font-size: 0.64rem;
+  letter-spacing: 0.06em;
+  line-height: 1.4;
+  color: var(--site-ink-dim);
+  opacity: 0.85;
+  margin: 0.35rem 0 0;
+}
+.site-banner__cap {
+  padding: 0.6rem 0 0.1rem;
+}
+
+/* Historic photo figure — shown WHOLE (no crop): natural ratio comes from the
+   img width/height attrs, so the lazy load never shifts layout. */
+.site-hfig { margin: 1.75rem 0 0; }
+.site-hphoto {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--site-line-strong);
+  background: var(--site-bg-raised);
+}
+.site-hcap {
+  font-size: 0.9rem;
+  color: var(--site-ink-dim);
+  margin: 0.55rem 0 0;
+  max-width: 62ch;
+}
+.site-hcap b { color: var(--site-ink); font-weight: 600; }
+
+/* Night neon "moment" — bigger frame, warm glow, the mood bridge. */
+.site-night { margin: 0; position: relative; }
+.site-night .site-hphoto {
+  border-color: var(--site-line-strong);
+  box-shadow: 0 0 60px rgba(255, 176, 0, 0.08);
+}
+
+/* Timeline — a left-rail vertical timeline with amber civil-defense markers. */
+.site-timeline {
+  list-style: none;
+  margin: 2rem 0 0;
+  padding: 0;
+  position: relative;
+}
+.site-timeline::before {
+  content: "";
+  position: absolute;
+  left: 7px;
+  top: 6px;
+  bottom: 6px;
+  width: 2px;
+  background: linear-gradient(var(--site-line-strong), var(--site-line));
+}
+.site-tl {
+  position: relative;
+  padding: 0 0 1.9rem 2.1rem;
+}
+.site-tl::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 4px;
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--site-amber);
+  background: var(--site-bg);
+  transform: rotate(45deg);
+}
+.site-tl--now::before { background: var(--site-amber); }
+.site-tl__year {
+  font-family: var(--site-font-mono);
+  color: var(--site-amber);
+  letter-spacing: 0.12em;
+  font-size: 0.82rem;
+  margin-bottom: 0.15rem;
+}
+.site-tl__title {
+  font-family: var(--site-font-display);
+  font-size: clamp(1.2rem, 3.5vw, 1.5rem);
+  color: var(--site-ink);
+  margin: 0 0 0.35rem;
+}
+.site-tl__body { color: var(--site-ink-dim); font-size: 0.97rem; margin: 0; max-width: 60ch; }
+.site-tl__body + .site-hfig { margin-top: 1.1rem; }
+
+/* Marquee-through-the-decades strip — LIGHT, three small framed thumbs. */
+.site-marquee-strip {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(3, 1fr);
+  margin: 1.5rem 0 0;
+}
+@media (max-width: 560px) {
+  .site-marquee-strip { grid-template-columns: 1fr; max-width: 360px; }
+}
+.site-marquee { margin: 0; }
+.site-marquee img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--site-line-strong);
+  background: var(--site-bg-raised);
+}
+.site-marquee figcaption {
+  font-family: var(--site-font-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  color: var(--site-ink-dim);
+  margin-top: 0.4rem;
+  text-transform: uppercase;
+}
+
+/* Callout box — the Milk Bottle "one block west" aside (portrait image + note). */
+.site-callout {
+  display: grid;
+  gap: 1.25rem;
+  grid-template-columns: 1fr;
+  align-items: center;
+  margin: 2rem 0 0;
+  padding: 1.25rem 1.4rem;
+  border: 1px solid var(--site-line);
+  border-left: 3px solid var(--site-amber);
+  background: var(--site-bg-raised);
+}
+@media (min-width: 620px) {
+  .site-callout { grid-template-columns: 220px 1fr; gap: 1.6rem; }
+}
+.site-callout__img { margin: 0; }
+.site-callout__img img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--site-line-strong);
+  background: var(--site-bg-sunk);
+}
+.site-callout__body p { margin: 0 0 0.7rem; color: var(--site-ink); }
+.site-callout__body p:last-child { margin-bottom: 0; }
+
+/* Centennial highlight block. */
+.site-centennial {
+  margin: 2.5rem 0 0;
+  padding: clamp(1.5rem, 5vw, 2.25rem);
+  border: 1px solid var(--site-line-strong);
+  border-left: 3px solid var(--site-signal);
+  background:
+    radial-gradient(130% 100% at 100% 0%, rgba(255, 122, 69, 0.08), transparent 60%),
+    var(--site-bg-raised);
+}
+.site-centennial__badge {
+  font-family: var(--site-font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  font-size: 0.7rem;
+  color: var(--site-signal);
+  margin-bottom: 0.5rem;
+}
+
+/* FAQ — visible Q&A that mirrors the FAQPage JSON-LD. */
+.site-faq { margin: 1.5rem 0 0; display: flex; flex-direction: column; gap: 1.25rem; }
+/* Rendered as <h3>; the two-class selector out-specifies the display `.site h3`. */
+.site .site-faq__q {
+  font-family: var(--site-font-display);
+  font-size: clamp(1.15rem, 3.5vw, 1.4rem);
+  color: var(--site-amber);
+  margin: 0 0 0.3rem;
+}
+.site-faq__a { color: var(--site-ink-dim); margin: 0; max-width: 66ch; }
+
+/* Sources & further reading. */
+.site-sources { list-style: none; margin: 1.25rem 0 0; padding: 0; columns: 2; column-gap: 2rem; }
+@media (max-width: 560px) { .site-sources { columns: 1; } }
+.site-sources li {
+  break-inside: avoid;
+  margin: 0 0 0.6rem;
+  font-size: 0.92rem;
+  color: var(--site-ink-dim);
+}
+
+/* Pointer card (used on /about → /history and on /history → back into the site). */
+.site-pointer {
+  display: block;
+  margin: 2rem 0 0;
+  padding: 1.25rem 1.4rem;
+  border: 1px solid var(--site-line);
+  border-left: 3px solid var(--site-amber);
+  background: var(--site-bg-raised);
+}
+.site-pointer:hover { text-decoration: none; border-color: var(--site-line-strong); }
+.site-pointer__kicker {
+  font-family: var(--site-font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  font-size: 0.7rem;
+  color: var(--site-amber);
+}
+.site-pointer__title {
+  font-family: var(--site-font-display);
+  font-size: 1.4rem;
+  color: var(--site-ink);
+  margin: 0.25rem 0 0.2rem;
+}
+.site-pointer__body { color: var(--site-ink-dim); font-size: 0.95rem; margin: 0; }
+
+/* Neighborhood events (/events) — external highlight cards + a source line. */
+.site-event__source {
+  font-family: var(--site-font-mono);
+  font-size: 0.66rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--site-ink-dim);
+  margin: 0.6rem 0 0;
+}
 
 /* ── Reduced motion / focus ──────────────────────────────────────────────── */
 .site :where(a, button):focus-visible {

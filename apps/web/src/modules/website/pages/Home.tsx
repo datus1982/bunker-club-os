@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { Link } from "react-router-dom";
 
 import { SiteLayout } from "../SiteLayout";
@@ -12,11 +13,56 @@ import {
 } from "../seo";
 
 /**
+ * Home-hero LCP candidate set. The <img> srcset and the route-scoped preload
+ * MUST use this EXACT string so the preload fetches the same candidate the img
+ * resolves to at any DPR (mobile → 640w, larger → 960w/1920w) — no double
+ * download. Mobile's LCP was the 960w (158 KB); the 640w (~98 KB) shaves it.
+ */
+const HERO_SRCSET =
+  "/photos/hero-room-640.jpg 640w, /photos/hero-room-960.jpg 960w, /photos/hero-room-1920.jpg 1920w";
+const HERO_SIZES = "100vw";
+/** Must match the id used by the pre-hydration inline script in index.html. */
+const HERO_PRELOAD_ID = "hero-lcp-preload";
+
+/**
+ * Route-scoped LCP preload (N8/W1/WARN-A). The FIRST paint of "/" is handled by a
+ * tiny pre-hydration inline script in index.html (fires during HTML parse, before
+ * React mounts — the only way to beat the <img>'s own discovery on mobile). This
+ * hook exists for the SPA lifecycle:
+ *   • initial "/" load  → the element already exists (injected by that script); we
+ *     ADOPT it and only register cleanup, so there's no double-injection.
+ *   • client-side nav INTO Home (the inline script does not re-run) → we inject it.
+ *   • nav AWAY from Home → cleanup removes it, so /scoring, /leaderboard and the
+ *     always-on display TVs never carry the hint.
+ * imagesrcset/imagesizes mirror the <img> EXACTLY (HERO_SRCSET/SIZES) — and MUST
+ * byte-match the strings in index.html's inline script (single source of truth).
+ */
+function useHeroPreload() {
+  useEffect(() => {
+    let link = document.getElementById(HERO_PRELOAD_ID) as HTMLLinkElement | null;
+    if (!link) {
+      link = document.createElement("link");
+      link.id = HERO_PRELOAD_ID;
+      link.rel = "preload";
+      link.as = "image";
+      link.setAttribute("imagesrcset", HERO_SRCSET);
+      link.setAttribute("imagesizes", HERO_SIZES);
+      link.setAttribute("fetchpriority", "high");
+      document.head.appendChild(link);
+    }
+    return () => {
+      link?.remove();
+    };
+  }, []);
+}
+
+/**
  * Home (`/`) — hero, "this week" strip (trivia night / published events /
  * website promos, empty-state tolerant), an hours block, and CTAs to /menu and
  * /visit. Carries the LocalBusiness (BarOrPub) JSON-LD built from seeded copy.
  */
 export function Home() {
+  useHeroPreload();
   const { data: copy } = useSiteCopy();
   const { data: cards } = useThisWeek();
   useDocumentMeta({
@@ -76,6 +122,25 @@ export function Home() {
 
       {/* ── Hero ── */}
       <section className="site-hero">
+        {/* Owner interior photo as the hero backdrop. Absolutely positioned + object-fit
+            cover so it never participates in layout (zero CLS); the .site-hero box height
+            is still set by its padding + the text content. Eager + fetchpriority=high +
+            the route-scoped preload (useHeroPreload) make it the LCP. srcset/sizes here
+            share HERO_SRCSET/HERO_SIZES with that preload so both resolve the SAME
+            candidate. DECISION: descriptive alt (real editorial photo of the venue, not
+            decoration) rather than empty. */}
+        <img
+          className="site-hero__bg"
+          src="/photos/hero-room-1920.jpg"
+          srcSet={HERO_SRCSET}
+          sizes={HERO_SIZES}
+          width={1920}
+          height={1080}
+          fetchPriority="high"
+          decoding="async"
+          alt="Inside Bunker Club — a long pewter bar lined with gold stools, red vinyl booths across the room, and screens glowing at the back"
+        />
+        <div className="site-hero__scrim" aria-hidden />
         <div className="site-wrap site-hero__inner">
           <p className="site-label">▲ Shelter for the thirsty · OKC</p>
           <h1>{copy?.heroTitle ?? "BUNKER CLUB"}</h1>

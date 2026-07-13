@@ -6,7 +6,6 @@ Disallow: /dashboard
 Disallow: /scoring
 Disallow: /game
 Disallow: /teams
-Disallow: /history
 Disallow: /settings
 Disallow: /admin
 Disallow: /signage

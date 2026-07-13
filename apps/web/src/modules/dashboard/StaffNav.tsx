@@ -29,7 +29,7 @@ const NAV: NavItem[] = [
   { to: "/scoring", label: "TRIVIA", module: "trivia" },
   { to: "/game/setup", label: "GAME SETUP", module: "trivia" },
   { to: "/teams", label: "TEAMS", module: "trivia" },
-  { to: "/history", label: "HISTORY", module: "trivia" },
+  { to: "/game/history", label: "HISTORY", module: "trivia" },
   { to: "/admin/drinks", label: "DRINKS", module: "drinks" },
   { to: "/signage", label: "SIGNAGE", module: "signage" },
   { to: "/admin/seasons", label: "SEASONS", minRole: "admin" },

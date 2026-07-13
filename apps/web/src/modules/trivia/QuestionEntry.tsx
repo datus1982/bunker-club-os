@@ -198,7 +198,7 @@ export function QuestionEntry() {
       <div style={{ maxWidth: 900, margin: "0 auto" }}>
         <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 4 }}>
           <h1 style={{ fontSize: 44, fontWeight: 700, letterSpacing: 2 }}>QUESTION ENTRY</h1>
-          <button type="button" onClick={() => navigate("/history")} style={btnGhost}>← HISTORY</button>
+          <button type="button" onClick={() => navigate("/game/history")} style={btnGhost}>← HISTORY</button>
         </div>
         <div style={{ fontSize: 24, opacity: 0.7 }}>GAME · {game.data.game_date}{dirty && "  ·  ⚠ UNSAVED"}</div>
         <div className="terminal-separator" style={{ margin: "16px 0" }} />
