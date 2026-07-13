@@ -60,6 +60,16 @@ export function About() {
             </section>
           )}
 
+          {/* The street came first — pointer into the Route 66 heritage page. */}
+          <Link to="/history" className="site-pointer">
+            <span className="site-pointer__kicker">The street came first</span>
+            <span className="site-pointer__title">Route 66 &amp; the Neighborhood →</span>
+            <span className="site-pointer__body">
+              433 NW 23rd sat on Route 66 for fifty-three years. The history of the block — and how
+              it shaped this bar — has its own page.
+            </span>
+          </Link>
+
           <div style={{ marginTop: "2rem", display: "flex", gap: "0.85rem", flexWrap: "wrap" }}>
             <Link to="/trivia" className="site-btn site-btn--primary">
               Trivia Night

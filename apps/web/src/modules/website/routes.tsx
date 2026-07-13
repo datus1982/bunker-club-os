@@ -4,6 +4,7 @@ import { About as AboutPage } from "./pages/About";
 import { Menu as MenuPage } from "./pages/Menu";
 import { Events as EventsPage } from "./pages/Events";
 import { Trivia as TriviaPage } from "./pages/Trivia";
+import { History as HistoryPage } from "./pages/History";
 
 /**
  * Public marketing website (docs/14) — Phase 3.5. Owns the site root; every route
@@ -19,3 +20,4 @@ export const About = () => <AboutPage />;
 export const Menu = () => <MenuPage />;
 export const Events = () => <EventsPage />;
 export const Trivia = () => <TriviaPage />;
+export const History = () => <HistoryPage />;

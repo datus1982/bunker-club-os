@@ -2,6 +2,11 @@ import { Link } from "react-router-dom";
 
 import { SiteLayout } from "../SiteLayout";
 import { useEvents } from "../useEvents";
+import {
+  useNeighborhoodEvents,
+  upcomingNeighborhoodEvents,
+  fmtNeighborhoodDate,
+} from "../useNeighborhoodEvents";
 import { useDocumentMeta } from "../seo";
 
 /**
@@ -13,6 +18,7 @@ import { useDocumentMeta } from "../seo";
  */
 export function Events() {
   const { data: cards } = useEvents();
+  const { data: neighborhood } = useNeighborhoodEvents();
   useDocumentMeta({
     title: "Events — Bunker Club · Trivia & More · OKC",
     description:
@@ -21,6 +27,7 @@ export function Events() {
   });
 
   const list = cards ?? [];
+  const nearby = upcomingNeighborhoodEvents(neighborhood ?? []);
 
   return (
     <SiteLayout active="events">
@@ -77,6 +84,56 @@ export function Events() {
               and karaoke most Saturdays. Follow along on social for one-off nights and specials.
             </p>
           )}
+
+          {/* ── Around the Neighborhood — curated external Route 66 / Uptown highlights.
+              Past-dated entries auto-hide (upcomingNeighborhoodEvents). We're on the
+              Mother Road; these are our neighbors' events, not ours. ── */}
+          <div style={{ marginTop: "3.5rem" }}>
+            <p className="site-label">On the Mother Road</p>
+            <h2 className="site-h-compact">Around the Neighborhood</h2>
+            <p className="site-event__body" style={{ maxWidth: "62ch" }}>
+              Bunker Club sits on historic Route 66, and 2026 is the highway&apos;s centennial.
+              A few nearby happenings worth the drive — see our{" "}
+              <Link to="/history">Route 66 &amp; the Neighborhood</Link> page for the backstory.
+            </p>
+
+            {nearby.length > 0 && (
+              <div className="site-events-grid" style={{ marginTop: "1.5rem" }}>
+                {nearby.map((n) => (
+                  <article key={`${n.title}-${n.date}`} className="site-event">
+                    <div className="site-event__kicker">
+                      <span className="site-dot" aria-hidden /> Route 66 Centennial
+                    </div>
+                    <h3 className="site-h-compact site-event__title">{n.title}</h3>
+                    {fmtNeighborhoodDate(n.date) && (
+                      <p className="site-event__when">{fmtNeighborhoodDate(n.date)}</p>
+                    )}
+                    {n.blurb && <p className="site-event__body">{n.blurb}</p>}
+                    <a
+                      href={n.url}
+                      target="_blank"
+                      rel="noreferrer noopener"
+                      className="site-btn site-btn--ghost"
+                      style={{ marginTop: "0.25rem" }}
+                    >
+                      Details
+                    </a>
+                    <p className="site-event__source">via Oklahoma Route 66 Association</p>
+                  </article>
+                ))}
+              </div>
+            )}
+
+            <p style={{ marginTop: "1.5rem" }}>
+              <a href="https://oklahomaroute66.com/centennial" target="_blank" rel="noreferrer noopener">
+                Oklahoma Route 66 Association — centennial events →
+              </a>
+              <br />
+              <a href="https://uptown23rd.com/" target="_blank" rel="noreferrer noopener">
+                Uptown 23rd Association — our district →
+              </a>
+            </p>
+          </div>
         </div>
       </section>
     </SiteLayout>

@@ -17,7 +17,7 @@ import {
  * via `.site` in site.css. Mobile-first; no horizontal overflow at 390px.
  */
 
-type PageId = "home" | "menu" | "events" | "trivia" | "visit" | "about";
+type PageId = "home" | "menu" | "events" | "trivia" | "visit" | "about" | "history";
 
 const NAV: { id: PageId; to: string; label: string }[] = [
   { id: "menu", to: "/menu", label: "Menu" },
@@ -25,6 +25,7 @@ const NAV: { id: PageId; to: string; label: string }[] = [
   { id: "trivia", to: "/trivia", label: "Trivia" },
   { id: "visit", to: "/visit", label: "Visit" },
   { id: "about", to: "/about", label: "About" },
+  { id: "history", to: "/history", label: "Route 66" },
 ];
 
 export function SiteLayout({ active, children }: { active: PageId; children: ReactNode }) {
@@ -91,6 +92,8 @@ export function SiteLayout({ active, children }: { active: PageId; children: Rea
                   {copy.address.city}, {copy.address.state} {copy.address.zip}
                   <br />
                   <Link to="/visit">Map &amp; parking →</Link>
+                  <br />
+                  <Link to="/history">On historic Route 66 →</Link>
                 </address>
               )}
             </div>
