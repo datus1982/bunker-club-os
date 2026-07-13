@@ -1,4 +1,15 @@
-# Owner's historic photos — Route 66 / neighborhood feature (intake notes)
+# Owner's photos — website imagery (intake notes)
+
+## Batch 2 (2026-07-13): three INTERIOR photos, owner-shot (rights clean) — general site use
+1. **Bar + CLUB RULES wall** — gold sparkle stools/tufted booth, hand-lettered CLUB RULES
+   wall, back bar, logo screens. → /about or /visit. NOTE: the CLUB RULES copy itself is
+   candidate site content (owner receptive pending confirmation).
+2. **Booths + red glow + art wall, daylight windows** — warm interior feel. → /visit or /about body.
+3. **Long room view** (bar left, booths right, red rail glow, logo screens rear) —
+   **HERO CANDIDATE (owner + orchestrator agree it reads best)** → Home hero.
+Delivery + optimization same as below. Interiors go in immediately once files land;
+historic batch waits for the Route 66 history page build.
+
 
 Stephen shared three historic photos from his collection in-session 2026-07-13,
 "specifically for the Route 66 part" of the website. Image FILES not yet delivered —
