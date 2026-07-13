@@ -409,6 +409,159 @@
 }
 .site-staff-link:hover { color: var(--site-amber); }
 
+/* ── Menu (/menu) ────────────────────────────────────────────────────────── */
+.site-menu-group {
+  color: var(--site-amber);
+  padding-bottom: 0.4rem;
+  border-bottom: 1px solid var(--site-line-strong);
+  margin-bottom: 1rem;
+}
+.site-menu-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+.site-menu-item {
+  display: flex;
+  gap: 0.9rem;
+  align-items: flex-start;
+  min-width: 0;
+}
+.site-menu-thumb {
+  width: 52px;
+  height: 52px;
+  object-fit: cover;
+  border: 1px solid var(--site-line-strong);
+  flex-shrink: 0;
+  background: var(--site-bg-raised);
+}
+.site-menu-item__body { flex: 1; min-width: 0; }
+.site-menu-item__head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  width: 100%;
+}
+.site-menu-item__name {
+  color: var(--site-ink);
+  font-size: 1.02rem;
+  font-weight: 600;
+  min-width: 0;
+}
+/* Dotted leader between name and price (classic menu look), collapses cleanly on wrap. */
+.site-menu-item__dots {
+  flex: 1;
+  align-self: center;
+  min-width: 1.5rem;
+  height: 0;
+  border-bottom: 1px dotted var(--site-line-strong);
+  transform: translateY(-2px);
+}
+.site-menu-item__price {
+  color: var(--site-amber);
+  font-family: var(--site-font-mono);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.site-menu-item__blurb {
+  color: var(--site-ink-dim);
+  font-size: 0.9rem;
+  margin: 0.15rem 0 0;
+  max-width: 60ch;
+}
+
+/* ── Events (/events) ────────────────────────────────────────────────────── */
+.site-events-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr));
+}
+.site-event {
+  background: var(--site-bg-raised);
+  border: 1px solid var(--site-line);
+  border-left: 3px solid var(--site-amber);
+  padding: 1.35rem 1.5rem;
+  min-width: 0;
+}
+.site-event--feature { border-left-color: var(--site-live); }
+.site-event__kicker {
+  font-family: var(--site-font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  font-size: 0.7rem;
+  color: var(--site-amber);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.35rem;
+}
+.site-event--feature .site-event__kicker { color: var(--site-live); }
+.site-event__title { margin: 0.1rem 0 0.35rem; }
+.site-event__when {
+  font-family: var(--site-font-mono);
+  color: var(--site-ink);
+  font-size: 0.9rem;
+  margin: 0 0 0.5rem;
+}
+.site-event__body { color: var(--site-ink-dim); font-size: 0.95rem; margin: 0 0 0.75rem; }
+
+/* ── Trivia steps (/trivia) ──────────────────────────────────────────────── */
+.site-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 1.5rem;
+  grid-template-columns: 1fr;
+}
+@media (min-width: 720px) {
+  .site-steps { grid-template-columns: 1fr 1fr; gap: 1.75rem 2.5rem; }
+}
+.site-step { display: flex; gap: 1rem; align-items: flex-start; min-width: 0; }
+.site-step__n {
+  font-family: var(--site-font-display);
+  font-size: 2.4rem;
+  line-height: 1;
+  color: var(--site-amber);
+  opacity: 0.55;
+  flex-shrink: 0;
+}
+.site-step__title { margin: 0 0 0.3rem; }
+.site-step__body { color: var(--site-ink-dim); font-size: 0.95rem; margin: 0; max-width: 42ch; }
+
+/* ── Standings table (/trivia) ───────────────────────────────────────────── */
+.site-standings {
+  width: 100%;
+  border-collapse: collapse;
+  max-width: 560px;
+  font-variant-numeric: tabular-nums;
+}
+.site-standings th,
+.site-standings td {
+  text-align: left;
+  padding: 0.6rem 0.6rem;
+  border-bottom: 1px solid var(--site-line);
+}
+.site-standings thead th {
+  font-family: var(--site-font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-weight: 400;
+  color: var(--site-ink-dim);
+  font-size: 0.72rem;
+}
+.site-standings th:nth-child(3),
+.site-standings th:nth-child(4),
+.site-standings td:nth-child(3),
+.site-standings td:nth-child(4) { text-align: right; }
+.site-standings__rank { color: var(--site-ink-dim); font-family: var(--site-font-mono); width: 2.5rem; }
+.site-standings tr[data-top="true"] .site-standings__rank { color: var(--site-amber); font-weight: 700; }
+.site-standings__score { color: var(--site-amber); font-family: var(--site-font-mono); }
+
 /* ── Reduced motion / focus ──────────────────────────────────────────────── */
 .site :where(a, button):focus-visible {
   outline: 2px solid var(--site-amber);
