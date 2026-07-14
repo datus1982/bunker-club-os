@@ -25,10 +25,11 @@ import { useSeasonPanel, type SeasonStanding } from "./useSeasonPanel";
  * is opt-in in the theme and never enabled here), and the join QR renders locally
  * (qrcode.react) instead of the legacy external api.qrserver.com image.
  *
- * DECISION: the legacy "Scoring in Progress" interstitial relied on a
- * rounds.scoring_in_progress column that our schema (docs/02) does not have; it is
- * omitted. Bonus-round badges need per-round score detail and land with the
- * Scoring/GameDisplay port.
+ * DECISION (amended 0038): the legacy AUTO-derived "Scoring in Progress" interstitial
+ * relied on a rounds.scoring_in_progress column our schema (docs/02) does not have and
+ * remains unbuilt — SUPERSEDED by the manual board_stage 'scoring' stage (migration
+ * 0038, host-driven reveal choreography; see ScoringInProgress below). Bonus-round
+ * badges need per-round score detail and land with the Scoring/GameDisplay port.
  */
 
 const CANVAS_W = 1080;

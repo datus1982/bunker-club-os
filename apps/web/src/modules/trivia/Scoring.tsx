@@ -23,7 +23,8 @@ import { searchTeams, type TeamHit } from "../registration/useCheckin";
  * QuestionPanel / VideoControls / BoardStageControl / TeamEditorDialog + the hooks in
  * useScoring.ts. This file is just the composition + game-status controls + team-editor
  * plumbing. Behaviour matches legacy to the extent our schema carries it (see the
- * DECISIONs in useScoring.ts — no game clock, no scoring_in_progress interstitial).
+ * DECISIONs in useScoring.ts — no game clock; the scoring interstitial is the manual
+ * board_stage 'scoring' stage per 0038, not the legacy auto-derived one).
  */
 export function Scoring() {
   const [params] = useSearchParams();

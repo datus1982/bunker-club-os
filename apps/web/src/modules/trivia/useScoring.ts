@@ -14,8 +14,9 @@ import { log } from "@/shared/log";
  * DECISIONS (our schema vs legacy):
  *  - No `rounds.scoring_in_progress` column: the "current round" is derived as the
  *    first incomplete non-bonus round, and the answer key shows the previous completed
- *    round. The legacy "Scoring in Progress" audience interstitial is omitted (matches
- *    the ported Leaderboard, which already dropped it).
+ *    round. The legacy AUTO-derived "Scoring in Progress" audience interstitial is
+ *    superseded by the manual board_stage 'scoring' stage (0038) — the host hides
+ *    scores deliberately; nothing auto-flips the board.
  *  - No `game_display_state.current_video_url`: GameDisplay reads the current round's
  *    rounds.video_url (see GameDisplay.tsx), so video writes only flip show_video +
  *    point current_round_id at the round whose video should play.
