@@ -86,6 +86,15 @@ takeovers or game mode, so never use a `?preview=1` link on a TV. The `/signage`
 Per-physical-screen slot inventory (terminal #, location, inset) is recorded here
 as screens are calibrated in Phase 5.
 
+**VIDEO SOUND ON TVs (trivia A/V rounds):** browsers block *unmuted* autoplay
+without a gesture, so an inter-round video always boots **muted** and shows a
+"⚠ AUDIO CHANNEL SEALED — TAP TO OPEN COMMS" prompt; one tap on the screen unmutes
+it and arms sound for the rest of the session. For hands-off audio on a kiosk TV,
+allow unmuted autoplay in the browser once: **Chrome** — launch with
+`--autoplay-policy=no-user-gesture-required`, or Site Settings → Sound → **Allow**
+for `os.bunkerokc.com`; **Firefox** — site permission **Autoplay → Allow Audio and
+Video**. Then videos play with sound and no prompt appears.
+
 **★ SCREENS visibility caveat (Toast):** the featured drink rotation is driven by
 the **★ SCREENS** menu group in Toast, gated on POS visibility (0034). If you ever
 delete and re-create that group, its **group** visibility must include **POS** — a
