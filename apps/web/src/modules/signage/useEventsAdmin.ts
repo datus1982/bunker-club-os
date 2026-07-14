@@ -325,6 +325,10 @@ export interface EventDraft {
   // preserve existing fields on edit (live_count, final_stats, skin overrides)
   baseFields?: Record<string, unknown>;
   status?: EventStatus;
+  // The row's current fire_at (edit only). WARN-1 fallback: when a recurring `until`
+  // kills the next occurrence, keep this instant so the tick completes the row at the
+  // current/last window's end instead of nulling fire_at and stranding it.
+  existingFireAt?: string | null;
 }
 
 /** Build the fields jsonb, preserving any counter/stats/skin keys already on the row. */
@@ -350,7 +354,14 @@ function buildFields(draft: EventDraft): Record<string, unknown> {
 /** Resolve the fire_at a draft should store (venue-TZ). Recurring → next occurrence. */
 export function draftFireAt(draft: EventDraft, now: Date = new Date()): string | null {
   if (draft.recurrence?.daysOfWeek?.length && draft.recurrence.time) {
-    return nextOccurrence(draft.recurrence.daysOfWeek, draft.recurrence.time, now, VENUE_TZ, draft.recurrence.until)?.toISOString() ?? null;
+    const next = nextOccurrence(draft.recurrence.daysOfWeek, draft.recurrence.time, now, VENUE_TZ, draft.recurrence.until)?.toISOString();
+    // WARN-1: an `until` that kills the next occurrence must NOT null out fire_at — a row
+    // with fire_at null drops out of both the tick and signage_events_live (they filter
+    // `fire_at is not null`), so a running row would zombie forever. Fall back to the row's
+    // existing fire_at (same pattern as resumeEvent) so the tick completes it naturally at
+    // the current/last window's end. A brand-new row with no existing fire_at whose `until`
+    // precedes the first occurrence is blocked in the editor (scheduleError), never inserted.
+    return next ?? draft.existingFireAt ?? null;
   }
   if (draft.oneShot?.date && draft.oneShot.time) {
     return venueLocalToUtc(draft.oneShot.date, draft.oneShot.time, VENUE_TZ);

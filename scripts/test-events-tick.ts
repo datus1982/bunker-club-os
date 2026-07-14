@@ -27,6 +27,7 @@ const ID = {
   recurring: "e0e70035-0000-4000-8000-0000000000b3",
   untilPast: "e0e70035-0000-4000-8000-0000000000b4",
   untilFuture: "e0e70035-0000-4000-8000-0000000000b5",
+  untilPastRunning: "e0e70035-0000-4000-8000-0000000000b6",
 };
 
 /** Venue-local YYYY-MM-DD for `now + offsetDays` (recurrence.until is a venue-local date). */
@@ -115,6 +116,14 @@ async function testReArmMath() {
   const daily2 = { daysOfWeek: ["MO", "TU", "WE", "TH", "FR", "SA", "SU"], time: "16:00", until: "2026-12-31" };
   assert("until + spring-forward: 2026-03-07 17:30 CST + daily 16:00 until 2026-12-31 → 2026-03-08 21:00Z",
     sameInstant(await nextOcc(daily2, "2026-03-07T23:30:00Z"), "2026-03-08T21:00:00Z"), true);
+
+  // WARN-1 trigger: a daily promo already fired today (anchor past today's time) with until=TODAY.
+  // Next daily occurrence is TOMORROW 16:00, which is after until → null. This is exactly the
+  // condition where saveEvent must NOT null fire_at but fall back to the existing instant so the
+  // row retires via the tick instead of zombie-ing (verified end-to-end in-browser).
+  // Anchor 2026-07-13 20:00 CDT (= 2026-07-14T01:00Z, past that day's 16:00), until 2026-07-13.
+  assert("WARN-1: daily 16:00, anchor 2026-07-13 20:00 CDT, until 2026-07-13 → null (next is tomorrow, past until)",
+    await nextOcc({ daysOfWeek: ["MO", "TU", "WE", "TH", "FR", "SA", "SU"], time: "16:00", until: "2026-07-13" }, "2026-07-14T01:00:00Z"), null);
 }
 
 async function testTick() {
@@ -144,6 +153,16 @@ async function testTick() {
     fire_at: new Date(Date.now() - 2 * 3600_000).toISOString(), window_minutes: 30, status: "scheduled",
     recurrence: { daysOfWeek: ["MO", "TU", "WE", "TH", "FR", "SA", "SU"], time: "16:00", until: localDate(-1) },
   });
+  // WARN-1 zombie guard: a RUNNING recurring row whose `until` is now in the past, with its
+  // fire_at PRESERVED (non-null) — exactly what the fixed saveEvent writes when an `until`
+  // kills the next occurrence. The tick must complete it (retire), not leave it stuck running.
+  // (If saveEvent had nulled fire_at, the tick's `fire_at is not null` filter would skip it and
+  // a running recurring — a MOMENT especially — would zombie forever. See untilRunningNull probe.)
+  await admin.from("scheduled_events").insert({
+    id: ID.untilPastRunning, venue_id: VENUE, name: "tick until-past running", kind: "window",
+    fire_at: new Date(Date.now() - 2 * 3600_000).toISOString(), window_minutes: 30, status: "running",
+    recurrence: { daysOfWeek: ["MO", "TU", "WE", "TH", "FR", "SA", "SU"], time: "16:00", until: localDate(-1) },
+  });
   // Recurring with until in the FUTURE (0041): re-arms normally, status scheduled.
   await admin.from("scheduled_events").insert({
     id: ID.untilFuture, venue_id: VENUE, name: "tick until-future", kind: "window",
@@ -163,6 +182,8 @@ async function testTick() {
   assert("missed one-shot → completed", byId[ID.missed]?.status, "completed");
   assert("recurring → re-armed (scheduled)", byId[ID.recurring]?.status, "scheduled");
   assert("recurring w/ until in the past → completed (not re-armed)", byId[ID.untilPast]?.status, "completed");
+  assert("WARN-1: RUNNING recurring w/ past until + preserved fire_at → completed (retires, no zombie)",
+    byId[ID.untilPastRunning]?.status, "completed");
   assert("recurring w/ until in the future → re-armed (scheduled)", byId[ID.untilFuture]?.status, "scheduled");
   assert("recurring w/ until future: fire_at advanced to a future instant",
     new Date(byId[ID.untilFuture]?.fire_at as string).getTime() > Date.now(), true);

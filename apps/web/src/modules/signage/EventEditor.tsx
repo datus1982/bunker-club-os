@@ -6,7 +6,7 @@ import { alignOf, type Align } from "./richText";
 import {
   DOW, DOW_LABEL, VENUE_TZ,
   saveEvent, fireNowEvent, abortEvent, deleteEvent,
-  schedulePhrase, statusInfo, venueLocalParts, venueLocalToUtc,
+  schedulePhrase, statusInfo, venueLocalParts, venueLocalToUtc, nextOccurrence,
   type EventRow, type EventDraft,
 } from "./useEventsAdmin";
 
@@ -128,6 +128,16 @@ export function EventEditor({
     ? { daysOfWeek: days, time, ...(until.trim() ? { until: until.trim() } : {}) }
     : null;
 
+  // WARN-1 guard: a NEW recurring event whose `until` precedes its first occurrence would
+  // save with fire_at null and never run (a dead row). Block it. An EDIT keeps its existing
+  // fire_at as a fallback (draftFireAt) so it retires naturally — allowed.
+  const scheduleError = useMemo(() => {
+    if (mode !== "recurring" || !days.length || !time) return null;
+    const next = nextOccurrence(days, time, new Date(), VENUE_TZ, until.trim() || undefined);
+    if (!next && !editing?.fire_at) return "this ends before it ever runs — pick a later end date";
+    return null;
+  }, [mode, days, time, until, editing]);
+
   // Seed the ENDS ON inputs from the current length when switching in, and back the other way,
   // so the actual window never jumps when a manager flips between the two input styles.
   const switchToEndsOn = () => {
@@ -136,7 +146,9 @@ export function EventEditor({
     setEndDate(p.date); setEndTime(p.time);
     setDurationMode("endson");
   };
-  const switchToLength = () => { setWindowMinutes(Math.max(1, spanMinutes)); setDurationMode("chips"); };
+  // NOTE-2: clamp when copying the span into windowMinutes so a >1yr ENDS ON span can't
+  // slip past the under-a-year rule by toggling back to LENGTH.
+  const switchToLength = () => { setWindowMinutes(Math.min(YEAR_MIN, Math.max(1, spanMinutes))); setDurationMode("chips"); };
 
   const draft: EventDraft = useMemo(() => ({
     id: editing?.id,
@@ -156,11 +168,13 @@ export function EventEditor({
     showOnWebsite,
     baseFields: editing?.fields,
     status: editing?.status,
+    existingFireAt: editing?.fire_at ?? null,
   }), [editing, name, kind, skin, toastGuid, mode, date, time, days, until, effectiveWindow, teaseMinutes, alertMinutes, interruptGame, title, body, cta, imageUrl, align, showOnWebsite]);
 
   // Live plain-language preview of exactly what the manager just built (no cron, ever).
   const preview = useMemo(() => {
     if (mode === "recurring" && !days.length) return "pick at least one day";
+    if (scheduleError) return scheduleError;
     if (windowError) return windowError;
     const base = schedulePhrase(
       { kind, fire_at: mode === "oneshot" ? isoFor(date, time) : null, recurrence: recurrenceDraft, window_minutes: effectiveWindow },
@@ -169,7 +183,7 @@ export function EventEditor({
     // Make "no stop date" explicit for a recurring promo so the manager sees it will run forever.
     if (mode === "recurring" && days.length && !until.trim()) return `${base} · no end date`;
     return base;
-  }, [mode, days, kind, date, time, effectiveWindow, until, windowError]);
+  }, [mode, days, kind, date, time, effectiveWindow, until, windowError, scheduleError]);
 
   const save = useMutation({
     mutationFn: () => saveEvent(draft),
@@ -195,7 +209,7 @@ export function EventEditor({
   const canSave =
     name.trim().length > 0 &&
     (mode === "oneshot" ? !!date && !!time : days.length > 0 && !!time) &&
-    !windowError;
+    !windowError && !scheduleError;
   // Live-on-screen = abortable now. A window fired seconds ago is still `scheduled` until
   // the minute tick promotes it to `running`, but it is already on the TVs — so gate ABORT
   // on the actual display window, not just the status column.
@@ -274,6 +288,7 @@ export function EventEditor({
                     ? <button type="button" onClick={() => setUntil("")} style={clearLink}>run forever</button>
                     : <span style={{ fontSize: 13, opacity: 0.5 }}>no end date</span>}
                 </div>
+                {scheduleError && <div className="u-red" style={{ fontSize: 14, marginTop: 2 }}>⚠ {scheduleError}</div>}
               </div>
             </div>
           </div>
