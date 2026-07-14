@@ -324,10 +324,13 @@ export function useLiveEvents(venueId: string = VENUE_ID) {
 
 /** Build the rotation-level card for an active WINDOW/MESSAGE event (docs/13). */
 function eventRotationCard(ev: LiveEvent): SignageItem {
-  // Injected-at-render event cards aren't authored through EDIT ROTATION, so they can't carry
-  // a per-item seconds control — they fall back to a sensible fixed default (12s, matching the
-  // mockup rotation pace) unless the event itself specifies fields.duration_seconds.
+  // Event cards CAN now carry a per-item seconds control + a queue position, set from the
+  // EDIT ROTATION live-queue editor and persisted onto the event row's fields jsonb
+  // (fields.duration_seconds / fields.rotation_sort). Absent either, the historical defaults
+  // hold: 12s dwell (mockup pace) and sort_order -100 (event promos lead the rotation) — so
+  // TVs are byte-identical until a manager reorders/retimes a card.
   const duration = typeof ev.fields?.duration_seconds === "number" ? ev.fields.duration_seconds : 12;
+  const rotationSort = typeof ev.fields?.rotation_sort === "number" ? ev.fields.rotation_sort : -100;
   return {
     id: `event:${ev.id}`,
     slot_id: null,
@@ -337,7 +340,7 @@ function eventRotationCard(ev: LiveEvent): SignageItem {
     event: ev,
     starts_at: null,
     ends_at: null,
-    sort_order: -100, // event promos lead the rotation
+    sort_order: rotationSort, // event promos lead (-100) unless a manager reordered the card
     duration_seconds: Math.max(6, duration),
     active: true,
     materialized: true,
