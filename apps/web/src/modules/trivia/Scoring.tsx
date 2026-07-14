@@ -12,7 +12,7 @@ import {
 import { RoundGrid } from "./RoundGrid";
 import { QuestionPanel } from "./QuestionPanel";
 import { VideoControls } from "./VideoControls";
-import { LeaderboardToggle } from "./LeaderboardToggle";
+import { BoardStageControl } from "./BoardStageControl";
 import { TeamEditorDialog, type EditableTeam } from "./TeamEditorDialog";
 import { Modal, Field, input, btnGhost, btnPrimary, btnActive, btnDanger } from "./ui";
 import { searchTeams, type TeamHit } from "../registration/useCheckin";
@@ -20,7 +20,7 @@ import { searchTeams, type TeamHit } from "../registration/useCheckin";
 /**
  * Scoring console — host tool (docs/01 /scoring, host+). Ported from the legacy
  * 3,285-line Scoring.tsx and decomposed per docs/04 ARCH-2 into RoundGrid /
- * QuestionPanel / VideoControls / LeaderboardToggle / TeamEditorDialog + the hooks in
+ * QuestionPanel / VideoControls / BoardStageControl / TeamEditorDialog + the hooks in
  * useScoring.ts. This file is just the composition + game-status controls + team-editor
  * plumbing. Behaviour matches legacy to the extent our schema carries it (see the
  * DECISIONs in useScoring.ts — no game clock, no scoring_in_progress interstitial).
@@ -90,7 +90,7 @@ export function Scoring() {
           ) : null}
           <StatusButton label="■ STOP" active={game.status === "stopped"} onClick={() => setStatus.mutate("stopped")} />
           <div style={{ flex: 1 }} />
-          {display.state && game && <LeaderboardToggle gameId={game.id} state={display.state} write={display.write} />}
+          {display.state && game && <BoardStageControl state={display.state} write={display.write} />}
           <button type="button" onClick={() => setConfirmEnd(true)} style={btnDanger}>END GAME</button>
         </div>
 

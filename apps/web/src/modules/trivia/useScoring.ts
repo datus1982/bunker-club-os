@@ -8,7 +8,7 @@ import { log } from "@/shared/log";
  * held 30 useState + 29 inline queries/mutations in a 3,285-line god component. This
  * splits its data + behaviour into three hooks — useActiveGame, useGameScores,
  * useDisplayState — that the decomposed UI (RoundGrid / QuestionPanel / VideoControls /
- * LeaderboardToggle / TeamEditorDialog) composes. Behaviour is preserved to the extent
+ * BoardStageControl / TeamEditorDialog) composes. Behaviour is preserved to the extent
  * our greenfield schema (docs/02) carries it; the DECISIONs below record the drops.
  *
  * DECISIONS (our schema vs legacy):
@@ -30,6 +30,11 @@ import { log } from "@/shared/log";
  */
 
 export type GameStatus = "setup" | "active" | "paused" | "stopped" | "completed";
+
+/** Manual public-leaderboard stage (migration 0038), driven ONLY by the Scoring
+ *  segmented control. The public board (trivia/Leaderboard.tsx — also the signage
+ *  portrait game-mode board) renders from this. */
+export type BoardStage = "qr" | "scoring" | "standings" | "final";
 
 export interface Game {
   id: string;
@@ -87,6 +92,7 @@ export interface DisplayState {
   is_display_active: boolean;
   show_video: boolean;
   show_game_over: boolean;
+  board_stage: BoardStage;
 }
 
 /* ── useActiveGame ─────────────────────────────────────────────────────────────
@@ -559,7 +565,7 @@ export function useDisplayState(gameId: string | null) {
     queryFn: async (): Promise<DisplayState | null> => {
       const { data, error } = await supabase
         .from("game_display_state")
-        .select("game_id, current_round_id, current_question_index, show_answer, is_display_active, show_video, show_game_over")
+        .select("game_id, current_round_id, current_question_index, show_answer, is_display_active, show_video, show_game_over, board_stage")
         .eq("game_id", gameId)
         .maybeSingle();
       if (error) throw error;

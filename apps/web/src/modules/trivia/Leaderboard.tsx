@@ -6,10 +6,12 @@ import { DisplayCanvas } from "@/shared/DisplayCanvas";
 import {
   useCurrentGame,
   useLeaderboardData,
+  type BoardStage,
   type Game,
   type Round,
   type ScoreboardRow,
 } from "./useLeaderboard";
+import { CheckinQR } from "@/modules/registration/CheckinQR";
 import { useSeasonPanel, type SeasonStanding } from "./useSeasonPanel";
 
 /**
@@ -57,14 +59,24 @@ export function LeaderboardBoard({ overrideGameId }: { overrideGameId: string | 
   const roundList = rounds.data ?? [];
   const gameOverFlag = displayState.data?.show_game_over ?? false;
 
+  // Manual board stage (migration 0038), driven ONLY by the Scoring segmented control.
+  // Default 'standings' preserves the pre-0038 behavior for any row/game without a stage.
+  const stage: BoardStage = displayState.data?.board_stage ?? "standings";
+
+  // FINAL is reachable via the manual stage OR the legacy GAME OVER flag OR a completed
+  // game — so the manual FINAL REVEAL, the END GAME flow, and viewing a finished game in
+  // History all land on the final board, without any code auto-flipping board_stage.
+  const isFinal = stage === "final" || gameOverFlag || game?.status === "completed";
+
   const tieInfo = useMemo(() => computeTieInfo(rows), [rows]);
   const hasAnyScores = rows.some((r) => r.total_score !== 0);
 
   // Season standings panel (docs/06): during an active season, slowly rotate the live
   // game standings with a SEASON STANDINGS — TOP 5 panel. Finite 18s toggle (no infinite
-  // animation), and NEVER while Game Over is up (that screen must stay put).
+  // animation). Only at the STANDINGS stage (never over qr/scoring/final holds).
   const seasonPanel = useSeasonPanel().data ?? null;
-  const canRotate = !!seasonPanel && seasonPanel.rows.length > 0 && game?.status === "active" && !gameOverFlag;
+  const canRotate =
+    !!seasonPanel && seasonPanel.rows.length > 0 && game?.status === "active" && stage === "standings" && !isFinal;
   const [showSeason, setShowSeason] = useState(false);
   useEffect(() => {
     if (!canRotate) { setShowSeason(false); return; }
@@ -72,25 +84,39 @@ export function LeaderboardBoard({ overrideGameId }: { overrideGameId: string | 
     return () => clearInterval(t);
   }, [canRotate]);
 
+  const standings = game && (
+    <Standings
+      game={game}
+      rows={rows}
+      rounds={roundList}
+      tieInfo={tieInfo}
+      hasAnyScores={hasAnyScores}
+      gameOverFlag={gameOverFlag}
+      forceFinal={isFinal}
+    />
+  );
+
   return (
     <Frame>
       {gameQuery.isPending ? (
         <Centered title="SYNCING STANDINGS" subtitle="◊ SHELTER AUTHORITY UPLINK" />
       ) : !game ? (
         <Centered title="NO ACTIVE GAME" subtitle="STANDBY — CREATE GAME TO BEGIN" />
+      ) : isFinal ? (
+        // FINAL wins over the pre-game / qr / scoring holds.
+        standings
+      ) : stage === "qr" ? (
+        <JoinScreen game={game} />
+      ) : stage === "scoring" ? (
+        <ScoringInProgress />
       ) : game.status === "setup" || game.status === "stopped" ? (
+        // Default STANDINGS stage before the host starts → the pre-game waiting screen
+        // (countdown + registered teams + join QR), unchanged from pre-0038.
         <HoldingScreen game={game} teams={rows} />
       ) : showSeason && seasonPanel ? (
         <SeasonPanel panel={seasonPanel} />
       ) : (
-        <Standings
-          game={game}
-          rows={rows}
-          rounds={roundList}
-          tieInfo={tieInfo}
-          hasAnyScores={hasAnyScores}
-          gameOverFlag={gameOverFlag}
-        />
+        standings
       )}
     </Frame>
   );
@@ -168,6 +194,7 @@ function Standings({
   tieInfo,
   hasAnyScores,
   gameOverFlag,
+  forceFinal = false,
 }: {
   game: Game;
   rows: ScoreboardRow[];
@@ -175,9 +202,10 @@ function Standings({
   tieInfo: Map<string, number>;
   hasAnyScores: boolean;
   gameOverFlag: boolean;
+  forceFinal?: boolean;
 }) {
   const label = currentRoundLabel(game, rounds, tieInfo);
-  const isFinal = gameOverFlag || game.status === "completed" || label === "FINAL SCORES";
+  const isFinal = forceFinal || gameOverFlag || game.status === "completed" || label === "FINAL SCORES";
 
   // Fit all rows into the body. Header ~250px, footer ~64px, 40px padding each side.
   const bodyH = CANVAS_H - 80 - 250 - 64;
@@ -402,6 +430,50 @@ function HoldingScreen({ game, teams }: { game: Game; teams: ScoreboardRow[] }) 
           ))}
         </div>
       </div>
+    </div>
+  );
+}
+
+/* ── Stage: JOIN QR (manual 'qr' stage — no scores visible) ───────────────────── */
+
+function JoinScreen({ game }: { game: Game }) {
+  const url = typeof window !== "undefined" ? `${window.location.origin}/checkin` : "";
+  return (
+    <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", gap: 28 }}>
+      <div style={{ fontSize: 34, opacity: 0.7, letterSpacing: 4 }}>BUNKER UNIFIED OS · ATOMIC PUB TRIVIA</div>
+      <div style={{ fontSize: 116, fontWeight: 700, letterSpacing: 3, lineHeight: 0.95, textShadow: "0 0 18px var(--terminal-glow)" }}>
+        SCAN TO JOIN<br />TONIGHT'S GAME
+      </div>
+      <div style={{ background: "#000", padding: 28, border: "4px solid var(--terminal-green)", boxShadow: "0 0 28px var(--terminal-glow)" }}>
+        <CheckinQR size={560} />
+      </div>
+      <div style={{ fontSize: 40, opacity: 0.85 }}>{url}</div>
+      <div style={{ fontSize: 34, opacity: 0.7, letterSpacing: 2 }}>ATOMIC PUB TRIVIA · {game.game_date}</div>
+    </div>
+  );
+}
+
+/* ── Stage: SCORING IN PROGRESS (manual 'scoring' stage — scores sealed) ───────── */
+
+function ScoringInProgress() {
+  // "Working" cue without an infinite CSS animation (display perf rule): a block cursor
+  // toggled on a 1s local timer — the same accepted cadence as the venue clock/countdown.
+  const [blink, setBlink] = useState(true);
+  useEffect(() => {
+    const id = window.setInterval(() => setBlink((b) => !b), 1000);
+    return () => window.clearInterval(id);
+  }, []);
+  return (
+    <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", gap: 40, padding: "0 40px" }}>
+      <div style={{ fontSize: 40, opacity: 0.7, letterSpacing: 6 }}>◊ SHELTER AUTHORITY · SCORING TERMINAL</div>
+      <div style={{ fontSize: 150, fontWeight: 700, letterSpacing: 4, lineHeight: 0.95, textShadow: "0 0 22px var(--terminal-glow)" }}>
+        TABULATING
+        <span style={{ opacity: blink ? 1 : 0.15 }}>▊</span>
+      </div>
+      <div style={{ fontSize: 56, fontWeight: 700, letterSpacing: 2, maxWidth: 900, lineHeight: 1.15 }}>
+        SCORES SEALED BY THE SHELTER AUTHORITY
+      </div>
+      <div style={{ fontSize: 40, opacity: 0.7, letterSpacing: 3 }}>STAND BY — STANDINGS RESUME SHORTLY</div>
     </div>
   );
 }
