@@ -5,27 +5,46 @@ import { todayKey } from "./useSiteCopy";
 import { fetchPromoMenu, fieldStr, priceLine } from "./promoResolve";
 
 /**
- * The home page's "tonight / this week" strip (docs/14): auto-assembled from data
- * the OS already maintains, and fully empty-state tolerant.
+ * The home page's "What's On" feed (docs/14): auto-assembled from data the OS
+ * already maintains, fully empty-state tolerant, and rendered as a rotating
+ * terminal feed (TerminalFeed.tsx). Sources, in rotation order:
+ *   0) ON THE SCREENS NOW — active WINDOW/MESSAGE scheduled_events, straight off
+ *      the TVs via the anon horizon view `signage_events_live` (0035). These are
+ *      public by definition (they're on the room's screens right now).
  *   1) TRIVIA — a fixed card on the venue's trivia night (Wednesday).
- *   2) EVENTS — upcoming `public_events` (anon-safe view; tease copy only).
- *   3) PROMOS — website-flagged `signage_items` (show_on_website + active).
+ *   2) PROMOS — website-flagged `signage_items` (show_on_website + active),
+ *      Toast-sourced ones resolved LIVE through the POS-gated public_menu.
+ *   3) EVENTS — upcoming `public_events` (anon-safe view; tease copy only),
+ *      de-duped against anything already showing ON THE SCREENS NOW.
  * All reads are anon-safe. Failures degrade to an empty list, never throw the page.
  */
 
 export type StripCard = {
   key: string;
-  kind: "trivia" | "karaoke" | "event" | "promo";
+  kind: "trivia" | "karaoke" | "event" | "promo" | "screen";
   kicker: string;
   title: string;
   body?: string;
   /** Optional thumbnail (custom upload or Toast photo). Below-the-fold, lazy-loaded. */
   image?: string;
+  /** Small kind tag rendered beside the kicker (live screen events: WINDOW / MESSAGE). */
+  badge?: string;
   live?: boolean;
 };
 
 const TRIVIA_DAY = "wed"; // Bunker Club runs trivia Wednesday nights (docs/00).
 const KARAOKE_DAY = "sat"; // Karaoke runs MOST Saturdays — not guaranteed (owner, 2026-07-13).
+
+/** A row of the anon horizon view `signage_events_live` (0035) — display columns only. */
+type LiveEventRow = {
+  id: string;
+  name: string;
+  kind: "window" | "message" | "moment";
+  fields: Record<string, unknown>;
+  toast_guid: string | null;
+  fire_at: string | null;
+  window_minutes: number;
+};
 
 export function useThisWeek() {
   return useQuery({
@@ -34,7 +53,24 @@ export function useThisWeek() {
     queryFn: async (): Promise<StripCard[]> => {
       const cards: StripCard[] = [];
       const today = todayKey();
+      const nowMs = Date.now();
 
+      // ── 0) ON THE SCREENS NOW ─────────────────────────────────────────────
+      // What's actually on the room's TVs this minute. `signage_events_live` is the
+      // anon, horizon-gated view: a WINDOW/MESSAGE row appears ONLY while now ∈
+      // [fire_at, fire_at + window). MOMENTs are in-room theatre (tease/alert/payoff)
+      // and DON'T belong on the website, so we take window/message only.
+      const { data: liveRows } = await supabase
+        .from("signage_events_live")
+        .select("id, name, kind, fields, toast_guid, fire_at, window_minutes")
+        .eq("venue_id", VENUE_ID);
+
+      const liveEvents = ((liveRows ?? []) as LiveEventRow[]).filter(
+        (e) => e.kind === "window" || e.kind === "message",
+      );
+      const liveIds = new Set(liveEvents.map((e) => e.id));
+
+      // ── TRIVIA / KARAOKE (day-of-week fixed cards) ───────────────────────
       if (today === TRIVIA_DAY) {
         cards.push({
           key: "trivia-tonight",
@@ -45,7 +81,6 @@ export function useThisWeek() {
           live: true,
         });
       }
-
       // Karaoke runs MOST Saturdays, not every one — so the card stays honest: it
       // flags the night but tells people to check socials rather than promising it.
       if (today === KARAOKE_DAY) {
@@ -59,31 +94,10 @@ export function useThisWeek() {
         });
       }
 
-      // Upcoming published events (view is anon-safe; hide past ones).
-      const nowIso = new Date().toISOString();
-      const { data: events } = await supabase
-        .from("public_events")
-        .select("id, name, title, blurb, fire_at")
-        .eq("venue_id", VENUE_ID)
-        .gte("fire_at", nowIso)
-        .order("fire_at", { ascending: true })
-        .limit(3);
-
-      for (const e of events ?? []) {
-        cards.push({
-          key: `event-${e.id}`,
-          kind: "event",
-          kicker: "This Week",
-          title: (e.title || e.name || "Event").toString().toUpperCase(),
-          body: e.blurb ?? undefined,
-        });
-      }
-
-      // Website-flagged screen promos. Apply the same time-window filter as
-      // useEvents (W2): drop items whose ends_at has passed, and items whose
-      // starts_at is still in the future; evergreen (null starts_at/ends_at) always
-      // shows. Fetch a few extra since the window filter runs client-side.
-      const nowMs = Date.now();
+      // ── 2) PROMOS (website-flagged signage_items) ────────────────────────
+      // Apply the same time-window filter as useEvents (W2): drop items whose ends_at
+      // has passed, and items whose starts_at is still in the future; evergreen
+      // (null/null) always shows. Fetch a few extra since the filter runs client-side.
       const { data: promos } = await supabase
         .from("signage_items")
         .select("id, template, fields, starts_at, ends_at, sort_order")
@@ -93,9 +107,6 @@ export function useThisWeek() {
         .order("sort_order", { ascending: true })
         .limit(8);
 
-      // Toast-sourced promos (drink_specials) carry their name/price/photo LIVE in
-      // Toast — resolve those guids through public_menu (POS-visibility-gated) in one
-      // query so the card gets a real title/body/image instead of a bare "Now On".
       const inWindow = (promos ?? []).filter((p) => {
         if (p.ends_at && new Date(p.ends_at).getTime() < nowMs) return false; // ended
         if (p.starts_at && new Date(p.starts_at).getTime() > nowMs) return false; // not yet live
@@ -107,7 +118,38 @@ export function useThisWeek() {
         starts_at: string | null;
         ends_at: string | null;
       }>;
-      const menu = await fetchPromoMenu(inWindow.map((p) => fieldStr(p.fields, ["source_toast_guid"])));
+
+      // Toast-sourced promos (drink_specials) AND toast-linked live events both carry
+      // their name/price/photo LIVE in Toast — resolve every guid through public_menu
+      // (POS-visibility-gated) in ONE query so cards get real title/body/image and the
+      // off-POS / 86'd auto-hide applies.
+      const menu = await fetchPromoMenu([
+        ...inWindow.map((p) => fieldStr(p.fields, ["source_toast_guid"])),
+        ...liveEvents.map((e) => e.toast_guid),
+      ]);
+
+      // Build the ON THE SCREENS NOW cards (prepended — they're the most timely).
+      const screenCards: StripCard[] = [];
+      for (const e of liveEvents) {
+        const src = e.toast_guid ? menu.get(e.toast_guid) : undefined;
+        const title = fieldStr(e.fields, ["title", "name"]) ?? e.name ?? src?.name ?? undefined;
+        if (!title) continue; // never render a contentless card
+        const body =
+          fieldStr(e.fields, ["body", "directive", "message", "blurb", "cta"]) ??
+          src?.public_blurb ??
+          (src ? priceLine(src.price, src.group) : undefined);
+        const image = fieldStr(e.fields, ["image_url"]) ?? src?.image ?? undefined;
+        screenCards.push({
+          key: `screen-${e.id}`,
+          kind: "screen",
+          kicker: "On the screens now",
+          badge: e.kind === "message" ? "MESSAGE" : "WINDOW",
+          title: title.toUpperCase(),
+          body,
+          image,
+          live: true,
+        });
+      }
 
       let shown = 0;
       for (const p of inWindow) {
@@ -139,7 +181,29 @@ export function useThisWeek() {
         });
       }
 
-      return cards;
+      // ── 3) UPCOMING EVENTS (public_events, future only, de-duped) ─────────
+      const nowIso = new Date().toISOString();
+      const { data: events } = await supabase
+        .from("public_events")
+        .select("id, name, title, blurb, fire_at")
+        .eq("venue_id", VENUE_ID)
+        .gte("fire_at", nowIso)
+        .order("fire_at", { ascending: true })
+        .limit(3);
+
+      for (const e of events ?? []) {
+        if (liveIds.has(e.id)) continue; // already showing ON THE SCREENS NOW — don't double up
+        cards.push({
+          key: `event-${e.id}`,
+          kind: "event",
+          kicker: "This Week",
+          title: (e.title || e.name || "Event").toString().toUpperCase(),
+          body: e.blurb ?? undefined,
+        });
+      }
+
+      // ON THE SCREENS NOW leads the rotation.
+      return [...screenCards, ...cards];
     },
   });
 }
