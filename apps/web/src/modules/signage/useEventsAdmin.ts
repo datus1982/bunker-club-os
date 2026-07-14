@@ -297,6 +297,9 @@ export interface EventDraft {
   // custom image (public URL) + basic formatting (Phase 8). null/"" clears.
   imageUrl?: string | null;
   align?: "left" | "center";
+  // 🌐 advertise this event on the public website's What's-On feed ahead of time
+  // (scheduled_events.show_on_website — column from 0015, opt-in per PR #13 F6).
+  showOnWebsite?: boolean;
   // preserve existing fields on edit (live_count, final_stats, skin overrides)
   baseFields?: Record<string, unknown>;
   status?: EventStatus;
@@ -348,6 +351,10 @@ export async function saveEvent(draft: EventDraft): Promise<string> {
     tease_minutes: draft.kind === "moment" ? draft.tease_minutes : 0,
     alert_minutes: draft.kind === "moment" ? draft.alert_minutes : 0,
     interrupt_game: draft.kind === "moment" ? draft.interrupt_game : false,
+    // Owner opt-in — advertise ahead of time on the public site. Only WINDOW/MESSAGE
+    // events are surfaced there (public_events + the What's-On feed); MOMENTs are
+    // in-room theatre, so never flag them (the editor hides the toggle for moments).
+    show_on_website: draft.kind === "moment" ? false : !!draft.showOnWebsite,
     fields: buildFields(draft),
   };
 

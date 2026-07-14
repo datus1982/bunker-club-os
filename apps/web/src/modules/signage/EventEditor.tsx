@@ -79,6 +79,8 @@ export function EventEditor({
   const [alertMinutes, setAlertMinutes] = useState(editing?.alert_minutes ?? 5);
   const [interruptGame, setInterruptGame] = useState(editing?.interrupt_game ?? false);
 
+  const [showOnWebsite, setShowOnWebsite] = useState(editing?.show_on_website ?? false);
+
   const [title, setTitle] = useState(str(f.title));
   const [body, setBody] = useState(str(f.body) || str(f.directive) || str(f.message));
   const [cta, setCta] = useState(str(f.cta));
@@ -102,9 +104,10 @@ export function EventEditor({
     title, body, cta,
     imageUrl,
     align,
+    showOnWebsite,
     baseFields: editing?.fields,
     status: editing?.status,
-  }), [editing, name, kind, skin, toastGuid, mode, date, time, days, windowMinutes, teaseMinutes, alertMinutes, interruptGame, title, body, cta, imageUrl, align]);
+  }), [editing, name, kind, skin, toastGuid, mode, date, time, days, windowMinutes, teaseMinutes, alertMinutes, interruptGame, title, body, cta, imageUrl, align, showOnWebsite]);
 
   // Live plain-language preview of exactly what the manager just built (no cron, ever).
   const preview = useMemo(() => {
@@ -255,6 +258,27 @@ export function EventEditor({
 
       {/* DRINK LINK */}
       <ToastSourcePicker rows={toastRows} selected={toastGuid} onSelect={setToastGuid} />
+
+      {/* WEBSITE — advertise this promo ahead of time (window/message only; MOMENTs are
+          in-room theatre and never leave the room). */}
+      {kind !== "moment" && (
+        <label style={{ display: "flex", alignItems: "flex-start", gap: 10, cursor: "pointer", fontSize: 16 }}>
+          <input
+            type="checkbox"
+            checked={showOnWebsite}
+            onChange={(e) => setShowOnWebsite(e.target.checked)}
+            style={{ width: 22, height: 22, accentColor: "var(--terminal-green)", marginTop: 2, cursor: "pointer" }}
+          />
+          <span>
+            🌐 ADVERTISE ON THE WEBSITE
+            <span style={{ display: "block", fontSize: 14, opacity: 0.55 }}>
+              {kind === "message"
+                ? "messages reach the website ONLY when checked (they run on the bar TVs regardless) — name + copy become public."
+                : "shows on the What's-On feed ahead of time — and while a window is running, the live feed shows it automatically."}
+            </span>
+          </span>
+        </label>
+      )}
 
       {/* MOMENT extras */}
       {kind === "moment" && (
