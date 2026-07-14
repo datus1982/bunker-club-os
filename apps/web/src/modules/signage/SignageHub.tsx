@@ -313,7 +313,7 @@ function ItemScheduleRow({ item, toastRows, onEdit }: { item: AdminItem; toastRo
   return (
     <div className="terminal-border" style={{ padding: "10px 12px", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
       <div style={{ flex: "1 1 200px", minWidth: 0 }}>
-        <div style={{ fontSize: 20, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{summarize(item)}</div>
+        <div style={{ fontSize: 20, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{summarize(item, toastRows)}</div>
         <div style={{ fontSize: 13, opacity: 0.6 }}>{when}</div>
       </div>
       <span style={badge}>{type}</span>

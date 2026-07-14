@@ -102,11 +102,11 @@ export function CopyKioskButton({ slug, style }: { slug: string; style?: CSSProp
 
 /* ── per-slot item row (EDIT ROTATION) ──────────────────────────────────────── */
 export function ItemRow({
-  item, first, last, hideReason, prev, next, onEdit, onChanged,
+  item, first, last, hideReason, prev, next, onEdit, onChanged, toastRows,
 }: {
   item: AdminItem; first: boolean; last: boolean; hideReason: string | null;
   prev?: AdminItem; next?: AdminItem;
-  onEdit: () => void; onChanged: () => void;
+  onEdit: () => void; onChanged: () => void; toastRows?: ToastCacheRow[];
 }) {
   const toggle = useMutation({ mutationFn: () => setItemActive(item.id, !item.active), onSuccess: onChanged });
   const del = useMutation({ mutationFn: () => deleteItem(item.id), onSuccess: onChanged });
@@ -123,7 +123,7 @@ export function ItemRow({
           {item.show_on_website && <span style={{ fontSize: 13, letterSpacing: 1 }} title="Published to the public website">🌐 WEB</span>}
           {hideReason && <span className="u-amber" style={{ fontSize: 13 }}>{hideReason}</span>}
         </div>
-        <div style={{ fontSize: 20, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{summarize(item)}</div>
+        <div style={{ fontSize: 20, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{summarize(item, toastRows)}</div>
         <div style={{ fontSize: 14, opacity: 0.6 }}>{scheduleLabel(item)} · {item.duration_seconds}s ON SCREEN</div>
       </div>
       {/* minWidth:0 + shrinkable so that when this control cluster wraps to its own line
@@ -251,11 +251,17 @@ export function sourceHideReason(item: AdminItem, rows: ReturnType<typeof featur
   return null;
 }
 
-export function summarize(item: AdminItem): string {
+export function summarize(item: AdminItem, toastRows?: ToastCacheRow[]): string {
   const f = item.fields ?? {};
   const g = (k: string) => (typeof f[k] === "string" ? (f[k] as string).trim() : "");
   switch (item.template) {
-    case "drink_special": return g("name") || (g("source_toast_guid") ? "Toast-sourced special" : "Drink special");
+    case "drink_special": {
+      const guid = g("source_toast_guid");
+      // Resolve the live Toast name so the row reads "Manhattan Project", not
+      // "Toast-sourced special" (owner note, 2026-07-14).
+      const live = guid ? toastRows?.find((r) => r.guid === guid)?.name : undefined;
+      return g("name") || live || (guid ? "Toast-sourced special" : "Drink special");
+    }
     case "event": return g("title") || "Event";
     case "announcement": return g("text") || g("message") || "Announcement";
     case "image_only": return g("caption") || "Image";
