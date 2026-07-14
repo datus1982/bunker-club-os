@@ -214,21 +214,24 @@ function ModuleTile({ tile, tonight, season }: { tile: Tile; tonight: ReturnType
 
 /** DISPLAYS tile — the public screen URLs, opened in new tabs (kiosk targets). */
 function DisplaysTile({ screens }: { screens: ScreenSlot[] }) {
-  const links = [
-    { label: "LEADERBOARD", href: "/leaderboard" },
-    { label: "GAME DISPLAY", href: "/game-display" },
-    { label: "DRINKS", href: "/drinks" },
+  // The signage slot boards are the recommended TV targets (one URL per screen — rotation,
+  // takeovers, game mode). /drinks stays only for back-compat / the docs/03 pilot (Top
+  // Sellers now rotates INSIDE signage), so it's de-emphasized and clearly labelled legacy.
+  const kiosk = [
     // Signage slot boards — clean kiosk URLs (no ?preview=1, so takeovers/game mode render).
     ...screens.map((s) => ({ label: s.name.toUpperCase(), href: `/signage/s/${s.slug}` })),
+    { label: "LEADERBOARD", href: "/leaderboard" },
+    { label: "GAME DISPLAY", href: "/game-display" },
   ];
   return (
     <div style={{ ...tileBase, cursor: "default" }}>
       <div style={{ fontSize: 26, fontWeight: 700, letterSpacing: 1 }}>DISPLAYS</div>
-      <div style={{ fontSize: 18, opacity: 0.7, marginTop: 4 }}>Public screen URLs — open on the TVs</div>
+      <div style={{ fontSize: 18, opacity: 0.7, marginTop: 4 }}>Point each TV at a signage slot — Top Sellers rotates inside it</div>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
-        {links.map((s) => (
+        {kiosk.map((s) => (
           <a key={s.href} href={s.href} target="_blank" rel="noreferrer" style={screenLink}>{s.label} ↗</a>
         ))}
+        <a href="/drinks" target="_blank" rel="noreferrer" title="Legacy standalone board — not a recommended TV target. Top Sellers now rotates inside signage." style={{ ...screenLink, opacity: 0.5 }}>DRINKS (LEGACY) ↗</a>
       </div>
     </div>
   );

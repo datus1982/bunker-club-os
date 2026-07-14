@@ -1,0 +1,544 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bunker Club — Signage Redesign Mockup</title>
+<link href="https://fonts.googleapis.com/css2?family=VT323&family=Share+Tech+Mono&family=JetBrains+Mono:wght@400;700&family=Caveat:wght@600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --amb:#ffb000; --amb-brt:#ffca4a; --amb-dim:rgba(255,176,0,.60); --amb-mid:rgba(255,176,0,.34); --amb-faint:rgba(255,176,0,.13);
+    --live:#00ff41; --live-dim:rgba(0,255,65,.55); --live-faint:rgba(0,255,65,.14);
+    --cream:#f3ead9;
+    --red:#ff5347; --red-dim:rgba(255,83,71,.7);
+    --bg:#08060a; --crt:#0c0803; --panel:#140e05;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--amb);font-family:'Share Tech Mono',monospace;
+    min-height:100vh;padding:22px 16px 96px;display:flex;flex-direction:column;align-items:center;gap:16px}
+  a{color:inherit}
+
+  /* ---- page head ---- */
+  .pagehead{text-align:center;max-width:900px}
+  .pagehead h1{font-family:'VT323',monospace;font-size:36px;letter-spacing:2px;color:var(--amb);text-shadow:0 0 14px var(--amb-dim)}
+  .pagehead p{font-size:13px;color:var(--amb-dim);margin-top:6px;line-height:1.65}
+  .viewcap{font-family:'VT323',monospace;font-size:23px;letter-spacing:2px;color:var(--amb-dim);text-align:center;margin-bottom:2px}
+  .viewcap b{color:var(--amb)}
+  .subcap{font-size:12px;color:var(--amb-mid);text-align:center;max-width:760px;line-height:1.6;margin-bottom:8px}
+
+  /* ---- views ---- */
+  .view{display:none;flex-direction:column;align-items:center;gap:14px;width:100%}
+  .view.on{display:flex}
+
+  /* frame rows */
+  .row{display:flex;gap:26px;flex-wrap:wrap;justify-content:center;align-items:flex-start}
+  .stack{display:flex;flex-direction:column;gap:22px;align-items:center}
+  .frameCol{display:flex;flex-direction:column;align-items:center;gap:9px}
+  .frameCol .flabel{font-size:11px;letter-spacing:3px;color:var(--amb-mid);text-align:center}
+  .frameCol .flabel b{color:var(--amb-dim)}
+
+  /* ---- CRT display frame (portrait 400x711) ---- */
+  .disp{width:400px;height:711px;background:var(--crt);border:2px solid var(--amb-dim);position:relative;overflow:hidden;
+    display:flex;flex-direction:column;box-shadow:0 0 42px var(--amb-faint), inset 0 0 74px rgba(0,0,0,.62)}
+  .disp::before{content:"";position:absolute;inset:0;pointer-events:none;z-index:40;
+    background:repeating-linear-gradient(0deg, rgba(0,0,0,.16) 0 1px, transparent 1px 3px)}
+  .disp::after{content:"";position:absolute;inset:0;pointer-events:none;z-index:41;
+    background:radial-gradient(ellipse at center, transparent 60%, rgba(0,0,0,.46) 100%)}
+  .disp.land{width:900px;height:506px}
+
+  .ctop{border-bottom:1px solid var(--amb-mid);padding:8px 15px;display:flex;justify-content:space-between;align-items:baseline;flex-shrink:0;position:relative;z-index:2}
+  .ctop .mark{font-family:'VT323',monospace;font-size:22px;letter-spacing:1px;text-shadow:0 0 8px var(--amb-dim)}
+  .ctop .tid{font-size:9px;color:var(--amb-mid);text-align:right;line-height:1.5}
+  .cbot{border-top:1px solid var(--amb-mid);padding:7px 15px;font-size:10px;color:var(--amb-dim);display:flex;justify-content:space-between;gap:12px;flex-shrink:0;position:relative;z-index:2}
+  .cbot .now{color:var(--live)}
+  .cbot .tick{overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+  .zone{flex:1;position:relative;z-index:2;display:flex;flex-direction:column;min-height:0}
+
+  /* ---- DRINK PROMO (redesigned) ---- */
+  .ingr{padding:9px 16px;text-align:center;font-size:12px;line-height:1.35;letter-spacing:1.5px;
+    color:var(--amb);border-bottom:1px solid var(--amb-faint);text-shadow:0 0 6px var(--amb-faint);flex-shrink:0}
+  .drinkbody{flex:1;display:flex;flex-direction:column;align-items:center;padding:14px 20px 6px;min-height:0}
+  .sq{width:288px;height:288px;flex-shrink:0;background:
+      repeating-linear-gradient(135deg, rgba(255,176,0,.05) 0 10px, transparent 10px 20px), #060402;
+    border:1px solid var(--amb-mid);position:relative;display:flex;align-items:center;justify-content:center}
+  .sq .feed{position:absolute;top:7px;left:8px;font-size:9px;letter-spacing:2px;color:var(--live-dim)}
+  .sq .ph{font-size:12px;letter-spacing:2px;color:var(--amb-mid);text-align:center;line-height:1.6}
+  .sq .ph b{display:block;font-family:'VT323',monospace;font-size:26px;letter-spacing:1px;color:var(--amb-dim);margin-bottom:2px}
+  .dname{font-family:'VT323',monospace;font-size:74px;line-height:.9;letter-spacing:1px;color:var(--amb);
+    text-shadow:0 0 16px var(--amb-dim);margin-top:-10px;text-align:center}
+  .prow{display:flex;align-items:center;justify-content:center;gap:16px;margin-top:2px}
+  .price{font-family:'VT323',monospace;font-size:118px;line-height:.8;color:var(--live);text-shadow:0 0 22px var(--live-dim)}
+  .price small{font-size:56px;vertical-align:24px}
+  .flourish{font-family:'Caveat',cursive;font-weight:700;font-size:38px;line-height:1;color:var(--cream);text-shadow:0 0 10px rgba(243,234,217,.25);transform:rotate(-4deg)}
+  .catrow{margin-top:auto;padding-top:8px;display:flex;align-items:center;justify-content:space-between;width:100%}
+  .cattag{font-size:12px;letter-spacing:3px;color:var(--amb-dim)}
+  .clubmark{font-family:'VT323',monospace;font-size:22px;letter-spacing:1px;color:var(--amb);text-shadow:0 0 8px var(--amb-dim)}
+  .clubmark span{font-size:11px;letter-spacing:2px;color:var(--amb-mid)}
+
+  /* ---- the dimmed "current" contrast frame ---- */
+  .disp.old{width:262px;height:466px;opacity:.62;filter:saturate(.7)}
+  .disp.old .ctop .mark{font-size:15px}
+  .disp.old .zone{padding:16px 15px}
+  .old .oldeye{font-size:9px;letter-spacing:2px;color:var(--amb-mid);margin-bottom:6px}
+  .old .oldname{font-family:'VT323',monospace;font-size:34px;line-height:.95;color:var(--amb);margin-bottom:8px}
+  .old .oldwin{flex:1;min-height:0;background:repeating-linear-gradient(135deg, rgba(255,176,0,.05) 0 10px, transparent 10px 20px), #060402;
+    border:1px solid var(--amb-mid);position:relative;display:flex;align-items:center;justify-content:center}
+  .old .oldwin .ph{font-size:9px;letter-spacing:1px;color:var(--amb-mid);text-align:center}
+  .old .oldwin .ph b{display:block;font-family:'VT323',monospace;font-size:15px;color:var(--amb-dim)}
+  .old .oldstamp{position:absolute;top:8px;right:8px;border:2px solid var(--amb-dim);font-size:8px;letter-spacing:1px;padding:3px 6px;transform:rotate(6deg);color:var(--amb-dim);z-index:3}
+  .old .oldfoot{display:flex;justify-content:space-between;align-items:flex-end;margin-top:10px;gap:8px}
+  .old .oldblurb{font-size:8px;color:var(--amb-dim);line-height:1.4;max-width:60%}
+  .old .oldprice{font-family:'VT323',monospace;font-size:30px;line-height:1;color:var(--amb)}
+  /* red critique tags */
+  .crit{position:relative}
+  .critTag{position:absolute;z-index:6;font-size:10px;letter-spacing:.5px;color:var(--red);border:1px solid var(--red-dim);
+    background:#160404;padding:3px 7px;line-height:1.3;max-width:150px;box-shadow:0 0 12px rgba(255,83,71,.18)}
+  .critTag b{color:#ff8078}
+
+  /* ---- EVENT / MOMENT cards ---- */
+  .evbody{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:26px 22px;gap:14px}
+  .eyebrow{font-size:12px;letter-spacing:4px;color:var(--amb-dim)}
+  .evbig{font-family:'VT323',monospace;line-height:.9;letter-spacing:1px;color:var(--amb);text-shadow:0 0 16px var(--amb-dim)}
+  .huge{font-family:'VT323',monospace;color:var(--amb);line-height:.85;text-shadow:0 0 22px var(--amb-dim)}
+  .tminus{font-family:'VT323',monospace;font-size:132px;line-height:.85;color:var(--amb);text-shadow:0 0 26px var(--amb-dim);font-variant-numeric:tabular-nums}
+  .directive{font-size:16px;letter-spacing:1px;color:var(--amb-dim);line-height:1.5;max-width:86%}
+  .linkrow{display:flex;align-items:baseline;gap:12px;justify-content:center}
+  .linkname{font-family:'VT323',monospace;font-size:40px;color:var(--live);text-shadow:0 0 12px var(--live-dim)}
+  .linkprice{font-family:'VT323',monospace;font-size:78px;line-height:.8;color:var(--live);text-shadow:0 0 18px var(--live-dim)}
+  .linkprice small{font-size:38px;vertical-align:16px}
+  .divide{border:none;border-top:1px solid var(--amb-faint);width:64%;margin:4px 0}
+  .hazard{position:absolute;inset:0;pointer-events:none;z-index:3;border:12px solid transparent;
+    border-image:repeating-linear-gradient(45deg, var(--amb) 0 14px, #000 14px 28px) 12}
+
+  /* ---- TOP SELLERS rotation slide ---- */
+  .tshead{flex-shrink:0;text-align:center;padding:22px 20px 12px;border-bottom:1px solid var(--amb-faint)}
+  .tshead h2{font-family:'VT323',monospace;font-size:52px;line-height:.95;letter-spacing:2px;color:var(--amb);text-shadow:0 0 14px var(--amb-dim)}
+  .tshead .sub{font-size:12px;letter-spacing:3px;color:var(--amb-dim);margin-top:6px}
+  .tslist{flex:1;display:flex;flex-direction:column;justify-content:center;gap:11px;padding:16px 18px;min-height:0}
+  .tsrow{display:flex;flex-direction:column;gap:5px}
+  .tsrow .tl{display:flex;align-items:baseline;gap:12px}
+  .tsrow .rk{font-family:'VT323',monospace;font-size:38px;line-height:1;color:var(--amb-dim);width:44px;flex-shrink:0}
+  .tsrow .nm{font-family:'VT323',monospace;font-size:34px;line-height:1;letter-spacing:1px;color:var(--amb);flex:1;min-width:0;text-shadow:0 0 8px var(--amb-faint);white-space:nowrap;overflow:hidden;text-overflow:clip}
+  .tsrow .nm.long{font-size:27px}
+  .tsrow .ct{font-family:'VT323',monospace;font-size:34px;line-height:1;color:var(--amb);white-space:nowrap}
+  .tsrow .ct b{color:var(--amb-dim);font-size:15px;letter-spacing:1px;font-family:'Share Tech Mono'}
+  .tsrow .bar{height:12px;border:1px solid var(--amb-mid);position:relative}
+  .tsrow .bar i{position:absolute;inset:0 auto 0 0;background:var(--amb);box-shadow:0 0 8px var(--amb-dim);display:block}
+  .tsrow.lead .rk,.tsrow.lead .nm,.tsrow.lead .ct{color:var(--amb-brt)}
+
+  /* ---- LANDSCAPE variants ---- */
+  .land .lwrap{flex:1;display:flex;min-height:0}
+  .land .lphoto{width:430px;flex-shrink:0;padding:22px;display:flex;flex-direction:column}
+  .land .lphoto .sq{width:100%;height:100%}
+  .land .ltext{flex:1;display:flex;flex-direction:column;padding:22px 26px 22px 4px;min-height:0}
+  .land .ltext .ingr{border:none;padding:0 0 10px;text-align:left}
+  .land .ltext .dname{text-align:left;font-size:88px;margin-top:0}
+  .land .ltext .prow{justify-content:flex-start;margin-top:8px}
+  .land .ltext .catrow{justify-content:flex-start;gap:20px}
+  /* landscape top sellers */
+  .land .tsL{flex:1;display:flex;flex-direction:column;padding:20px 30px;min-height:0}
+  .land .tsL h2{font-family:'VT323',monospace;font-size:44px;letter-spacing:2px;color:var(--amb);text-shadow:0 0 12px var(--amb-dim);text-align:center;margin-bottom:4px}
+  .land .tsL .sub{font-size:11px;letter-spacing:3px;color:var(--amb-dim);text-align:center;margin-bottom:12px}
+  .land .tsL .grid{flex:1;display:grid;grid-template-columns:1fr 1fr;gap:8px 40px;align-content:center}
+
+  /* ---- STAFF UI font options (green terminal) ---- */
+  .fontset{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;width:100%;max-width:1120px}
+  .fontcard{border:1px solid var(--live-dim);background:#040a05;padding:0;display:flex;flex-direction:column}
+  .fontcard .opt{font-size:11px;letter-spacing:2px;color:var(--live-dim);padding:9px 14px;border-bottom:1px solid var(--live-faint);background:#030603}
+  .fontcard .opt b{color:var(--live)}
+  .hub{padding:16px 16px 18px;color:var(--live);text-shadow:0 0 2px var(--live-dim)}
+  .hub .hh{font-size:26px;letter-spacing:1px;margin-bottom:4px}
+  .hub .hstat{font-size:13px;color:var(--live-dim);margin-bottom:14px;display:flex;align-items:center;gap:8px}
+  .hub .hstat .d{color:var(--live)}
+  .hub .flabelf{font-size:12px;letter-spacing:2px;color:var(--live-dim);margin-bottom:5px}
+  .hub .finput{border:1px solid var(--live-dim);background:#020402;color:var(--live);padding:9px 11px;font-size:16px;letter-spacing:1px;text-shadow:0 0 2px var(--live-dim);margin-bottom:12px}
+  .hub .fbtns{display:flex;gap:9px}
+  .hub .fbtn{flex:1;text-align:center;border:1px solid var(--live-dim);color:var(--live);padding:9px;font-size:14px;letter-spacing:1px;text-shadow:0 0 2px var(--live-dim)}
+  .hub .fbtn.solid{background:var(--live);color:#021b06;font-weight:700;text-shadow:none}
+  .fontcard .note{font-size:11px;color:var(--live-dim);line-height:1.5;padding:0 14px 14px}
+  /* font families per option */
+  .fA .hh{font-family:'VT323',monospace;font-size:34px}
+  .fA .hub,.fA .finput,.fA .fbtn,.fA .flabelf,.fA .hstat{font-family:'Share Tech Mono',monospace}
+  .fB .hub,.fB .hh,.fB .finput,.fB .fbtn,.fB .flabelf,.fB .hstat{font-family:'JetBrains Mono',monospace}
+  .fB .hh{font-weight:700;font-size:23px;letter-spacing:0}
+  .fB .fbtn.solid{font-weight:700}
+  .fC .hh{font-family:'Share Tech Mono',monospace;font-weight:700;font-size:24px;letter-spacing:1px}
+  .fC .hub,.fC .finput,.fC .fbtn,.fC .flabelf,.fC .hstat{font-family:'JetBrains Mono',monospace}
+
+  /* ---- WEBSITE background swatches ---- */
+  .swatchset{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;width:100%;max-width:1120px}
+  .swatch{border:1px solid var(--amb-mid);overflow:hidden;display:flex;flex-direction:column}
+  .hero{padding:34px 26px 40px;min-height:230px;display:flex;flex-direction:column;justify-content:center;position:relative}
+  .hero .eb{font-size:11px;letter-spacing:4px;color:#ffb000;opacity:.8;margin-bottom:12px}
+  .hero h3{font-family:'VT323',monospace;font-size:44px;line-height:.95;color:#ffb000;text-shadow:0 0 16px rgba(255,176,0,.3);margin-bottom:12px}
+  .hero p{font-size:13px;line-height:1.6;color:#f3ead9;max-width:88%;margin-bottom:18px}
+  .hero .btn{align-self:flex-start;background:#b5282e;color:#f3ead9;font-size:12px;letter-spacing:2px;padding:9px 18px}
+  .swA .hero{background:#16110d}
+  .swB .hero{background:#141414}
+  .swC .hero{background:
+      radial-gradient(120% 90% at 50% 0%, rgba(255,176,0,.06) 0%, transparent 55%), #0d0f12}
+  .swatch .cap{font-size:11px;letter-spacing:1px;color:var(--amb-dim);line-height:1.55;padding:11px 13px;border-top:1px solid var(--amb-faint);background:#0c0803}
+  .swatch .cap b{color:var(--amb)}
+  .swatch .cap .hex{color:var(--amb-mid);font-size:10px}
+
+  /* ---- callouts ---- */
+  .callouts{max-width:860px;width:100%;display:flex;flex-direction:column;gap:8px;margin-top:6px}
+  .callout{display:flex;gap:9px;align-items:flex-start;font-size:12.5px;color:var(--amb-dim);line-height:1.6}
+  .callout::before{content:"◂";color:var(--amb);flex-shrink:0}
+  .callout b{color:var(--amb)}
+  .callout.green::before{content:"●";color:var(--live);font-size:9px;margin-top:4px}
+  .callout.green b{color:var(--live)}
+  .annot{max-width:860px;text-align:center;font-size:12px;letter-spacing:1px;color:var(--amb);border:1px solid var(--amb-mid);
+    background:rgba(255,176,0,.05);padding:9px 14px;line-height:1.55}
+  .annot b{color:var(--amb-brt)}
+
+  /* ---- view switcher ---- */
+  .switch{position:fixed;bottom:0;left:0;right:0;z-index:200;background:#000;border-top:1px solid var(--amb-dim);
+    display:flex;justify-content:center;flex-wrap:wrap;gap:5px;padding:9px 8px}
+  .switch button{font-family:'Share Tech Mono',monospace;font-size:12px;letter-spacing:1px;color:var(--amb-dim);
+    border:1px solid var(--amb-faint);background:transparent;padding:8px 12px;cursor:pointer}
+  .switch button:hover{color:var(--amb)}
+  .switch button.cur{color:#000;background:var(--amb);border-color:var(--amb);font-weight:700}
+
+  @media(max-width:1000px){
+    .fontset,.swatchset{grid-template-columns:1fr}
+    .disp.land{width:min(900px,95vw)}
+    .land .lphoto{width:38%}
+  }
+</style>
+</head>
+<body>
+
+<div class="pagehead">
+  <h1>BUNKER CLUB — SIGNAGE REDESIGN</h1>
+  <p>Same terminal / CRT skin you liked — rebuilt for the <b>20-foot test</b>. Bigger type, square photos that match Toast's crop, and a proudly-sized live price. Six views. Deep-linkable (#v1–#v6).</p>
+</div>
+<div class="viewcap" id="viewcap"></div>
+<div class="subcap" id="subcap"></div>
+
+<!-- ══════════════════ VIEW 1 — DRINK PROMO REDESIGNED ══════════════════ -->
+<div class="view" id="v1">
+  <div class="row">
+
+    <!-- NEW -->
+    <div class="frameCol">
+      <div class="disp">
+        <div class="ctop"><span class="mark">BUNKER CLUB</span><span class="tid">BUNKER UNIFIED OS v2.1<br>PORTRAIT-MAIN · 11:02 PM</span></div>
+        <div class="zone">
+          <div class="ingr">STRAWBERRY GIN · LEMON · ST. GERMAIN · RHUBARB BITTERS · PROSECCO</div>
+          <div class="drinkbody">
+            <div class="sq">
+              <span class="feed">◉ OPTICAL FEED — LIVE</span>
+              <span class="ph"><b>TOAST PHOTO</b>SQUARE · 1:1</span>
+            </div>
+            <div class="dname">SPUTNIK</div>
+            <div class="prow">
+              <span class="price"><small>$</small>9</span>
+              <span class="flourish">Straight from<br>the vault!</span>
+            </div>
+            <div class="catrow">
+              <span class="cattag">◆ SIGNATURE COCKTAIL</span>
+              <span class="clubmark">BUNKER CLUB<br><span>OKLAHOMA CITY</span></span>
+            </div>
+          </div>
+        </div>
+        <div class="cbot"><span class="now">■ ON AIR</span><span class="tick">NOW POURING · TOP SELLER TONIGHT: GUINNESS</span></div>
+      </div>
+      <div class="flabel"><b>REDESIGNED</b> — 9:16 · portrait-main</div>
+    </div>
+
+    <!-- CURRENT (dimmed) -->
+    <div class="frameCol">
+      <div class="crit">
+        <div class="disp old">
+          <div class="ctop"><span class="mark">BUNKER CLUB</span><span class="tid">v2.1</span></div>
+          <div class="zone">
+            <div class="oldstamp">CIVIL DEFENSE<br>APPROVED</div>
+            <div class="oldeye">TONIGHT'S SPECIAL — CONSUMABLE</div>
+            <div class="oldname">SPUTNIK</div>
+            <div class="oldwin"><span class="ph"><b>OPTICAL FEED</b>tall 3:5 window</span></div>
+            <div class="oldfoot">
+              <div class="oldblurb">Strawberry gin, lemon, st. germain, rhubarb bitters, prosecco…</div>
+              <div class="oldprice">$9</div>
+            </div>
+          </div>
+        </div>
+        <div class="critTag" style="top:150px;right:-96px">tall <b>3:5</b> window ≠ Toast's square crop → letterboxed photo</div>
+        <div class="critTag" style="bottom:26px;right:-70px">price <b>~40px</b>, tucked bottom-right — a footnote</div>
+        <div class="critTag" style="top:60px;left:-88px">name only <b>34px</b>; competes with the stamp</div>
+      </div>
+      <div class="flabel">CURRENT — <b>FOR CONTRAST</b> (dimmed)</div>
+    </div>
+
+  </div>
+
+  <div class="callouts">
+    <div class="callout"><span><b>Square photo</b> matches how the shot is framed on Toast — no more letterboxing a portrait crop into a tall window.</span></div>
+    <div class="callout green"><span><b>Live price rendered green &amp; huge.</b> It's the single most-asked question at the bar; it now reads across the room. Value is live from Toast — staff never re-type it.</span></div>
+    <div class="callout"><span><b>Ingredients strip</b> pinned top (your slide's anatomy), pulled from the Toast blurb, all-caps and legible. Script flourish + category tag stay — themed flavor, but secondary.</span></div>
+  </div>
+</div>
+
+<!-- ══════════════════ VIEW 2 — EVENT & MOMENT CARDS RESCALED ══════════════════ -->
+<div class="view" id="v2">
+  <div class="row">
+
+    <!-- WINDOW -->
+    <div class="frameCol">
+      <div class="disp">
+        <div class="ctop"><span class="mark">BUNKER CLUB</span><span class="tid">PORTRAIT-MAIN · 4:12 PM</span></div>
+        <div class="zone">
+          <div class="evbody">
+            <div class="eyebrow">▸ ON NOW — PROMO WINDOW</div>
+            <div class="evbig" style="font-size:70px">HAPPY<br>HOUR</div>
+            <div class="huge" style="font-size:104px">4–7 PM</div>
+            <div class="directive">ALL DRAFTS &amp; WELL DRINKS — HALF OFF.</div>
+            <hr class="divide">
+            <div class="linkrow">
+              <span class="linkname">GUINNESS</span>
+              <span class="linkprice"><small>$</small>4</span>
+            </div>
+          </div>
+        </div>
+        <div class="cbot"><span class="now">■ ON AIR</span><span class="tick">HAPPY HOUR 4–7 · TRIVIA WED 8PM</span></div>
+      </div>
+      <div class="flabel"><b>WINDOW PROMO</b> — calm rotation card</div>
+    </div>
+
+    <!-- MOMENT ALERT -->
+    <div class="frameCol">
+      <div class="disp">
+        <div class="ctop"><span class="mark">BUNKER CLUB</span><span class="tid">ALL TERMINALS · 1:55 AM</span></div>
+        <div class="zone">
+          <div class="evbody">
+            <div class="eyebrow">■ ALL TERMINALS — PRIORITY BROADCAST ■</div>
+            <div class="huge" style="font-size:84px">LAST<br>CALL</div>
+            <div class="tminus">T−05:00</div>
+            <div class="directive">GET YOUR FINAL ROUND IN.</div>
+          </div>
+        </div>
+        <div class="cbot"><span class="now">■ ON AIR</span><span class="tick">⚠ LAST CALL — BAR CLOSES 2 AM</span></div>
+      </div>
+      <div class="flabel"><b>MOMENT ALERT</b> — full-screen takeover</div>
+    </div>
+
+  </div>
+
+  <div class="annot">THE <b>20-FOOT TEST</b> on every stage: if it doesn't read from the far end of the bar, it's too small. Countdown clock and the one directive line are the payload — everything else is chrome.</div>
+
+  <div class="callouts">
+    <div class="callout"><span><b>Event title ~9%/line, window time hero-sized.</b> The old event card treated the title and time like body copy; here they're the headline.</span></div>
+    <div class="callout"><span>Recurring venue <b>MOMENTS</b> — last call, shot countdowns, infestation countdowns — reuse the docs/13 stage engine (tease → alert → moment → all-clear). One directive, giant clock, minimal chrome.</span></div>
+    <div class="callout green"><span>Linked drink name + price stay <b>live green</b> and large — the promo is only worth showing if the buy is obvious.</span></div>
+  </div>
+</div>
+
+<!-- ══════════════════ VIEW 3 — TOP SELLERS AS A ROTATION SLIDE ══════════════════ -->
+<div class="view" id="v3">
+  <div class="frameCol">
+    <div class="disp">
+      <div class="ctop"><span class="mark">BUNKER CLUB</span><span class="tid">PORTRAIT-MAIN · 11:40 PM</span></div>
+      <div class="zone">
+        <div class="tshead">
+          <h2>TOP SELLERS<br>TONIGHT</h2>
+          <div class="sub">◉ LIVE FROM THE POS — UPDATED 11:39 PM</div>
+        </div>
+        <div class="tslist">
+          <div class="tsrow lead"><div class="tl"><span class="rk">1</span><span class="nm">GUINNESS</span><span class="ct">42<b> SOLD</b></span></div><div class="bar"><i style="width:100%"></i></div></div>
+          <div class="tsrow"><div class="tl"><span class="rk">2</span><span class="nm">SPUTNIK</span><span class="ct">31<b> SOLD</b></span></div><div class="bar"><i style="width:74%"></i></div></div>
+          <div class="tsrow"><div class="tl"><span class="rk">3</span><span class="nm long">GREEN TEA SHOT</span><span class="ct">28<b> SOLD</b></span></div><div class="bar"><i style="width:67%"></i></div></div>
+          <div class="tsrow"><div class="tl"><span class="rk">4</span><span class="nm long">DR. STRANGELOVE</span><span class="ct">19<b> SOLD</b></span></div><div class="bar"><i style="width:45%"></i></div></div>
+          <div class="tsrow"><div class="tl"><span class="rk">5</span><span class="nm">J.F.K.</span><span class="ct">14<b> SOLD</b></span></div><div class="bar"><i style="width:33%"></i></div></div>
+        </div>
+      </div>
+      <div class="cbot"><span class="now">■ ON AIR</span><span class="tick">NOW POURING · SPUTNIK $9 · GREEN TEA SHOT $5 · HAPPY HOUR 4–7</span></div>
+    </div>
+    <div class="flabel"><b>TOP SELLERS</b> — one slide inside the rotation (not its own screen)</div>
+  </div>
+
+  <div class="callouts">
+    <div class="callout"><span><b>One URL per screen.</b> The system decides what shows — trivia goes live → the leaderboard takes over; otherwise the rotation cycles <b>Top Sellers · drink promos · events · broadcasts</b>. No more pointing a TV at a separate <code>/drinks</code> address.</span></div>
+    <div class="callout"><span>Each row ~6% of screen height — rank, name, count, proportional bar — all readable at distance.</span></div>
+    <div class="callout"><span>Staff control the pacing: <b>EDIT ROTATION</b> gains a seconds-per-slide field, so Top Sellers can linger longer than a quick promo.</span></div>
+  </div>
+</div>
+
+<!-- ══════════════════ VIEW 4 — LANDSCAPE VARIANTS ══════════════════ -->
+<div class="view" id="v4">
+  <div class="stack">
+
+    <!-- landscape drink promo -->
+    <div class="frameCol">
+      <div class="disp land">
+        <div class="ctop"><span class="mark">BUNKER CLUB</span><span class="tid">LANDSCAPE-BAR · 11:02 PM</span></div>
+        <div class="zone">
+          <div class="lwrap">
+            <div class="lphoto">
+              <div class="sq"><span class="feed">◉ OPTICAL FEED — LIVE</span><span class="ph"><b>TOAST PHOTO</b>SQUARE · 1:1</span></div>
+            </div>
+            <div class="ltext">
+              <div class="ingr">STRAWBERRY GIN · LEMON · ST. GERMAIN · RHUBARB BITTERS · PROSECCO</div>
+              <div class="dname">SPUTNIK</div>
+              <div class="prow">
+                <span class="price" style="font-size:130px"><small>$</small>9</span>
+                <span class="flourish" style="font-size:44px">Straight from<br>the vault!</span>
+              </div>
+              <div class="catrow" style="margin-top:20px">
+                <span class="cattag">◆ SIGNATURE COCKTAIL</span>
+                <span class="clubmark">BUNKER CLUB</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="cbot"><span class="now">■ ON AIR</span><span class="tick">NOW POURING · TOP SELLER TONIGHT: GUINNESS · HAPPY HOUR 4–7</span></div>
+      </div>
+      <div class="flabel"><b>DRINK PROMO</b> — 16:9 · square photo left, data right</div>
+    </div>
+
+    <!-- landscape top sellers -->
+    <div class="frameCol">
+      <div class="disp land">
+        <div class="ctop"><span class="mark">BUNKER CLUB</span><span class="tid">LANDSCAPE-BAR · 11:40 PM</span></div>
+        <div class="zone">
+          <div class="tsL">
+            <h2>TOP SELLERS TONIGHT</h2>
+            <div class="sub">◉ LIVE FROM THE POS — UPDATED 11:39 PM</div>
+            <div class="grid">
+              <div class="tsrow lead"><div class="tl"><span class="rk">1</span><span class="nm">GUINNESS</span><span class="ct">42<b> SOLD</b></span></div><div class="bar"><i style="width:100%"></i></div></div>
+              <div class="tsrow"><div class="tl"><span class="rk">4</span><span class="nm">DR. STRANGELOVE</span><span class="ct">19<b> SOLD</b></span></div><div class="bar"><i style="width:45%"></i></div></div>
+              <div class="tsrow"><div class="tl"><span class="rk">2</span><span class="nm">SPUTNIK</span><span class="ct">31<b> SOLD</b></span></div><div class="bar"><i style="width:74%"></i></div></div>
+              <div class="tsrow"><div class="tl"><span class="rk">5</span><span class="nm">J.F.K.</span><span class="ct">14<b> SOLD</b></span></div><div class="bar"><i style="width:33%"></i></div></div>
+              <div class="tsrow"><div class="tl"><span class="rk">3</span><span class="nm">GREEN TEA SHOT</span><span class="ct">28<b> SOLD</b></span></div><div class="bar"><i style="width:67%"></i></div></div>
+            </div>
+          </div>
+        </div>
+        <div class="cbot"><span class="now">■ ON AIR</span><span class="tick">NOW POURING · SPUTNIK $9 · GREEN TEA SHOT $5</span></div>
+      </div>
+      <div class="flabel"><b>TOP SELLERS</b> — 16:9 · two-column at distance</div>
+    </div>
+
+  </div>
+  <div class="annot">Same information hierarchy, re-flowed for the wide screen behind the bar. Portrait for the tall screens by the door; landscape for the bar-back TVs — <b>one design language, two aspects</b>.</div>
+</div>
+
+<!-- ══════════════════ VIEW 5 — STAFF UI FONT OPTIONS ══════════════════ -->
+<div class="view" id="v5">
+  <div class="subcap" style="max-width:900px">The <b>display</b> screens above are settled. This is the separate question: the font for the <b>staff-facing</b> hub &amp; forms. Same green terminal palette, same sizes — only the typeface changes. Which reads best on your phone at the bar?</div>
+  <div class="fontset">
+
+    <!-- Option A -->
+    <div class="fontcard fA">
+      <div class="opt">OPTION <b>A</b> — VT323 headers + Share Tech Mono body <i>(current)</i></div>
+      <div class="hub">
+        <div class="hh">SIGNAGE HUB</div>
+        <div class="hstat"><span class="d">■</span> PORTRAIT-MAIN · ON AIR · ROTATION (5 SLIDES)</div>
+        <div class="flabelf">FEATURED DRINK</div>
+        <div class="finput">Sputnik — $9</div>
+        <div class="fbtns"><span class="fbtn">PREVIEW</span><span class="fbtn solid">PUSH LIVE</span></div>
+      </div>
+      <div class="note">Most in-character; the VT323 header is loose &amp; retro but can get soft at small sizes on a phone.</div>
+    </div>
+
+    <!-- Option B -->
+    <div class="fontcard fB">
+      <div class="opt">OPTION <b>B</b> — JetBrains Mono everywhere <i>(your old top-sellers app's font)</i></div>
+      <div class="hub">
+        <div class="hh">SIGNAGE HUB</div>
+        <div class="hstat"><span class="d">■</span> PORTRAIT-MAIN · ON AIR · ROTATION (5 SLIDES)</div>
+        <div class="flabelf">FEATURED DRINK</div>
+        <div class="finput">Sputnik — $9</div>
+        <div class="fbtns"><span class="fbtn">PREVIEW</span><span class="fbtn solid">PUSH LIVE</span></div>
+      </div>
+      <div class="note">Crispest / most legible; headers go bold 700. Loses a little terminal romance for everyday clarity.</div>
+    </div>
+
+    <!-- Option C -->
+    <div class="fontcard fC">
+      <div class="opt">OPTION <b>C</b> — Share Tech Mono headers + JetBrains body <i>(hybrid)</i></div>
+      <div class="hub">
+        <div class="hh">SIGNAGE HUB</div>
+        <div class="hstat"><span class="d">■</span> PORTRAIT-MAIN · ON AIR · ROTATION (5 SLIDES)</div>
+        <div class="flabelf">FEATURED DRINK</div>
+        <div class="finput">Sputnik — $9</div>
+        <div class="fbtns"><span class="fbtn">PREVIEW</span><span class="fbtn solid">PUSH LIVE</span></div>
+      </div>
+      <div class="note">Keeps a terminal header voice but reads body/data in the sharpest font — the compromise pick.</div>
+    </div>
+
+  </div>
+  <div class="annot" style="margin-top:14px">Independent of the font: <b>option to bump every staff body size up one step</b> (13px → 15px, 15px → 17px). Bigger wins on a phone regardless of which typeface you choose.</div>
+</div>
+
+<!-- ══════════════════ VIEW 6 — WEBSITE BACKGROUND ══════════════════ -->
+<div class="view" id="v6">
+  <div class="subcap" style="max-width:900px">You felt the public site reads too <b>brown</b>. Same amber headline + cream text on three darker bases — pick the mood.</div>
+  <div class="swatchset">
+
+    <div class="swatch swA">
+      <div class="hero">
+        <div class="eb">OKLAHOMA CITY · EST. IN THE FALLOUT</div>
+        <h3>DUCK &amp; COVER<br>AT THE BAR</h3>
+        <p>Cocktails, cold drafts, and Wednesday trivia — 20 feet under 23rd Street.</p>
+        <span class="btn">SEE THE MENU</span>
+      </div>
+      <div class="cap"><b>A · Current</b> — warm brown-black <span class="hex">#16110d</span>. The reddish cast you're reacting to.</div>
+    </div>
+
+    <div class="swatch swB">
+      <div class="hero">
+        <div class="eb">OKLAHOMA CITY · EST. IN THE FALLOUT</div>
+        <h3>DUCK &amp; COVER<br>AT THE BAR</h3>
+        <p>Cocktails, cold drafts, and Wednesday trivia — 20 feet under 23rd Street.</p>
+        <span class="btn">SEE THE MENU</span>
+      </div>
+      <div class="cap"><b>B · Neutral charcoal</b> <span class="hex">#141414</span>. Clean &amp; modern; amber pops hardest, zero warmth bias.</div>
+    </div>
+
+    <div class="swatch swC">
+      <div class="hero">
+        <div class="eb">OKLAHOMA CITY · EST. IN THE FALLOUT</div>
+        <h3>DUCK &amp; COVER<br>AT THE BAR</h3>
+        <p>Cocktails, cold drafts, and Wednesday trivia — 20 feet under 23rd Street.</p>
+        <span class="btn">SEE THE MENU</span>
+      </div>
+      <div class="cap"><b>C · Cool near-black</b> <span class="hex">#0d0f12</span> + a faint amber glow up top. Dark &amp; moody, keeps a hint of warmth.</div>
+    </div>
+
+  </div>
+  <div class="annot" style="margin-top:14px">The brand red button (<b>#B5282E</b>) and cream text stay put in all three — only the base shifts. My lean: <b>C</b> for mood, <b>B</b> if you want maximum crispness.</div>
+</div>
+
+<!-- ══════════════════ VIEW SWITCHER ══════════════════ -->
+<div class="switch" id="switch">
+  <button data-v="v1" class="cur">1 · DRINK PROMO</button>
+  <button data-v="v2">2 · EVENT &amp; MOMENT</button>
+  <button data-v="v3">3 · TOP SELLERS</button>
+  <button data-v="v4">4 · LANDSCAPE</button>
+  <button data-v="v5">5 · STAFF FONTS</button>
+  <button data-v="v6">6 · SITE BACKGROUND</button>
+</div>
+
+<script>
+const CAPS = {
+  v1:{cap:'VIEW 1 · <b>Drink promo — redesigned</b> (portrait)', sub:"Your slide anatomy in our CRT skin: ingredients strip up top, square Toast photo, giant name, and a proudly huge live price. Dimmed frame on the right is today's layout, for contrast."},
+  v2:{cap:'VIEW 2 · <b>Event &amp; moment cards — rescaled</b> (portrait)', sub:"A calm WINDOW promo (happy hour) and a full-screen MOMENT alert (last call), both sized for the far end of the bar."},
+  v3:{cap:'VIEW 3 · <b>Top sellers as a rotation slide</b> (portrait)', sub:"The drinks leaderboard becomes one slide in the rotation — no separate screen URL. The system decides when it shows."},
+  v4:{cap:'VIEW 4 · <b>Landscape variants</b> (16:9)', sub:"The same drink promo and top-sellers hierarchy, re-flowed for the wide screens behind the bar."},
+  v5:{cap:'VIEW 5 · <b>Staff UI font options</b>', sub:"The readability question for the hub &amp; forms you'll actually tap. Three typefaces, identical everything else."},
+  v6:{cap:'VIEW 6 · <b>Website background — less brown</b>', sub:"Three darker bases for the public site, same amber + cream on top."},
+};
+const cap = document.getElementById('viewcap');
+const sub = document.getElementById('subcap');
+function show(v){
+  document.querySelectorAll('.view').forEach(el=>el.classList.toggle('on', el.id===v));
+  document.querySelectorAll('#switch button').forEach(b=>b.classList.toggle('cur', b.dataset.v===v));
+  cap.innerHTML = CAPS[v].cap;
+  sub.innerHTML = CAPS[v].sub;
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+document.querySelectorAll('#switch button').forEach(b=>b.addEventListener('click',()=>{location.hash=b.dataset.v;show(b.dataset.v);}));
+window.addEventListener('hashchange',()=>{const v=location.hash.slice(1); if(CAPS[v]) show(v);});
+show(CAPS[location.hash.slice(1)] ? location.hash.slice(1) : 'v1');
+</script>
+</body>
+</html>

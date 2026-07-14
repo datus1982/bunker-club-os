@@ -348,6 +348,7 @@ function typeBadge(item: AdminItem): string {
     case "announcement": return "MESSAGE";
     case "image_only": return "IMAGE";
     case "celebration": return "MESSAGE";
+    case "top_sellers": return "TOP 5";
     default: return "ITEM";
   }
 }

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { DisplayCanvas } from "@/shared/DisplayCanvas";
-import { useDrinksBoard, type DrinkItem } from "./useDrinks";
+import { useDrinksBoard, itemNameFont, type DrinkItem } from "./useDrinks";
 
 /**
  * /drinks — top-selling drinks board (docs/08 port). Portrait DisplayCanvas (1080×1920),
@@ -8,19 +8,11 @@ import { useDrinksBoard, type DrinkItem } from "./useDrinks";
  * (AUTH-1 b) — never calls Toast. Perf rules (docs/01): no infinite animations (the
  * legacy CRT flicker loop is dropped; the terminal theme's static scanline stays), no
  * sub-30s polling (realtime only). Rotation is a finite CSS fade per group change.
+ *
+ * NOTE (Phase 8): this route stays for back-compat + the docs/03 drinks-first pilot, but is
+ * no longer the recommended TV target — Top Sellers now rotates INSIDE signage. Point TVs at
+ * /signage/s/{slug}; itemNameFont is now shared with the signage Top Sellers slide.
  */
-
-// Dynamic item-name sizing (ported from legacy getItemNameFontSize), tuned for 1080 canvas.
-function itemNameFont(name: string): number {
-  const n = name.length;
-  if (n <= 12) return 84;
-  if (n <= 18) return 76;
-  if (n <= 24) return 68;
-  if (n <= 30) return 60;
-  if (n <= 36) return 54;
-  if (n <= 42) return 48;
-  return 42;
-}
 
 export function DrinksDisplay() {
   const { config, groups, sales } = useDrinksBoard();

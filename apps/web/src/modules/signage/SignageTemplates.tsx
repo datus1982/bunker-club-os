@@ -1,6 +1,7 @@
 import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import type { Orientation, SignageItem, ToastCacheRow } from "./useSignage";
 import { EventWindowCard, EventMessageCard, EventTeaseCard } from "./EventStages";
+import { useTopSellers, itemNameFont, type DrinkItem } from "@/modules/leaderboard/useDrinks";
 
 /**
  * Signage template components (docs/09). Each renders one item inside the slot's
@@ -211,6 +212,94 @@ export function Celebration({ item, orientation }: TemplateProps) {
   );
 }
 
+/* ── TOP SELLERS (live sales leaderboard as ONE rotation slide) ─────────────── */
+/**
+ * The whole-menu top sellers rendered as a single rotation slide (Phase 8 ROTATION
+ * UNIFICATION — docs/signage-redesign-mockup.html views 3/4). Live realtime reader of
+ * sales_cache (MAIN_MENU_ALL) via the SHARED leaderboard hook — the same source, POS gate,
+ * and name auto-shrink the /drinks board uses. Distance-first: each row is rank · name ·
+ * count · a proportional bar (bar #1 = 100%, the rest relative to the leader). No fields to
+ * author — the slide's content is entirely live. No sub-30s polling (realtime only).
+ */
+type TSz = { header: number; sub: number; rank: number; count: number; countLabel: number; barH: number; rowGap: number; nameScale: number };
+const TS_SIZES: Record<Orientation, TSz> = {
+  portrait: { header: 92, sub: 30, rank: 60, count: 66, countLabel: 26, barH: 28, rowGap: 22, nameScale: 1 },
+  landscape: { header: 70, sub: 24, rank: 46, count: 52, countLabel: 22, barH: 20, rowGap: 14, nameScale: 0.74 },
+};
+
+export function TopSellers({ orientation }: TemplateProps) {
+  const { items, loading } = useTopSellers();
+  const z = TS_SIZES[orientation];
+  const maxCount = items.length ? Math.max(...items.map((it) => it.sales_count), 1) : 1;
+
+  const header = (
+    <div style={{ flexShrink: 0, textAlign: "center", paddingBottom: 18, borderBottom: "1px solid var(--terminal-green)", marginBottom: orientation === "portrait" ? 28 : 14 }}>
+      <div style={{ fontSize: z.header, fontWeight: 700, letterSpacing: 3, lineHeight: 0.98, textTransform: "uppercase", textShadow: "0 0 16px var(--terminal-glow)" }}>
+        TOP SELLERS TONIGHT
+      </div>
+      <div className="sig-live" style={{ fontSize: z.sub, letterSpacing: 4, marginTop: 10, opacity: 0.95 }}>◉ LIVE FROM THE POS</div>
+    </div>
+  );
+
+  if (loading && items.length === 0) {
+    return (
+      <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
+        {header}
+        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", fontSize: z.count, opacity: 0.6 }}>SYNCING SALES…</div>
+      </div>
+    );
+  }
+  if (items.length === 0) {
+    return (
+      <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
+        {header}
+        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", textAlign: "center", fontSize: orientation === "portrait" ? 52 : 44, opacity: 0.65, letterSpacing: 2 }}>
+          &gt;&gt; AWAITING TONIGHT'S FIRST POURS
+        </div>
+      </div>
+    );
+  }
+
+  const rows = items.map((it) => (
+    <TopSellerRow key={`${it.rank}-${it.item_name}`} item={it} z={z} pct={(it.sales_count / maxCount) * 100} />
+  ));
+
+  return (
+    <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
+      {header}
+      {orientation === "portrait" ? (
+        <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", justifyContent: "center", gap: z.rowGap }}>
+          {rows}
+        </div>
+      ) : (
+        // Landscape: two columns, column-major so the left reads ranks 1-3, the right 4-5.
+        <div style={{ flex: 1, minHeight: 0, display: "grid", gridTemplateColumns: "1fr 1fr", gridTemplateRows: "repeat(3, auto)", gridAutoFlow: "column", alignContent: "center", columnGap: 56, rowGap: z.rowGap }}>
+          {rows}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TopSellerRow({ item, z, pct }: { item: DrinkItem; z: TSz; pct: number }) {
+  const lead = item.rank === 1;
+  const nameSize = Math.round(itemNameFont(item.item_name) * z.nameScale);
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 16 }}>
+        <span style={{ fontSize: z.rank, fontWeight: 700, lineHeight: 1, width: z.rank + 8, flexShrink: 0, opacity: lead ? 1 : 0.5, textAlign: "right" }}>{item.rank}</span>
+        <span style={{ fontSize: nameSize, fontWeight: 700, lineHeight: 1.02, letterSpacing: 1, textTransform: "uppercase", flex: 1, minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "clip", textShadow: lead ? "0 0 12px var(--terminal-glow)" : undefined, opacity: lead ? 1 : 0.92 }}>{item.item_name}</span>
+        <span style={{ fontSize: z.count, fontWeight: 700, lineHeight: 1, whiteSpace: "nowrap", flexShrink: 0, opacity: lead ? 1 : 0.9 }}>
+          {item.sales_count}<span style={{ fontSize: z.countLabel, opacity: 0.6, marginLeft: 8, letterSpacing: 1 }}>SOLD</span>
+        </span>
+      </div>
+      <div style={{ height: z.barH, border: "1px solid var(--terminal-green)", position: "relative" }}>
+        <div style={{ position: "absolute", inset: 0, right: "auto", width: `${Math.max(2, pct)}%`, background: "var(--terminal-green)", boxShadow: "0 0 10px var(--terminal-glow)", opacity: lead ? 1 : 0.82 }} />
+      </div>
+    </div>
+  );
+}
+
 /* ── dispatcher ─────────────────────────────────────────────────────────────── */
 export interface TemplateProps {
   item: SignageItem;
@@ -225,6 +314,7 @@ export function TemplateView(props: TemplateProps) {
     case "announcement": return <Announcement {...props} />;
     case "image_only": return <ImageOnly {...props} />;
     case "celebration": return <Celebration {...props} />;
+    case "top_sellers": return <TopSellers {...props} />;
     // Phase 7 rotation-level event cards (docs/13) — materialized from a live event.
     case "event_window": return <EventWindowCard item={props.item} toast={props.toast} orientation={props.orientation} />;
     case "event_message": return <EventMessageCard item={props.item} toast={props.toast} orientation={props.orientation} />;

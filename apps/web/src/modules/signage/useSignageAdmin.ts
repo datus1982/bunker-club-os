@@ -333,6 +333,18 @@ export async function setItemActive(id: string, active: boolean): Promise<void> 
   if (error) throw error;
 }
 
+/** Per-item on-screen duration (EDIT ROTATION seconds control). Writes the existing
+ *  duration_seconds int (present since 0009, first surfaced in a UI in Phase 8). The public
+ *  SlotDisplay rotation advance already honors this per-item (no fixed interval). */
+export async function setItemDuration(id: string, seconds: number): Promise<void> {
+  const { error } = await supabase.from("signage_items").update({ duration_seconds: seconds }).eq("id", id);
+  if (error) throw error;
+}
+
+/** The seconds a rotation slide can dwell (EDIT ROTATION picker). Top Sellers wants a longer
+ *  dwell than a quick promo, so the ladder runs up to a full minute. */
+export const DURATION_CHOICES = [8, 12, 20, 30, 45, 60] as const;
+
 /** Swap sort_order with the adjacent item in the same slot (▲/▼ reorder). */
 export async function reorderItem(a: AdminItem, b: AdminItem): Promise<void> {
   const e1 = await supabase.from("signage_items").update({ sort_order: b.sort_order }).eq("id", a.id);

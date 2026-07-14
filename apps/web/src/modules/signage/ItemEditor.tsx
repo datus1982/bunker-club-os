@@ -25,6 +25,7 @@ const TEMPLATES: { key: Template; label: string; blurb: string; icon: string }[]
   { key: "announcement", label: "ANNOUNCEMENT", blurb: "Text bulletin, typewriter", icon: "▮" },
   { key: "image_only", label: "IMAGE", blurb: "Full-frame photo / flyer", icon: "🖼" },
   { key: "celebration", label: "CELEBRATION", blurb: "Birthday, bachelor, congrats", icon: "✸" },
+  { key: "top_sellers", label: "TOP SELLERS", blurb: "Live top-5 from the POS", icon: "📊" },
 ];
 
 const SKINS = ["birthday", "bachelor", "bachelorette", "anniversary", "congrats"] as const;
@@ -244,6 +245,7 @@ function ItemForm({
       {template === "event" && <EventFields fields={fields} setField={setField} />}
       {template === "announcement" && <AnnouncementFields fields={fields} setField={setField} />}
       {template === "image_only" && <ImageOnlyFields fields={fields} setField={setField} />}
+      {template === "top_sellers" && <TopSellersFields />}
       {template === "celebration" && (
         <CelebrationFields
           fields={fields}
@@ -396,6 +398,22 @@ function AnnouncementFields({ fields, setField }: FieldProps) {
 }
 
 /* ── image_only ─────────────────────────────────────────────────────────── */
+function TopSellersFields() {
+  return (
+    <div className="terminal-border" style={{ padding: "12px 14px", display: "flex", flexDirection: "column", gap: 6, fontSize: 15, lineHeight: 1.5 }}>
+      <div style={{ fontSize: 17, fontWeight: 700, letterSpacing: 1 }}>📊 LIVE SLIDE — NOTHING TO FILL IN</div>
+      <div style={{ opacity: 0.75 }}>
+        Shows tonight's whole-menu <b>TOP 5</b> sellers straight from the POS, updating live as pours ring up.
+        No name, price, or photo to set — just pick the slot, how long it lingers, and switch it ON.
+      </div>
+      <div style={{ opacity: 0.6, fontSize: 14 }}>
+        Respects the POS-visibility rule automatically (a product pulled off the POS view never shows here).
+        Tip: give it a longer duration than a quick promo so guests can read all five.
+      </div>
+    </div>
+  );
+}
+
 function ImageOnlyFields({ fields, setField }: FieldProps) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
