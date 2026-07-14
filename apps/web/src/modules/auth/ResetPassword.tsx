@@ -97,7 +97,7 @@ export function ResetPassword() {
   };
 
   return (
-    <div className="terminal-theme" style={wrap}>
+    <div className="terminal-theme staff-ui" style={wrap}>
       <div className="terminal-border" style={{ width: 460, maxWidth: "100%", padding: 32 }}>
         <div style={{ fontSize: 24, opacity: 0.7, letterSpacing: 3 }}>BUNKER UNIFIED OS</div>
         <h1 style={{ fontSize: 40, fontWeight: 700, letterSpacing: 2, marginTop: 4 }}>SET NEW PASSWORD</h1>
@@ -146,7 +146,7 @@ export function ResetPassword() {
 }
 
 const MONO = "'VT323','Share Tech Mono',monospace";
-const wrap: React.CSSProperties = { minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: 40, fontFamily: MONO };
+const wrap: React.CSSProperties = { minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: "40px clamp(12px, 5vw, 40px)", fontFamily: MONO };
 const col: React.CSSProperties = { display: "flex", flexDirection: "column", gap: 16 };
 const fieldCol: React.CSSProperties = { display: "flex", flexDirection: "column", gap: 4 };
 const lbl: React.CSSProperties = { fontSize: 20, opacity: 0.8 };
