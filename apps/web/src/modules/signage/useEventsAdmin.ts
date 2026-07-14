@@ -294,6 +294,9 @@ export interface EventDraft {
   title: string;
   body: string;
   cta: string;
+  // custom image (public URL) + basic formatting (Phase 8). null/"" clears.
+  imageUrl?: string | null;
+  align?: "left" | "center";
   // preserve existing fields on edit (live_count, final_stats, skin overrides)
   baseFields?: Record<string, unknown>;
   status?: EventStatus;
@@ -310,6 +313,12 @@ function buildFields(draft: EventDraft): Record<string, unknown> {
   // render paths (window card reads body-or-directive, alert reads directive).
   if (draft.kind === "moment") set("directive", draft.body);
   else delete f.directive;
+  // Custom image URL (Phase 8) — the display cards prefer it over a linked drink photo.
+  if (draft.imageUrl && draft.imageUrl.trim()) f.image_url = draft.imageUrl.trim();
+  else delete f.image_url;
+  // Basic formatting — only persist a non-default alignment; center is the board default.
+  if (draft.align === "left") f.align = "left";
+  else delete f.align;
   return f;
 }
 

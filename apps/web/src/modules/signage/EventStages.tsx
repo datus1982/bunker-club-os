@@ -1,8 +1,10 @@
 import { useEffect, useState, type ReactNode } from "react";
 import type { Orientation, SignageItem, ToastCacheRow } from "./useSignage";
 import {
-  secondsToFire, formatTMinus, ALERT_PULSE_MS, type LiveEvent, type EventStage,
+  secondsToFire, formatTMinus, balanceHeadline, ALERT_PULSE_MS, type LiveEvent, type EventStage,
 } from "./eventStage";
+import { parseInline, alignOf, alignStyle } from "./richText";
+import { SquarePhoto } from "./signagePhoto";
 
 /**
  * Event-stage renderers for the Phase 7 events DISPLAY engine (docs/13). Visual language
@@ -92,12 +94,24 @@ function skinOf(name: string): Skin {
   return SKINS[name] ?? SKINS.generic;
 }
 
-/* ── sizes ──────────────────────────────────────────────────────────────────── */
-type Sz = { eyebrow: number; big: number; tminus: number; counter: number; price: number; body: number; icon: number; pad: number; gap: number };
+/* ── sizes (docs/signage-redesign view 2 — "20-foot test": titles/times/counters hero-sized,
+ *   chrome demoted to secondary) ───────────────────────────────────────────────── */
+type Sz = { eyebrow: number; big: number; time: number; tminus: number; counter: number; price: number; body: number; icon: number; pad: number; gap: number };
 const SIZES: Record<Orientation, Sz> = {
-  portrait: { eyebrow: 30, big: 128, tminus: 250, counter: 210, price: 108, body: 40, icon: 180, pad: 60, gap: 22 },
-  landscape: { eyebrow: 26, big: 100, tminus: 190, counter: 168, price: 88, body: 36, icon: 140, pad: 52, gap: 18 },
+  portrait: { eyebrow: 32, big: 150, time: 280, tminus: 340, counter: 230, price: 150, body: 46, icon: 190, pad: 60, gap: 24 },
+  landscape: { eyebrow: 27, big: 116, time: 210, tminus: 250, counter: 180, price: 120, body: 40, icon: 150, pad: 52, gap: 20 },
 };
+
+/**
+ * Headline auto-shrink (mirrors SignageTemplates.headlineFont; kept local to avoid a
+ * module cycle — SignageTemplates imports the event cards from here). Sizes off the
+ * longest \n-line so short heroes fill the screen and long ones still fit.
+ */
+function headlineFont(text: string, o: Orientation): number {
+  const maxLine = Math.max(1, ...text.split("\n").map((l) => l.trim().length));
+  const p = maxLine <= 6 ? 200 : maxLine <= 9 ? 168 : maxLine <= 12 ? 140 : maxLine <= 16 ? 116 : maxLine <= 22 ? 92 : 76;
+  return o === "portrait" ? p : Math.round(p * 0.72);
+}
 
 /* ── field helpers ──────────────────────────────────────────────────────────── */
 function fstr(fields: Record<string, unknown>, key: string): string | undefined {
@@ -114,10 +128,17 @@ function formatPrice(p: number): string {
   return Number.isInteger(p) ? String(p) : p.toFixed(2);
 }
 function Lines({ text }: { text: string }): ReactNode {
+  // fontSize:inherit is load-bearing: the global `.terminal-theme span{font-size:1.5rem}`
+  // rule otherwise clamps these line spans to 24px (a direct rule beats the parent div's
+  // inherited size), collapsing every multi-line headline/directive to body text.
+  // parseInline turns `**bold**` into <strong> (Phase 8 basic formatting).
   return text.split("\n").map((l, i) => (
-    <span key={i} style={{ display: "block" }}>{l}</span>
+    <span key={i} style={{ display: "block", fontSize: "inherit" }}>{parseInline(l)}</span>
   ));
 }
+
+/* Square edge (fixed-canvas px) for a custom event-card image, per orientation. */
+const EVT_IMG: Record<Orientation, number> = { portrait: 560, landscape: 380 };
 
 /* ── local 1s clock for countdowns (state-driven, no network, no CSS loop) ────── */
 function useSecondTick(): number {
@@ -160,6 +181,7 @@ function AlertStage({ event, orientation }: { event: LiveEvent; orientation: Ori
   const cta = fstr(event.fields, "cta");
   // Inverse-video pulse in the final 10s — a bounded (10-iteration) class, not infinite.
   const pulse = remaining > 0 && remaining <= ALERT_PULSE_MS / 1000;
+  const hero = balanceHeadline(headline);
 
   return (
     <div
@@ -167,14 +189,14 @@ function AlertStage({ event, orientation }: { event: LiveEvent; orientation: Ori
       style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", padding: z.pad, gap: z.gap }}
     >
       {sk.hazard && <div className="evt-hazard-frame" />}
-      <div style={{ fontSize: z.eyebrow, letterSpacing: 6, opacity: 0.85 }}>■ ALL TERMINALS — PRIORITY BROADCAST ■</div>
-      <div style={{ fontSize: z.big, fontWeight: 700, lineHeight: 0.95, textTransform: "uppercase", textShadow: "0 0 20px var(--terminal-glow)" }}>
-        <Lines text={headline} />
+      <div style={{ fontSize: z.eyebrow, letterSpacing: 6, opacity: 0.8 }}>■ ALL TERMINALS — PRIORITY BROADCAST ■</div>
+      <div style={{ fontSize: headlineFont(hero, orientation), fontWeight: 700, lineHeight: 0.9, textTransform: "uppercase", textShadow: "0 0 22px var(--terminal-glow)" }}>
+        <Lines text={hero} />
       </div>
-      <div style={{ fontSize: z.tminus, fontWeight: 700, lineHeight: 1, fontVariantNumeric: "tabular-nums", textShadow: "0 0 26px var(--terminal-glow)" }}>
+      <div style={{ fontSize: z.tminus, fontWeight: 700, lineHeight: 0.9, fontVariantNumeric: "tabular-nums", textShadow: "0 0 30px var(--terminal-glow)" }}>
         {formatTMinus(remaining)}
       </div>
-      {directive && <div style={{ fontSize: z.body, opacity: 0.9, lineHeight: 1.4, maxWidth: "82%" }}><Lines text={directive} /></div>}
+      {directive && <div style={{ fontSize: z.body, opacity: 0.9, lineHeight: 1.35, maxWidth: "86%" }}><Lines text={directive} /></div>}
       {cta && <div style={{ fontSize: z.body * 1.1, fontWeight: 700, letterSpacing: 2 }}>{cta}</div>}
     </div>
   );
@@ -186,14 +208,14 @@ function MomentStage({ event, orientation }: { event: LiveEvent; orientation: Or
   const sk = skinOf(event.skin);
   const now = useSecondTick();
   const elapsed = event.fire_at ? Math.max(0, Math.floor((now - new Date(event.fire_at).getTime()) / 1000)) : 0;
-  const headline = fstr(event.fields, "moment_headline") ?? sk.momentHeadline;
+  const headline = balanceHeadline(fstr(event.fields, "moment_headline") ?? sk.momentHeadline);
   const icon = fstr(event.fields, "moment_icon") ?? sk.momentIcon;
   const sub = fstr(event.fields, "moment_sub") ?? sk.momentSub;
 
   return (
     <div className="evt-stage" style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", padding: z.pad, gap: z.gap }}>
       <div className="evt-liftoff" style={{ fontSize: z.icon, lineHeight: 1 }}>{icon}</div>
-      <div style={{ fontSize: z.big, fontWeight: 700, lineHeight: 0.95, textTransform: "uppercase", textShadow: "0 0 24px var(--terminal-glow)" }}>
+      <div style={{ fontSize: headlineFont(headline, orientation), fontWeight: 700, lineHeight: 0.9, textTransform: "uppercase", textShadow: "0 0 26px var(--terminal-glow)" }}>
         <Lines text={headline} />
       </div>
       <div style={{ fontSize: z.body, opacity: 0.85 }}>
@@ -210,7 +232,7 @@ function EventWindowStage({ event, orientation, toast }: { event: LiveEvent; ori
   const now = useSecondTick();
 
   const src = event.toast_guid ? toast.get(event.toast_guid) : undefined;
-  const name = fstr(event.fields, "title") ?? src?.name ?? event.name;
+  const name = balanceHeadline(fstr(event.fields, "title") ?? src?.name ?? event.name);
   const nameLive = !fstr(event.fields, "title") && !!src?.name;
   const price = fnum(event.fields, "price") ?? src?.price ?? undefined;
 
@@ -229,11 +251,16 @@ function EventWindowStage({ event, orientation, toast }: { event: LiveEvent; ori
   const count = fnum(event.fields, "live_count");
   const counterLabel = fstr(event.fields, "counter_label") ?? sk.counterLabel;
 
+  // Custom image wins over the linked drink photo (Phase 8 owner ask); shown in the square.
+  const customImg = fstr(event.fields, "image_url");
+  const align = alignOf(event.fields);
+
   return (
-    <div className="evt-stage" style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", padding: z.pad, gap: z.gap }}>
+    <div className="evt-stage" style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", justifyContent: "center", padding: z.pad, gap: z.gap, ...alignStyle(align) }}>
       <div style={{ fontSize: z.eyebrow, letterSpacing: 4, opacity: 0.8 }}>{sk.windowLabel} — {remainClock} REMAINING</div>
-      <div style={{ fontSize: z.big, fontWeight: 700, lineHeight: 0.95, textTransform: "uppercase", textShadow: "0 0 18px var(--terminal-glow)" }}>
-        {nameLive ? <span className="sig-live">{name}</span> : name}
+      {customImg && <SquarePhoto src={customImg} size={EVT_IMG[orientation]} feed="OPTICAL FEED" />}
+      <div style={{ fontSize: headlineFont(name, orientation), fontWeight: 700, lineHeight: 0.9, textTransform: "uppercase", textShadow: "0 0 20px var(--terminal-glow)" }}>
+        {nameLive ? <span className="sig-live" style={{ fontSize: "inherit" }}><Lines text={name} /></span> : <Lines text={name} />}
       </div>
       {price != null && !posHidden && (
         <div className="sig-live" style={{ fontSize: z.price, fontWeight: 700, lineHeight: 1, textShadow: "0 0 16px var(--terminal-glow)" }}>
@@ -263,48 +290,70 @@ function AllClearStage({ event, orientation }: { event: LiveEvent; orientation: 
   const headline = fstr(event.fields, "all_clear_headline") ?? sk.allClearHeadline;
   const body = fstr(event.fields, "all_clear_body") ?? sk.allClearBody;
 
-  const tallyEl = tally
-    ? <Lines text={tally} />
+  const balTally = tally ? balanceHeadline(tally) : undefined;
+  const tallyEl = balTally
+    ? <Lines text={balTally} />
     : count != null
       ? <><span className="sig-live">{count}</span> DWELLERS {sk.tallyVerb}</>
-      : <Lines text={headline} />;
+      : <Lines text={balanceHeadline(headline)} />;
 
   return (
     <div className="evt-stage" style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", padding: z.pad, gap: z.gap }}>
       <div style={{ fontSize: z.eyebrow, letterSpacing: 4, opacity: 0.8 }}>{headline}</div>
-      <div style={{ fontSize: z.big, fontWeight: 700, lineHeight: 1, textTransform: "uppercase", textShadow: "0 0 20px var(--terminal-glow)" }}>{tallyEl}</div>
-      <div style={{ fontSize: z.body, opacity: 0.85, lineHeight: 1.4, maxWidth: "80%" }}><Lines text={body} /></div>
+      <div style={{ fontSize: headlineFont(balTally ?? balanceHeadline(headline), orientation) * 0.9, fontWeight: 700, lineHeight: 0.95, textTransform: "uppercase", textShadow: "0 0 22px var(--terminal-glow)" }}>{tallyEl}</div>
+      <div style={{ fontSize: z.body, opacity: 0.85, lineHeight: 1.35, maxWidth: "82%" }}><Lines text={body} /></div>
     </div>
   );
 }
 
 /* ═══════════════ rotation-level cards (ride the normal rotation) ═════════════ */
 
-/** Active WINDOW promo card — title/body/cta + optional live price (docs/13). */
+/** Active WINDOW promo card (docs/13 + redesign view 2 "calm rotation card"): title
+ *  auto-shrunk hero, a huge TIME hero (fields.time, e.g. "4–7 PM", when authored), one
+ *  directive line, then a divide + linked drink name/price in live green. */
 export function EventWindowCard({ item, toast, orientation }: { item: SignageItem; toast: Map<string, ToastCacheRow>; orientation: Orientation }) {
   const z = SIZES[orientation];
   const ev = item.event;
   const src = ev?.toast_guid ? toast.get(ev.toast_guid) : undefined;
-  const title = fstr(item.fields, "title") ?? ev?.name ?? "HAPPY HOUR";
+  const title = balanceHeadline(fstr(item.fields, "title") ?? ev?.name ?? "HAPPY HOUR");
+  const time = fstr(item.fields, "time"); // hero time window — authored only (never invented)
   const body = fstr(item.fields, "body") ?? fstr(item.fields, "directive") ?? src?.public_blurb;
   const cta = fstr(item.fields, "cta");
 
   const linkedName = src?.name;
   const price = fnum(item.fields, "price") ?? src?.price ?? undefined;
+  // POS gate: suppress the price ($) if the linked drink is 86'd / off-POS (0034). The
+  // whole card is normally auto-hidden upstream too, but parity keeps this self-safe.
+  const posHidden = !!src && (src.out_of_stock || src.pos_visible === false);
+
+  // Custom image (Phase 8) — shown in the square, above the title. Wins over drink photo.
+  const customImg = fstr(item.fields, "image_url");
+  const align = alignOf(item.fields);
+
+  const linkEl = cta
+    ? <span style={{ fontSize: z.body * 1.2, fontWeight: 700, letterSpacing: 2 }}>{cta}</span>
+    : linkedName ? <span className="sig-live" style={{ fontSize: Math.round(headlineFont(linkedName, orientation) * 0.5), fontWeight: 700 }}>{linkedName}</span> : null;
 
   return (
-    <div style={{ height: "100%", display: "flex", flexDirection: "column", position: "relative", gap: z.gap }}>
+    <div style={{ height: "100%", display: "flex", flexDirection: "column", justifyContent: "center", position: "relative", gap: z.gap, ...alignStyle(align) }}>
       <div style={{ fontSize: z.eyebrow, letterSpacing: 6, opacity: 0.7 }}>▸ ON NOW — PROMO WINDOW</div>
-      <div style={{ fontSize: z.big * 0.85, fontWeight: 700, lineHeight: 0.98, textTransform: "uppercase", textShadow: "0 0 14px var(--terminal-glow)" }}>{title}</div>
-      {body && <div style={{ fontSize: z.body, opacity: 0.9, lineHeight: 1.45, maxWidth: "80%" }}>{body}</div>}
-      <div style={{ marginTop: "auto", display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 24 }}>
-        <div style={{ fontSize: z.body * 1.05, fontWeight: 700, letterSpacing: 2 }}>{cta ?? (linkedName ? <span className="sig-live">{linkedName}</span> : null)}</div>
-        {price != null && (
-          <div className="sig-live" style={{ fontSize: z.price, fontWeight: 700, lineHeight: 1, textShadow: "0 0 16px var(--terminal-glow)" }}>
-            <small style={{ fontSize: z.price * 0.5, verticalAlign: "top" }}>$</small>{formatPrice(price)}
+      {customImg && <SquarePhoto src={customImg} size={EVT_IMG[orientation]} feed="OPTICAL FEED" />}
+      <div style={{ fontSize: headlineFont(title, orientation), fontWeight: 700, lineHeight: 0.9, textTransform: "uppercase", textShadow: "0 0 16px var(--terminal-glow)" }}><Lines text={title} /></div>
+      {time && <div style={{ fontSize: z.time, fontWeight: 700, lineHeight: 0.85, textShadow: "0 0 24px var(--terminal-glow)" }}>{time}</div>}
+      {body && <div style={{ fontSize: z.body, opacity: 0.9, lineHeight: 1.35, maxWidth: "84%" }}><Lines text={body} /></div>}
+      {(linkEl || (price != null && !posHidden)) && (
+        <>
+          <div style={{ borderTop: "1px solid var(--terminal-glow)", width: "60%", margin: `${z.gap * 0.4}px 0` }} />
+          <div style={{ display: "flex", alignItems: "baseline", justifyContent: "center", gap: 28, flexWrap: "wrap" }}>
+            {linkEl}
+            {price != null && !posHidden && (
+              <span className="sig-live" style={{ fontSize: z.price, fontWeight: 700, lineHeight: 0.85, textShadow: "0 0 18px var(--terminal-glow)" }}>
+                <small style={{ fontSize: z.price * 0.5, verticalAlign: "top" }}>$</small>{formatPrice(price)}
+              </span>
+            )}
           </div>
-        )}
-      </div>
+        </>
+      )}
     </div>
   );
 }
@@ -317,12 +366,15 @@ export function EventMessageCard({ item, toast, orientation }: { item: SignageIt
   const title = fstr(item.fields, "title") ?? ev?.name ?? "A MESSAGE";
   const body = fstr(item.fields, "body") ?? fstr(item.fields, "message");
   const price = fnum(item.fields, "price") ?? src?.price ?? undefined;
+  const customImg = fstr(item.fields, "image_url");
+  const align = alignOf(item.fields);
 
   return (
-    <div style={{ height: "100%", display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", textAlign: "center", gap: z.gap }}>
+    <div style={{ height: "100%", display: "flex", flexDirection: "column", justifyContent: "center", gap: z.gap, ...alignStyle(align) }}>
       <div style={{ fontSize: z.eyebrow, letterSpacing: 6, opacity: 0.7 }}>◈ SHELTER BULLETIN</div>
-      <div style={{ fontSize: z.big * 0.8, fontWeight: 700, lineHeight: 1, textTransform: "uppercase", textShadow: "0 0 14px var(--terminal-glow)" }}>{title}</div>
-      {body && <div style={{ fontSize: z.body * 1.1, opacity: 0.9, lineHeight: 1.5, maxWidth: "82%" }}>{body}</div>}
+      {customImg && <SquarePhoto src={customImg} size={EVT_IMG[orientation]} feed="OPTICAL FEED" />}
+      <div style={{ fontSize: headlineFont(title, orientation), fontWeight: 700, lineHeight: 0.92, textTransform: "uppercase", textShadow: "0 0 16px var(--terminal-glow)" }}>{parseInline(title)}</div>
+      {body && <div style={{ fontSize: z.body * 1.15, opacity: 0.9, lineHeight: 1.45, maxWidth: "84%" }}><Lines text={body} /></div>}
       {price != null && src?.name && (
         <div style={{ fontSize: z.body, marginTop: z.gap }}>
           <span className="sig-live">{src.name}</span> · <span className="sig-live"><small>$</small>{formatPrice(price)}</span>

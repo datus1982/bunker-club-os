@@ -103,3 +103,50 @@ export function formatTMinus(totalSeconds: number): string {
   const s = String(totalSeconds % 60).padStart(2, "0");
   return `T−${m}:${s}`;
 }
+
+/**
+ * Balance a headline into ≤ maxLines lines so the auto-shrink can size off the
+ * longest LINE instead of the whole string ("ROCKET LAUNCH IMMINENT" as one
+ * 22-char line renders 92px; balanced to "ROCKET LAUNCH\nIMMINENT" it earns
+ * 140px+ — the owner's 20-foot test). Authored line breaks are respected
+ * verbatim; otherwise pick the partition (1..maxLines lines) whose longest
+ * line is shortest, preferring fewer lines on ties.
+ */
+export function balanceHeadline(text: string, maxLines = 3): string {
+  if (text.includes("\n")) return text;
+  const words = text.trim().split(/\s+/).filter(Boolean);
+  if (words.length <= 1) return text.trim();
+
+  // Longest line of the best partition of words into exactly n lines (DP over
+  // contiguous splits; word counts here are tiny, so O(w² · n) is nothing).
+  const len = (a: number, b: number) => words.slice(a, b).join(" ").length;
+  const partition = (n: number): string[] | null => {
+    if (n > words.length) return null;
+    // best[i][k] = minimal longest-line for words[0..i) split into k lines
+    const best: number[][] = Array.from({ length: words.length + 1 }, () => Array(n + 1).fill(Infinity));
+    const cut: number[][] = Array.from({ length: words.length + 1 }, () => Array(n + 1).fill(0));
+    best[0][0] = 0;
+    for (let k = 1; k <= n; k++) {
+      for (let i = 1; i <= words.length; i++) {
+        for (let j = k - 1; j < i; j++) {
+          const v = Math.max(best[j][k - 1], len(j, i));
+          if (v < best[i][k]) { best[i][k] = v; cut[i][k] = j; }
+        }
+      }
+    }
+    if (!Number.isFinite(best[words.length][n])) return null;
+    const lines: string[] = [];
+    for (let i = words.length, k = n; k >= 1; k--) { const j = cut[i][k]; lines.unshift(words.slice(j, i).join(" ")); i = j; }
+    return lines;
+  };
+
+  let chosen = [words.join(" ")];
+  let chosenMax = chosen[0].length;
+  for (let n = 2; n <= maxLines; n++) {
+    const lines = partition(n);
+    if (!lines) break;
+    const m = Math.max(...lines.map((l) => l.length));
+    if (m < chosenMax) { chosen = lines; chosenMax = m; }
+  }
+  return chosen.join("\n");
+}

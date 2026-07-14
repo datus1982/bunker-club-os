@@ -3,8 +3,10 @@ import { Modal, Field, input as inputStyle, btnGhost } from "@/modules/trivia/ui
 import type { Orientation, SignageItem, Template, ToastCacheRow } from "./useSignage";
 import {
   type AdminItem, type AdminSlot, type ItemDraft, type Recurrence,
-  saveItem, uploadSignageImage, linkedMoment, saveMoment, toastMap,
+  saveItem, uploadCustomImage, linkedMoment, saveMoment, toastMap,
 } from "./useSignageAdmin";
+import { FormatControls } from "./signageAdminShared";
+import { alignOf } from "./richText";
 import { SignagePreview } from "./SignagePreview";
 
 /**
@@ -25,13 +27,14 @@ const TEMPLATES: { key: Template; label: string; blurb: string; icon: string }[]
   { key: "announcement", label: "ANNOUNCEMENT", blurb: "Text bulletin, typewriter", icon: "▮" },
   { key: "image_only", label: "IMAGE", blurb: "Full-frame photo / flyer", icon: "🖼" },
   { key: "celebration", label: "CELEBRATION", blurb: "Birthday, bachelor, congrats", icon: "✸" },
+  { key: "top_sellers", label: "TOP SELLERS", blurb: "Live top-5 from the POS", icon: "📊" },
 ];
 
 const SKINS = ["birthday", "bachelor", "bachelorette", "anniversary", "congrats"] as const;
 const DOW = ["SU", "MO", "TU", "WE", "TH", "FR", "SA"];
 
 export function ItemEditor({
-  slots, toastRows, defaultSlotId, editing, presetTemplate, nextSortOrder, onClose, onSaved,
+  slots, toastRows, defaultSlotId, editing, presetTemplate, venueName, nextSortOrder, onClose, onSaved,
 }: {
   slots: AdminSlot[];
   toastRows: ToastCacheRow[];
@@ -40,6 +43,8 @@ export function ItemEditor({
   /** Skip the template picker and open straight into this template (hub quick actions).
    *  Only applies when creating (editing === null); editing always uses its own template. */
   presetTemplate?: Template | null;
+  /** Venue mark for the live preview's drink_special footer (threaded to SignagePreview). */
+  venueName?: string;
   nextSortOrder: (slotId: string | null) => number;
   onClose: () => void;
   onSaved: () => void;
@@ -75,6 +80,7 @@ export function ItemEditor({
       toastRows={toastRows}
       defaultSlotId={defaultSlotId}
       editing={editing}
+      venueName={venueName}
       nextSortOrder={nextSortOrder}
       onClose={onClose}
       onSaved={onSaved}
@@ -84,13 +90,14 @@ export function ItemEditor({
 
 /* ── the form ───────────────────────────────────────────────────────────── */
 function ItemForm({
-  template, slots, toastRows, defaultSlotId, editing, nextSortOrder, onClose, onSaved,
+  template, slots, toastRows, defaultSlotId, editing, venueName, nextSortOrder, onClose, onSaved,
 }: {
   template: Template;
   slots: AdminSlot[];
   toastRows: ToastCacheRow[];
   defaultSlotId: string | null;
   editing: AdminItem | null;
+  venueName?: string;
   nextSortOrder: (slotId: string | null) => number;
   onClose: () => void;
   onSaved: () => void;
@@ -234,7 +241,7 @@ function ItemForm({
       {/* Live preview — pinned first so edits are visible immediately (docs/09). */}
       <div>
         <div style={caption}>LIVE PREVIEW · {orientation.toUpperCase()}</div>
-        <SignagePreview item={draftItem} toast={tmap} orientation={orientation} maxWidth={orientation === "portrait" ? 240 : 380} />
+        <SignagePreview item={draftItem} toast={tmap} orientation={orientation} venueName={venueName} maxWidth={orientation === "portrait" ? 240 : 380} />
       </div>
 
       {/* Template-specific fields */}
@@ -244,6 +251,7 @@ function ItemForm({
       {template === "event" && <EventFields fields={fields} setField={setField} />}
       {template === "announcement" && <AnnouncementFields fields={fields} setField={setField} />}
       {template === "image_only" && <ImageOnlyFields fields={fields} setField={setField} />}
+      {template === "top_sellers" && <TopSellersFields />}
       {template === "celebration" && (
         <CelebrationFields
           fields={fields}
@@ -373,6 +381,10 @@ function EventFields({ fields, setField }: FieldProps) {
         <Field label="TIME"><input placeholder="8:00 PM" value={str(fields.time) ?? ""} onChange={(e) => setField("time", e.target.value)} style={sel} /></Field>
       </div>
       <Field label="BLURB"><textarea rows={2} value={str(fields.blurb) ?? ""} onChange={(e) => setField("blurb", e.target.value)} style={{ ...sel, resize: "vertical" }} /></Field>
+      {/* Event renderer defaults LEFT (alignOf(item.fields,"left")) — the control must match
+          that fallback and persist "center"/"left" EXPLICITLY so CENTER is reachable (never ""
+          which setField deletes → falls back to the template default). */}
+      <FormatControls align={alignOf(fields, "left")} onAlign={(a) => setField("align", a)} />
       <ImageField fields={fields} setField={setField} />
       <TreatmentToggle fields={fields} setField={setField} />
     </div>
@@ -391,11 +403,30 @@ function AnnouncementFields({ fields, setField }: FieldProps) {
           <option style={opt} value="HIGH">HIGH</option>
         </select>
       </Field>
+      {/* Announcement renderer defaults LEFT — match that fallback and persist explicitly. */}
+      <FormatControls align={alignOf(fields, "left")} onAlign={(a) => setField("align", a)} />
+      <ImageField fields={fields} setField={setField} />
     </div>
   );
 }
 
 /* ── image_only ─────────────────────────────────────────────────────────── */
+function TopSellersFields() {
+  return (
+    <div className="terminal-border" style={{ padding: "12px 14px", display: "flex", flexDirection: "column", gap: 6, fontSize: 15, lineHeight: 1.5 }}>
+      <div style={{ fontSize: 17, fontWeight: 700, letterSpacing: 1 }}>📊 LIVE SLIDE — NOTHING TO FILL IN</div>
+      <div style={{ opacity: 0.75 }}>
+        Shows tonight's whole-menu <b>TOP 5</b> sellers straight from the POS, updating live as pours ring up.
+        No name, price, or photo to set — just pick the slot, how long it lingers, and switch it ON.
+      </div>
+      <div style={{ opacity: 0.6, fontSize: 14 }}>
+        Respects the POS-visibility rule automatically (a product pulled off the POS view never shows here).
+        Tip: give it a longer duration than a quick promo so guests can read all five.
+      </div>
+    </div>
+  );
+}
+
 function ImageOnlyFields({ fields, setField }: FieldProps) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
@@ -438,6 +469,8 @@ function CelebrationFields({
       <Field label="HONOREE NAME"><input value={str(fields.honoree) ?? ""} onChange={(e) => setField("honoree", e.target.value)} style={sel} /></Field>
       <Field label="OCCASION LINE (optional)"><input placeholder="auto: skin default" value={str(fields.occasion) ?? ""} onChange={(e) => setField("occasion", e.target.value)} style={sel} /></Field>
       <Field label="MESSAGE (optional)"><textarea rows={2} value={str(fields.message) ?? ""} onChange={(e) => setField("message", e.target.value)} style={{ ...sel, resize: "vertical" }} /></Field>
+      {/* Celebration renderer defaults CENTER — keep that fallback; persist explicitly. */}
+      <FormatControls align={alignOf(fields)} onAlign={(a) => setField("align", a)} />
       <Field label="DATE"><input type="date" value={celebDate} onChange={(e) => setCelebDate(e.target.value)} style={sel} /></Field>
       <div>
         <div style={{ fontSize: 15, opacity: 0.7, marginBottom: 4 }}>PHOTO (optional)</div>
@@ -511,7 +544,7 @@ function ImageField({ fields, setField }: FieldProps) {
     setBusy(true);
     setErr(null);
     try {
-      const publicUrl = await uploadSignageImage(file);
+      const publicUrl = await uploadCustomImage(file);
       setField("image_url", publicUrl);
     } catch (er) {
       setErr(er instanceof Error ? er.message : "upload failed");

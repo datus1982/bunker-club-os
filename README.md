@@ -68,15 +68,20 @@ unattended screen. Append `?calibrate` to any of them for the install test patte
 |---|---|
 | `/leaderboard` | trivia leaderboard (portrait) |
 | `/game-display` | audience Q&A (landscape) |
-| `/drinks` | Toast top sellers (portrait) |
 | `https://os.bunkerokc.com/signage/s/portrait-main` | signage slot — portrait |
 | `https://os.bunkerokc.com/signage/s/landscape-bar` | signage slot — landscape |
+| `/drinks` | legacy standalone Top Sellers board — back-compat / docs/03 pilot only, **not** the recommended TV target |
 
-**Point a TV at the clean `/signage/s/{slug}` URL above** — these are the kiosk
-targets (rotation + takeovers + game mode). `?preview=1` is a STAFF-ONLY preview
-that renders the rotation *without* takeovers or game mode, so never use a
-`?preview=1` link on a TV. The `/signage` admin (each slot card) has a COPY button
-for the clean URL.
+**Point every TV at the clean `/signage/s/{slug}` URL above — one URL per screen.**
+The system decides what shows: trivia goes live → the leaderboard takes over;
+otherwise the rotation cycles **Top Sellers · drink promos · events · broadcasts**.
+**Top Sellers now rotates INSIDE signage** (a `top_sellers` rotation item), so you no
+longer point a TV at the separate `/drinks` address — that route stays only for
+back-compat and the docs/03 drinks-first pilot. Pace each slide with the per-item
+SECONDS control in **EDIT ROTATION** (Top Sellers usually wants a longer dwell than a
+quick promo). `?preview=1` is a STAFF-ONLY preview that renders the rotation *without*
+takeovers or game mode, so never use a `?preview=1` link on a TV. The `/signage` admin
+(each slot card) has a COPY button for the clean URL.
 
 Per-physical-screen slot inventory (terminal #, location, inset) is recorded here
 as screens are calibrated in Phase 5.

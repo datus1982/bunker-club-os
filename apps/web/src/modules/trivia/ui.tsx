@@ -18,12 +18,16 @@ export const input: CSSProperties = {
   fontFamily: MONO,
 };
 
+// Canonical staff-button geometry (owner-ratified consistency pass, 2026-07-13): one
+// primary (filled), one secondary (ghost/outlined), one danger (amber outline), all at
+// minHeight 44 with matching padding. Font-size + letter-spacing come from the staff-ui
+// theme rules (.staff-ui button → 20px), so they're intentionally not re-set here.
 export const btnPrimary: CSSProperties = {
   background: "var(--terminal-green)",
   color: "#000",
   border: "1px solid var(--terminal-green)",
-  padding: "10px 18px",
-  fontSize: 24,
+  padding: "10px 20px",
+  minHeight: 44,
   fontWeight: 700,
   cursor: "pointer",
   fontFamily: MONO,
@@ -33,8 +37,8 @@ export const btnGhost: CSSProperties = {
   background: "transparent",
   color: "var(--terminal-green)",
   border: "1px solid var(--terminal-green)",
-  padding: "8px 14px",
-  fontSize: 22,
+  padding: "10px 18px",
+  minHeight: 44,
   cursor: "pointer",
   fontFamily: MONO,
 };

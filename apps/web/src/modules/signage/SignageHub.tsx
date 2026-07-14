@@ -7,7 +7,7 @@ import {
   type AdminItem, type AdminSlot, type ScheduledEvent,
 } from "./useSignageAdmin";
 import {
-  resolveRotation, resolveSlotMode, useLiveEvents, activeMoment,
+  resolveRotation, resolveSlotMode, useLiveEvents, activeMoment, useVenue,
   type SlotMode, type SignageItem, type ToastCacheRow, type Template,
 } from "./useSignage";
 import {
@@ -39,6 +39,7 @@ export function SignageHub() {
   // Same horizon-gated live-event feed the TVs read (signage_events_live) — so the MODE
   // chip resolves the EXACT ladder SlotDisplay renders (hub/TV must never disagree, PR #12).
   const liveEventsQ = useLiveEvents();
+  const venueQ = useVenue();
 
   const slots = slotsQ.data ?? [];
   const items = itemsQ.data ?? [];
@@ -176,6 +177,7 @@ export function SignageHub() {
           defaultSlotId={slots[0]?.id ?? null}
           editing={editItem}
           presetTemplate={preset}
+          venueName={venueQ.data?.name}
           nextSortOrder={(slotId) => {
             const list = itemsBySlot.get(slotId) ?? [];
             return list.length ? Math.max(...list.map((i) => i.sort_order)) + 1 : 0;
@@ -348,6 +350,7 @@ function typeBadge(item: AdminItem): string {
     case "announcement": return "MESSAGE";
     case "image_only": return "IMAGE";
     case "celebration": return "MESSAGE";
+    case "top_sellers": return "TOP 5";
     default: return "ITEM";
   }
 }

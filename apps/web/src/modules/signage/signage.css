@@ -66,6 +66,51 @@
   filter: grayscale(1) brightness(1.05) sepia(1) hue-rotate(-8deg) saturate(4);
 }
 
+/* ── DRINK PROMO redesign (docs/signage-redesign-mockup.html view 1 / 4) ─────── */
+/* Ingredients / blurb strip pinned to the top of the card, all-caps and legible. */
+.sig-ingr {
+  text-align: center;
+  text-transform: uppercase;
+  letter-spacing: 5px;
+  line-height: 1.35;
+  opacity: 0.9;
+  border-bottom: 1px solid var(--terminal-glow);
+  padding-bottom: 16px;
+  text-shadow: 0 0 8px var(--terminal-glow);
+  flex-shrink: 0;
+}
+/* Square photo area — matches how the shot is framed on Toast (1:1, object-fit cover).
+   Reuses .sig-viewport (border + scanline + feed cap) for the photo case; .sig-sq-ph is
+   the labelled placeholder box when no image is mirrored yet. */
+.sig-sq {
+  position: relative;
+  aspect-ratio: 1 / 1;
+  flex-shrink: 0;
+}
+.sig-sq-ph {
+  background:
+    repeating-linear-gradient(135deg, rgba(255, 176, 0, 0.05) 0 14px, transparent 14px 28px), #060402;
+  border: 2px solid var(--terminal-green);
+  box-shadow: inset 0 0 60px rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+/* Cream ink for the script flourish. Re-points the theme var so it beats the global
+   `.terminal-theme * { color: var(--terminal-green) !important }` rule (same technique
+   as .sig-live / .signage-amber). font-family is NOT !important-forced, so the cursive
+   face applies; falls back to a system script if Caveat isn't installed. */
+.sig-cream {
+  --terminal-green: #f3ead9;
+  --terminal-glow: rgba(243, 234, 217, 0.28);
+}
+.sig-flourish {
+  font-family: 'Caveat', 'Snell Roundhand', 'Segoe Script', cursive;
+  transform: rotate(-4deg);
+  line-height: 1;
+}
+
 /* ── Finite transitions (perf rule: one-shot per content entry; no loops) ────── */
 .sig-enter {
   animation: sigEnter 380ms ease-out;

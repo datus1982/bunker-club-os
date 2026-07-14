@@ -21,11 +21,15 @@ export function SignagePreview({
   item,
   toast,
   orientation,
+  venueName,
   maxWidth = 340,
 }: {
   item: SignageItem;
   toast: Map<string, ToastCacheRow>;
   orientation: Orientation;
+  /** Venue mark for the drink_special card's brand line — threaded so the preview shows
+   *  the same footer the real board does (venue-scope; never hardcoded here). */
+  venueName?: string;
   maxWidth?: number;
 }) {
   const boxRef = useRef<HTMLDivElement>(null);
@@ -75,7 +79,7 @@ export function SignagePreview({
             color: "var(--terminal-green)",
           }}
         >
-          <TemplateView item={item} toast={toast} orientation={orientation} />
+          <TemplateView item={item} toast={toast} orientation={orientation} venueName={venueName} />
         </div>
       </div>
     </div>

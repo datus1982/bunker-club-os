@@ -146,7 +146,7 @@ function SlotScreen({
                 <EventStageView event={moment.event} stage={moment.stage} orientation={slot.orientation} toast={toast} />
               </div>
             ) : (
-              <Rotation slot={slot} rotation={rotation} toast={toast} teaseEvent={tease} />
+              <Rotation slot={slot} rotation={rotation} toast={toast} teaseEvent={tease} venueName={venueName} />
             )}
           </div>
           <ChromeFooter ticker={ticker} live={mode !== "rotation"} />
@@ -163,7 +163,7 @@ function SlotScreen({
 }
 
 /* ── Rotation ───────────────────────────────────────────────────────────────── */
-function Rotation({ slot, rotation, toast, teaseEvent }: { slot: Slot; rotation: SignageItem[]; toast: ToastMap; teaseEvent: LiveEvent | null }) {
+function Rotation({ slot, rotation, toast, teaseEvent, venueName }: { slot: Slot; rotation: SignageItem[]; toast: ToastMap; teaseEvent: LiveEvent | null; venueName: string }) {
   const [index, setIndex] = useState(0);
   // `turn` counts every slot advance. A MOMENT TEASE interstitial takes the every-4th turn
   // (turn % 4 === 3 ≈ once per ~4 min), pausing the content index so nothing is skipped.
@@ -208,7 +208,7 @@ function Rotation({ slot, rotation, toast, teaseEvent }: { slot: Slot; rotation:
     <div key={contentKey} className="sig-enter" style={{ position: "absolute", inset: 0, padding: padByOrientation, display: "flex", flexDirection: "column" }}>
       {teaseTurn && teaseEvent
         ? <EventTeaseCard event={teaseEvent} orientation={slot.orientation} />
-        : current && <TemplateView item={current} toast={toast} orientation={slot.orientation} />}
+        : current && <TemplateView item={current} toast={toast} orientation={slot.orientation} venueName={venueName} />}
     </div>
   );
 }
@@ -238,7 +238,9 @@ function ChromeFooter({ ticker, live }: { ticker: TickerLine[]; live: boolean })
 
   return (
     <footer style={{ flexShrink: 0, borderTop: "2px solid var(--terminal-green)", padding: "16px 40px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 24, fontSize: 26 }}>
-      <span style={{ flexShrink: 0 }}>{live ? "■ LIVE" : "■ ONLINE"}</span>
+      {/* Dual-phosphor: the ON AIR / LIVE status light is a live-state indicator, so it
+          reads green like the mockup's `.cbot .now` — a single restrained green accent. */}
+      <span className="sig-live" style={{ flexShrink: 0 }}>{live ? "■ ON AIR" : "■ ONLINE"}</span>
       {/* Reprint (key-remount) — no scroll animation (docs/09 perf + authenticity). */}
       <span key={ti} className={`sig-enter${line.live ? " sig-live" : ""}`} style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
         {line.text}

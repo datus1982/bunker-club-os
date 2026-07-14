@@ -1,7 +1,8 @@
 import { useMemo, useState, type CSSProperties } from "react";
 import { useMutation } from "@tanstack/react-query";
 import type { ToastCacheRow, EventKind } from "./useSignage";
-import { ToastSourcePicker } from "./signageAdminShared";
+import { ToastSourcePicker, ImageUploadField, FormatControls } from "./signageAdminShared";
+import { alignOf, type Align } from "./richText";
 import {
   DOW, DOW_LABEL, VENUE_TZ,
   saveEvent, fireNowEvent, abortEvent, deleteEvent,
@@ -81,6 +82,8 @@ export function EventEditor({
   const [title, setTitle] = useState(str(f.title));
   const [body, setBody] = useState(str(f.body) || str(f.directive) || str(f.message));
   const [cta, setCta] = useState(str(f.cta));
+  const [imageUrl, setImageUrl] = useState<string>(str(f.image_url));
+  const [align, setAlign] = useState<Align>(alignOf(f));
 
   const [err, setErr] = useState<string | null>(null);
 
@@ -97,9 +100,11 @@ export function EventEditor({
     alert_minutes: alertMinutes,
     interrupt_game: interruptGame,
     title, body, cta,
+    imageUrl,
+    align,
     baseFields: editing?.fields,
     status: editing?.status,
-  }), [editing, name, kind, skin, toastGuid, mode, date, time, days, windowMinutes, teaseMinutes, alertMinutes, interruptGame, title, body, cta]);
+  }), [editing, name, kind, skin, toastGuid, mode, date, time, days, windowMinutes, teaseMinutes, alertMinutes, interruptGame, title, body, cta, imageUrl, align]);
 
   // Live plain-language preview of exactly what the manager just built (no cron, ever).
   const preview = useMemo(() => {
@@ -236,8 +241,17 @@ export function EventEditor({
           <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Headline (defaults to the name)" style={inp} />
           <textarea rows={2} value={body} onChange={(e) => setBody(e.target.value)} placeholder={kind === "moment" ? "Directive / body line" : "Body line"} style={{ ...inp, resize: "vertical" }} />
           <input value={cta} onChange={(e) => setCta(e.target.value)} placeholder="Call to action (optional)" style={inp} />
+          <FormatControls align={align} onAlign={setAlign} />
         </div>
       </Labeled>
+
+      {/* CUSTOM IMAGE — shown in the card's square (wins over a linked drink photo). */}
+      <ImageUploadField
+        url={imageUrl || undefined}
+        onChange={(u) => setImageUrl(u)}
+        label="IMAGE (optional)"
+        note="Shows in the card's square. A custom image overrides a linked drink photo."
+      />
 
       {/* DRINK LINK */}
       <ToastSourcePicker rows={toastRows} selected={toastGuid} onSelect={setToastGuid} />

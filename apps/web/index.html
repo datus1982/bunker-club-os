@@ -59,14 +59,18 @@
          route-level code splitting (see App.tsx). -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <!-- JetBrains Mono (400/500/700) added for the staff-UI readability pass (Font C,
+         owner-ratified 2026-07-13): Share Tech Mono headers + JetBrains Mono body on
+         staff surfaces. Public displays + website are unaffected (own fonts). Same
+         non-render-blocking load strategy; one extra family on the same request. -->
     <link
       rel="preload"
       as="style"
-      href="https://fonts.googleapis.com/css2?family=VT323&family=Share+Tech+Mono&display=swap"
+      href="https://fonts.googleapis.com/css2?family=VT323&family=Share+Tech+Mono&family=JetBrains+Mono:wght@400;500;700&display=swap"
       onload="this.onload=null;this.rel='stylesheet'"
     />
     <noscript>
-      <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=VT323&family=Share+Tech+Mono&display=swap" />
+      <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=VT323&family=Share+Tech+Mono&family=JetBrains+Mono:wght@400;500;700&display=swap" />
     </noscript>
     <title>BUNKER UNIFIED OS</title>
     <!-- Static default SEO/OpenGraph block (W1). The public site normally manages

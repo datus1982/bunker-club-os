@@ -1,10 +1,13 @@
-import { useMemo, useState, type CSSProperties } from "react";
+import { useMemo, useRef, useState, type CSSProperties } from "react";
 import { useMutation } from "@tanstack/react-query";
 import {
-  activeTakeover, dismissTakeover, sendTakeover, deleteItem, setItemActive, reorderItem, featuredItems,
+  activeTakeover, dismissTakeover, sendTakeover, deleteItem, setItemActive, setItemDuration, reorderItem, featuredItems,
+  uploadCustomImage,
+  DURATION_CHOICES,
   type AdminItem, type AdminTakeover, type Recurrence, type ScreenHealth,
 } from "./useSignageAdmin";
 import type { EventKind, ToastCacheRow } from "./useSignage";
+import type { Align } from "./richText";
 
 /**
  * Shared staff-signage UI, lifted verbatim out of the old single-page templater so the
@@ -22,7 +25,7 @@ export const iconBtn: CSSProperties = { background: "transparent", color: "var(-
 export const field: CSSProperties = { background: "#000", color: "var(--terminal-green)", border: "1px solid var(--terminal-green)", padding: "10px 12px", fontSize: 20, fontFamily: MONO, minHeight: 44 };
 export const chip: CSSProperties = { background: "transparent", color: "var(--terminal-green)", border: "1px solid var(--terminal-green)", padding: "8px 12px", fontSize: 16, cursor: "pointer", fontFamily: MONO, minHeight: 44 };
 export const badge: CSSProperties = { fontSize: 13, letterSpacing: 1, border: "1px solid var(--terminal-green)", padding: "2px 6px", opacity: 0.85 };
-export const caption: CSSProperties = { fontSize: 14, letterSpacing: 2, opacity: 0.55 };
+export const caption: CSSProperties = { fontSize: 16, letterSpacing: 2, opacity: 0.55 };
 
 export function SectionLabel({ children, style }: { children: React.ReactNode; style?: CSSProperties }) {
   return <div style={{ fontSize: 20, letterSpacing: 3, opacity: 0.7, margin: "0 0 10px", ...style }}>{children}</div>;
@@ -109,20 +112,42 @@ export function ItemRow({
   const del = useMutation({ mutationFn: () => deleteItem(item.id), onSuccess: onChanged });
   const up = useMutation({ mutationFn: () => reorderItem(item, prev!), onSuccess: onChanged });
   const down = useMutation({ mutationFn: () => reorderItem(item, next!), onSuccess: onChanged });
+  const dur = useMutation({ mutationFn: (secs: number) => setItemDuration(item.id, secs), onSuccess: onChanged });
 
   return (
     <div className="terminal-border" style={{ padding: "10px 12px", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", opacity: item.active ? 1 : 0.5 }}>
       <div style={{ display: "flex", flexDirection: "column", gap: 2, flex: "1 1 200px", minWidth: 0 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-          <span style={badge}>{item.template.replace("_", " ").toUpperCase()}</span>
+          <span style={badge}>{item.template.replace(/_/g, " ").toUpperCase()}</span>
           {item.recurrence && <span className="u-amber" style={{ fontSize: 13, letterSpacing: 1 }}>↻ RECURS</span>}
           {item.show_on_website && <span style={{ fontSize: 13, letterSpacing: 1 }} title="Published to the public website">🌐 WEB</span>}
           {hideReason && <span className="u-amber" style={{ fontSize: 13 }}>{hideReason}</span>}
         </div>
         <div style={{ fontSize: 20, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{summarize(item)}</div>
-        <div style={{ fontSize: 14, opacity: 0.6 }}>{scheduleLabel(item)}</div>
+        <div style={{ fontSize: 14, opacity: 0.6 }}>{scheduleLabel(item)} · {item.duration_seconds}s ON SCREEN</div>
       </div>
-      <div style={{ display: "flex", gap: 6, alignItems: "center", flexShrink: 0 }}>
+      {/* minWidth:0 + shrinkable so that when this control cluster wraps to its own line
+          at ≤390px it is constrained to the row width and its own flexWrap engages (the
+          wider JetBrains glyphs otherwise pushed it past the viewport — 2026-07-13). */}
+      <div style={{ display: "flex", gap: 6, alignItems: "center", flex: "1 1 auto", minWidth: 0, flexWrap: "wrap", justifyContent: "flex-end" }}>
+        {/* Per-item on-screen SECONDS — the timing control (writes duration_seconds; the
+            public rotation advance already honors it per-item, no fixed interval). */}
+        <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 13, opacity: 0.85 }}>
+          <span style={{ letterSpacing: 1 }} title="How long this slide stays on screen">SECS</span>
+          <select
+            value={DURATION_CHOICES.includes(item.duration_seconds as (typeof DURATION_CHOICES)[number]) ? item.duration_seconds : "custom"}
+            onChange={(e) => { const n = parseInt(e.target.value); if (Number.isFinite(n)) dur.mutate(n); }}
+            aria-label="Seconds on screen"
+            style={{ background: "#000", color: "var(--terminal-green)", border: "1px solid var(--terminal-green)", fontFamily: MONO, fontSize: 15, minHeight: 44, padding: "0 6px", cursor: "pointer" }}
+          >
+            {!DURATION_CHOICES.includes(item.duration_seconds as (typeof DURATION_CHOICES)[number]) && (
+              <option value="custom" style={{ background: "#000" }}>{item.duration_seconds}s</option>
+            )}
+            {DURATION_CHOICES.map((sc) => (
+              <option key={sc} value={sc} style={{ background: "#000" }}>{sc}s</option>
+            ))}
+          </select>
+        </label>
         <button type="button" onClick={() => up.mutate()} disabled={first} style={iconBtn} aria-label="Move up">▲</button>
         <button type="button" onClick={() => down.mutate()} disabled={last} style={iconBtn} aria-label="Move down">▼</button>
         <button type="button" onClick={() => toggle.mutate()} className={item.active ? "u-fill u-ink" : ""} style={{ ...iconBtn, minWidth: 62 }}>{item.active ? "● ON" : "○ OFF"}</button>
@@ -235,6 +260,7 @@ export function summarize(item: AdminItem): string {
     case "announcement": return g("text") || g("message") || "Announcement";
     case "image_only": return g("caption") || "Image";
     case "celebration": return `${(g("skin") || "celebration").toUpperCase()} — ${g("honoree") || "guest"}`;
+    case "top_sellers": return "Top sellers — live top-5 from the POS";
     default: return item.template;
   }
 }
@@ -273,6 +299,84 @@ export function EventKindBadge({ kind, style }: { kind: EventKind; style?: CSSPr
     return <span style={{ ...base, opacity: 1 }}>MESSAGE</span>;
   }
   return <span style={{ ...base, opacity: 0.72 }}>WINDOW</span>;
+}
+
+/* ── custom image upload (shared by EventEditor + ItemEditor) ─────────────────── */
+// One control for every custom image field. Client-resizes/re-encodes to a ≤1600px JPEG
+// (EXIF stripped by the canvas re-encode) and stores the public URL in fields.image_url.
+// Shows a square thumbnail + REPLACE / REMOVE. Writes to the module-gated uploads/ prefix
+// (RLS 0037). `url` is the current fields.image_url (undefined when none).
+export function ImageUploadField({
+  url, onChange, label = "IMAGE (optional)", note,
+}: {
+  url: string | undefined;
+  onChange: (url: string) => void;
+  label?: string;
+  note?: string;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const ref = useRef<HTMLInputElement>(null);
+
+  const onPick = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      onChange(await uploadCustomImage(file));
+    } catch (er) {
+      setErr(er instanceof Error ? er.message : "upload failed");
+    } finally {
+      setBusy(false);
+      if (ref.current) ref.current.value = "";
+    }
+  };
+
+  return (
+    <div className="terminal-border" style={{ padding: "10px 12px", display: "flex", flexDirection: "column", gap: 8 }}>
+      <span style={caption}>{label}</span>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+        {url && <img src={url} alt="" style={{ width: 72, height: 72, objectFit: "cover", border: "1px solid var(--terminal-green)", flexShrink: 0 }} />}
+        <input ref={ref} type="file" accept="image/*" onChange={onPick} style={{ display: "none" }} />
+        <button type="button" onClick={() => ref.current?.click()} disabled={busy} style={ghost}>
+          {busy ? "UPLOADING…" : url ? "REPLACE" : "UPLOAD IMAGE"}
+        </button>
+        {url && <button type="button" onClick={() => onChange("")} style={ghost}>REMOVE</button>}
+      </div>
+      {note && <div style={{ fontSize: 14, opacity: 0.55 }}>{note}</div>}
+      {err && <div className="u-red" style={{ fontSize: 15 }}>⚠ {err}</div>}
+    </div>
+  );
+}
+
+/* ── formatting controls (deliberately basic: alignment segmented + a bold hint) ── */
+// Writes fields.align ("left" | "center"); inline **bold** is authored inline in the text
+// fields and rendered by the display templates (richText.ts). One shared control so the
+// EventEditor and ItemEditor never drift on label/behaviour.
+export function FormatControls({ align, onAlign }: { align: Align; onAlign: (a: Align) => void }) {
+  const opt = (a: Align, label: string) => (
+    <button
+      type="button"
+      onClick={() => onAlign(a)}
+      className={align === a ? "u-fill u-ink" : ""}
+      style={{ ...chip, ...(align === a ? { fontWeight: 700 } : null) }}
+    >
+      {label}
+    </button>
+  );
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+        <span style={caption}>ALIGN</span>
+        {opt("left", "◧ LEFT")}
+        {opt("center", "▣ CENTER")}
+      </div>
+      <div style={{ fontSize: 14, opacity: 0.55 }}>
+        <code>**bold**</code> · alignment applies to this card.
+      </div>
+    </div>
+  );
 }
 
 /* ── Toast source picker (live price + POS/86 warning state) ──────────────────── */

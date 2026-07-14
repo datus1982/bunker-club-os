@@ -79,7 +79,7 @@ export function Login() {
   const signedInBusy = isSignedIn && roleLoading;
 
   return (
-    <div className="terminal-theme" style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: 40, fontFamily: "'VT323','Share Tech Mono',monospace" }}>
+    <div className="terminal-theme staff-ui" style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: "40px clamp(12px, 5vw, 40px)", fontFamily: "'VT323','Share Tech Mono',monospace" }}>
       <div className="terminal-border" style={{ width: 460, maxWidth: "100%", padding: 32 }}>
         <div style={{ fontSize: 24, opacity: 0.7, letterSpacing: 3 }}>BUNKER UNIFIED OS</div>
         <h1 style={{ fontSize: 40, fontWeight: 700, letterSpacing: 2, marginTop: 4 }}>SHELTER AUTHORITY LOGIN</h1>
@@ -162,7 +162,7 @@ const btnGhost: React.CSSProperties = {
 };
 const tab: React.CSSProperties = {
   flex: 1, background: "transparent", color: "var(--terminal-green)", border: "1px solid var(--terminal-green)",
-  padding: "10px 12px", minHeight: 44, fontSize: 20, cursor: "pointer", fontFamily: "'VT323','Share Tech Mono',monospace",
-  opacity: 0.6, whiteSpace: "nowrap",
+  padding: "10px 8px", minHeight: 44, fontSize: 20, cursor: "pointer", fontFamily: "'VT323','Share Tech Mono',monospace",
+  opacity: 0.6, whiteSpace: "nowrap", minWidth: 0,
 };
 const tabActive: React.CSSProperties = { ...tab, background: "var(--terminal-green)", color: "#000", fontWeight: 700, opacity: 1 };

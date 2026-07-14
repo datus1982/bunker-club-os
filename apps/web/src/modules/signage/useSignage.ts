@@ -48,6 +48,10 @@ export type Template =
   | "announcement"
   | "image_only"
   | "celebration"
+  // Phase 8 (ROTATION UNIFICATION): the whole-menu top sellers as ONE rotation slide, sourced
+  // live from sales_cache (MAIN_MENU_ALL) at render time — carries no authored fields, only
+  // slot + duration + active. Replaces pointing a TV at the standalone /drinks board.
+  | "top_sellers"
   // Phase 7 (docs/13): rotation-level cards materialized from a live scheduled_event.
   // Never authored, never DB rows — only produced by resolveRotation at render time.
   | "event_window"  // an active WINDOW promo card (title/body/cta + optional live price)
@@ -152,11 +156,10 @@ export function teaseMoment(events: LiveEvent[], now: Date = new Date()): LiveEv
 
 const SCREENS_GROUP = "★ SCREENS";
 
-/** Everything the slot page needs, keyed by slug. */
-export function useSlot(slug: string) {
-  const qc = useQueryClient();
-
-  const venue = useQuery({
+/** Venue name/timezone — shared cache key so the board and the admin preview agree and
+ *  nothing hardcodes 'Bunker Club' outside the fallback (venue-scope rule). */
+export function useVenue() {
+  return useQuery({
     queryKey: ["signage", "venue"],
     staleTime: 5 * 60_000,
     queryFn: async () => {
@@ -167,6 +170,13 @@ export function useSlot(slug: string) {
       };
     },
   });
+}
+
+/** Everything the slot page needs, keyed by slug. */
+export function useSlot(slug: string) {
+  const qc = useQueryClient();
+
+  const venue = useVenue();
 
   const slot = useQuery({
     queryKey: ["signage", "slot", slug],
@@ -314,7 +324,10 @@ export function useLiveEvents(venueId: string = VENUE_ID) {
 
 /** Build the rotation-level card for an active WINDOW/MESSAGE event (docs/13). */
 function eventRotationCard(ev: LiveEvent): SignageItem {
-  const duration = typeof ev.fields?.duration_seconds === "number" ? ev.fields.duration_seconds : 14;
+  // Injected-at-render event cards aren't authored through EDIT ROTATION, so they can't carry
+  // a per-item seconds control — they fall back to a sensible fixed default (12s, matching the
+  // mockup rotation pace) unless the event itself specifies fields.duration_seconds.
+  const duration = typeof ev.fields?.duration_seconds === "number" ? ev.fields.duration_seconds : 12;
   return {
     id: `event:${ev.id}`,
     slot_id: null,
