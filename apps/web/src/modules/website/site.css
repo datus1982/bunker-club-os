@@ -20,7 +20,8 @@
      below), replacing the old warm brown-black #16110d "reddish cast." The
      amber/cream/brand-red accent palette is unchanged; only the dark surfaces are
      cooled to harmonise with the new base (warm-brown cards on a cool page read
-     muddy). Cream #f3ead9 / amber #ffb000 stay ≥12:1 on every surface (AA clear). */
+     muddy). Measured contrast: cream #f3ead9 ≥14.7:1 on every surface; amber
+     #ffb000 10.48:1 on --site-bg / 9.62:1 on --site-bg-raised (AA + AAA clear). */
   --site-bg: #0d0f12;          /* cool near-black (swatch C) */
   --site-bg-raised: #16191d;   /* cards / header — cool, one step up */
   --site-bg-sunk: #0a0c0e;     /* footer — cool, one step down */

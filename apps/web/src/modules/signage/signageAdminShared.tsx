@@ -136,7 +136,7 @@ export function ItemRow({
           <span style={{ letterSpacing: 1 }} title="How long this slide stays on screen">SECS</span>
           <select
             value={DURATION_CHOICES.includes(item.duration_seconds as (typeof DURATION_CHOICES)[number]) ? item.duration_seconds : "custom"}
-            onChange={(e) => dur.mutate(parseInt(e.target.value))}
+            onChange={(e) => { const n = parseInt(e.target.value); if (Number.isFinite(n)) dur.mutate(n); }}
             aria-label="Seconds on screen"
             style={{ background: "#000", color: "var(--terminal-green)", border: "1px solid var(--terminal-green)", fontFamily: MONO, fontSize: 15, minHeight: 44, padding: "0 6px", cursor: "pointer" }}
           >

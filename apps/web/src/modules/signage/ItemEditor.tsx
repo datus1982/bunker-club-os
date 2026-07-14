@@ -34,7 +34,7 @@ const SKINS = ["birthday", "bachelor", "bachelorette", "anniversary", "congrats"
 const DOW = ["SU", "MO", "TU", "WE", "TH", "FR", "SA"];
 
 export function ItemEditor({
-  slots, toastRows, defaultSlotId, editing, presetTemplate, nextSortOrder, onClose, onSaved,
+  slots, toastRows, defaultSlotId, editing, presetTemplate, venueName, nextSortOrder, onClose, onSaved,
 }: {
   slots: AdminSlot[];
   toastRows: ToastCacheRow[];
@@ -43,6 +43,8 @@ export function ItemEditor({
   /** Skip the template picker and open straight into this template (hub quick actions).
    *  Only applies when creating (editing === null); editing always uses its own template. */
   presetTemplate?: Template | null;
+  /** Venue mark for the live preview's drink_special footer (threaded to SignagePreview). */
+  venueName?: string;
   nextSortOrder: (slotId: string | null) => number;
   onClose: () => void;
   onSaved: () => void;
@@ -78,6 +80,7 @@ export function ItemEditor({
       toastRows={toastRows}
       defaultSlotId={defaultSlotId}
       editing={editing}
+      venueName={venueName}
       nextSortOrder={nextSortOrder}
       onClose={onClose}
       onSaved={onSaved}
@@ -87,13 +90,14 @@ export function ItemEditor({
 
 /* ── the form ───────────────────────────────────────────────────────────── */
 function ItemForm({
-  template, slots, toastRows, defaultSlotId, editing, nextSortOrder, onClose, onSaved,
+  template, slots, toastRows, defaultSlotId, editing, venueName, nextSortOrder, onClose, onSaved,
 }: {
   template: Template;
   slots: AdminSlot[];
   toastRows: ToastCacheRow[];
   defaultSlotId: string | null;
   editing: AdminItem | null;
+  venueName?: string;
   nextSortOrder: (slotId: string | null) => number;
   onClose: () => void;
   onSaved: () => void;
@@ -237,7 +241,7 @@ function ItemForm({
       {/* Live preview — pinned first so edits are visible immediately (docs/09). */}
       <div>
         <div style={caption}>LIVE PREVIEW · {orientation.toUpperCase()}</div>
-        <SignagePreview item={draftItem} toast={tmap} orientation={orientation} maxWidth={orientation === "portrait" ? 240 : 380} />
+        <SignagePreview item={draftItem} toast={tmap} orientation={orientation} venueName={venueName} maxWidth={orientation === "portrait" ? 240 : 380} />
       </div>
 
       {/* Template-specific fields */}
@@ -377,7 +381,10 @@ function EventFields({ fields, setField }: FieldProps) {
         <Field label="TIME"><input placeholder="8:00 PM" value={str(fields.time) ?? ""} onChange={(e) => setField("time", e.target.value)} style={sel} /></Field>
       </div>
       <Field label="BLURB"><textarea rows={2} value={str(fields.blurb) ?? ""} onChange={(e) => setField("blurb", e.target.value)} style={{ ...sel, resize: "vertical" }} /></Field>
-      <FormatControls align={alignOf(fields)} onAlign={(a) => setField("align", a === "left" ? "left" : "")} />
+      {/* Event renderer defaults LEFT (alignOf(item.fields,"left")) — the control must match
+          that fallback and persist "center"/"left" EXPLICITLY so CENTER is reachable (never ""
+          which setField deletes → falls back to the template default). */}
+      <FormatControls align={alignOf(fields, "left")} onAlign={(a) => setField("align", a)} />
       <ImageField fields={fields} setField={setField} />
       <TreatmentToggle fields={fields} setField={setField} />
     </div>
@@ -396,7 +403,8 @@ function AnnouncementFields({ fields, setField }: FieldProps) {
           <option style={opt} value="HIGH">HIGH</option>
         </select>
       </Field>
-      <FormatControls align={alignOf(fields)} onAlign={(a) => setField("align", a === "left" ? "left" : "")} />
+      {/* Announcement renderer defaults LEFT — match that fallback and persist explicitly. */}
+      <FormatControls align={alignOf(fields, "left")} onAlign={(a) => setField("align", a)} />
       <ImageField fields={fields} setField={setField} />
     </div>
   );
@@ -461,7 +469,8 @@ function CelebrationFields({
       <Field label="HONOREE NAME"><input value={str(fields.honoree) ?? ""} onChange={(e) => setField("honoree", e.target.value)} style={sel} /></Field>
       <Field label="OCCASION LINE (optional)"><input placeholder="auto: skin default" value={str(fields.occasion) ?? ""} onChange={(e) => setField("occasion", e.target.value)} style={sel} /></Field>
       <Field label="MESSAGE (optional)"><textarea rows={2} value={str(fields.message) ?? ""} onChange={(e) => setField("message", e.target.value)} style={{ ...sel, resize: "vertical" }} /></Field>
-      <FormatControls align={alignOf(fields)} onAlign={(a) => setField("align", a === "left" ? "left" : "")} />
+      {/* Celebration renderer defaults CENTER — keep that fallback; persist explicitly. */}
+      <FormatControls align={alignOf(fields)} onAlign={(a) => setField("align", a)} />
       <Field label="DATE"><input type="date" value={celebDate} onChange={(e) => setCelebDate(e.target.value)} style={sel} /></Field>
       <div>
         <div style={{ fontSize: 15, opacity: 0.7, marginBottom: 4 }}>PHOTO (optional)</div>

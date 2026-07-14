@@ -156,11 +156,10 @@ export function teaseMoment(events: LiveEvent[], now: Date = new Date()): LiveEv
 
 const SCREENS_GROUP = "★ SCREENS";
 
-/** Everything the slot page needs, keyed by slug. */
-export function useSlot(slug: string) {
-  const qc = useQueryClient();
-
-  const venue = useQuery({
+/** Venue name/timezone — shared cache key so the board and the admin preview agree and
+ *  nothing hardcodes 'Bunker Club' outside the fallback (venue-scope rule). */
+export function useVenue() {
+  return useQuery({
     queryKey: ["signage", "venue"],
     staleTime: 5 * 60_000,
     queryFn: async () => {
@@ -171,6 +170,13 @@ export function useSlot(slug: string) {
       };
     },
   });
+}
+
+/** Everything the slot page needs, keyed by slug. */
+export function useSlot(slug: string) {
+  const qc = useQueryClient();
+
+  const venue = useVenue();
 
   const slot = useQuery({
     queryKey: ["signage", "slot", slug],
