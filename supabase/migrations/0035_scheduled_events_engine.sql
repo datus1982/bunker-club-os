@@ -80,6 +80,21 @@ create or replace view public.signage_events_live as
     );
 
 grant select on public.signage_events_live to anon, authenticated;
+-- PR #12 review BLOCKER F1: Supabase's ALTER DEFAULT PRIVILEGES grants anon+authenticated
+-- ALL privileges on every new relation, so a non-security_invoker view (which runs with the
+-- owner's rights) becomes a write path that BYPASSES base-table RLS — the reviewer proved
+-- anon could INSERT cards straight onto the TVs through this view. Reads-only: strip every
+-- write privilege. SELECT (granted above) is all a display or staff client needs.
+revoke insert, update, delete, truncate, references on public.signage_events_live from public, anon, authenticated;
+
+-- Same default-privilege residue audited on every other SECURITY DEFINER-style public view
+-- (information_schema.role_table_grants confirmed anon+authenticated held INSERT/UPDATE/DELETE/
+-- TRUNCATE/REFERENCES on all of these too — non-auto-updatable is NOT a guarantee). These
+-- views are created in earlier migrations (0004 teams_public, 0015/0034 public_menu &
+-- public_events); 0035 is the latest migration, so strip the residue here as the single fix.
+revoke insert, update, delete, truncate, references on public.public_menu   from public, anon, authenticated;
+revoke insert, update, delete, truncate, references on public.public_events from public, anon, authenticated;
+revoke insert, update, delete, truncate, references on public.teams_public  from public, anon, authenticated;
 
 -- ── 5. next_scheduled_occurrence() — recurrence → next fire_at, venue-TZ, DST-safe ──
 -- recurrence = { "daysOfWeek": ["MO","TU",…], "time": "HH:MM" } interpreted in p_tz.

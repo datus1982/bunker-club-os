@@ -19,6 +19,30 @@ import "./signage.css";
 
 const MONO = "'VT323','Share Tech Mono',monospace";
 
+/** Post-event lift readout written by toast-sync (eventCounter.ts FinalStats). */
+interface FinalStats {
+  units: number;
+  window_minutes: number;
+  vs_avg_pct: number | null;
+  computed_at: string;
+}
+
+/**
+ * Format the post-run readout. toast-sync writes an OBJECT (not a string), so the old
+ * `typeof === "string"` guard never rendered. Returns null when stats are absent/malformed.
+ * "{units} sold" always; " · +N% vs avg night" only when vs_avg_pct is non-null.
+ */
+function finalStatsReadout(raw: unknown): string | null {
+  if (!raw || typeof raw !== "object") return null;
+  const fs = raw as Partial<FinalStats>;
+  if (typeof fs.units !== "number") return null;
+  let out = `${fs.units} sold`;
+  if (typeof fs.vs_avg_pct === "number") {
+    out += ` · ${fs.vs_avg_pct > 0 ? "+" : ""}${fs.vs_avg_pct}% vs avg night`;
+  }
+  return out;
+}
+
 export function EventsAdmin() {
   const qc = useQueryClient();
   const [params, setParams] = useSearchParams();
@@ -111,7 +135,7 @@ export function EventsAdmin() {
 function EventListRow({ row, selected, onEdit, onChanged }: { row: EventRow; selected: boolean; onEdit: () => void; onChanged: () => void }) {
   const phrase = useMemo(() => schedulePhrase(row), [row]);
   const st = statusInfo(row);
-  const finalStats = typeof row.fields?.final_stats === "string" ? (row.fields.final_stats as string).trim() : "";
+  const finalStats = finalStatsReadout(row.fields?.final_stats);
   const done = row.status === "completed" || row.status === "aborted";
   const paused = row.status === "disabled";
   // Pause/resume applies to a live/scheduled promo. Completed/aborted rows are terminal —

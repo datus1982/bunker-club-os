@@ -214,6 +214,12 @@ function EventWindowStage({ event, orientation, toast }: { event: LiveEvent; ori
   const nameLive = !fstr(event.fields, "title") && !!src?.name;
   const price = fnum(event.fields, "price") ?? src?.price ?? undefined;
 
+  // POS-visibility gate (0034 owner principle: never advertise anything not active on the
+  // POS view). If the linked drink is 86'd or off-POS, suppress the price ($X) — the moment's
+  // arc still completes (name/directive/counter stay), we just stop quoting a price you can't
+  // buy. Fail-open like everywhere else: only an EXPLICIT out_of_stock/pos_visible=false hides.
+  const posHidden = !!src && (src.out_of_stock || src.pos_visible === false);
+
   // Remaining in the event window (to fire_at + window_minutes).
   const windowEnd = event.fire_at ? new Date(event.fire_at).getTime() + event.window_minutes * 60_000 : now;
   const remain = Math.max(0, Math.ceil((windowEnd - now) / 1000));
@@ -229,7 +235,7 @@ function EventWindowStage({ event, orientation, toast }: { event: LiveEvent; ori
       <div style={{ fontSize: z.big, fontWeight: 700, lineHeight: 0.95, textTransform: "uppercase", textShadow: "0 0 18px var(--terminal-glow)" }}>
         {nameLive ? <span className="sig-live">{name}</span> : name}
       </div>
-      {price != null && (
+      {price != null && !posHidden && (
         <div className="sig-live" style={{ fontSize: z.price, fontWeight: 700, lineHeight: 1, textShadow: "0 0 16px var(--terminal-glow)" }}>
           <small style={{ fontSize: z.price * 0.5, verticalAlign: "top" }}>$</small>{formatPrice(price)}
         </div>
