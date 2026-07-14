@@ -16,9 +16,13 @@ import { type CSSProperties, type ReactNode } from "react";
 
 export type Align = "left" | "center";
 
-/** Read fields.align, defaulting to center (the board's historical alignment). */
-export function alignOf(fields: Record<string, unknown> | undefined): Align {
-  return fields?.align === "left" ? "left" : "center";
+/**
+ * Read fields.align. Only "left"/"center" are honoured; anything else falls back to the
+ * template's historical default (`fallback`) so existing cards don't shift when this ships
+ * — centered cards pass "center" (the default), left-leaning templates pass "left".
+ */
+export function alignOf(fields: Record<string, unknown> | undefined, fallback: Align = "center"): Align {
+  return fields?.align === "left" ? "left" : fields?.align === "center" ? "center" : fallback;
 }
 
 /** Cross-axis + text alignment for a flex column card from an Align value. */

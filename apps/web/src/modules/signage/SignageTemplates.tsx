@@ -232,7 +232,7 @@ export function EventItem({ item, orientation }: TemplateProps) {
     <div style={{ height: "100%", display: "flex", flexDirection: "column", position: "relative", gap: z.gap }}>
       <Stamp text="MANDATORY FUN" size={z.stamp} />
       <Eyebrow text="UPCOMING PROTOCOL" size={z.eyebrow} />
-      <div style={{ fontSize: headlineFont(title, orientation), fontWeight: 700, lineHeight: 0.92, textTransform: "uppercase", textShadow: "0 0 16px var(--terminal-glow)", textAlign: alignOf(item.fields) }}>{parseInline(title)}</div>
+      <div style={{ fontSize: headlineFont(title, orientation), fontWeight: 700, lineHeight: 0.92, textTransform: "uppercase", textShadow: "0 0 16px var(--terminal-glow)", textAlign: alignOf(item.fields, "left") }}>{parseInline(title)}</div>
       <div style={{ display: "flex", gap: 24, alignItems: "center" }}>
         {when.day && (
           <div style={{ border: "2px solid var(--terminal-green)", padding: "14px 22px", textAlign: "center", flexShrink: 0 }}>
@@ -240,7 +240,7 @@ export function EventItem({ item, orientation }: TemplateProps) {
             <div style={{ fontSize: z.mid * 1.2, fontWeight: 700, lineHeight: 1 }}>{when.day}</div>
           </div>
         )}
-        <div style={{ textAlign: alignOf(item.fields) }}>
+        <div style={{ textAlign: alignOf(item.fields, "left") }}>
           {when.time && <div style={{ fontSize: z.mid, fontWeight: 700, lineHeight: 1.05 }}>{when.time}</div>}
           {blurb && <div style={{ fontSize: z.body, opacity: 0.85, lineHeight: 1.45, marginTop: 8 }}><RichText text={blurb} /></div>}
         </div>
@@ -262,7 +262,7 @@ export function Announcement({ item, orientation }: TemplateProps) {
   return (
     <div style={{ height: "100%", display: "flex", flexDirection: "column", gap: z.gap }}>
       <Eyebrow text={`SYSTEM BULLETIN — PRIORITY ${priority}`} size={z.eyebrow} />
-      <div className="sig-cursor" style={{ fontSize: Math.min(z.mid + 14, headlineFont(msg, orientation)), fontWeight: 700, lineHeight: 1.25, whiteSpace: "pre-wrap", textShadow: "0 0 14px var(--terminal-glow)", textAlign: alignOf(item.fields) }}>
+      <div className="sig-cursor" style={{ fontSize: Math.min(z.mid + 14, headlineFont(msg, orientation)), fontWeight: 700, lineHeight: 1.25, whiteSpace: "pre-wrap", textShadow: "0 0 14px var(--terminal-glow)", textAlign: alignOf(item.fields, "left") }}>
         {parseInline(typed)}
       </div>
       {photo && <Photo src={photo} treatment={treatment} height={z.photoH * 0.55} feed="ARCHIVE FEED" />}
@@ -318,7 +318,7 @@ export function Celebration({ item, orientation }: TemplateProps) {
       )}
       <div style={{ fontSize: headlineFont(honoree, orientation), fontWeight: 700, lineHeight: 0.92, textTransform: "uppercase", textShadow: "0 0 20px var(--terminal-glow)" }}>{honoree}</div>
       <div style={{ fontSize: z.mid * 0.7, opacity: 0.85 }}>{occasionLine}</div>
-      {message && <div style={{ fontSize: z.body, opacity: 0.8, maxWidth: "80%", lineHeight: 1.4 }}><RichText text={message} /></div>}
+      {message && <div style={{ fontSize: z.body, opacity: 0.8, maxWidth: "80%", lineHeight: 1.4, textAlign: alignOf(item.fields) }}><RichText text={message} /></div>}
     </div>
   );
 }
