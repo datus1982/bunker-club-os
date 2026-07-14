@@ -1,6 +1,7 @@
 import { useEffect, useState, type CSSProperties } from "react";
 import type { Orientation, SignageItem, ToastCacheRow } from "./useSignage";
 import { EventWindowCard, EventMessageCard, EventTeaseCard } from "./EventStages";
+import { balanceHeadline } from "./eventStage";
 import { parseInline, RichText, alignOf } from "./richText";
 import { useTopSellers, itemNameFont, type DrinkItem } from "@/modules/leaderboard/useDrinks";
 
@@ -34,9 +35,10 @@ function headlineFont(text: string, o: Orientation): number {
   return o === "portrait" ? p : Math.round(p * 0.72);
 }
 
-/* ── DRINK PROMO sizing (view 1) — its own profile: giant name + co-equal huge price. */
-function drinkNameFont(name: string, o: Orientation): number {
-  const n = name.length;
+/* ── DRINK PROMO sizing (view 1) — its own profile: giant name + co-equal huge price.
+   Takes the longest LINE length (callers balance multi-word names first). */
+function drinkNameFont(maxLineLen: number, o: Orientation): number {
+  const n = maxLineLen;
   const p = n <= 7 ? 208 : n <= 11 ? 176 : n <= 15 ? 146 : n <= 20 ? 118 : n <= 26 ? 96 : 80;
   return o === "portrait" ? p : Math.round(p * 0.86);
 }
@@ -115,7 +117,10 @@ export function DrinkSpecial({ item, toast, orientation, venueName }: TemplatePr
   const category = s(item.fields, "category") ?? src?.menu_group ?? undefined;
 
   const port = orientation === "portrait";
-  const nameSize = drinkNameFont(name, orientation);
+  // Balance long names onto 2-3 lines so the auto-shrink sizes off the longest LINE —
+  // "MANHATTAN PROJECT" as one 17-char line earns 118px; balanced it earns 146px+.
+  const balName = balanceHeadline(name);
+  const nameSize = drinkNameFont(Math.max(...balName.split("\n").map((l) => l.length)), orientation);
   const priceSize = drinkPriceFont(price ?? 0, orientation);
 
   // NB: the live-green class goes on the SAME element that carries the font-size — the
@@ -123,7 +128,7 @@ export function DrinkSpecial({ item, toast, orientation, venueName }: TemplatePr
   // lacks its own size, so an inner <Live> span would shrink the name/price to 24px.
   const nameEl = (
     <div className={nameLive ? "sig-live" : undefined} style={{ fontSize: nameSize, fontWeight: 700, lineHeight: 0.9, letterSpacing: 1, textShadow: "0 0 16px var(--terminal-glow)", textAlign: port ? "center" : "left" }}>
-      {name}
+      {balName.split("\n").map((l, i) => <span key={i} style={{ display: "block", fontSize: "inherit" }}>{l}</span>)}
     </div>
   );
 
@@ -222,7 +227,7 @@ function DrinkSquare({ src, orientation }: { src: string | undefined; orientatio
 /* ── EVENT ──────────────────────────────────────────────────────────────────── */
 export function EventItem({ item, orientation }: TemplateProps) {
   const z = SIZES[orientation];
-  const title = s(item.fields, "title") ?? "UPCOMING EVENT";
+  const title = balanceHeadline(s(item.fields, "title") ?? "UPCOMING EVENT");
   const blurb = s(item.fields, "blurb");
   const photo = s(item.fields, "image_url");
   const treatment = s(item.fields, "photo_treatment") ?? "viewport";
@@ -232,7 +237,9 @@ export function EventItem({ item, orientation }: TemplateProps) {
     <div style={{ height: "100%", display: "flex", flexDirection: "column", position: "relative", gap: z.gap }}>
       <Stamp text="MANDATORY FUN" size={z.stamp} />
       <Eyebrow text="UPCOMING PROTOCOL" size={z.eyebrow} />
-      <div style={{ fontSize: headlineFont(title, orientation), fontWeight: 700, lineHeight: 0.92, textTransform: "uppercase", textShadow: "0 0 16px var(--terminal-glow)", textAlign: alignOf(item.fields, "left") }}>{parseInline(title)}</div>
+      <div style={{ fontSize: headlineFont(title, orientation), fontWeight: 700, lineHeight: 0.92, textTransform: "uppercase", textShadow: "0 0 16px var(--terminal-glow)", textAlign: alignOf(item.fields, "left") }}>
+        {title.split("\n").map((l, i) => <span key={i} style={{ display: "block", fontSize: "inherit" }}>{parseInline(l)}</span>)}
+      </div>
       <div style={{ display: "flex", gap: 24, alignItems: "center" }}>
         {when.day && (
           <div style={{ border: "2px solid var(--terminal-green)", padding: "14px 22px", textAlign: "center", flexShrink: 0 }}>
@@ -316,7 +323,9 @@ export function Celebration({ item, orientation }: TemplateProps) {
           <img src={photo} alt="" />
         </div>
       )}
-      <div style={{ fontSize: headlineFont(honoree, orientation), fontWeight: 700, lineHeight: 0.92, textTransform: "uppercase", textShadow: "0 0 20px var(--terminal-glow)" }}>{honoree}</div>
+      <div style={{ fontSize: headlineFont(balanceHeadline(honoree), orientation), fontWeight: 700, lineHeight: 0.92, textTransform: "uppercase", textShadow: "0 0 20px var(--terminal-glow)" }}>
+        {balanceHeadline(honoree).split("\n").map((l, i) => <span key={i} style={{ display: "block", fontSize: "inherit" }}>{l}</span>)}
+      </div>
       <div style={{ fontSize: z.mid * 0.7, opacity: 0.85 }}>{occasionLine}</div>
       {message && <div style={{ fontSize: z.body, opacity: 0.8, maxWidth: "80%", lineHeight: 1.4, textAlign: alignOf(item.fields) }}><RichText text={message} /></div>}
     </div>

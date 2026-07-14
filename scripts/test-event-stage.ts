@@ -9,7 +9,7 @@
  * Boundaries are [inclusive, exclusive) — each edge is probed on both sides.
  */
 import {
-  eventStage, isTakeoverStage, secondsToFire, minutesToFire, formatTMinus,
+  eventStage, isTakeoverStage, secondsToFire, minutesToFire, formatTMinus, balanceHeadline,
   MOMENT_PAYOFF_MS, ALL_CLEAR_MS, type LiveEvent,
 } from "../apps/web/src/modules/signage/eventStage.ts";
 
@@ -102,6 +102,23 @@ assert("minutesToFire at T-89s → 1", minutesToFire(m, F - 89_000), 1);
 assert("formatTMinus 299 → T−04:59", formatTMinus(299), "T−04:59");
 assert("formatTMinus 5 → T−00:05", formatTMinus(5), "T−00:05");
 assert("formatTMinus 0 → T−00:00", formatTMinus(0), "T−00:00");
+
+console.log("\n── balanceHeadline() ──");
+assert("22-char one-liner balances (owner: 'LAUNCH IMMINENT too small')",
+  balanceHeadline("ROCKET LAUNCH IMMINENT"), "ROCKET\nLAUNCH\nIMMINENT");
+assert("short two-worder splits when it earns a bigger tier",
+  balanceHeadline("LAST CALL"), "LAST\nCALL");
+assert("single word untouched", balanceHeadline("SPUTNIK"), "SPUTNIK");
+assert("authored \\n respected verbatim",
+  balanceHeadline("KEEP\nTHIS EXACT SPLIT"), "KEEP\nTHIS EXACT SPLIT");
+assert("maxLines cap respected (never exceeds 3 lines)",
+  balanceHeadline("ONE TWO THREE FOUR FIVE SIX").split("\n").length <= 3, true);
+{
+  const bal = balanceHeadline("MANHATTAN PROJECT");
+  const maxLine = Math.max(...bal.split("\n").map((l) => l.length));
+  assert("MANHATTAN PROJECT longest line shrinks below full length", maxLine < "MANHATTAN PROJECT".length, true);
+}
+assert("empty-ish input safe", balanceHeadline("  "), "");
 
 if (failures > 0) { console.error(`\n${failures} assertion(s) failed`); process.exit(1); }
 console.log("\nAll eventStage assertions passed.");
