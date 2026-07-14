@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 import { SiteLayout } from "../SiteLayout";
 import { useSiteCopy, DAY_ORDER, dayLabel, fmtHours, todayKey } from "../useSiteCopy";
 import { useThisWeek } from "../useThisWeek";
+import { TerminalFeed } from "../TerminalFeed";
 import {
   useDocumentMeta,
   JsonLd,
@@ -158,48 +159,13 @@ export function Home() {
         </div>
       </section>
 
-      {/* ── This week strip ── */}
-      <section className="site-section site-section--tight">
+      {/* ── What's On — rotating terminal feed ── */}
+      <section className="site-section site-section--tight" aria-labelledby="whatson-label">
         <div className="site-wrap">
-          <p className="site-label" style={{ marginBottom: "1rem" }}>
+          <p className="site-label" id="whatson-label" style={{ marginBottom: "1rem" }}>
             What&apos;s On
           </p>
-          {cards && cards.length > 0 ? (
-            <div className="site-strip">
-              {cards.map((c) => (
-                <article
-                  key={c.key}
-                  className={`site-card${c.live ? " site-card--live" : ""}${
-                    c.image ? " site-card--media" : ""
-                  }`}
-                >
-                  {c.image && (
-                    <img
-                      className="site-card__thumb"
-                      src={c.image}
-                      alt=""
-                      loading="lazy"
-                      decoding="async"
-                    />
-                  )}
-                  <div className="site-card__main">
-                    <div className="site-card__kicker">
-                      {c.live && <span className="site-dot" aria-hidden />}
-                      {c.kicker}
-                    </div>
-                    {/* Card titles are promo labels, not document headings — keeps the
-                        page's heading outline sequential (h1 → h2). */}
-                    <p className="site-card__title">{c.title}</p>
-                    {c.body && <p className="site-card__body">{c.body}</p>}
-                  </div>
-                </article>
-              ))}
-            </div>
-          ) : (
-            <p className="site-empty">
-              Nothing on the board right now — check back soon, or swing by the bar.
-            </p>
-          )}
+          <TerminalFeed cards={cards ?? []} />
         </div>
       </section>
 
