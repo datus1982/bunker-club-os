@@ -23,7 +23,7 @@ export const iconBtn: CSSProperties = { background: "transparent", color: "var(-
 export const field: CSSProperties = { background: "#000", color: "var(--terminal-green)", border: "1px solid var(--terminal-green)", padding: "10px 12px", fontSize: 20, fontFamily: MONO, minHeight: 44 };
 export const chip: CSSProperties = { background: "transparent", color: "var(--terminal-green)", border: "1px solid var(--terminal-green)", padding: "8px 12px", fontSize: 16, cursor: "pointer", fontFamily: MONO, minHeight: 44 };
 export const badge: CSSProperties = { fontSize: 13, letterSpacing: 1, border: "1px solid var(--terminal-green)", padding: "2px 6px", opacity: 0.85 };
-export const caption: CSSProperties = { fontSize: 14, letterSpacing: 2, opacity: 0.55 };
+export const caption: CSSProperties = { fontSize: 16, letterSpacing: 2, opacity: 0.55 };
 
 export function SectionLabel({ children, style }: { children: React.ReactNode; style?: CSSProperties }) {
   return <div style={{ fontSize: 20, letterSpacing: 3, opacity: 0.7, margin: "0 0 10px", ...style }}>{children}</div>;
@@ -124,7 +124,10 @@ export function ItemRow({
         <div style={{ fontSize: 20, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{summarize(item)}</div>
         <div style={{ fontSize: 14, opacity: 0.6 }}>{scheduleLabel(item)} · {item.duration_seconds}s ON SCREEN</div>
       </div>
-      <div style={{ display: "flex", gap: 6, alignItems: "center", flexShrink: 0, flexWrap: "wrap", justifyContent: "flex-end" }}>
+      {/* minWidth:0 + shrinkable so that when this control cluster wraps to its own line
+          at ≤390px it is constrained to the row width and its own flexWrap engages (the
+          wider JetBrains glyphs otherwise pushed it past the viewport — 2026-07-13). */}
+      <div style={{ display: "flex", gap: 6, alignItems: "center", flex: "1 1 auto", minWidth: 0, flexWrap: "wrap", justifyContent: "flex-end" }}>
         {/* Per-item on-screen SECONDS — the timing control (writes duration_seconds; the
             public rotation advance already honors it per-item, no fixed interval). */}
         <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 13, opacity: 0.85 }}>

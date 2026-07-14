@@ -127,7 +127,7 @@ export function StaffLayout() {
         /* ---- Mobile: compact header + grouped drawer ---- */
         <nav style={mobileNav}>
           <div style={mobileBar}>
-            <NavLink to="/dashboard" style={{ ...mobileBrand, textDecoration: "none" }}>▚ BUNKER OS</NavLink>
+            <NavLink to="/dashboard" className="u-head" style={{ ...mobileBrand, textDecoration: "none" }}>▚ BUNKER OS</NavLink>
             {activeChild && activeChild.to !== HOME.to && (
               <span style={mobileSection} aria-hidden="true">▸ {activeChild.label}</span>
             )}
@@ -189,13 +189,13 @@ export function StaffLayout() {
         /* ---- Desktop: two-tier bar (section names + active-section sub-nav) ---- */
         <nav style={desktopNav}>
           <div style={desktopTopRow}>
-            <NavLink to="/dashboard" style={{ ...brand, textDecoration: "none" }}>▚ BUNKER OS</NavLink>
+            <NavLink to="/dashboard" className="u-head" style={{ ...brand, textDecoration: "none" }}>▚ BUNKER OS</NavLink>
             <div style={{ display: "flex", gap: 2, flexWrap: "wrap", flex: 1 }}>
               {homeVisible && (
                 <NavLink
                   to={HOME.to}
                   end
-                  className={({ isActive }) => (isActive ? "u-fill u-ink" : "")}
+                  className={({ isActive }) => "u-head" + (isActive ? " u-fill u-ink" : "")}
                   style={({ isActive }) => ({ ...sect, ...(isActive ? sectActive : null) })}
                 >
                   {HOME.label}
@@ -208,7 +208,7 @@ export function StaffLayout() {
                     key={s.label}
                     type="button"
                     onClick={() => goToSection(s)}
-                    className={on ? "u-fill u-ink" : ""}
+                    className={"u-head" + (on ? " u-fill u-ink" : "")}
                     style={{ ...sect, cursor: "pointer", ...(on ? sectActive : null) }}
                   >
                     {s.label}
@@ -224,7 +224,9 @@ export function StaffLayout() {
           {/* Sub-nav row for the active section only. No row on HOME. */}
           {activeSection && (
             <div style={subRow}>
-              <span style={subKick}>{activeSection.label} ▸</span>
+              {/* Amber accent #1 (owner-approved "just a bit"): the dim section kicker
+                  in the sub-nav — signals "which system" without shouting. */}
+              <span className="u-amber" style={subKick}>{activeSection.label} ▸</span>
               {activeSection.children.map((c) => (
                 <NavLink
                   key={c.to}
@@ -275,7 +277,7 @@ const subRow: React.CSSProperties = {
   background: "#020402",
 };
 const subKick: React.CSSProperties = {
-  fontSize: 12, letterSpacing: 3, opacity: 0.45, marginRight: 6, whiteSpace: "nowrap",
+  fontSize: 13, letterSpacing: 3, opacity: 0.6, marginRight: 6, whiteSpace: "nowrap",
 };
 const subItem: React.CSSProperties = {
   fontSize: 16, letterSpacing: 1, color: "var(--terminal-green)", opacity: 0.72,

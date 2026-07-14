@@ -511,3 +511,65 @@ div[data-radix-select-viewport] {
   margin-bottom: 6px;
   user-select: none;
 }
+
+/* ===== STAFF-UI READABILITY + CONSISTENCY PASS (owner-ratified 2026-07-13) =====
+ * docs/signage-redesign-mockup.html views 5 + 6. Applies ONLY to staff surfaces
+ * (everything under StaffLayout, which wraps its root in `.terminal-theme staff-ui`).
+ * Public DISPLAYS (SlotDisplay/Leaderboard/GameDisplay/DrinksDisplay — NOT under
+ * staff-ui) keep VT323/Share Tech; the public website has its own fonts (`.site`).
+ *
+ * FONT = Option C: Share Tech Mono for headers/headings + nav brand/pills; JetBrains
+ * Mono for body/data/forms/buttons. These rules use !important because the staff pages
+ * set `fontFamily: "'VT323',…"` inline on almost every element — inline is non-important,
+ * so a stylesheet !important wins. `.staff-ui …` (0,1,x/0,2,x) also beats the base
+ * `.terminal-theme *` family rule, and appears later in the file so equal-specificity
+ * ties resolve here. */
+.staff-ui,
+.staff-ui * {
+  font-family: 'JetBrains Mono', 'Share Tech Mono', monospace !important;
+}
+.staff-ui h1,
+.staff-ui h2,
+.staff-ui h3,
+.staff-ui .u-head {
+  font-family: 'Share Tech Mono', 'JetBrains Mono', monospace !important;
+}
+
+/* Inline signage PREVIEWS (SignagePreview → the real board TemplateView) render the
+ * display board inside the staff DOM so managers see a pixel-faithful slot. Those
+ * subtrees must keep the DISPLAY typography, not the staff font — re-assert it. The
+ * board renders under `.terminal-theme` (VT323/Share Tech); match that, and preserve
+ * the hand-lettered `.sig-flourish` cursive. */
+.staff-ui .signage-slot,
+.staff-ui .signage-slot * {
+  font-family: 'VT323', 'Share Tech Mono', monospace !important;
+}
+.staff-ui .signage-slot .sig-flourish {
+  font-family: 'Caveat', 'Snell Roundhand', 'Segoe Script', cursive !important;
+}
+
+/* CONTROL SIZE NORMALIZATION + BODY BUMP. The base theme force-sizes every <button>
+ * to 1.5rem (24px) and every <input>/<select>/<textarea> to 1.5rem !important, which
+ * overrode the per-control inline sizes — so a <button> read 24px while an <a> styled
+ * as a button kept its 18px, and tight controls collided. Pin ONE control scale so
+ * every tappable control matches (the owner's "sizes all over the place" fix), bumped
+ * up a step for phone readability (view 5 size bump). */
+.staff-ui button {
+  font-size: 1.25rem !important;   /* 20px — was 24px forced */
+  letter-spacing: 0.5px;
+}
+.staff-ui input,
+.staff-ui textarea,
+.staff-ui select,
+.staff-ui button[role="combobox"],
+.staff-ui [data-radix-select-trigger] {
+  font-size: 1.1875rem !important; /* 19px — was 24px forced */
+}
+
+/* BODY SIZE BUMP (view 5). CSS can't add-to an inline px value, so the genuinely small
+ * body/label/caption text (the 11–13px band) is lifted one step at its source in the
+ * shared style primitives (trivia/ui.tsx, signage/signageAdminShared.tsx) and on the
+ * worst-offender pages. The font swap itself (VT323 → JetBrains at the same px) already
+ * reads noticeably larger/crisper, so this floor targets only the truly-tiny captions.
+ * `.u-bump` is available for one-off spans that need lifting without a new style object. */
+.staff-ui .u-bump { font-size: 15px !important; }
