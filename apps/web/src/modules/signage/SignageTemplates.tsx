@@ -118,10 +118,26 @@ export function DrinkSpecial({ item, toast, orientation, venueName }: TemplatePr
   const category = s(item.fields, "category") ?? src?.menu_group ?? undefined;
 
   const port = orientation === "portrait";
-  // Balance long names onto 2-3 lines so the auto-shrink sizes off the longest LINE —
-  // "MANHATTAN PROJECT" as one 17-char line earns 118px; balanced it earns 146px+.
-  const balName = balanceHeadline(name);
-  const nameSize = drinkNameFont(Math.max(...balName.split("\n").map((l) => l.length)), orientation);
+  // Name layout (owner note 2026-07-14: a 2-line name pushed the stack off-screen):
+  // pick single-line vs balanced by EFFECTIVE size — multi-line layouts pay a
+  // line-count discount (×0.7 / ×0.55) so the whole stack stays on the canvas, and
+  // whichever variant yields the LARGER per-line font wins (ties → fewer lines).
+  // "BLACK LIST": 1 line @158 beats 2 lines @188×0.7=132 → stays one line.
+  // "MANHATTAN PROJECT": 2 lines @168×0.7=118 beats 1 line @106 → still stacks.
+  const lineMult = (lines: number) => (lines <= 1 ? 1 : lines === 2 ? 0.7 : 0.55);
+  const effective = (text: string) => {
+    const lines = text.split("\n");
+    const raw = drinkNameFont(Math.max(...lines.map((l) => l.length)), orientation);
+    return Math.round(raw * lineMult(lines.length));
+  };
+  // Authored \n breaks are respected verbatim (balanceHeadline already does); the
+  // single-line candidate only competes for unauthored names.
+  const balanced = balanceHeadline(name);
+  const balName = name.includes("\n")
+    ? balanced
+    : effective(name) >= effective(balanced) ? name : balanced;
+  const nameLines = balName.split("\n").length;
+  const nameSize = effective(balName);
   const priceSize = drinkPriceFont(price ?? 0, orientation);
 
   // NB: the live-green class goes on the SAME element that carries the font-size — the
@@ -172,8 +188,10 @@ export function DrinkSpecial({ item, toast, orientation, venueName }: TemplatePr
       <div style={{ height: "100%", display: "flex", flexDirection: "column", gap: 18 }}>
         {ingredientsEl}
         <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
-          {/* Owner design-beat: display images ~30% larger (720 → 940). */}
-          <div style={{ width: "min(940px, 100%)", flexShrink: 0 }}>{square}</div>
+          {/* Owner design-beat: images ~30% larger (720 → 940) — but a stacked 2+ line
+              name needs the vertical room back, so the photo yields a step (940 → 820)
+              to keep the whole stack on the canvas (owner note 2026-07-14). */}
+          <div style={{ width: nameLines > 1 ? "min(820px, 100%)" : "min(940px, 100%)", flexShrink: 0 }}>{square}</div>
           {/* Owner note 2026-07-14: vertical stack — name, price directly under, tagline below both. */}
           <div style={{ marginTop: 4 }}>{nameEl}</div>
           {priceEl}
