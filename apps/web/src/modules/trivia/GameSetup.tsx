@@ -49,7 +49,7 @@ export function GameSetup() {
   const qc = useQueryClient();
 
   const [gameDate, setGameDate] = useState(todayISO());
-  const [numRounds, setNumRounds] = useState(5);
+  const [numRounds, setNumRounds] = useState(6); // owner: the weekly deck is always 5 regular + picture-round final
   const [questionsPerRound, setQuestionsPerRound] = useState(10);
   const [startTime, setStartTime] = useState("");
   const [isPlayoff, setIsPlayoff] = useState(false);
