@@ -6,9 +6,14 @@
          TRANSPARENT from the brand-red PMS 1805 disc, #B5282E — color-corrected to
          spec 2026-07-13 from the un-color-managed spot render). PNG set from the brand
          vector — the mark is organic curves, not cleanly hand-vectorizable, so PNGs
-         ship instead of an SVG. Explicit icon links present ⇒ browsers don't fall back
-         to a dangling /favicon.ico. Serves the WHOLE app (site + staff + display TVs) —
-         intended: it's the bar's mark. -->
+         ship instead of an SVG. A real /favicon.ico ships too (16/32/48 from the same
+         badge): browsers, bookmark bars, and crawlers request /favicon.ico
+         unconditionally regardless of these links, and without the file the SPA
+         catch-all answered it with 200 text/html — undecodable, so browsers fell back
+         to a STALE cached icon for the domain (the owner saw the pre-cutover site's
+         icon). Serves the WHOLE app (site + staff + display TVs) — intended: it's the
+         bar's mark. -->
+    <link rel="icon" href="/favicon.ico" sizes="16x16 32x32 48x48" />
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
     <link rel="icon" type="image/png" sizes="192x192" href="/favicon-192.png" />
     <link rel="icon" type="image/png" sizes="512x512" href="/favicon-512.png" />
