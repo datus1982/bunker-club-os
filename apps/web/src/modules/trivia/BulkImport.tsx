@@ -275,12 +275,20 @@ async function parseSlides(slides: SlideData[]): Promise<ParsedRound[]> {
     }
 
     // Picture-round title/answers slide: pull the round name; try AI for answers.
-    if (cur?.is_picture_round && (/^PICTURE\s+ROUND/i.test(text) || /^Answers/i.test(text))) {
+    // The answer KEY often lives on its own TEXTLESS slide after the "Answers" title
+    // slide (Ronnie's decks: title → grid image → "Answers" title → key image) — the
+    // loop guard above deliberately admits that textless slide; consume it here too.
+    // Only the first answer-bearing image is analyzed (buf empty) so a second image
+    // slide can't append duplicate answers.
+    if (
+      cur?.is_picture_round &&
+      (/^PICTURE\s+ROUND/i.test(text) || /^Answers/i.test(text) || (!text && s.images.length > 0))
+    ) {
       if (/^PICTURE\s+ROUND/i.test(text)) {
         const lines = text.split("\n").map((l) => l.trim()).filter(Boolean);
         if (lines.length >= 2 && lines[1].toLowerCase() !== "answers") cur.round_name = decodeEntities(lines[1]);
       }
-      if (s.images.length > 0) {
+      if (s.images.length > 0 && buf.length === 0) {
         const answers = await analyzePicture(s.images[0].data);
         answers.forEach((a, i) => buf.push({ question_number: i + 1, question_text: "", answer_text: decodeEntities(a) }));
       }
