@@ -14,6 +14,7 @@
     "test:businessdate": "tsx scripts/test-business-date.ts",
     "test:menutext": "tsx scripts/test-menu-text.ts",
     "seed:staff": "tsx scripts/seed-staff.ts",
+    "apply:email-templates": "tsx scripts/apply-email-templates.ts",
     "backup": "tsx scripts/backup.ts",
     "test:seasons": "tsx scripts/test-season-leaderboard.ts",
     "test:neighborhood": "tsx scripts/test-neighborhood-events.ts",
