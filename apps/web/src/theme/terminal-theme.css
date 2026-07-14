@@ -573,3 +573,25 @@ div[data-radix-select-viewport] {
  * reads noticeably larger/crisper, so this floor targets only the truly-tiny captions.
  * `.u-bump` is available for one-off spans that need lifting without a new style object. */
 .staff-ui .u-bump { font-size: 15px !important; }
+
+/* ===== SCORING CONSOLE DENSITY (owner trivia-host note) =====
+ * The scoring console is desktop-primary and its controls were a step too large,
+ * eating the vertical space the host needs for the grid + question box. Take EVERY
+ * control on the page down one step — DESKTOP ONLY. The page is occasionally driven
+ * from a phone (walk-up check-in / score fixes), where ≥44px tap targets are a hard
+ * requirement (the RoundGrid score dialog especially), so the shrink is gated behind
+ * a min-width media query that mirrors useIsMobile(640): below 640px nothing shrinks
+ * and the inline 44px geometry stands. Scoped to `.scoring-page` so the SHARED button
+ * primitives (trivia/ui.tsx — also used by Teams and the other host tools) and the
+ * global `.staff-ui button` scale are left untouched. `!important` is required to beat
+ * the inline `minHeight:44`/padding from ui.tsx and the global `.staff-ui button` size.
+ * `a.u-btn` catches the anchors styled as buttons (nav links). */
+@media (min-width: 640px) {
+  .scoring-page button,
+  .scoring-page a.u-btn {
+    min-height: 38px !important;
+    padding-top: 6px !important;
+    padding-bottom: 6px !important;
+    font-size: 1.125rem !important; /* 18px — one step down from the 20px staff-ui button */
+  }
+}
