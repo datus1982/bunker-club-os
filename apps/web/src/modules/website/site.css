@@ -14,10 +14,16 @@
  */
 
 .site {
-  /* ── palette (warm, atmospheric, high-contrast body) ── */
-  --site-bg: #16110d;          /* warm near-black */
-  --site-bg-raised: #201811;   /* cards / header */
-  --site-bg-sunk: #100c08;     /* footer */
+  /* ── palette (cool near-black base, high-contrast warm body) ──
+     Background = view-6 swatch C (owner-ratified 2026-07-13): cool near-black
+     #0d0f12 with a faint amber glow up top (applied on the `.site` background
+     below), replacing the old warm brown-black #16110d "reddish cast." The
+     amber/cream/brand-red accent palette is unchanged; only the dark surfaces are
+     cooled to harmonise with the new base (warm-brown cards on a cool page read
+     muddy). Cream #f3ead9 / amber #ffb000 stay ≥12:1 on every surface (AA clear). */
+  --site-bg: #0d0f12;          /* cool near-black (swatch C) */
+  --site-bg-raised: #16191d;   /* cards / header — cool, one step up */
+  --site-bg-sunk: #0a0c0e;     /* footer — cool, one step down */
   --site-ink: #f3ead9;         /* body text — warm cream, high contrast */
   --site-ink-dim: #bcae97;     /* secondary text */
   --site-amber: #ffb000;       /* primary accent */
@@ -49,7 +55,11 @@
   --site-pad: clamp(1rem, 4vw, 2.5rem);
 
   color: var(--site-ink);
-  background: var(--site-bg);
+  /* Swatch C: cool near-black + a faint amber glow up top (matches the mockup's
+     radial(120% 90% at 50% 0%, rgba(255,176,0,.06))). Fixed so the glow stays at the
+     top of the viewport rather than tiling down the (tall) page. */
+  background: radial-gradient(120% 90% at 50% 0%, rgba(255, 176, 0, 0.06) 0%, transparent 55%), var(--site-bg);
+  background-attachment: fixed;
   font-family: var(--site-font-body);
   font-size: 17px;
   line-height: 1.6;
