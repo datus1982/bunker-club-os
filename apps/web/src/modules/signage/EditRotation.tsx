@@ -91,6 +91,7 @@ export function EditRotation() {
                   onChanged={invalidate}
                   prev={arr[i - 1]}
                   next={arr[i + 1]}
+                  toastRows={toastQ.data}
                 />
               ))}
             </div>

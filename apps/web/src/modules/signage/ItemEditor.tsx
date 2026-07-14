@@ -338,14 +338,20 @@ function DrinkSpecialFields({
           </div>
           <Field label="NAME OVERRIDE"><input placeholder={src.name ?? ""} value={str(fields.name) ?? ""} onChange={(e) => setField("name", e.target.value)} style={sel} /></Field>
           <Field label="PRICE OVERRIDE"><input type="number" step="0.01" placeholder={src.price != null ? String(src.price) : ""} value={numStr(fields.price)} onChange={(e) => setField("price", e.target.value)} style={sel} /></Field>
-          <Field label="TAGLINE / BLURB">
-            <input placeholder={src.public_blurb ?? "no public blurb — write one"} value={str(fields.tagline) ?? ""} onChange={(e) => setField("tagline", e.target.value)} style={sel} />
+          <Field label="INGREDIENTS / BLURB (top strip)">
+            <input placeholder={src.public_blurb ?? "no public blurb — write one"} value={str(fields.ingredients) ?? str(fields.tagline) ?? ""} onChange={(e) => setField("ingredients", e.target.value)} style={sel} />
           </Field>
           <div style={{ fontSize: 14, opacity: 0.6 }}>
             {src.public_blurb
               ? "A public blurb exists in Toast (text before ---); it shows unless you override here."
-              : "No public blurb in Toast — Toast descriptions are never shown (recipe safety). Write one above."}
+              : "No public blurb in Toast — Toast descriptions are never shown (recipe safety). Write one above, or add it in Toast (public --- private) so the website menu gets it too."}
           </div>
+          <Field label="FLOURISH (script line, optional)">
+            <input placeholder={`e.g. "Out of this World!" — shows in cursive, authored only`} value={str(fields.flourish) ?? ""} onChange={(e) => setField("flourish", e.target.value)} style={sel} />
+          </Field>
+          <Field label="CATEGORY OVERRIDE">
+            <input placeholder={src.menu_group ?? "e.g. SIGNATURE COCKTAIL"} value={str(fields.category) ?? ""} onChange={(e) => setField("category", e.target.value)} style={sel} />
+          </Field>
           <PhotoOverride fields={fields} setField={setField} />
         </div>
       ) : (
@@ -353,7 +359,9 @@ function DrinkSpecialFields({
           <div style={{ fontSize: 14, opacity: 0.6 }}>Manual — or pick a Toast source above to auto-fill name/price/photo.</div>
           <Field label="NAME"><input value={str(fields.name) ?? ""} onChange={(e) => setField("name", e.target.value)} style={sel} /></Field>
           <Field label="PRICE"><input type="number" step="0.01" value={numStr(fields.price)} onChange={(e) => setField("price", e.target.value)} style={sel} /></Field>
-          <Field label="TAGLINE"><input value={str(fields.tagline) ?? ""} onChange={(e) => setField("tagline", e.target.value)} style={sel} /></Field>
+          <Field label="INGREDIENTS / BLURB (top strip)"><input value={str(fields.ingredients) ?? str(fields.tagline) ?? ""} onChange={(e) => setField("ingredients", e.target.value)} style={sel} /></Field>
+          <Field label="FLOURISH (script line, optional)"><input value={str(fields.flourish) ?? ""} onChange={(e) => setField("flourish", e.target.value)} style={sel} /></Field>
+          <Field label="CATEGORY"><input value={str(fields.category) ?? ""} onChange={(e) => setField("category", e.target.value)} style={sel} /></Field>
           <ImageField fields={fields} setField={setField} />
         </div>
       )}
