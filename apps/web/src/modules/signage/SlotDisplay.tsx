@@ -216,12 +216,24 @@ function Rotation({ slot, rotation, toast, teaseEvent, venueName }: { slot: Slot
 /* ── Chrome ─────────────────────────────────────────────────────────────────── */
 function ChromeHeader({ slot, venueName, timezone }: { slot: Slot; venueName: string; timezone: string }) {
   const clock = useClock(timezone);
+  // Owner design-beat: render the location separator ONLY when a label exists (it is now
+  // nulled venue-wide, which otherwise left a dangling "— ·").
+  const label = (slot.location_label ?? "").trim().toUpperCase();
+  const terminalLine = `TERMINAL ${String(slot.terminal_number ?? 0).padStart(2, "0")}${label ? ` — ${label}` : ""} · ${clock}`;
   return (
-    <header style={{ flexShrink: 0, borderBottom: "2px solid var(--terminal-green)", padding: "22px 40px", display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-      <div style={{ fontSize: 56, fontWeight: 700, letterSpacing: 2, textShadow: "0 0 10px var(--terminal-glow)" }}>{venueName.toUpperCase()}</div>
+    // Owner design-beat: tightened vertical padding (22 → 13px); chrome rule shifted to dim
+    // green (--sig-rule) while body ink stays amber ("the mix of the two is working").
+    <header style={{ flexShrink: 0, borderBottom: "2px solid var(--sig-rule)", padding: "13px 40px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 20 }}>
+        {/* Official white 1-color roundel — used byte-identical, NEVER recolored (brand rule).
+            An external SVG in an <img> is isolated from the terminal-theme cascade, so it
+            stays white-on-dark (correct on the amber CRT). Sized to the wordmark cap height. */}
+        <img src="/brand/roundel-white.svg" alt="" style={{ height: 52, width: "auto", display: "block", flexShrink: 0 }} />
+        <div style={{ fontSize: 56, fontWeight: 700, letterSpacing: 2, textShadow: "0 0 10px var(--terminal-glow)" }}>{venueName.toUpperCase()}</div>
+      </div>
       <div style={{ fontSize: 24, opacity: 0.75, textAlign: "right", lineHeight: 1.5 }}>
         BUNKER UNIFIED OS v2.1<br />
-        TERMINAL {String(slot.terminal_number ?? 0).padStart(2, "0")} — {(slot.location_label ?? "").toUpperCase()} · {clock}
+        {terminalLine}
       </div>
     </header>
   );
@@ -237,12 +249,15 @@ function ChromeFooter({ ticker, live }: { ticker: TickerLine[]; live: boolean })
   const line = ticker[ti % Math.max(1, ticker.length)] ?? { text: "", live: false };
 
   return (
-    <footer style={{ flexShrink: 0, borderTop: "2px solid var(--terminal-green)", padding: "16px 40px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 24, fontSize: 26 }}>
+    // Owner design-beat: chrome rule shifted to dim green (--sig-rule).
+    <footer style={{ flexShrink: 0, borderTop: "2px solid var(--sig-rule)", padding: "16px 40px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 24, fontSize: 26 }}>
       {/* Dual-phosphor: the ON AIR / LIVE status light is a live-state indicator, so it
           reads green like the mockup's `.cbot .now` — a single restrained green accent. */}
       <span className="sig-live" style={{ flexShrink: 0 }}>{live ? "■ ON AIR" : "■ ONLINE"}</span>
+      {/* Green ◆ chrome marker (owner: "the ticker's ◆ markers can go green too"). */}
+      <span className="sig-live" style={{ flexShrink: 0, opacity: 0.85 }}>◆</span>
       {/* Reprint (key-remount) — no scroll animation (docs/09 perf + authenticity). */}
-      <span key={ti} className={`sig-enter${line.live ? " sig-live" : ""}`} style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+      <span key={ti} className={`sig-enter${line.live ? " sig-live" : ""}`} style={{ flex: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
         {line.text}
       </span>
     </footer>

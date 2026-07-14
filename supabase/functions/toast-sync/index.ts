@@ -164,6 +164,36 @@ function calculateTopItems(orders: ToastOrder[], menuGuid: string): TopItem[] {
   }));
 }
 
+// ── last item rung in (NOW POURING ticker source, owner design-beat) ──────────
+// Find the most recent non-voided selection by order openedDate for the business date, so the
+// signage ticker can say "◆ NOW POURING: {name}" = literally the last thing rung in. Respects
+// the POS-visibility principle (never advertise anything not active on the POS view): skip any
+// item explicitly pos_visible=false; fail-open otherwise (unknowns show; 86'd is fine — it was
+// just sold). Returns { name, at } (at = the order's openedDate ISO) or null when nothing
+// qualifies (caller then leaves the prior value untouched — the reader ages it out at 90 min).
+interface LastRung { name: string; at: string }
+function computeLastRung(orders: ToastOrder[], hiddenGuids: Set<string>, hiddenNames: Set<string>): LastRung | null {
+  let best: { openedMs: number; name: string; at: string } | null = null;
+  for (const order of orders) {
+    if (order.voided || order.excessFood) continue;
+    const at = order.openedDate ?? "";
+    const openedMs = at ? Date.parse(at) : NaN;
+    if (!Number.isFinite(openedMs)) continue;
+    for (const check of order.checks ?? []) {
+      if (check.voided) continue;
+      for (const sel of check.selections ?? []) {
+        if (sel.voided || !sel.item) continue;
+        const name = (sel.displayName ?? "").trim();
+        if (!name) continue;
+        if ((sel.item.guid && hiddenGuids.has(sel.item.guid)) || hiddenNames.has(name.toLowerCase())) continue;
+        // Latest order wins; within the same order (equal openedMs) the LAST selection wins.
+        if (!best || openedMs >= best.openedMs) best = { openedMs, name, at };
+      }
+    }
+  }
+  return best ? { name: best.name, at: best.at } : null;
+}
+
 // ── operating-hours gate ─────────────────────────────────────────────────────
 // venue_settings key 'drinks_sync_window' = { "open": "HH:MM", "close": "HH:MM" } in the
 // venue's timezone. Absent → always run. Handles overnight windows (close < open).
@@ -342,6 +372,21 @@ Deno.serve(async (req) => {
     for (const venue of venues ?? []) {
       const tz = (venue.timezone as string) || "America/Chicago";
 
+      // DECISION: closeout-hour override. Toast /config 404s at our (standard) access tier, so
+      // getCloseoutHour() returns 0 and the setting the owner applied (venue_settings
+      // toast_closeout_hour=4) was inert — every order past midnight flipped the board to an
+      // empty NEW day mid-service. Honor that setting here (a 4 AM bar rollover keeps late-night
+      // orders on the correct business date); fall back to the Toast value, else 0. Additive,
+      // and it makes the closeout=4 premise real for the Top Sellers idle state + last-rung.
+      const { data: coRow } = await admin
+        .from("venue_settings")
+        .select("value")
+        .eq("venue_id", venue.id)
+        .eq("key", "toast_closeout_hour")
+        .maybeSingle();
+      const coVal = typeof coRow?.value === "number" ? coRow.value : Number(coRow?.value);
+      const effectiveCloseout = Number.isFinite(coVal) && coVal >= 0 && coVal <= 23 ? coVal : closeoutHour;
+
       // Operating-hours gate (unless force).
       const { data: winRow } = await admin
         .from("venue_settings")
@@ -354,7 +399,7 @@ Deno.serve(async (req) => {
 
       // EVENT COUNTER pass — runs on EVERY invocation, independent of the sales window gate.
       // (docs/13: the live counter must keep ticking during an event even outside bar hours.)
-      const events = await runEventsPass(admin, venue.id, tz, token, closeoutHour);
+      const events = await runEventsPass(admin, venue.id, tz, token, effectiveCloseout);
 
       if (!inWindow) {
         // Sales half is skipped outside operating hours — shape preserved for existing readers,
@@ -371,7 +416,7 @@ Deno.serve(async (req) => {
         );
       }
 
-      const businessDate = dateOverride ?? businessDateFor(new Date(), tz, closeoutHour);
+      const businessDate = dateOverride ?? businessDateFor(new Date(), tz, effectiveCloseout);
       const orders = await getOrders(token, businessDate);
 
       // Configured groups to display (fall back to overall if none configured yet).
@@ -414,7 +459,28 @@ Deno.serve(async (req) => {
         .eq("venue_id", venue.id)
         .not("menu_group_guid", "in", `(${targetGuids.map((g) => `"${g}"`).join(",")})`);
 
-      results.push({ venue: venue.id, businessDate, closeoutHour, orders: orders.length, groups: targetGuids.length, rowsWritten, groupNames: targetGuids.map((g) => groupName.get(g) ?? g), events });
+      // LAST ITEM RUNG IN → venue_settings.signage_last_rung (NOW POURING ticker source).
+      // Only when orders exist AND a qualifying selection is found — otherwise leave the prior
+      // value in place (the display ages it out after 90 min).
+      let lastRung: LastRung | null = null;
+      if (orders.length > 0) {
+        const { data: hiddenRows } = await admin
+          .from("toast_menu_cache")
+          .select("guid, name")
+          .eq("venue_id", venue.id)
+          .eq("pos_visible", false);
+        const hiddenGuids = new Set((hiddenRows ?? []).map((h: { guid: string }) => h.guid));
+        const hiddenNames = new Set((hiddenRows ?? []).map((h: { name: string | null }) => String(h.name ?? "").trim().toLowerCase()));
+        lastRung = computeLastRung(orders, hiddenGuids, hiddenNames);
+        if (lastRung) {
+          const { error: rungErr } = await admin
+            .from("venue_settings")
+            .upsert({ venue_id: venue.id, key: "signage_last_rung", value: lastRung }, { onConflict: "venue_id,key" });
+          if (rungErr) throw rungErr;
+        }
+      }
+
+      results.push({ venue: venue.id, businessDate, closeoutHour: effectiveCloseout, orders: orders.length, groups: targetGuids.length, rowsWritten, groupNames: targetGuids.map((g) => groupName.get(g) ?? g), last_rung: lastRung?.name ?? null, events });
     }
 
     return json({ ok: true, results }, 200);

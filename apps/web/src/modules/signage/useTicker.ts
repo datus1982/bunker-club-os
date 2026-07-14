@@ -10,7 +10,8 @@ import { eventStage, minutesToFire, type LiveEvent } from "./eventStage";
  *     itself is waiting out a game (moment stages surface only as ticker lines then),
  *   • manual lines — venue_settings key `signage_ticker_lines` (jsonb string[]),
  *   • live SEASON top-3 (green = live feed),
- *   • live NOW POURING top seller from sales_cache (green = live feed).
+ *   • live NOW POURING = the LAST ITEM RUNG IN (venue_settings `signage_last_rung`,
+ *     written by toast-sync; green = live feed; shown only when < 90 min fresh).
  * The chrome reprints ONE line every ~9s (no scroll animation — perf + terminal
  * authenticity). Realtime on scores keeps the standings line fresh; no sub-30s poll.
  */
@@ -106,54 +107,41 @@ export function useTicker(opts?: { events?: LiveEvent[]; timezone?: string }): T
         }
       }
 
-      // 3) NOW POURING top seller (green) — highest sales_count in sales_cache,
-      //    gated on POS visibility (0034 / reviewer NOTE-2): the owner never wants
-      //    a product advertised unless it's active on the POS view. sales_cache
-      //    rows carry item_guid (populated by toast-sync); we drop any whose Toast
-      //    row is explicitly pos_visible=false, matching by guid and (guid-less
-      //    rows) by name. Unknown items stay visible — mirrors 0034's default-true.
-      const { data: sales } = await supabase
-        .from("sales_cache")
-        .select("item_name, sales_count, item_guid")
+      // 3) NOW POURING = the LAST ITEM RUNG IN (green, live), not the top seller (owner
+      //    design-beat: "it would be really cool if that was just the last thing rung in").
+      //    toast-sync writes venue_settings key `signage_last_rung` = { name, at } during its
+      //    sales pass, already POS-visibility-gated on the WRITE side (only an explicit
+      //    pos_visible=false is skipped; 86'd is fine — it was just sold). Read it the SAME
+      //    anon way as signage_ticker_lines (venue_settings public_read). Only surface the
+      //    line when the ring is FRESH — within the last 90 min — so a stale ring drops off.
+      const { data: rungRow } = await supabase
+        .from("venue_settings")
+        .select("value")
         .eq("venue_id", VENUE_ID)
-        .order("sales_count", { ascending: false })
-        .limit(12);
-      const topSellers = (sales ?? []) as { item_name: string; item_guid: string | null }[];
-      if (topSellers.length) {
-        // Explicitly POS-hidden items only (small set — Winter Cocktails etc.).
-        const { data: hidden } = await supabase
-          .from("toast_menu_cache")
-          .select("guid, name")
-          .eq("venue_id", VENUE_ID)
-          .eq("pos_visible", false);
-        const hiddenGuids = new Set((hidden ?? []).map((h) => h.guid as string));
-        const hiddenNames = new Set(
-          (hidden ?? []).map((h) => String(h.name ?? "").trim().toLowerCase()),
-        );
-        const pouring = topSellers.find((s) =>
-          s.item_guid
-            ? !hiddenGuids.has(s.item_guid)
-            : !hiddenNames.has(String(s.item_name).trim().toLowerCase()),
-        );
-        if (pouring?.item_name) {
-          lines.push({ text: `NOW POURING: ${String(pouring.item_name).toUpperCase()}`, live: true });
-        }
+        .eq("key", "signage_last_rung")
+        .maybeSingle();
+      const rung = rungRow?.value as { name?: unknown; at?: unknown } | null;
+      const rungName = typeof rung?.name === "string" ? rung.name.trim() : "";
+      const rungAt = typeof rung?.at === "string" ? Date.parse(rung.at) : NaN;
+      const NINETY_MIN = 90 * 60_000;
+      if (rungName && Number.isFinite(rungAt) && Date.now() - rungAt <= NINETY_MIN) {
+        lines.push({ text: `◆ NOW POURING: ${rungName.toUpperCase()}`, live: true });
       }
 
       return lines.length ? lines : DEFAULT_LINES.map((text) => ({ text, live: false }));
     },
+    // venue_settings is not in the realtime publication, so a 60s fallback refetch keeps the
+    // last-rung / manual / season lines current (within the display polling rule: one 30–60s
+    // fallback poll; immediacy for standings still comes from the scores realtime below).
+    refetchInterval: 60_000,
   });
 
   useEffect(() => {
+    // Scores realtime keeps the SEASON STANDINGS line fresh immediately. The last-rung line
+    // rides the 60s fallback refetch (venue_settings has no realtime publication).
     const ch = supabase
       .channel("signage:ticker")
       .on("postgres_changes", { event: "*", schema: "public", table: "scores" },
-        () => qc.invalidateQueries({ queryKey: ["signage", "ticker"] }))
-      .on("postgres_changes", { event: "*", schema: "public", table: "sales_cache", filter: `venue_id=eq.${VENUE_ID}` },
-        () => qc.invalidateQueries({ queryKey: ["signage", "ticker"] }))
-      // POS-visibility flips live in toast_menu_cache — refresh so a hidden top
-      // seller stops appearing as NOW POURING (0034 / reviewer NOTE-2).
-      .on("postgres_changes", { event: "*", schema: "public", table: "toast_menu_cache", filter: `venue_id=eq.${VENUE_ID}` },
         () => qc.invalidateQueries({ queryKey: ["signage", "ticker"] }))
       .subscribe();
     return () => { supabase.removeChannel(ch); };

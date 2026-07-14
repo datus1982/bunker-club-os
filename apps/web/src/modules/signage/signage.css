@@ -16,6 +16,13 @@
   --terminal-green: #ffb000;
   --terminal-glow: rgba(255, 176, 0, 0.5);
 }
+/* Owner design-beat: chrome/divider RULES shift a little greener while body ink stays
+   amber ("the mix of the two is working"). An absolute green (independent of the
+   amber/green ink var) so the rules read green in the ambient amber state; game mode
+   drops the chrome entirely so there is no conflict there. */
+.signage-slot {
+  --sig-rule: rgba(0, 255, 65, 0.5);
+}
 .signage-green,
 .sig-live {
   --terminal-green: #00ff41;
