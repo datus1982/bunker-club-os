@@ -362,6 +362,18 @@
   color: var(--site-ink);
 }
 .site-card__body { color: var(--site-ink-dim); font-size: 0.95rem; }
+/* Promo card with a Toast/custom thumb: modest fixed square, text beside it. Fixed
+   dimensions + flex-shrink:0 keep the strip free of layout shift as images load. */
+.site-card--media { display: flex; gap: 1rem; align-items: flex-start; }
+.site-card__main { min-width: 0; flex: 1; }
+.site-card__thumb {
+  width: 64px;
+  height: 64px;
+  object-fit: cover;
+  border: 1px solid var(--site-line-strong);
+  flex-shrink: 0;
+  background: var(--site-bg-raised);
+}
 .site-dot {
   width: 8px; height: 8px; border-radius: 50%;
   background: currentColor;
@@ -658,6 +670,17 @@
   margin: 0 0 0.5rem;
 }
 .site-event__body { color: var(--site-ink-dim); font-size: 0.95rem; margin: 0 0 0.75rem; }
+/* Event card with a Toast/custom thumb: fixed square beside the text (no layout shift). */
+.site-event--media { display: flex; gap: 1rem; align-items: flex-start; }
+.site-event__main { min-width: 0; flex: 1; }
+.site-event__thumb {
+  width: 72px;
+  height: 72px;
+  object-fit: cover;
+  border: 1px solid var(--site-line-strong);
+  flex-shrink: 0;
+  background: var(--site-bg-raised);
+}
 
 /* ── Trivia steps (/trivia) ──────────────────────────────────────────────── */
 .site-steps {

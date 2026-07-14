@@ -167,15 +167,31 @@ export function Home() {
           {cards && cards.length > 0 ? (
             <div className="site-strip">
               {cards.map((c) => (
-                <article key={c.key} className={`site-card${c.live ? " site-card--live" : ""}`}>
-                  <div className="site-card__kicker">
-                    {c.live && <span className="site-dot" aria-hidden />}
-                    {c.kicker}
+                <article
+                  key={c.key}
+                  className={`site-card${c.live ? " site-card--live" : ""}${
+                    c.image ? " site-card--media" : ""
+                  }`}
+                >
+                  {c.image && (
+                    <img
+                      className="site-card__thumb"
+                      src={c.image}
+                      alt=""
+                      loading="lazy"
+                      decoding="async"
+                    />
+                  )}
+                  <div className="site-card__main">
+                    <div className="site-card__kicker">
+                      {c.live && <span className="site-dot" aria-hidden />}
+                      {c.kicker}
+                    </div>
+                    {/* Card titles are promo labels, not document headings — keeps the
+                        page's heading outline sequential (h1 → h2). */}
+                    <p className="site-card__title">{c.title}</p>
+                    {c.body && <p className="site-card__body">{c.body}</p>}
                   </div>
-                  {/* Card titles are promo labels, not document headings — keeps the
-                      page's heading outline sequential (h1 → h2). */}
-                  <p className="site-card__title">{c.title}</p>
-                  {c.body && <p className="site-card__body">{c.body}</p>}
                 </article>
               ))}
             </div>
