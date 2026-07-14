@@ -50,10 +50,11 @@ const SECTIONS: NavSection[] = [
     label: "BAR OPS",
     children: [
       // `end` so the hub link only lights on exactly /signage, not its child pages
-      // (/signage/screens/:slug, /signage/broadcast).
+      // (/signage/screens/:slug, /signage/broadcast, /signage/events).
       { to: "/signage", label: "SIGNAGE HUB", module: "signage", end: true },
+      // EVENTS & PROMOS = scheduled/recurring promos + moments (docs/13). Own module grant.
+      { to: "/signage/events", label: "EVENTS & PROMOS", module: "events" },
       { to: "/signage/broadcast", label: "BROADCAST", module: "signage" },
-      // EVENTS & PROMOS lands with the events task — omitted for now.
       // TOP SELLERS = the sales-rank board config (was mislabelled "DRINKS"). Route +
       // module key unchanged; only the staff-facing label is task-named.
       { to: "/admin/drinks", label: "TOP SELLERS", module: "drinks" },

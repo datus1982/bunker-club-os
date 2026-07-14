@@ -1,6 +1,21 @@
 import { useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase, VENUE_ID } from "@/shared/supabaseClient";
+import { eventStage, isTakeoverStage, type LiveEvent } from "./eventStage";
+
+// Re-export the pure events surface so the app imports it from one place. The pure
+// module (no react/supabase) is what scripts/test-event-stage.ts imports directly.
+export {
+  eventStage,
+  isTakeoverStage,
+  secondsToFire,
+  minutesToFire,
+  formatTMinus,
+  MOMENT_PAYOFF_MS,
+  ALL_CLEAR_MS,
+  ALERT_PULSE_MS,
+} from "./eventStage";
+export type { LiveEvent, EventStage, EventKind } from "./eventStage";
 
 /**
  * Data layer for the PUBLIC signage slot page (/signage/s/:slug — docs/09).
@@ -27,7 +42,17 @@ export interface Slot {
   scale_adjust: number;
 }
 
-export type Template = "drink_special" | "event" | "announcement" | "image_only" | "celebration";
+export type Template =
+  | "drink_special"
+  | "event"
+  | "announcement"
+  | "image_only"
+  | "celebration"
+  // Phase 7 (docs/13): rotation-level cards materialized from a live scheduled_event.
+  // Never authored, never DB rows — only produced by resolveRotation at render time.
+  | "event_window"  // an active WINDOW promo card (title/body/cta + optional live price)
+  | "event_message" // an active MESSAGE card (generic chrome, no price unless linked)
+  | "event_tease";  // a MOMENT TEASE interstitial (12s, injected every ~4th rotation turn)
 
 export interface SignageItem {
   id: string;
@@ -44,6 +69,9 @@ export interface SignageItem {
   /** True for presentation-layer ★ SCREENS entries materialized at render time
    *  (docs/09) — never a DB row. */
   materialized?: boolean;
+  /** For event-sourced materialized cards (event_window/message/tease): the source
+   *  live event, so the card can render live copy/price/skin (docs/13). */
+  event?: LiveEvent;
 }
 
 export interface Takeover {
@@ -70,17 +98,56 @@ export interface LiveGame {
   status: "active" | "paused";
 }
 
-/** The three modes a slot can resolve to, highest priority first. */
-export type SlotMode = "takeover" | "game" | "rotation";
+/** The modes a slot can resolve to, highest priority first. `event` = a MOMENT in a
+ *  takeover-level stage (alert/moment/event/allclear) holding the surface (docs/13). */
+export type SlotMode = "takeover" | "event" | "game" | "rotation";
+
+/** A MOMENT that is currently in a takeover-level stage, for the resolver ladder. */
+export interface ActiveMoment {
+  stage: "alert" | "moment" | "event" | "allclear";
+  interruptGame: boolean;
+}
 
 /**
- * The mode ladder EVERY slot resolves by (docs/09): an active takeover overrides
- * everything; else a live game shows the trivia board; else the authored rotation.
- * Extracted here so the staff Signage Hub reports the exact same precedence the public
- * SlotDisplay renders — one source of truth, never a second copy of the ladder.
+ * The mode ladder EVERY slot resolves by (docs/09 + docs/13 amendment):
+ *   manual takeover
+ *     > MOMENT alert/moment/event/allclear stage  (UNLESS a game is live AND !interrupt_game)
+ *       > live game (trivia board)
+ *         > rotation (authored items + ★ SCREENS + active WINDOW/MESSAGE cards + TEASE)
+ * TEASE never takes over — it is rotation-level. During a live game with interrupt_game
+ * false, the moment is suppressed here and surfaces only as ticker lines (docs/13).
+ *
+ * Extracted so the staff Signage Hub reports the EXACT precedence the public SlotDisplay
+ * renders — one source of truth, never a second copy of the ladder (PR #12 invariant).
  */
-export function resolveSlotMode(opts: { takeover: boolean; liveGame: boolean }): SlotMode {
-  return opts.takeover ? "takeover" : opts.liveGame ? "game" : "rotation";
+export function resolveSlotMode(opts: {
+  takeover: boolean;
+  liveGame: boolean;
+  moment?: ActiveMoment | null;
+}): SlotMode {
+  if (opts.takeover) return "takeover";
+  if (opts.moment && (!opts.liveGame || opts.moment.interruptGame)) return "event";
+  if (opts.liveGame) return "game";
+  return "rotation";
+}
+
+/**
+ * Pick the single MOMENT that should preempt the surface right now, if any. At most one
+ * moment runs per venue (0035 partial-unique index), but we defensively take the first
+ * in a takeover-level stage. Returns null if no moment is in alert/moment/event/allclear.
+ */
+export function activeMoment(events: LiveEvent[], now: Date = new Date()): { event: LiveEvent; stage: "alert" | "moment" | "event" | "allclear" } | null {
+  for (const ev of events) {
+    if (ev.kind !== "moment") continue;
+    const st = eventStage(ev, now);
+    if (isTakeoverStage(st)) return { event: ev, stage: st };
+  }
+  return null;
+}
+
+/** The MOMENT currently in its TEASE lead-in (rotation-level interstitial), if any. */
+export function teaseMoment(events: LiveEvent[], now: Date = new Date()): LiveEvent | null {
+  return events.find((ev) => ev.kind === "moment" && eventStage(ev, now) === "tease") ?? null;
 }
 
 const SCREENS_GROUP = "★ SCREENS";
@@ -224,14 +291,60 @@ export function useSlot(slug: string) {
 }
 
 /**
+ * Live scheduled events for the venue (docs/13). Reads the anon horizon-gated view
+ * `signage_events_live` (0035) — a row appears ONLY inside its on-screen window, and
+ * only display columns are exposed. Realtime can't deliver anon rows through a SECURITY
+ * DEFINER view, so this polls at 30s (within the display rules' one-fallback-poll
+ * allowance; the stage math is client-side and re-derived every render tick anyway).
+ */
+export function useLiveEvents(venueId: string = VENUE_ID) {
+  return useQuery({
+    queryKey: ["signage", "events", venueId],
+    refetchInterval: 30_000,
+    queryFn: async (): Promise<LiveEvent[]> => {
+      const { data, error } = await supabase
+        .from("signage_events_live")
+        .select("id, venue_id, name, kind, skin, fields, toast_guid, fire_at, tease_minutes, alert_minutes, window_minutes, interrupt_game, status")
+        .eq("venue_id", venueId);
+      if (error) throw error;
+      return (data ?? []) as LiveEvent[];
+    },
+  });
+}
+
+/** Build the rotation-level card for an active WINDOW/MESSAGE event (docs/13). */
+function eventRotationCard(ev: LiveEvent): SignageItem {
+  const duration = typeof ev.fields?.duration_seconds === "number" ? ev.fields.duration_seconds : 14;
+  return {
+    id: `event:${ev.id}`,
+    slot_id: null,
+    template: ev.kind === "message" ? "event_message" : "event_window",
+    // Carry the linked guid so the standard OOS/POS auto-hide + live-price path applies.
+    fields: { ...ev.fields, source_toast_guid: ev.toast_guid ?? undefined },
+    event: ev,
+    starts_at: null,
+    ends_at: null,
+    sort_order: -100, // event promos lead the rotation
+    duration_seconds: Math.max(6, duration),
+    active: true,
+    materialized: true,
+  };
+}
+
+/**
  * Resolve the rotation the slot should show right now: active items in their time
  * windows (client-side, matches the DrinksDisplay pattern), plus presentation-layer
- * ★ SCREENS entries; minus any item whose source_toast_guid is 86'd.
+ * ★ SCREENS entries and any active WINDOW/MESSAGE event cards (docs/13); minus any
+ * item whose source_toast_guid is 86'd or off the POS view.
+ *
+ * MOMENT TEASE interstitials are NOT injected here — they are timing-based (every ~4th
+ * turn) and handled by the Rotation component so the pure list stays deterministic.
  */
 export function resolveRotation(
   items: SignageItem[],
   toast: Map<string, ToastCacheRow>,
   now: Date = new Date(),
+  events: LiveEvent[] = [],
 ): SignageItem[] {
   const t = now.getTime();
   const inWindow = (it: SignageItem) =>
@@ -250,6 +363,18 @@ export function resolveRotation(
   };
 
   const scheduled = items.filter((it) => inWindow(it) && notHidden(it));
+
+  // Active WINDOW/MESSAGE event cards (docs/13) join the rotation exactly like ★ SCREENS
+  // — presentation-layer only, never DB rows. A toast-linked card obeys the same 86'd /
+  // off-POS auto-hide as any drink_special (notHidden reads fields.source_toast_guid).
+  const eventCards: SignageItem[] = [];
+  for (const ev of events) {
+    if (ev.kind !== "window" && ev.kind !== "message") continue;
+    if (eventStage(ev, now) !== "active") continue;
+    const card = eventRotationCard(ev);
+    if (!notHidden(card)) continue;
+    eventCards.push(card);
+  }
 
   // ★ SCREENS materialization: in-stock items in the hidden toggle group auto-appear
   // as drink_special entries (template defaults + Toast fields). These are NEVER DB
@@ -272,5 +397,5 @@ export function resolveRotation(
     });
   }
 
-  return [...scheduled, ...materialized].sort((a, b) => a.sort_order - b.sort_order);
+  return [...eventCards, ...scheduled, ...materialized].sort((a, b) => a.sort_order - b.sort_order);
 }

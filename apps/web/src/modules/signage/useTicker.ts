@@ -1,9 +1,13 @@
-import { useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase, VENUE_ID } from "@/shared/supabaseClient";
+import { eventStage, minutesToFire, type LiveEvent } from "./eventStage";
 
 /**
  * Footer-ticker sources (docs/09 persistent chrome). Interleaves, in order:
+ *   • EVENT lines (docs/13) — a TEASE "T-MINUS N MIN" or an active WINDOW/MESSAGE/EVENT
+ *     "NOW UNTIL H:MM" reprint, so a scheduled promo is announced even when the moment
+ *     itself is waiting out a game (moment stages surface only as ticker lines then),
  *   • manual lines — venue_settings key `signage_ticker_lines` (jsonb string[]),
  *   • live SEASON top-3 (green = live feed),
  *   • live NOW POURING top seller from sales_cache (green = live feed).
@@ -16,13 +20,47 @@ export interface TickerLine {
   live: boolean; // green ink when true (docs/09 color-state: green = live)
 }
 
+/** Derive event ticker lines from the live events (docs/13). TEASE → T-MINUS; active
+ *  WINDOW/MESSAGE and the moment EVENT window → "NOW UNTIL H:MM". `now`/`tz` passed in. */
+export function buildEventTickerLines(events: LiveEvent[], timezone: string, now: number): TickerLine[] {
+  const fmtTime = (ms: number) =>
+    new Intl.DateTimeFormat("en-US", { timeZone: timezone, hour: "numeric", minute: "2-digit" }).format(new Date(ms)).toUpperCase();
+  const lines: TickerLine[] = [];
+  for (const ev of events) {
+    const stage = eventStage(ev, now);
+    const name = ev.name.toUpperCase();
+    if (stage === "tease") {
+      lines.push({ text: `◆ ${name} — T-MINUS ${minutesToFire(ev, now)} MIN`, live: false });
+    } else if (stage === "active" || stage === "event") {
+      const end = ev.fire_at ? new Date(ev.fire_at).getTime() + ev.window_minutes * 60_000 : now;
+      lines.push({ text: `◆ ${name} — NOW UNTIL ${fmtTime(end)}`, live: false });
+    }
+    // alert / moment / allclear are full-screen beats — not ticker lines (docs/13).
+  }
+  return lines;
+}
+
 const DEFAULT_LINES = [
   "WEDNESDAYS: ATOMIC PUB TRIVIA 8PM · HAPPY HOUR 4-7",
   "SHELTER AUTHORITY · CIVIL DEFENSE APPROVED · STAY UNDERGROUND",
 ];
 
-export function useTicker(): TickerLine[] {
+export function useTicker(opts?: { events?: LiveEvent[]; timezone?: string }): TickerLine[] {
   const qc = useQueryClient();
+  const events = opts?.events ?? [];
+  const timezone = opts?.timezone ?? "America/Chicago";
+
+  // Re-derive the time-based event lines on a 30s tick (T-MINUS / NOW UNTIL only need
+  // minute granularity; the reprint cadence is separate in ChromeFooter). No sub-30s poll.
+  const [nowTick, setNowTick] = useState(() => Date.now());
+  useEffect(() => {
+    const id = window.setInterval(() => setNowTick(Date.now()), 30_000);
+    return () => window.clearInterval(id);
+  }, []);
+  const eventLines = useMemo(
+    () => buildEventTickerLines(events, timezone, nowTick),
+    [events, timezone, nowTick],
+  );
 
   const query = useQuery({
     queryKey: ["signage", "ticker"],
@@ -121,5 +159,7 @@ export function useTicker(): TickerLine[] {
     return () => { supabase.removeChannel(ch); };
   }, [qc]);
 
-  return query.data ?? DEFAULT_LINES.map((text) => ({ text, live: false }));
+  // Event lines lead — a scheduled promo/moment is the most timely thing on the wall.
+  const base = query.data ?? DEFAULT_LINES.map((text) => ({ text, live: false }));
+  return [...eventLines, ...base];
 }

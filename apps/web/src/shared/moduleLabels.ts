@@ -13,7 +13,7 @@ export const MODULE_LABELS: Record<ModuleKey, string> = {
   drinks: "TOP SELLERS",
   signage: "SIGNAGE",
   website: "WEBSITE",
-  events: "EVENTS",
+  events: "EVENTS & PROMOS",
 };
 
 export function moduleLabel(key: ModuleKey): string {

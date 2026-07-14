@@ -4,9 +4,13 @@ import { DisplayCanvas } from "@/shared/DisplayCanvas";
 import { supabase } from "@/shared/supabaseClient";
 import { LeaderboardBoard } from "@/modules/trivia/Leaderboard";
 import { GameDisplayBoard } from "@/modules/trivia/GameDisplay";
-import { useSlot, resolveRotation, resolveSlotMode, type SignageItem, type Slot, type SlotMode, type Takeover, type ToastCacheRow } from "./useSignage";
+import {
+  useSlot, useLiveEvents, resolveRotation, resolveSlotMode, activeMoment, teaseMoment,
+  type SignageItem, type Slot, type SlotMode, type Takeover, type ToastCacheRow, type LiveEvent,
+} from "./useSignage";
 import { useTicker, type TickerLine } from "./useTicker";
 import { TemplateView } from "./SignageTemplates";
+import { EventStageView, EventTeaseCard } from "./EventStages";
 import "./signage.css";
 
 type ToastMap = Map<string, ToastCacheRow>;
@@ -72,24 +76,37 @@ function SlotScreen({
   const [params] = useSearchParams();
   const preview = params.has("preview");
 
-  // Re-evaluate item time-windows on a slow tick (perf: 30s, well above sub-30s floor).
+  const events = useLiveEvents();
+  const liveEvents = events.data ?? [];
+
+  // Re-evaluate item time-windows AND event stages on a slow tick (perf: 30s, well above
+  // the sub-30s floor). Stage BOUNDARIES that need second-precision (the ALERT countdown,
+  // the MOMENT payoff) are handled by the stage components' own 1s local clock.
   const [nowTick, setNowTick] = useState(() => Date.now());
   useEffect(() => {
     const id = window.setInterval(() => setNowTick(Date.now()), 30_000);
     return () => window.clearInterval(id);
   }, []);
+  const now = useMemo(() => new Date(nowTick), [nowTick]);
 
   const rotation = useMemo(
-    () => resolveRotation(items, toast, new Date(nowTick)),
-    [items, toast, nowTick],
+    () => resolveRotation(items, toast, now, liveEvents),
+    [items, toast, now, liveEvents],
   );
+
+  // MOMENT in a takeover-level stage (alert/moment/event/allclear) + the tease lead-in.
+  const moment = useMemo(() => activeMoment(liveEvents, now), [liveEvents, now]);
+  const tease = useMemo(() => teaseMoment(liveEvents, now), [liveEvents, now]);
 
   const activeTakeover = preview ? null : takeover;
   const gameOn = preview ? false : !!liveGameId;
-  const mode: Mode = resolveSlotMode({ takeover: !!activeTakeover, liveGame: gameOn });
+  // Preview is rotation-only: zero the takeover-level moment (like takeover/game). Window
+  // and message cards + the tease interstitial still show — they are rotation-level.
+  const activeMomentOpt = preview || !moment ? null : { stage: moment.stage, interruptGame: moment.event.interrupt_game };
+  const mode: Mode = resolveSlotMode({ takeover: !!activeTakeover, liveGame: gameOn, moment: activeMomentOpt });
 
   // Ink: game → green; takeover inherits the ink underneath (green if a game is live,
-  // else amber); rotation → amber ambient. (docs/09 color-state)
+  // else amber); event stages + rotation → amber ambient with green live accents. (docs/09)
   const ink: "green" | "amber" = mode === "game" ? "green" : mode === "takeover" && !!liveGameId ? "green" : "amber";
 
   // One-shot GAME MODE boot transition when entering game mode (docs/09).
@@ -105,7 +122,7 @@ function SlotScreen({
     prevMode.current = mode;
   }, [mode]);
 
-  const ticker = useTicker();
+  const ticker = useTicker({ events: liveEvents, timezone });
 
   return (
     <div className={`signage-slot signage-${ink}`} style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", color: "var(--terminal-green)", background: "#000" }}>
@@ -123,7 +140,14 @@ function SlotScreen({
         <>
           <ChromeHeader slot={slot} venueName={venueName} timezone={timezone} />
           <div style={{ flex: 1, position: "relative", overflow: "hidden" }}>
-            <Rotation slot={slot} rotation={rotation} toast={toast} />
+            {mode === "event" && moment ? (
+              // MOMENT holds the surface (skin-framed stage), chrome + ticker retained.
+              <div className="sig-enter" style={{ position: "absolute", inset: 0, padding: slot.orientation === "portrait" ? "40px 40px" : "32px 48px" }}>
+                <EventStageView event={moment.event} stage={moment.stage} orientation={slot.orientation} toast={toast} />
+              </div>
+            ) : (
+              <Rotation slot={slot} rotation={rotation} toast={toast} teaseEvent={tease} />
+            )}
           </div>
           <ChromeFooter ticker={ticker} live={mode !== "rotation"} />
         </>
@@ -139,25 +163,37 @@ function SlotScreen({
 }
 
 /* ── Rotation ───────────────────────────────────────────────────────────────── */
-function Rotation({ slot, rotation, toast }: { slot: Slot; rotation: SignageItem[]; toast: ToastMap }) {
+function Rotation({ slot, rotation, toast, teaseEvent }: { slot: Slot; rotation: SignageItem[]; toast: ToastMap; teaseEvent: LiveEvent | null }) {
   const [index, setIndex] = useState(0);
+  // `turn` counts every slot advance. A MOMENT TEASE interstitial takes the every-4th turn
+  // (turn % 4 === 3 ≈ once per ~4 min), pausing the content index so nothing is skipped.
+  const [turn, setTurn] = useState(0);
+  const teaseTurn = !!teaseEvent && turn % 4 === 3;
 
+  const len = rotation.length;
   useEffect(() => {
-    if (index >= rotation.length && rotation.length > 0) setIndex(0);
-  }, [rotation.length, index]);
+    if (index >= len && len > 0) setIndex(0);
+  }, [len, index]);
 
-  // Advance per the current item's duration (finite timeout, re-armed each item).
-  const current = rotation[index];
+  // Advance on a finite timeout re-armed each turn. Keep ticking if there is >1 rotation
+  // item OR a tease to interleave; a tease turn is a fixed 12s (mockup), else item duration.
+  const current = teaseTurn ? null : rotation[index];
   useEffect(() => {
-    if (rotation.length <= 1) return;
-    const secs = Math.max(4, current?.duration_seconds ?? 12);
-    const id = window.setTimeout(() => setIndex((i) => (i + 1) % rotation.length), secs * 1000);
+    const canAdvance = len > 1 || (!!teaseEvent && len >= 1);
+    if (!canAdvance) return;
+    const secs = teaseTurn ? 12 : Math.max(4, current?.duration_seconds ?? 12);
+    const id = window.setTimeout(() => {
+      setTurn((t) => t + 1);
+      // Only advance content past a content turn — a tease turn borrows the slot in place.
+      if (!teaseTurn && len > 0) setIndex((i) => (i + 1) % len);
+    }, secs * 1000);
     return () => window.clearTimeout(id);
-  }, [index, rotation.length, current?.duration_seconds]);
+  }, [turn, teaseTurn, len, teaseEvent, current?.duration_seconds]);
 
   const padByOrientation = slot.orientation === "portrait" ? "56px 48px" : "44px 56px";
 
-  if (rotation.length === 0) {
+  // Empty rotation: STANDBY — unless a tease is due this turn (it can ride an empty board).
+  if (len === 0 && !teaseTurn) {
     return (
       <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", gap: 24 }}>
         <div style={{ fontSize: slot.orientation === "portrait" ? 96 : 84, fontWeight: 700, letterSpacing: 4 }}>STANDBY</div>
@@ -166,9 +202,13 @@ function Rotation({ slot, rotation, toast }: { slot: Slot; rotation: SignageItem
     );
   }
 
+  const contentKey = teaseTurn ? `tease:${teaseEvent!.id}:${turn}` : current?.id ?? index;
+
   return (
-    <div key={current?.id ?? index} className="sig-enter" style={{ position: "absolute", inset: 0, padding: padByOrientation, display: "flex", flexDirection: "column" }}>
-      {current && <TemplateView item={current} toast={toast} orientation={slot.orientation} />}
+    <div key={contentKey} className="sig-enter" style={{ position: "absolute", inset: 0, padding: padByOrientation, display: "flex", flexDirection: "column" }}>
+      {teaseTurn && teaseEvent
+        ? <EventTeaseCard event={teaseEvent} orientation={slot.orientation} />
+        : current && <TemplateView item={current} toast={toast} orientation={slot.orientation} />}
     </div>
   );
 }
