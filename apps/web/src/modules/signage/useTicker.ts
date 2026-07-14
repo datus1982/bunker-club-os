@@ -21,11 +21,28 @@ export interface TickerLine {
   live: boolean; // green ink when true (docs/09 color-state: green = live)
 }
 
+/** Phrase an active window's timing for the room (owner note 2026-07-14): a window that
+ *  simply runs to close must not advertise closing time as if it were a deadline —
+ *  "NOW UNTIL 2:00 AM" reads like the promo expiring at 2. Ends-at-close (2–4 AM
+ *  venue-local within the same service night; docs/14 hours, 4 AM = the display's
+ *  nightly reload) → just "ON NOW". A real same-evening ending keeps "NOW UNTIL
+ *  7:00 PM". A multi-day window (ENDS ON, 0041 era) names the day — "NOW THRU WED
+ *  11:59 PM" — so a long promo carries its true deadline. Exported pure for tests. */
+export function untilPhrase(endMs: number, now: number, timezone: string): string {
+  const fmt = (opts: Intl.DateTimeFormatOptions) =>
+    new Intl.DateTimeFormat("en-US", { timeZone: timezone, ...opts }).format(new Date(endMs)).toUpperCase();
+  const hoursAway = (endMs - now) / 3_600_000;
+  const endHour = Number(
+    new Intl.DateTimeFormat("en-US", { timeZone: timezone, hour: "numeric", hourCycle: "h23" }).format(new Date(endMs)),
+  );
+  if (hoursAway <= 14 && endHour >= 2 && endHour < 4) return "ON NOW";
+  if (hoursAway > 14) return `NOW THRU ${fmt({ weekday: "short" })} ${fmt({ hour: "numeric", minute: "2-digit" })}`;
+  return `NOW UNTIL ${fmt({ hour: "numeric", minute: "2-digit" })}`;
+}
+
 /** Derive event ticker lines from the live events (docs/13). TEASE → T-MINUS; active
- *  WINDOW/MESSAGE and the moment EVENT window → "NOW UNTIL H:MM". `now`/`tz` passed in. */
+ *  WINDOW/MESSAGE and the moment EVENT window → untilPhrase(). `now`/`tz` passed in. */
 export function buildEventTickerLines(events: LiveEvent[], timezone: string, now: number): TickerLine[] {
-  const fmtTime = (ms: number) =>
-    new Intl.DateTimeFormat("en-US", { timeZone: timezone, hour: "numeric", minute: "2-digit" }).format(new Date(ms)).toUpperCase();
   const lines: TickerLine[] = [];
   for (const ev of events) {
     const stage = eventStage(ev, now);
@@ -34,7 +51,7 @@ export function buildEventTickerLines(events: LiveEvent[], timezone: string, now
       lines.push({ text: `◆ ${name} — T-MINUS ${minutesToFire(ev, now)} MIN`, live: false });
     } else if (stage === "active" || stage === "event") {
       const end = ev.fire_at ? new Date(ev.fire_at).getTime() + ev.window_minutes * 60_000 : now;
-      lines.push({ text: `◆ ${name} — NOW UNTIL ${fmtTime(end)}`, live: false });
+      lines.push({ text: `◆ ${name} — ${untilPhrase(end, now, timezone)}`, live: false });
     }
     // alert / moment / allclear are full-screen beats — not ticker lines (docs/13).
   }
