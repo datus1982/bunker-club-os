@@ -60,14 +60,32 @@ export function useThisWeek() {
       // anon, horizon-gated view: a WINDOW/MESSAGE row appears ONLY while now ∈
       // [fire_at, fire_at + window). MOMENTs are in-room theatre (tease/alert/payoff)
       // and DON'T belong on the website, so we take window/message only.
+      //
+      // DECISION (review WARN-1, orchestrator-adjudicated 2026-07-14, owner may flip):
+      // WINDOW promos (happy hour) auto-publish while live — that's the owner's ask
+      // ("show what's running on the screens"). MESSAGE events (often personal —
+      // "HAPPY BIRTHDAY <name>") reach the public homepage ONLY when the owner ticked
+      // 🌐 SHOW ON WEBSITE: the in-room TVs reach the bar, the homepage reaches the
+      // internet, and a name on the internet is an opt-in. The flag check rides
+      // public_events (flagged rows only; no horizon filter), so no new surface.
       const { data: liveRows } = await supabase
         .from("signage_events_live")
         .select("id, name, kind, fields, toast_guid, fire_at, window_minutes")
         .eq("venue_id", VENUE_ID);
 
-      const liveEvents = ((liveRows ?? []) as LiveEventRow[]).filter(
+      const liveAll = ((liveRows ?? []) as LiveEventRow[]).filter(
         (e) => e.kind === "window" || e.kind === "message",
       );
+      const liveMsgIds = liveAll.filter((e) => e.kind === "message").map((e) => e.id);
+      let flaggedMsgIds = new Set<string>();
+      if (liveMsgIds.length > 0) {
+        const { data: flagged } = await supabase
+          .from("public_events")
+          .select("id")
+          .in("id", liveMsgIds);
+        flaggedMsgIds = new Set(((flagged ?? []) as { id: string }[]).map((f) => f.id));
+      }
+      const liveEvents = liveAll.filter((e) => e.kind === "window" || flaggedMsgIds.has(e.id));
       const liveIds = new Set(liveEvents.map((e) => e.id));
 
       // ── TRIVIA / KARAOKE (day-of-week fixed cards) ───────────────────────

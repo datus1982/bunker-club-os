@@ -272,7 +272,9 @@ export function EventEditor({
           <span>
             🌐 ADVERTISE ON THE WEBSITE
             <span style={{ display: "block", fontSize: 14, opacity: 0.55 }}>
-              shows on the What&apos;s-On feed ahead of time — name + tease copy are public.
+              {kind === "message"
+                ? "messages reach the website ONLY when checked (they run on the bar TVs regardless) — name + copy become public."
+                : "shows on the What's-On feed ahead of time — and while a window is running, the live feed shows it automatically."}
             </span>
           </span>
         </label>
