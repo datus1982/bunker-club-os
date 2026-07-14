@@ -1,0 +1,28 @@
+<!-- BUNKER UNIFIED OS — password recovery. Keeps the working {{ .ConfirmationURL }}
+     link (Supabase recovery token → /reset-password per the app's PASSWORD_RECOVERY flow). -->
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="dark"></head>
+<body style="margin:0;padding:0;background:#0d0f12;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#0d0f12;padding:28px 12px">
+  <tr><td align="center">
+    <table role="presentation" width="480" cellpadding="0" cellspacing="0" border="0" style="max-width:480px;width:100%;background:#12151a;border:1px solid #1f2630;border-radius:4px">
+      <tr><td style="padding:26px 30px 8px">
+        <div style="font-size:11px;letter-spacing:3px;color:#33ff33;font-family:'Courier New',Courier,monospace">SHELTER AUTHORITY</div>
+        <div style="font-size:19px;letter-spacing:2px;color:#ffb000;font-family:'Courier New',Courier,monospace;font-weight:bold;margin-top:2px">BUNKER UNIFIED OS</div>
+      </td></tr>
+      <tr><td style="padding:0 30px"><div style="border-top:1px solid #1f2630;margin:14px 0"></div></td></tr>
+      <tr><td style="padding:4px 30px 26px">
+        <h1 style="margin:0 0 16px;font-size:20px;letter-spacing:1px;color:#ffb000;font-family:'Courier New',Courier,monospace">RESET YOUR PASSWORD</h1>
+        <p style="margin:0 0 14px;font-size:15px;line-height:1.55;color:#c8ccd0;font-family:'Courier New',Courier,monospace">We got a request to reset your password. Tap below to choose a new one.</p>
+        <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:22px 0"><tr><td bgcolor="#33ff33" style="border-radius:2px">
+          <a href="{{ .ConfirmationURL }}" style="display:inline-block;padding:13px 26px;font-size:16px;font-weight:bold;color:#000000;text-decoration:none;font-family:'Courier New',Courier,monospace;letter-spacing:1px">SET NEW PASSWORD →</a>
+        </td></tr></table>
+        <p style="margin:0 0 14px;font-size:12px;line-height:1.5;color:#6b7280;font-family:'Courier New',Courier,monospace">Button not working? Paste this link into your browser:<br><span style="color:#33ff33;word-break:break-all">{{ .ConfirmationURL }}</span></p>
+        <div style="border-top:1px solid #1f2630;margin:22px 0 14px"></div>
+        <p style="margin:0;font-size:12px;line-height:1.5;color:#6b7280;font-family:'Courier New',Courier,monospace">Didn't request this? You can safely ignore this email — your password stays as it is.</p>
+      </td></tr>
+    </table>
+    <div style="max-width:480px;margin:14px auto 0;font-size:11px;color:#6b7280;font-family:'Courier New',Courier,monospace;text-align:center">Bunker Club · 433 NW 23rd St · Oklahoma City</div>
+  </td></tr>
+</table>
+</body></html>

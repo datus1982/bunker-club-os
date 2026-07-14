@@ -9,14 +9,35 @@ import { useIsMobile } from "@/shared/useIsMobile";
  * USERS (admin only) — staff accounts + module grants (Phase 4b, migration 0025).
  * Role labels are titles; ACCESS is the module checkboxes. Admin implies every module,
  * so an admin's checkboxes are shown ticked + disabled. Toggling a box grants/revokes
- * instantly (no redeploy) via admin_upsert_staff. Add-by-email requires the person to
- * have signed in once; a cold-email claimable invite is a follow-up (see CLAUDE.md).
+ * instantly (no redeploy) via admin_upsert_staff.
+ *
+ * INVITE STAFF (phase-staff-invites) uses the invite-staff edge fn — the cold-email path
+ * that creates the account if it doesn't exist yet, grants role + modules, and emails a
+ * themed one-click sign-in link. This replaced the old add-by-email quick form, which
+ * required the person to have signed in once and couldn't grant modules in one step.
+ * DECISION: the invite panel only mints 'staff'/'host' titles (never a cold admin by
+ * email); to make someone an admin, invite them then flip their role in the table.
  */
 
 const MONO = "'VT323','Share Tech Mono',monospace";
 const ALL_MODULES: ModuleKey[] = ["trivia", "seasons", "drinks", "signage", "website", "events"];
+type InviteRole = "staff" | "host";
+type InviteStatus = "invited" | "already-staff" | "already-admin" | "error";
+interface InviteResult { email: string; status: InviteStatus; detail?: string }
 
 interface StaffRow { profile_id: string; email: string; role: StaffRole; modules: ModuleKey[]; is_self: boolean }
+
+/** Split a free-text address list on commas / whitespace / semicolons / newlines. */
+function parseEmails(raw: string): string[] {
+  return [...new Set(raw.split(/[\s,;]+/).map((e) => e.trim().toLowerCase()).filter(Boolean))];
+}
+
+const STATUS_LABEL: Record<InviteStatus, string> = {
+  invited: "✓ invited — sign-in link emailed",
+  "already-staff": "✓ already staff — grants updated, link emailed",
+  "already-admin": "• already an admin — link emailed, grants left as-is",
+  error: "⚠ error",
+};
 
 function useStaff() {
   return useQuery({
@@ -33,9 +54,13 @@ export function Users() {
   const qc = useQueryClient();
   const staff = useStaff();
   const narrow = useIsMobile();
-  const [email, setEmail] = useState("");
-  const [newRole, setNewRole] = useState<StaffRole>("staff");
   const [notice, setNotice] = useState<string | null>(null);
+
+  // INVITE STAFF panel state.
+  const [inviteEmails, setInviteEmails] = useState("");
+  const [inviteRole, setInviteRole] = useState<InviteRole>("staff");
+  const [inviteModules, setInviteModules] = useState<ModuleKey[]>([]);
+  const [inviteResults, setInviteResults] = useState<InviteResult[] | null>(null);
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ["admin", "staff", VENUE_ID] });
 
@@ -68,15 +93,40 @@ export function Users() {
   const changeRole = (row: StaffRow, role: StaffRole) =>
     upsert.mutate({ email: row.email, role, modules: row.modules });
 
-  const addStaff = (e: React.FormEvent) => {
+  const invite = useMutation({
+    mutationFn: async (v: { emails: string[]; role: InviteRole; modules: ModuleKey[] }) => {
+      const { data, error } = await supabase.functions.invoke("invite-staff", { body: v });
+      if (error) {
+        let msg = error.message;
+        try {
+          const body = await (error as { context?: Response }).context?.json?.();
+          if (body?.error) msg = body.error as string;
+        } catch { /* ignore — fall back to error.message */ }
+        throw new Error(msg);
+      }
+      return (data?.results ?? []) as InviteResult[];
+    },
+    onSuccess: (results) => {
+      setInviteResults(results);
+      if (results.some((r) => r.status !== "error")) {
+        setInviteEmails("");
+        invalidate();
+      }
+    },
+    onError: (e: unknown) => setInviteResults([{ email: "—", status: "error", detail: (e as Error).message }]),
+  });
+
+  const toggleInviteModule = (key: ModuleKey) =>
+    setInviteModules((cur) => (cur.includes(key) ? cur.filter((m) => m !== key) : [...cur, key]));
+
+  const sendInvites = (e: React.FormEvent) => {
     e.preventDefault();
     setNotice(null);
-    const clean = email.trim();
-    if (!clean) return;
-    upsert.mutate(
-      { email: clean, role: newRole, modules: [] },
-      { onSuccess: () => { setEmail(""); setNewRole("staff"); setNotice(`✓ ${clean} added as ${newRole}.`); invalidate(); } },
-    );
+    setInviteResults(null);
+    const emails = parseEmails(inviteEmails);
+    if (emails.length === 0) { setInviteResults([{ email: "—", status: "error", detail: "Enter at least one email." }]); return; }
+    if (emails.length > 20) { setInviteResults([{ email: "—", status: "error", detail: "Max 20 emails per invite." }]); return; }
+    invite.mutate({ emails, role: inviteRole, modules: inviteModules });
   };
 
   return (
@@ -87,25 +137,67 @@ export function Users() {
 
       {notice && <div style={{ fontSize: 20, marginBottom: 16 }}>{notice}</div>}
 
-      {/* Add staff */}
-      <form onSubmit={addStaff} style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end", marginBottom: 24 }}>
-        <label style={{ display: "flex", flexDirection: "column", gap: 4, flex: "1 1 260px" }}>
-          <span style={{ fontSize: 16, opacity: 0.7 }}>ADD STAFF BY EMAIL</span>
-          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="person@email.com" required style={input} />
-        </label>
-        <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-          <span style={{ fontSize: 16, opacity: 0.7 }}>ROLE</span>
-          <select value={newRole} onChange={(e) => setNewRole(e.target.value as StaffRole)} style={input}>
-            <option value="staff">staff</option>
-            <option value="host">host</option>
-            <option value="admin">admin</option>
-          </select>
-        </label>
-        <button type="submit" disabled={upsert.isPending} className="u-fill u-ink" style={btnPrimary}>ADD →</button>
+      {/* INVITE STAFF — cold-email onboarding (invite-staff edge fn). */}
+      <form onSubmit={sendInvites} style={inviteCard}>
+        <div style={{ fontSize: 22, letterSpacing: 1, marginBottom: 12 }}>INVITE STAFF</div>
+        <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
+          <label style={{ display: "flex", flexDirection: "column", gap: 4, flex: "1 1 260px", minWidth: 0 }}>
+            <span style={{ fontSize: 16, opacity: 0.7 }}>EMAIL(S) — one or more, separated by commas, spaces, or new lines</span>
+            <textarea
+              value={inviteEmails}
+              onChange={(e) => setInviteEmails(e.target.value)}
+              placeholder={"person@email.com\nanother@email.com"}
+              rows={3}
+              style={{ ...input, width: "100%", resize: "vertical", minHeight: 88 }}
+            />
+          </label>
+          <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            <span style={{ fontSize: 16, opacity: 0.7 }}>ROLE</span>
+            <select value={inviteRole} onChange={(e) => setInviteRole(e.target.value as InviteRole)} style={{ ...input, minHeight: 44 }}>
+              <option value="staff">staff</option>
+              <option value="host">host</option>
+            </select>
+          </label>
+        </div>
+
+        <div style={{ fontSize: 16, opacity: 0.7, margin: "16px 0 6px" }}>ACCESS (modules to grant)</div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+          {ALL_MODULES.map((m) => {
+            const on = inviteModules.includes(m);
+            return (
+              <label key={m} style={{ display: "inline-flex", alignItems: "center", gap: 8, minHeight: 44, padding: "0 12px", cursor: "pointer", border: "1px solid var(--terminal-green)", background: on ? "rgba(0,255,65,0.12)" : "transparent" }}>
+                <input
+                  type="checkbox"
+                  checked={on}
+                  onChange={() => toggleInviteModule(m)}
+                  aria-label={`grant ${m}`}
+                  style={{ width: 20, height: 20, cursor: "pointer", accentColor: "var(--terminal-green)" }}
+                />
+                <span style={{ fontSize: 18 }}>{moduleLabel(m)}</span>
+              </label>
+            );
+          })}
+        </div>
+
+        <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap", marginTop: 16 }}>
+          <button type="submit" disabled={invite.isPending} className="u-fill u-ink" style={btnPrimary}>
+            {invite.isPending ? "SENDING…" : "SEND INVITE →"}
+          </button>
+          <span style={{ fontSize: 15, opacity: 0.55, flex: "1 1 220px", minWidth: 0 }}>
+            Creates the account if new, grants the modules above, and emails a one-click sign-in link. They appear below immediately.
+          </span>
+        </div>
+
+        {inviteResults && (
+          <div style={{ marginTop: 14, borderTop: "1px solid rgba(0,255,65,0.25)", paddingTop: 12 }}>
+            {inviteResults.map((r, i) => (
+              <div key={`${r.email}-${i}`} className={r.status === "error" ? "u-amber" : undefined} style={{ fontSize: 17, marginBottom: 4 }}>
+                <b>{r.email}</b> — {STATUS_LABEL[r.status]}{r.detail && r.status === "error" ? `: ${r.detail}` : ""}
+              </div>
+            ))}
+          </div>
+        )}
       </form>
-      <div style={{ fontSize: 15, opacity: 0.55, marginTop: -14, marginBottom: 24 }}>
-        The person must have signed in once (email code) before they can be added. Grant modules with the checkboxes below.
-      </div>
 
       {/* Staff table */}
       {staff.isLoading ? (
@@ -173,6 +265,10 @@ export function Users() {
   );
 }
 
+const inviteCard: React.CSSProperties = {
+  border: "1px solid var(--terminal-green)", padding: "16px clamp(12px,3vw,20px)",
+  marginBottom: 28, background: "rgba(0,255,65,0.03)",
+};
 const input: React.CSSProperties = {
   background: "#000", color: "var(--terminal-green)", border: "1px solid var(--terminal-green)",
   padding: "8px 10px", fontSize: 20, fontFamily: MONO,

@@ -86,3 +86,77 @@ rate-limited). So when email is down, use the **`action_link`** (one click), not
 
 - Auth URL config is already correct (Site URL + allow list) — see CLAUDE.md Phase 4b.
 - Host-night runbook step 1 covers the normal EMAIL CODE / password sign-in.
+
+---
+
+## Themed email templates + cold-email staff invite (branch `phase-staff-invites`, 2026-07-14)
+
+All five auth emails now carry the BUNKER UNIFIED OS look (near-black `#0d0f12`, amber
+`#ffb000` headers, green `#33ff33` accents, monospace, in-world SHELTER AUTHORITY voice,
+no external images/webfonts). Plus a new `invite-staff` edge fn lets an admin cold-invite
+staff by email — it creates the account, grants role+modules, and emails a themed sign-in
+link.
+
+### What changed on the live project (`ysrqvdutayirpoibdlbf`) — NOT in git, re-apply on rebuild
+
+| change | how | notes |
+|---|---|---|
+| Edge fn `invite-staff` deployed | Management API `POST /functions/deploy?slug=invite-staff` (multipart; bundles `invite-staff/index.ts` + `_shared/emailTheme.ts`) | `verify_jwt:true`; admin-only (explicit venue_staff admin check) |
+| Secret `RESEND_API_KEY` set | Management API `POST /secrets` (value from root `.env`) | the fn sends the invite email via the Resend REST API |
+| Auth email templates + subjects restyled | `pnpm apply:email-templates` (`scripts/apply-email-templates.ts`) reads `supabase/email-templates/*.html`, PATCHes `/config/auth` | idempotent; re-run any time to redeploy the templates |
+
+Template + subject SOURCE OF TRUTH is now in git: `supabase/email-templates/*.html`
+(bodies) and the `TEMPLATES` manifest in `scripts/apply-email-templates.ts` (subjects).
+To change an email, edit the file/manifest and re-run `pnpm apply:email-templates`.
+
+### Rollback record — the ORIGINAL templates + subjects (before this branch)
+
+If you ever need to revert to the pre-themed emails, restore these via PATCH
+`/config/auth` (the functional variables are unchanged — only styling differs, so a
+revert is cosmetic):
+
+**magic_link** — subject `{{ .Token }} is your Bunker Club check-in code`
+```html
+<h2>SHELTER AUTHORITY — ACCESS CODE</h2>
+<p>Your Bunker Club trivia check-in code:</p>
+<p style="font-size:28px;letter-spacing:6px;font-family:monospace"><b>{{ .Token }}</b></p>
+<p>Enter it on the check-in terminal. It expires shortly and can only be used once. No passwords, ever.</p>
+<p style="font-size:12px;color:#888">Didn't request this? You can ignore this email.</p>
+```
+**recovery** — subject `Reset your password`
+```html
+<h2>Reset your password</h2>
+<p>We received a request to reset your password. Follow the link below to choose a new one.</p>
+<p><a href="{{ .ConfirmationURL }}">Reset password</a></p>
+<p>If you didn't request this, you can safely ignore this email.</p>
+```
+**invite** — subject `You've been invited`
+```html
+<h2>You've been invited</h2>
+<p>You've been invited to create an account. Follow the link below to accept.</p>
+<p><a href="{{ .ConfirmationURL }}">Accept invitation</a></p>
+```
+**confirmation** — subject `Confirm your email address`
+```html
+<h2>Confirm your email address</h2>
+<p>Follow the link below to confirm this email address and finish signing up.</p>
+<p><a href="{{ .ConfirmationURL }}">Confirm email address</a></p>
+```
+**email_change** — subject `Confirm your new email address`
+```html
+<h2>Confirm your new email address</h2>
+<p>Follow the link below to confirm {{ .NewEmail }} as your new email address.</p>
+<p><a href="{{ .ConfirmationURL }}">Confirm new email address</a></p>
+<p>If you didn't request this change, you can safely ignore this email.</p>
+```
+
+### Load-bearing variables (never strip these when editing templates)
+- `magic_link` MUST keep the visible `{{ .Token }}` — it's the 6-digit code staff type
+  on the EMAIL CODE login and players type at `/checkin`. It's also in the subject.
+- `recovery` / `invite` / `confirmation` keep `{{ .ConfirmationURL }}` (the link).
+- `email_change` keeps `{{ .ConfirmationURL }}` and `{{ .NewEmail }}`.
+
+### Note on `invite-team-member`
+That edge fn sends NO email (it only creates a claimable auth user; the invitee gets in
+via their own OTP later), so there was nothing to restyle there. If it ever grows an
+email send, reuse `supabase/functions/_shared/emailTheme.ts`.
