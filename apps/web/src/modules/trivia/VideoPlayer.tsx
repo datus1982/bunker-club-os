@@ -51,9 +51,17 @@ export function VideoPlayer({ videoUrl, autoplay = true }: { videoUrl: string; a
   // Boot unmuted only if a probe already proved sound works this session; else boot muted.
   const bootMuted = useRef<boolean>(!isAudioUnlocked());
 
+  // targetOrigin for IFrame-API messages: the embed's own origin (review N2). Derived,
+  // not hardcoded — a pass-through embed URL may use a different YouTube host (no-www,
+  // music.youtube.com); a mismatched targetOrigin drops the message silently.
+  const ytOrigin = (() => {
+    try { return yt ? new URL(yt, window.location.href).origin : ""; } catch { return ""; }
+  })();
+
   const command = useCallback((func: string, args: unknown[] = []) => {
-    iframeRef.current?.contentWindow?.postMessage(JSON.stringify({ event: "command", func, args }), "*");
-  }, []);
+    if (!ytOrigin) return;
+    iframeRef.current?.contentWindow?.postMessage(JSON.stringify({ event: "command", func, args }), ytOrigin);
+  }, [ytOrigin]);
 
   // Attempt sound, then verify: keep it if the player is really playing, else revert to
   // muted playback and raise the prompt. Self-corrects wherever the browser blocks sound.
@@ -97,10 +105,12 @@ export function VideoPlayer({ videoUrl, autoplay = true }: { videoUrl: string; a
   useEffect(() => {
     if (!controllable) return;
     const win = () => iframeRef.current?.contentWindow ?? null;
-    const listen = () => win()?.postMessage(JSON.stringify({ event: "listening" }), "*");
+    const listen = () => { if (ytOrigin) win()?.postMessage(JSON.stringify({ event: "listening" }), ytOrigin); };
 
     const onMessage = (e: MessageEvent) => {
-      if (e.source !== win() || !/youtube\.com$/.test(safeHost(e.origin))) return;
+      // Anchored: host must BE youtube.com or a subdomain (review N1 — suffix regex
+      // would also match e.g. evilnotyoutube.com).
+      if (e.source !== win() || !/(^|\.)youtube\.com$/.test(safeHost(e.origin))) return;
       let data: unknown;
       try {
         data = typeof e.data === "string" ? JSON.parse(e.data) : e.data;
@@ -139,7 +149,7 @@ export function VideoPlayer({ videoUrl, autoplay = true }: { videoUrl: string; a
       window.clearTimeout(kick);
       if (probeTimer.current) window.clearTimeout(probeTimer.current);
     };
-  }, [controllable, probe, command]);
+  }, [controllable, probe, command, ytOrigin]);
 
   const handleTap = useCallback(() => {
     armAudio(); // arms every subsequent video this session; re-probes the live one
