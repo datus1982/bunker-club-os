@@ -12,7 +12,7 @@ import {
 import { RoundGrid } from "./RoundGrid";
 import { QuestionPanel } from "./QuestionPanel";
 import { VideoControls } from "./VideoControls";
-import { LeaderboardToggle } from "./LeaderboardToggle";
+import { BoardStageControl } from "./BoardStageControl";
 import { TeamEditorDialog, type EditableTeam } from "./TeamEditorDialog";
 import { Modal, Field, input, btnGhost, btnPrimary, btnActive, btnDanger } from "./ui";
 import { searchTeams, type TeamHit } from "../registration/useCheckin";
@@ -20,10 +20,11 @@ import { searchTeams, type TeamHit } from "../registration/useCheckin";
 /**
  * Scoring console — host tool (docs/01 /scoring, host+). Ported from the legacy
  * 3,285-line Scoring.tsx and decomposed per docs/04 ARCH-2 into RoundGrid /
- * QuestionPanel / VideoControls / LeaderboardToggle / TeamEditorDialog + the hooks in
+ * QuestionPanel / VideoControls / BoardStageControl / TeamEditorDialog + the hooks in
  * useScoring.ts. This file is just the composition + game-status controls + team-editor
  * plumbing. Behaviour matches legacy to the extent our schema carries it (see the
- * DECISIONs in useScoring.ts — no game clock, no scoring_in_progress interstitial).
+ * DECISIONs in useScoring.ts — no game clock; the scoring interstitial is the manual
+ * board_stage 'scoring' stage per 0038, not the legacy auto-derived one).
  */
 export function Scoring() {
   const [params] = useSearchParams();
@@ -60,28 +61,28 @@ export function Scoring() {
   if (!game) return <NoGame />;
 
   return (
-    <div className="terminal-theme" style={{ minHeight: "100vh", padding: "clamp(16px, 4vw, 32px)", fontFamily: "'VT323','Share Tech Mono',monospace" }}>
-      <div style={{ maxWidth: 1400, margin: "0 auto", display: "flex", flexDirection: "column", gap: 20 }}>
+    <div className="terminal-theme scoring-page" style={{ minHeight: "100vh", padding: "clamp(16px, 4vw, 32px)", fontFamily: "'VT323','Share Tech Mono',monospace" }}>
+      <div style={{ maxWidth: 1400, margin: "0 auto", display: "flex", flexDirection: "column", gap: 16 }}>
         {/* Header + nav */}
-        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
-          <div>
-            <h1 style={{ fontSize: 40, fontWeight: 700, letterSpacing: 2 }}>SCORING</h1>
-            <div style={{ fontSize: 22, opacity: 0.7 }}>{game.game_date} · [{game.status.toUpperCase()}]{game.is_playoff ? " · ★ PLAYOFF" : ""}</div>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+            <h1 style={{ fontSize: 40, fontWeight: 700, letterSpacing: 2, lineHeight: 1 }}>SCORING</h1>
+            <div style={{ fontSize: 20, opacity: 0.7 }}>{game.game_date} · [{game.status.toUpperCase()}]{game.is_playoff ? " · ★ PLAYOFF" : ""}</div>
           </div>
-          <nav style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <Link to="/dashboard" style={linkBtn}>DASHBOARD</Link>
-            <Link to={`/game/${game.id}/questions`} style={linkBtn}>QUESTIONS</Link>
-            <Link to={`/game/${game.id}/videos`} style={linkBtn}>VIDEOS</Link>
-            <Link to={`/game/${game.id}/bulk-import`} style={linkBtn}>IMPORT</Link>
-            <Link to="/teams" style={linkBtn}>TEAMS</Link>
-            <Link to="/game/history" style={linkBtn}>HISTORY</Link>
+          <nav style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+            <Link to="/dashboard" className="u-btn" style={linkBtn}>DASHBOARD</Link>
+            <Link to={`/game/${game.id}/questions`} className="u-btn" style={linkBtn}>QUESTIONS</Link>
+            <Link to={`/game/${game.id}/videos`} className="u-btn" style={linkBtn}>VIDEOS</Link>
+            <Link to={`/game/${game.id}/bulk-import`} className="u-btn" style={linkBtn}>IMPORT</Link>
+            <Link to="/teams" className="u-btn" style={linkBtn}>TEAMS</Link>
+            <Link to="/game/history" className="u-btn" style={linkBtn}>HISTORY</Link>
             <button type="button" onClick={() => window.open(`/game-display?game=${game.id}`, "_blank")} style={btnGhost}>⧉ DISPLAY</button>
           </nav>
         </div>
-        <div className="terminal-separator" />
+        <div className="terminal-separator" style={{ margin: 0 }} />
 
         {/* Game status controls */}
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
           <StatusButton label="▶ START" active={game.status === "active"} onClick={() => setStatus.mutate("active")} disabled={game.status === "active"} />
           {game.status === "active" ? (
             <StatusButton label="▮▮ PAUSE" onClick={() => setStatus.mutate("paused")} />
@@ -90,7 +91,7 @@ export function Scoring() {
           ) : null}
           <StatusButton label="■ STOP" active={game.status === "stopped"} onClick={() => setStatus.mutate("stopped")} />
           <div style={{ flex: 1 }} />
-          {display.state && game && <LeaderboardToggle gameId={game.id} state={display.state} write={display.write} />}
+          {display.state && game && <BoardStageControl state={display.state} write={display.write} />}
           <button type="button" onClick={() => setConfirmEnd(true)} style={btnDanger}>END GAME</button>
         </div>
 
@@ -311,10 +312,49 @@ function Centered({ text }: { text: string }) {
 
 function NoGame() {
   return (
-    <div className="terminal-theme" style={{ minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 20, fontFamily: "'VT323','Share Tech Mono',monospace" }}>
-      <div style={{ fontSize: 40, fontWeight: 700 }}>NO ACTIVE GAME</div>
-      <div style={{ fontSize: 24, opacity: 0.7 }}>Create a game to start scoring.</div>
-      <Link to="/game/setup" style={{ ...btnPrimary, textDecoration: "none" }}>+ CREATE GAME</Link>
+    <div className="terminal-theme" style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: "clamp(16px, 4vw, 32px)", fontFamily: "'VT323','Share Tech Mono',monospace" }}>
+      <div className="terminal-border" style={{ width: "min(560px, 100%)", padding: "28px 28px 32px", display: "flex", flexDirection: "column", gap: 18 }}>
+        <div>
+          <div style={{ fontSize: 40, fontWeight: 700, letterSpacing: 2, lineHeight: 1 }}>NO GAME TONIGHT</div>
+          <div style={{ fontSize: 22, opacity: 0.7, marginTop: 6 }}>No game is set up to score. Here's how to get one running:</div>
+        </div>
+        <div className="terminal-separator" style={{ margin: 0 }} />
+
+        <ol style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 16 }}>
+          <Step n={1} title="CREATE THE GAME">
+            {/* The textless-button bug lived here: this CTA is an <a> (React Router Link)
+                carrying btnPrimary's green fill, but `.terminal-theme a` forces the label
+                green too — green-on-green = an invisible label (looked like an empty
+                button). `u-fill u-ink` restores the black-on-green fill (0,2,0 beats the
+                theme's 0,1,1 !important), same pattern as the Dashboard CTAs. */}
+            <Link to="/game/setup" className="u-fill u-ink" style={{ ...btnPrimary, textDecoration: "none", display: "inline-block" }}>+ CREATE GAME →</Link>
+          </Step>
+          <Step n={2} title="ADD OR BULK-IMPORT QUESTIONS">
+            {/* DECISION: /game/:id/bulk-import needs a game id, so there's no pre-game
+                deep link — questions/rounds are added on GameSetup once the game exists.
+                We point back to Game Setup rather than dead-linking a bulk-import route. */}
+            <Link to="/game/setup" className="u-btn" style={{ ...btnGhost, textDecoration: "none", display: "inline-block" }}>GAME SETUP →</Link>
+            <span style={{ fontSize: 18, opacity: 0.6 }}>Build rounds, then type questions or BULK IMPORT them.</span>
+          </Step>
+          <Step n={3} title="CHECK TEAMS IN">
+            <Link to="/teams" className="u-btn" style={{ ...btnGhost, textDecoration: "none", display: "inline-block" }}>MANAGE TEAMS →</Link>
+            <span style={{ fontSize: 18, opacity: 0.6 }}>Regulars carry over; walk-ups check in from the grid.</span>
+          </Step>
+        </ol>
+      </div>
     </div>
+  );
+}
+
+/** One numbered row in the NO GAME TONIGHT setup path. */
+function Step({ n, title, children }: { n: number; title: string; children: React.ReactNode }) {
+  return (
+    <li style={{ display: "flex", gap: 14, alignItems: "flex-start" }}>
+      <span className="u-fill u-ink" style={{ flexShrink: 0, width: 34, height: 34, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, fontWeight: 700 }}>{n}</span>
+      <div style={{ display: "flex", flexDirection: "column", gap: 8, minWidth: 0 }}>
+        <span style={{ fontSize: 22, fontWeight: 700, letterSpacing: 1 }}>{title}</span>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center" }}>{children}</div>
+      </div>
+    </li>
   );
 }

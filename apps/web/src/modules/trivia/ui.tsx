@@ -3,7 +3,7 @@ import type { CSSProperties } from "react";
 /**
  * Shared terminal-theme primitives for the trivia host tools (docs/01). The earlier
  * ported pages each re-declared these inline; the Scoring decomposition pulls the
- * common set here so RoundGrid / QuestionPanel / VideoControls / LeaderboardToggle /
+ * common set here so RoundGrid / QuestionPanel / VideoControls / BoardStageControl /
  * TeamEditorDialog stay visually identical without copy-pasting styles.
  */
 

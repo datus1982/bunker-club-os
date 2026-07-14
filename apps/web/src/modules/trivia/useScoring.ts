@@ -8,14 +8,15 @@ import { log } from "@/shared/log";
  * held 30 useState + 29 inline queries/mutations in a 3,285-line god component. This
  * splits its data + behaviour into three hooks — useActiveGame, useGameScores,
  * useDisplayState — that the decomposed UI (RoundGrid / QuestionPanel / VideoControls /
- * LeaderboardToggle / TeamEditorDialog) composes. Behaviour is preserved to the extent
+ * BoardStageControl / TeamEditorDialog) composes. Behaviour is preserved to the extent
  * our greenfield schema (docs/02) carries it; the DECISIONs below record the drops.
  *
  * DECISIONS (our schema vs legacy):
  *  - No `rounds.scoring_in_progress` column: the "current round" is derived as the
  *    first incomplete non-bonus round, and the answer key shows the previous completed
- *    round. The legacy "Scoring in Progress" audience interstitial is omitted (matches
- *    the ported Leaderboard, which already dropped it).
+ *    round. The legacy AUTO-derived "Scoring in Progress" audience interstitial is
+ *    superseded by the manual board_stage 'scoring' stage (0038) — the host hides
+ *    scores deliberately; nothing auto-flips the board.
  *  - No `game_display_state.current_video_url`: GameDisplay reads the current round's
  *    rounds.video_url (see GameDisplay.tsx), so video writes only flip show_video +
  *    point current_round_id at the round whose video should play.
@@ -30,6 +31,11 @@ import { log } from "@/shared/log";
  */
 
 export type GameStatus = "setup" | "active" | "paused" | "stopped" | "completed";
+
+/** Manual public-leaderboard stage (migration 0038), driven ONLY by the Scoring
+ *  segmented control. The public board (trivia/Leaderboard.tsx — also the signage
+ *  portrait game-mode board) renders from this. */
+export type BoardStage = "qr" | "scoring" | "standings" | "final";
 
 export interface Game {
   id: string;
@@ -87,6 +93,7 @@ export interface DisplayState {
   is_display_active: boolean;
   show_video: boolean;
   show_game_over: boolean;
+  board_stage: BoardStage;
 }
 
 /* ── useActiveGame ─────────────────────────────────────────────────────────────
@@ -559,7 +566,7 @@ export function useDisplayState(gameId: string | null) {
     queryFn: async (): Promise<DisplayState | null> => {
       const { data, error } = await supabase
         .from("game_display_state")
-        .select("game_id, current_round_id, current_question_index, show_answer, is_display_active, show_video, show_game_over")
+        .select("game_id, current_round_id, current_question_index, show_answer, is_display_active, show_video, show_game_over, board_stage")
         .eq("game_id", gameId)
         .maybeSingle();
       if (error) throw error;

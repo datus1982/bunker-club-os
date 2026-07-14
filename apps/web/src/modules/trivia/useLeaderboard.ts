@@ -45,10 +45,13 @@ export interface Round {
   round_name: string | null;
 }
 
+export type BoardStage = "qr" | "scoring" | "standings" | "final";
+
 export interface DisplayState {
   current_round_id: string | null;
   is_display_active: boolean | null;
   show_game_over: boolean | null;
+  board_stage: BoardStage | null;
 }
 
 // Which non-completed game the public display resolves to, highest priority first.
@@ -145,7 +148,7 @@ export function useLeaderboardData(gameId: string | null) {
     queryFn: async (): Promise<DisplayState | null> => {
       const { data, error } = await supabase
         .from("game_display_state")
-        .select("current_round_id, is_display_active, show_game_over")
+        .select("current_round_id, is_display_active, show_game_over, board_stage")
         .eq("game_id", gameId)
         .maybeSingle();
       if (error) throw error;
