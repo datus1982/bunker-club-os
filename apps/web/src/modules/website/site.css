@@ -468,16 +468,17 @@
    fills a stable area (no CLS). Thumb sits beside the text. */
 .site-feed__screen {
   display: flex;
-  gap: 1.1rem;
+  gap: 1.35rem;
   align-items: flex-start;
   padding: 1.5rem 1.35rem;
-  min-height: 168px;
+  min-height: 196px;
   position: relative;
   z-index: 1;
 }
+/* Owner tweak 2026-07-14: the photo fills the screen block instead of a 64px stamp. */
 .site-feed__thumb {
-  width: 64px;
-  height: 64px;
+  width: 148px;
+  height: 148px;
   object-fit: cover;
   border: 1px solid var(--site-line-strong);
   flex-shrink: 0;
@@ -591,7 +592,7 @@
 
 @media (max-width: 480px) {
   .site-feed__screen { padding: 1.25rem 1.1rem; min-height: 176px; }
-  .site-feed__thumb { width: 52px; height: 52px; }
+  .site-feed__thumb { width: 96px; height: 96px; }
 }
 
 /* ── Hours table ─────────────────────────────────────────────────────────── */
