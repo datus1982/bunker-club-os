@@ -135,6 +135,11 @@ export function useTopSellers(): { items: DrinkItem[]; loading: boolean } {
 
 /** Derive the overall top-5 from grouped sales (pure — unit-friendly). */
 export function overallTopSellers(byGroup: Record<string, DrinkItem[]>, limit = 5): DrinkItem[] {
+  // DECISION: the Top Sellers slide sources the toast-sync's MAIN_MENU_ALL rows (the owner has
+  // "OVERALL TOP 5" enabled in drinks_menu_groups, so it's populated). toast-sync only writes
+  // MAIN_MENU_ALL when it's a configured group, so rather than edit + redeploy the edge fn to
+  // always write it, we fall back to a client-side merge across groups — the slide never blanks
+  // even if that group is later disabled.
   const main = byGroup[OVERALL_GROUP];
   if (main && main.length) {
     return [...main].sort((a, b) => a.rank - b.rank).slice(0, limit);

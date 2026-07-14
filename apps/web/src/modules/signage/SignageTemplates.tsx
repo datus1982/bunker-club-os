@@ -232,6 +232,9 @@ export function TopSellers({ orientation }: TemplateProps) {
   const z = TS_SIZES[orientation];
   const maxCount = items.length ? Math.max(...items.map((it) => it.sales_count), 1) : 1;
 
+  // DECISION: the list renders in the ambient amber ink (a leaderboard, not a product card),
+  // with only the "◉ LIVE FROM THE POS" indicator in green (docs/09 color-state: green = live
+  // feed) — matching the mockup rather than greening every value like a drink_special does.
   const header = (
     <div style={{ flexShrink: 0, textAlign: "center", paddingBottom: 18, borderBottom: "1px solid var(--terminal-green)", marginBottom: orientation === "portrait" ? 28 : 14 }}>
       <div style={{ fontSize: z.header, fontWeight: 700, letterSpacing: 3, lineHeight: 0.98, textTransform: "uppercase", textShadow: "0 0 16px var(--terminal-glow)" }}>
@@ -272,7 +275,9 @@ export function TopSellers({ orientation }: TemplateProps) {
           {rows}
         </div>
       ) : (
-        // Landscape: two columns, column-major so the left reads ranks 1-3, the right 4-5.
+        // DECISION: landscape is two columns, column-major (gridAutoFlow:column, 3 rows) so the
+        // left column reads ranks 1-3 top-to-bottom and the right 4-5 — matching mockup view 4's
+        // reading order rather than a row-major 1-2 / 3-4 / 5 fill.
         <div style={{ flex: 1, minHeight: 0, display: "grid", gridTemplateColumns: "1fr 1fr", gridTemplateRows: "repeat(3, auto)", gridAutoFlow: "column", alignContent: "center", columnGap: 56, rowGap: z.rowGap }}>
           {rows}
         </div>
