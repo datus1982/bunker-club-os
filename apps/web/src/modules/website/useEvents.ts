@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 
 import { supabase, VENUE_ID } from "@/shared/supabaseClient";
+import { fetchPromoMenu, fieldStr, priceLine } from "./promoResolve";
 
 /**
  * Public events data (docs/14). Two anon-safe sources, unioned into one card list:
@@ -22,6 +23,8 @@ export interface EventCard {
   /** Human date/time line, e.g. "Wed, Aug 6 · 8:00 PM". Absent for undated notices. */
   when: string | null;
   body: string | null;
+  /** Optional thumbnail (custom upload or Toast photo). Lazy-loaded. */
+  image: string | null;
   /** ms epoch used only for ordering; undated cards sort to the end. */
   sortAt: number;
 }
@@ -75,29 +78,39 @@ export function useEvents() {
           title: (e.title || e.name || "Event").toString(),
           when: fmtDateTime(e.fire_at),
           body: e.blurb ?? null,
+          image: null,
           sortAt: new Date(e.fire_at).getTime(),
         });
       }
 
-      // 2) Website-flagged signage promos (event / celebration / announcement).
+      // 2) Website-flagged signage promos (drink_special / event / celebration /
+      //    announcement). drink_specials carry name/price/photo LIVE in Toast, so their
+      //    guids resolve through public_menu (POS-visibility-gated) below.
       const { data: promos } = await supabase
         .from("signage_items")
         .select("id, template, fields, ends_at, sort_order")
         .eq("venue_id", VENUE_ID)
         .eq("show_on_website", true)
         .eq("active", true)
-        .in("template", ["event", "celebration", "announcement"])
+        .in("template", ["drink_special", "event", "celebration", "announcement"])
         .order("sort_order", { ascending: true })
         .limit(24);
 
       const nowMs = Date.now();
-      for (const p of (promos ?? []) as Array<{
+      const live = (promos ?? []).filter(
+        (p) => !(p.ends_at && new Date(p.ends_at).getTime() < nowMs), // drop ended; evergreen stays
+      ) as Array<{
         id: string; template: string; fields: Record<string, unknown>; ends_at: string | null;
-      }>) {
-        // Drop items that have already ended; evergreen (null ends_at) stays.
-        if (p.ends_at && new Date(p.ends_at).getTime() < nowMs) continue;
+      }>;
+      const menu = await fetchPromoMenu(live.map((p) => fieldStr(p.fields, ["source_toast_guid"])));
 
-        let title = "On Now";
+      for (const p of live) {
+        const guid = fieldStr(p.fields, ["source_toast_guid"]);
+        const src = guid ? menu.get(guid) : undefined;
+        // Toast-sourced but off-POS / 86'd (absent from public_menu) → skip entirely.
+        if (guid && !src) continue;
+
+        let title: string | undefined;
         let when: string | null = null;
         let body: string | null = null;
         let kicker = "On Now";
@@ -112,23 +125,34 @@ export function useEvents() {
           if (!Number.isNaN(parsed)) sortAt = parsed;
         }
 
-        if (p.template === "event") {
+        if (p.template === "drink_special") {
+          kicker = "Featured";
+          title = fieldStr(p.fields, ["name", "headline", "title", "drink_name"]) ?? src?.name ?? undefined;
+          body =
+            fieldStr(p.fields, ["blurb", "subtitle", "detail", "ingredients", "tagline"]) ??
+            src?.public_blurb ??
+            (src ? priceLine(src.price, src.group) ?? null : null);
+        } else if (p.template === "event") {
           kicker = "Event";
-          title = str(p.fields, "title") ?? "Event";
+          title = str(p.fields, "title");
           body = str(p.fields, "blurb") ?? null;
         } else if (p.template === "celebration") {
           kicker = "Celebration";
           const honoree = str(p.fields, "honoree");
           const occasion = str(p.fields, "occasion");
-          title = honoree ? `${honoree}${occasion ? ` — ${occasion}` : ""}` : "A Celebration";
+          title = honoree ? `${honoree}${occasion ? ` — ${occasion}` : ""}` : undefined;
           body = str(p.fields, "message") ?? null;
         } else {
           kicker = "Notice";
-          title = str(p.fields, "text") ?? "Announcement";
+          title = str(p.fields, "text");
           body = null;
         }
 
-        cards.push({ key: `sig-${p.id}`, kicker, title, when, body, sortAt });
+        // Never render a contentless card: no real title → skip (kills the "On Now" fallback).
+        if (!title) continue;
+
+        const image = fieldStr(p.fields, ["image_url"]) ?? src?.image ?? null;
+        cards.push({ key: `sig-${p.id}`, kicker, title, when, body, image, sortAt });
       }
 
       // Dated cards ascending; undated (sortAt = MAX) fall to the end, insertion-stable.

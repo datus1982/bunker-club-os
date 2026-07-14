@@ -70,11 +70,25 @@ export function Events() {
           {list.length > 0 ? (
             <div className="site-events-grid" style={{ marginTop: "2rem" }}>
               {list.map((c) => (
-                <article key={c.key} className="site-event">
-                  <div className="site-event__kicker">{c.kicker}</div>
-                  <h2 className="site-h-compact site-event__title">{c.title}</h2>
-                  {c.when && <p className="site-event__when">{c.when}</p>}
-                  {c.body && <p className="site-event__body">{c.body}</p>}
+                <article
+                  key={c.key}
+                  className={`site-event${c.image ? " site-event--media" : ""}`}
+                >
+                  {c.image && (
+                    <img
+                      className="site-event__thumb"
+                      src={c.image}
+                      alt=""
+                      loading="lazy"
+                      decoding="async"
+                    />
+                  )}
+                  <div className="site-event__main">
+                    <div className="site-event__kicker">{c.kicker}</div>
+                    <h2 className="site-h-compact site-event__title">{c.title}</h2>
+                    {c.when && <p className="site-event__when">{c.when}</p>}
+                    {c.body && <p className="site-event__body">{c.body}</p>}
+                  </div>
                 </article>
               ))}
             </div>
