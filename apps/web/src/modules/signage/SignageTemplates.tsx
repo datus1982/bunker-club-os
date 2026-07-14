@@ -95,7 +95,7 @@ function Stamp({ text, size }: { text: string; size: number }) {
  * render green (docs/09 color-state). 86'd / off-POS items never reach here (resolveRotation
  * auto-hides the whole item), so the price-hide gate is upstream — behavior unchanged.
  */
-export function DrinkSpecial({ item, toast, orientation, venueName }: TemplateProps) {
+export function DrinkSpecial({ item, toast, orientation }: TemplateProps) {
   const guid = s(item.fields, "source_toast_guid");
   const src = guid ? toast.get(guid) : undefined;
 
@@ -169,19 +169,17 @@ export function DrinkSpecial({ item, toast, orientation, venueName }: TemplatePr
     </div>
   );
 
-  const catrow = (
-    <div style={{ marginTop: "auto", paddingTop: 10, display: "flex", justifyContent: port ? "space-between" : "flex-start", alignItems: "flex-end", gap: port ? 24 : 40, width: "100%" }}>
-      {category && <span style={{ fontSize: port ? 30 : 28, letterSpacing: 4, opacity: 0.7 }}>◆ {category.toUpperCase()}</span>}
-      {venueName && (
-        <span style={{ fontSize: port ? 52 : 46, fontWeight: 700, letterSpacing: 1, textAlign: "right", lineHeight: 0.95, textShadow: "0 0 8px var(--terminal-glow)" }}>
-          {venueName.toUpperCase()}
-        </span>
-      )}
+  // Owner note 2026-07-14: the venue mark bottom-right was redundant (the screen chrome
+  // already carries the roundel + venue name) — the CATEGORY owns the bottom line now,
+  // larger and centered. (This also retires the old mockup "OKLAHOMA CITY" sub-line
+  // DECISION that rode on the removed venue mark.)
+  const catrow = category && (
+    <div style={{ marginTop: "auto", paddingTop: 10, width: "100%", textAlign: "center" }}>
+      <span style={{ fontSize: port ? 48 : 42, letterSpacing: 6, opacity: 0.75, textShadow: "0 0 8px var(--terminal-glow)" }}>
+        ◆ {category.toUpperCase()} ◆
+      </span>
     </div>
   );
-  // DECISION: the mockup's "OKLAHOMA CITY" sub-line under the venue mark is omitted — the
-  // venues table has no locality column (settings is empty), and inventing a city string
-  // would violate the no-hardcode rule. Add a venue setting later to restore it.
 
   if (port) {
     return (
