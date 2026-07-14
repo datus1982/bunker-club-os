@@ -160,3 +160,15 @@ revert is cosmetic):
 That edge fn sends NO email (it only creates a claimable auth user; the invitee gets in
 via their own OTP later), so there was nothing to restyle there. If it ever grows an
 email send, reuse `supabase/functions/_shared/emailTheme.ts`.
+
+
+## DMARC (added 2026-07-14, owner-approved)
+
+`_dmarc.bunkerokc.com TXT "v=DMARC1; p=none; sp=none; adkim=r; aspf=r"` (Cloudflare record
+id `0050e33ea23e7d07abcfd049ac2fedf4`, added via API). Monitoring-mode only — never
+instructs receivers to reject; its presence improves inbox placement with Apple/Gmail.
+Context: the owner's themed invite + OTP proof emails landed in iCloud Junk (Resend showed
+`delivered`); DKIM (`resend._domainkey`) and SPF (`send` subdomain) were already in place —
+DMARC was the missing third leg. If junking persists for icloud/mac.com recipients, next
+steps: add a plain-text MIME part to the templates and soften the "ACCESS CODE" subject.
+Escalating to `p=quarantine` is a deliberate later decision, not automatic.
