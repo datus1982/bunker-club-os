@@ -2,13 +2,13 @@ import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
 import {
-  useAdminSlots, useAllItems, useToastCache, useTakeovers,
+  useAdminSlots, useAllItems, useToastCache, useTakeovers, useLiveGame,
   screenHealth, activeTakeover, toastMap,
   DURATION_CHOICES,
   type AdminItem,
 } from "./useSignageAdmin";
 import {
-  useLiveEvents, resolveRotation, eventStage,
+  useLiveEvents, resolveRotation, eventStage, compareRotation,
   type SignageItem, type LiveEvent, type EventStage, type ToastCacheRow,
 } from "./useSignage";
 import { setEventFields, VENUE_TZ } from "./useEventsAdmin";
@@ -45,6 +45,7 @@ export function EditRotation() {
   const toastQ = useToastCache();
   const eventsQ = useLiveEvents();
   const takeoversQ = useTakeovers();
+  const liveGameQ = useLiveGame();
   const { can } = useRole();
   const canEvents = can("events");
 
@@ -93,21 +94,24 @@ export function EditRotation() {
   const eventCards = useMemo(() => liveQueue.filter((r) => r.id.startsWith("event:")), [liveQueue]);
   const screensCards = useMemo(() => liveQueue.filter((r) => r.id.startsWith("screens:")), [liveQueue]);
 
-  // Combined display list, ordered by the SAME effective sort_order resolveRotation sorts by.
-  // For any two rows both live, this equals the TV order; a non-live authored row (off /
-  // out-of-window / hidden) sits at its own sort_order, i.e. exactly where it would slot in
-  // once it goes live. JS sort is stable, so equal-key event cards keep their liveQueue order.
+  // Combined display list, ordered by the SAME comparator resolveRotation sorts by
+  // (compareRotation = sort_order then id). Sorting the merged list with the shared
+  // comparator — never a hand-rolled events-first concat — is what guarantees the editor
+  // and the TV agree even on sort_order ties (WARN-1). Each row carries its id (the exact
+  // id resolveRotation uses: authored uuid / `event:…` / `screens:…`) so the tiebreak
+  // matches. A non-live authored row (off / out-of-window / hidden) sits at its own
+  // sort_order — exactly where it slots in once it goes live.
   type Row =
-    | { kind: "authored"; item: AdminItem; order: number }
-    | { kind: "event"; card: SignageItem; ev: LiveEvent; order: number }
-    | { kind: "screens"; card: SignageItem; order: number };
+    | { kind: "authored"; id: string; item: AdminItem; order: number }
+    | { kind: "event"; id: string; card: SignageItem; ev: LiveEvent; order: number }
+    | { kind: "screens"; id: string; card: SignageItem; order: number };
   const rows = useMemo<Row[]>(() => {
     const list: Row[] = [
-      ...slotItems.map((it) => ({ kind: "authored" as const, item: it, order: it.sort_order })),
-      ...eventCards.map((c) => ({ kind: "event" as const, card: c, ev: c.event as LiveEvent, order: c.sort_order })),
-      ...screensCards.map((c) => ({ kind: "screens" as const, card: c, order: c.sort_order })),
+      ...slotItems.map((it) => ({ kind: "authored" as const, id: it.id, item: it, order: it.sort_order })),
+      ...eventCards.map((c) => ({ kind: "event" as const, id: c.id, card: c, ev: c.event as LiveEvent, order: c.sort_order })),
+      ...screensCards.map((c) => ({ kind: "screens" as const, id: c.id, card: c, order: c.sort_order })),
     ];
-    return list.sort((a, b) => a.order - b.order);
+    return list.sort((a, b) => compareRotation({ sort_order: a.order, id: a.id }, { sort_order: b.order, id: b.id }));
   }, [slotItems, eventCards, screensCards]);
 
   // MOMENTs in their takeover horizon (tease→allclear) hold every screen — surfaced as a
@@ -121,6 +125,10 @@ export function EditRotation() {
     [liveEvents, now],
   );
   const takeover = activeTakeover(takeoversQ.data ?? [], now.getTime());
+  // When a trivia game is active/paused the slot is in GAME MODE — the rotation isn't on
+  // screen at all (the ● NOW rows describe what WOULD rotate, not what's showing). Surfaced
+  // as a read-only banner using the same hook the hub/TV resolve game-mode from (WARN-3).
+  const gameOn = !!liveGameQ.data;
 
   const invalidate = () => { qc.invalidateQueries({ queryKey: ["signage-admin", "items"] }); };
   const invalidateEvents = () => { qc.invalidateQueries({ queryKey: ["signage", "events"] }); };
@@ -130,6 +138,10 @@ export function EditRotation() {
   // Move an active event card one step in the combined queue by writing rotation_sort as the
   // midpoint of the neighbours it lands between (floats are fine — it lives in the jsonb;
   // authored items keep their integer positions untouched when a card moves).
+  // DECISION: rotation_sort is stored on the event row, which is VENUE-WIDE — reordering a
+  // card here moves it on every screen, and because each slot has its own authored int range
+  // the same card can interleave at a different spot per slot. Accepted (orchestrator
+  // decision 3); surfaced to staff via the ALL SCREENS tag + the caveat line under the queue.
   const moveEvent = useMutation({
     mutationFn: async ({ idx, dir }: { idx: number; dir: -1 | 1 }) => {
       const entry = rows[idx];
@@ -189,7 +201,14 @@ export function EditRotation() {
               </a>
             </div>
 
-            {/* ── takeover / MOMENT banners (read-only — they hold every screen) ── */}
+            {/* ── read-only state banners (game / takeover / moment all pre-empt the queue) ── */}
+            {gameOn && (
+              <BannerRow
+                tone="amber"
+                head="🎮 LIVE GAME"
+                body="screens are in game mode — the rotation resumes when the game ends"
+              />
+            )}
             {takeover && (
               <BannerRow
                 tone="red"
@@ -204,7 +223,7 @@ export function EditRotation() {
                 key={ev.id}
                 tone="amber"
                 head="⚡ MOMENT"
-                body={`${ev.name} — holds all screens ${stagePhrase(stage)}`}
+                body={momentBannerBody(ev, stage, now)}
                 to="/signage/events"
                 cta="events & promos →"
               />
@@ -359,19 +378,19 @@ function ScreensQueueRow({ card, tmap }: { card: SignageItem; tmap: Map<string, 
   );
 }
 
-/* ── banner (takeover / moment) ── */
-function BannerRow({ tone, head, body, to, cta }: { tone: "red" | "amber"; head: string; body: string; to: string; cta: string }) {
-  return (
-    <Link
-      to={to}
-      className={`terminal-border ${tone === "red" ? "u-red" : "u-amber"}`}
-      style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", padding: "10px 14px", marginTop: 10, textDecoration: "none", background: "rgba(0,255,65,0.03)" }}
-    >
+/* ── read-only state banner (game / takeover / moment). A `to` makes it a link with a cta;
+   without one it's a plain notice (the LIVE GAME banner has nowhere to send you). ── */
+function BannerRow({ tone, head, body, to, cta }: { tone: "red" | "amber"; head: string; body: string; to?: string; cta?: string }) {
+  const cls = `terminal-border ${tone === "red" ? "u-red" : "u-amber"}`;
+  const style = { display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", padding: "10px 14px", marginTop: 10, textDecoration: "none", background: "rgba(0,255,65,0.03)", color: "var(--terminal-green)" } as const;
+  const inner = (
+    <>
       <span style={{ fontSize: 14, letterSpacing: 2, whiteSpace: "nowrap" }}>{head}</span>
       <span style={{ flex: "1 1 200px", minWidth: 0, fontSize: 18 }}>{body}</span>
-      <span style={{ fontSize: 13, opacity: 0.8, textDecoration: "underline", whiteSpace: "nowrap" }}>{cta}</span>
-    </Link>
+      {cta && <span style={{ fontSize: 13, opacity: 0.8, textDecoration: "underline", whiteSpace: "nowrap" }}>{cta}</span>}
+    </>
   );
+  return to ? <Link to={to} className={cls} style={style}>{inner}</Link> : <div className={cls} style={style}>{inner}</div>;
 }
 
 /* ── helpers ── */
@@ -410,10 +429,23 @@ function eventTitle(ev: LiveEvent): string {
   return title || ev.name;
 }
 
-/** Plain phrase for the MOMENT banner's current stage. */
+/** The MOMENT banner body. TEASE is a rotation-level interstitial — it does NOT hold the
+ *  screens yet — so it reads differently from the takeover stages (NOTE-6). */
+function momentBannerBody(ev: LiveEvent, stage: EventStage, now: Date): string {
+  if (stage === "tease") return `${ev.name} — teasing in the rotation, takes the screens at ${fireLabel(ev, now)}`;
+  return `${ev.name} — holds all screens ${stagePhrase(stage)}`;
+}
+
+/** fire_at formatted venue-local (time only if today, else date + time). */
+function fireLabel(ev: LiveEvent, now: Date): string {
+  if (!ev.fire_at) return "its scheduled time";
+  const f = new Date(ev.fire_at).getTime();
+  return sameDay(f, now.getTime()) ? TIME.format(new Date(f)) : WHEN.format(new Date(f));
+}
+
+/** Plain phrase for the MOMENT banner's takeover stages (tease is handled separately). */
 function stagePhrase(stage: EventStage): string {
   switch (stage) {
-    case "tease": return "— starting soon";
     case "alert": return "— counting down";
     case "moment": return "— LIVE NOW";
     case "event": return "— in progress";
