@@ -135,8 +135,13 @@ export function GameSetup() {
         if (teamsError) throw teamsError;
       }
 
-      // Seed a display-state row so the displays have something to read.
-      await supabase.from("game_display_state").insert({ game_id: gameId, is_display_active: false });
+      // Seed a display-state row so the displays have something to read. A fresh game
+      // opens on the JOIN QR stage so the room sees the check-in code until the host
+      // flips the board (0038 choreography: after this seed, only the Scoring BOARD
+      // control ever changes board_stage).
+      await supabase
+        .from("game_display_state")
+        .insert({ game_id: gameId, is_display_active: false, board_stage: "qr" });
 
       return gameId;
     },
