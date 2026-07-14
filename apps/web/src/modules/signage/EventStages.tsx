@@ -107,10 +107,17 @@ const SIZES: Record<Orientation, Sz> = {
  * module cycle — SignageTemplates imports the event cards from here). Sizes off the
  * longest \n-line so short heroes fill the screen and long ones still fit.
  */
-function headlineFont(text: string, o: Orientation): number {
-  const maxLine = Math.max(1, ...text.split("\n").map((l) => l.trim().length));
+function headlineFontByLen(maxLine: number, o: Orientation): number {
   const p = maxLine <= 6 ? 200 : maxLine <= 9 ? 168 : maxLine <= 12 ? 140 : maxLine <= 16 ? 116 : maxLine <= 22 ? 92 : 76;
   return o === "portrait" ? p : Math.round(p * 0.72);
+}
+function headlineFont(text: string, o: Orientation): number {
+  return headlineFontByLen(Math.max(1, ...text.split("\n").map((l) => l.trim().length)), o);
+}
+/** Font-aware balance (owner note 2026-07-14): extra headline lines must render
+ *  BIGGER to win — stops 3-word titles stacking one word per line. */
+function balanceHero(text: string, o: Orientation): string {
+  return balanceHeadline(text, 3, (len) => headlineFontByLen(len, o));
 }
 
 /* ── field helpers ──────────────────────────────────────────────────────────── */
@@ -182,7 +189,7 @@ function AlertStage({ event, orientation }: { event: LiveEvent; orientation: Ori
   const cta = fstr(event.fields, "cta");
   // Inverse-video pulse in the final 10s — a bounded (10-iteration) class, not infinite.
   const pulse = remaining > 0 && remaining <= ALERT_PULSE_MS / 1000;
-  const hero = balanceHeadline(headline);
+  const hero = balanceHero(headline, orientation);
 
   return (
     <div
@@ -209,7 +216,7 @@ function MomentStage({ event, orientation }: { event: LiveEvent; orientation: Or
   const sk = skinOf(event.skin);
   const now = useSecondTick();
   const elapsed = event.fire_at ? Math.max(0, Math.floor((now - new Date(event.fire_at).getTime()) / 1000)) : 0;
-  const headline = balanceHeadline(fstr(event.fields, "moment_headline") ?? sk.momentHeadline);
+  const headline = balanceHero(fstr(event.fields, "moment_headline") ?? sk.momentHeadline, orientation);
   const icon = fstr(event.fields, "moment_icon") ?? sk.momentIcon;
   const sub = fstr(event.fields, "moment_sub") ?? sk.momentSub;
 
@@ -233,7 +240,7 @@ function EventWindowStage({ event, orientation, toast }: { event: LiveEvent; ori
   const now = useSecondTick();
 
   const src = event.toast_guid ? toast.get(event.toast_guid) : undefined;
-  const name = balanceHeadline(fstr(event.fields, "title") ?? src?.name ?? event.name);
+  const name = balanceHero(fstr(event.fields, "title") ?? src?.name ?? event.name, orientation);
   const nameLive = !fstr(event.fields, "title") && !!src?.name;
   const price = fnum(event.fields, "price") ?? src?.price ?? undefined;
 
@@ -291,17 +298,17 @@ function AllClearStage({ event, orientation }: { event: LiveEvent; orientation: 
   const headline = fstr(event.fields, "all_clear_headline") ?? sk.allClearHeadline;
   const body = fstr(event.fields, "all_clear_body") ?? sk.allClearBody;
 
-  const balTally = tally ? balanceHeadline(tally) : undefined;
+  const balTally = tally ? balanceHero(tally, orientation) : undefined;
   const tallyEl = balTally
     ? <Lines text={balTally} />
     : count != null
       ? <><span className="sig-live">{count}</span> DWELLERS {sk.tallyVerb}</>
-      : <Lines text={balanceHeadline(headline)} />;
+      : <Lines text={balanceHero(headline, orientation)} />;
 
   return (
     <div className="evt-stage" style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", padding: z.pad, gap: z.gap }}>
       <div style={{ fontSize: z.eyebrow, letterSpacing: 4, opacity: 0.8 }}>{headline}</div>
-      <div style={{ fontSize: headlineFont(balTally ?? balanceHeadline(headline), orientation) * 0.9, fontWeight: 700, lineHeight: 0.95, textTransform: "uppercase", textShadow: "0 0 22px var(--terminal-glow)" }}>{tallyEl}</div>
+      <div style={{ fontSize: headlineFont(balTally ?? balanceHero(headline, orientation), orientation) * 0.9, fontWeight: 700, lineHeight: 0.95, textTransform: "uppercase", textShadow: "0 0 22px var(--terminal-glow)" }}>{tallyEl}</div>
       <div style={{ fontSize: z.body, opacity: 0.85, lineHeight: 1.35, maxWidth: "82%" }}><Lines text={body} /></div>
     </div>
   );
@@ -316,7 +323,7 @@ export function EventWindowCard({ item, toast, orientation }: { item: SignageIte
   const z = SIZES[orientation];
   const ev = item.event;
   const src = ev?.toast_guid ? toast.get(ev.toast_guid) : undefined;
-  const title = balanceHeadline(fstr(item.fields, "title") ?? ev?.name ?? "HAPPY HOUR");
+  const title = balanceHero(fstr(item.fields, "title") ?? ev?.name ?? "HAPPY HOUR", orientation);
   const time = fstr(item.fields, "time"); // hero time window — authored only (never invented)
   const body = fstr(item.fields, "body") ?? fstr(item.fields, "directive") ?? src?.public_blurb;
   const cta = fstr(item.fields, "cta");
@@ -328,20 +335,24 @@ export function EventWindowCard({ item, toast, orientation }: { item: SignageIte
   const posHidden = !!src && (src.out_of_stock || src.pos_visible === false);
 
   // Custom image (Phase 8) — shown in the square, above the title. Wins over drink photo.
+  // A full stack (image + body + CTA) can exceed the canvas (the PR #15 heavy-card
+  // note — "Vote NOW!" clipped on the owner's Best of OKC card), so the image yields
+  // a step when both ride along, same trade as the drink-slide photo (#22).
   const customImg = fstr(item.fields, "image_url");
+  const imgSize = Math.round(EVT_IMG[orientation] * (body && cta ? 0.85 : 1));
   const align = alignOf(item.fields);
 
   const linkEl = cta
-    ? <span style={{ fontSize: z.body * 1.2, fontWeight: 700, letterSpacing: 2 }}>{cta}</span>
+    ? <span style={{ fontSize: Math.round(z.body * 1.45), fontWeight: 700, letterSpacing: 2 }}>{cta}</span>
     : linkedName ? <span className="sig-live" style={{ fontSize: Math.round(headlineFont(linkedName, orientation) * 0.5), fontWeight: 700 }}>{linkedName}</span> : null;
 
   return (
     <div style={{ height: "100%", display: "flex", flexDirection: "column", justifyContent: "center", position: "relative", gap: z.gap, ...alignStyle(align) }}>
       <div style={{ fontSize: z.eyebrow, letterSpacing: 6, opacity: 0.7 }}>▸ ON NOW — PROMO WINDOW</div>
-      {customImg && <SquarePhoto src={customImg} size={EVT_IMG[orientation]} feed="OPTICAL FEED" />}
+      {customImg && <SquarePhoto src={customImg} size={imgSize} feed="OPTICAL FEED" />}
       <div style={{ fontSize: headlineFont(title, orientation), fontWeight: 700, lineHeight: 0.9, textTransform: "uppercase", textShadow: "0 0 16px var(--terminal-glow)" }}><Lines text={title} /></div>
       {time && <div style={{ fontSize: z.time, fontWeight: 700, lineHeight: 0.85, textShadow: "0 0 24px var(--terminal-glow)" }}>{time}</div>}
-      {body && <div style={{ fontSize: z.body, opacity: 0.9, lineHeight: 1.35, maxWidth: "84%" }}><Lines text={body} /></div>}
+      {body && <div style={{ fontSize: Math.round(z.body * 1.25), opacity: 0.9, lineHeight: 1.35, maxWidth: "84%" }}><Lines text={body} /></div>}
       {(linkEl || (price != null && !posHidden)) && (
         <>
           <div style={{ borderTop: "1px solid var(--sig-rule)", width: "60%", margin: `${z.gap * 0.4}px 0` }} />
@@ -375,7 +386,7 @@ export function EventMessageCard({ item, toast, orientation }: { item: SignageIt
       <div style={{ fontSize: z.eyebrow, letterSpacing: 6, opacity: 0.7 }}>◈ SHELTER BULLETIN</div>
       {customImg && <SquarePhoto src={customImg} size={EVT_IMG[orientation]} feed="OPTICAL FEED" />}
       <div style={{ fontSize: headlineFont(title, orientation), fontWeight: 700, lineHeight: 0.92, textTransform: "uppercase", textShadow: "0 0 16px var(--terminal-glow)" }}>{parseInline(title)}</div>
-      {body && <div style={{ fontSize: z.body * 1.15, opacity: 0.9, lineHeight: 1.45, maxWidth: "84%" }}><Lines text={body} /></div>}
+      {body && <div style={{ fontSize: Math.round(z.body * 1.3), opacity: 0.9, lineHeight: 1.45, maxWidth: "84%" }}><Lines text={body} /></div>}
       {price != null && src?.name && (
         <div style={{ fontSize: z.body, marginTop: z.gap }}>
           <span className="sig-live">{src.name}</span> · <span className="sig-live"><small>$</small>{formatPrice(price)}</span>
