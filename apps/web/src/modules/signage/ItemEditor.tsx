@@ -3,8 +3,10 @@ import { Modal, Field, input as inputStyle, btnGhost } from "@/modules/trivia/ui
 import type { Orientation, SignageItem, Template, ToastCacheRow } from "./useSignage";
 import {
   type AdminItem, type AdminSlot, type ItemDraft, type Recurrence,
-  saveItem, uploadSignageImage, linkedMoment, saveMoment, toastMap,
+  saveItem, uploadCustomImage, linkedMoment, saveMoment, toastMap,
 } from "./useSignageAdmin";
+import { FormatControls } from "./signageAdminShared";
+import { alignOf } from "./richText";
 import { SignagePreview } from "./SignagePreview";
 
 /**
@@ -375,6 +377,7 @@ function EventFields({ fields, setField }: FieldProps) {
         <Field label="TIME"><input placeholder="8:00 PM" value={str(fields.time) ?? ""} onChange={(e) => setField("time", e.target.value)} style={sel} /></Field>
       </div>
       <Field label="BLURB"><textarea rows={2} value={str(fields.blurb) ?? ""} onChange={(e) => setField("blurb", e.target.value)} style={{ ...sel, resize: "vertical" }} /></Field>
+      <FormatControls align={alignOf(fields)} onAlign={(a) => setField("align", a === "left" ? "left" : "")} />
       <ImageField fields={fields} setField={setField} />
       <TreatmentToggle fields={fields} setField={setField} />
     </div>
@@ -393,6 +396,8 @@ function AnnouncementFields({ fields, setField }: FieldProps) {
           <option style={opt} value="HIGH">HIGH</option>
         </select>
       </Field>
+      <FormatControls align={alignOf(fields)} onAlign={(a) => setField("align", a === "left" ? "left" : "")} />
+      <ImageField fields={fields} setField={setField} />
     </div>
   );
 }
@@ -456,6 +461,7 @@ function CelebrationFields({
       <Field label="HONOREE NAME"><input value={str(fields.honoree) ?? ""} onChange={(e) => setField("honoree", e.target.value)} style={sel} /></Field>
       <Field label="OCCASION LINE (optional)"><input placeholder="auto: skin default" value={str(fields.occasion) ?? ""} onChange={(e) => setField("occasion", e.target.value)} style={sel} /></Field>
       <Field label="MESSAGE (optional)"><textarea rows={2} value={str(fields.message) ?? ""} onChange={(e) => setField("message", e.target.value)} style={{ ...sel, resize: "vertical" }} /></Field>
+      <FormatControls align={alignOf(fields)} onAlign={(a) => setField("align", a === "left" ? "left" : "")} />
       <Field label="DATE"><input type="date" value={celebDate} onChange={(e) => setCelebDate(e.target.value)} style={sel} /></Field>
       <div>
         <div style={{ fontSize: 15, opacity: 0.7, marginBottom: 4 }}>PHOTO (optional)</div>
@@ -529,7 +535,7 @@ function ImageField({ fields, setField }: FieldProps) {
     setBusy(true);
     setErr(null);
     try {
-      const publicUrl = await uploadSignageImage(file);
+      const publicUrl = await uploadCustomImage(file);
       setField("image_url", publicUrl);
     } catch (er) {
       setErr(er instanceof Error ? er.message : "upload failed");

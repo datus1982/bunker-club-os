@@ -1,11 +1,13 @@
-import { useMemo, useState, type CSSProperties } from "react";
+import { useMemo, useRef, useState, type CSSProperties } from "react";
 import { useMutation } from "@tanstack/react-query";
 import {
   activeTakeover, dismissTakeover, sendTakeover, deleteItem, setItemActive, setItemDuration, reorderItem, featuredItems,
+  uploadCustomImage,
   DURATION_CHOICES,
   type AdminItem, type AdminTakeover, type Recurrence, type ScreenHealth,
 } from "./useSignageAdmin";
 import type { EventKind, ToastCacheRow } from "./useSignage";
+import type { Align } from "./richText";
 
 /**
  * Shared staff-signage UI, lifted verbatim out of the old single-page templater so the
@@ -297,6 +299,84 @@ export function EventKindBadge({ kind, style }: { kind: EventKind; style?: CSSPr
     return <span style={{ ...base, opacity: 1 }}>MESSAGE</span>;
   }
   return <span style={{ ...base, opacity: 0.72 }}>WINDOW</span>;
+}
+
+/* ── custom image upload (shared by EventEditor + ItemEditor) ─────────────────── */
+// One control for every custom image field. Client-resizes/re-encodes to a ≤1600px JPEG
+// (EXIF stripped by the canvas re-encode) and stores the public URL in fields.image_url.
+// Shows a square thumbnail + REPLACE / REMOVE. Writes to the module-gated uploads/ prefix
+// (RLS 0037). `url` is the current fields.image_url (undefined when none).
+export function ImageUploadField({
+  url, onChange, label = "IMAGE (optional)", note,
+}: {
+  url: string | undefined;
+  onChange: (url: string) => void;
+  label?: string;
+  note?: string;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const ref = useRef<HTMLInputElement>(null);
+
+  const onPick = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      onChange(await uploadCustomImage(file));
+    } catch (er) {
+      setErr(er instanceof Error ? er.message : "upload failed");
+    } finally {
+      setBusy(false);
+      if (ref.current) ref.current.value = "";
+    }
+  };
+
+  return (
+    <div className="terminal-border" style={{ padding: "10px 12px", display: "flex", flexDirection: "column", gap: 8 }}>
+      <span style={caption}>{label}</span>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+        {url && <img src={url} alt="" style={{ width: 72, height: 72, objectFit: "cover", border: "1px solid var(--terminal-green)", flexShrink: 0 }} />}
+        <input ref={ref} type="file" accept="image/*" onChange={onPick} style={{ display: "none" }} />
+        <button type="button" onClick={() => ref.current?.click()} disabled={busy} style={ghost}>
+          {busy ? "UPLOADING…" : url ? "REPLACE" : "UPLOAD IMAGE"}
+        </button>
+        {url && <button type="button" onClick={() => onChange("")} style={ghost}>REMOVE</button>}
+      </div>
+      {note && <div style={{ fontSize: 14, opacity: 0.55 }}>{note}</div>}
+      {err && <div className="u-red" style={{ fontSize: 15 }}>⚠ {err}</div>}
+    </div>
+  );
+}
+
+/* ── formatting controls (deliberately basic: alignment segmented + a bold hint) ── */
+// Writes fields.align ("left" | "center"); inline **bold** is authored inline in the text
+// fields and rendered by the display templates (richText.ts). One shared control so the
+// EventEditor and ItemEditor never drift on label/behaviour.
+export function FormatControls({ align, onAlign }: { align: Align; onAlign: (a: Align) => void }) {
+  const opt = (a: Align, label: string) => (
+    <button
+      type="button"
+      onClick={() => onAlign(a)}
+      className={align === a ? "u-fill u-ink" : ""}
+      style={{ ...chip, ...(align === a ? { fontWeight: 700 } : null) }}
+    >
+      {label}
+    </button>
+  );
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+        <span style={caption}>ALIGN</span>
+        {opt("left", "◧ LEFT")}
+        {opt("center", "▣ CENTER")}
+      </div>
+      <div style={{ fontSize: 14, opacity: 0.55 }}>
+        <code>**bold**</code> · alignment applies to this card.
+      </div>
+    </div>
+  );
 }
 
 /* ── Toast source picker (live price + POS/86 warning state) ──────────────────── */

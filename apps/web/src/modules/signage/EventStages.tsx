@@ -3,6 +3,8 @@ import type { Orientation, SignageItem, ToastCacheRow } from "./useSignage";
 import {
   secondsToFire, formatTMinus, ALERT_PULSE_MS, type LiveEvent, type EventStage,
 } from "./eventStage";
+import { parseInline, alignOf, alignStyle } from "./richText";
+import { SquarePhoto } from "./signagePhoto";
 
 /**
  * Event-stage renderers for the Phase 7 events DISPLAY engine (docs/13). Visual language
@@ -129,10 +131,14 @@ function Lines({ text }: { text: string }): ReactNode {
   // fontSize:inherit is load-bearing: the global `.terminal-theme span{font-size:1.5rem}`
   // rule otherwise clamps these line spans to 24px (a direct rule beats the parent div's
   // inherited size), collapsing every multi-line headline/directive to body text.
+  // parseInline turns `**bold**` into <strong> (Phase 8 basic formatting).
   return text.split("\n").map((l, i) => (
-    <span key={i} style={{ display: "block", fontSize: "inherit" }}>{l}</span>
+    <span key={i} style={{ display: "block", fontSize: "inherit" }}>{parseInline(l)}</span>
   ));
 }
+
+/* Square edge (fixed-canvas px) for a custom event-card image, per orientation. */
+const EVT_IMG: Record<Orientation, number> = { portrait: 560, landscape: 380 };
 
 /* ── local 1s clock for countdowns (state-driven, no network, no CSS loop) ────── */
 function useSecondTick(): number {
@@ -244,11 +250,16 @@ function EventWindowStage({ event, orientation, toast }: { event: LiveEvent; ori
   const count = fnum(event.fields, "live_count");
   const counterLabel = fstr(event.fields, "counter_label") ?? sk.counterLabel;
 
+  // Custom image wins over the linked drink photo (Phase 8 owner ask); shown in the square.
+  const customImg = fstr(event.fields, "image_url");
+  const align = alignOf(event.fields);
+
   return (
-    <div className="evt-stage" style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", padding: z.pad, gap: z.gap }}>
+    <div className="evt-stage" style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", justifyContent: "center", padding: z.pad, gap: z.gap, ...alignStyle(align) }}>
       <div style={{ fontSize: z.eyebrow, letterSpacing: 4, opacity: 0.8 }}>{sk.windowLabel} — {remainClock} REMAINING</div>
+      {customImg && <SquarePhoto src={customImg} size={EVT_IMG[orientation]} feed="OPTICAL FEED" />}
       <div style={{ fontSize: headlineFont(name, orientation), fontWeight: 700, lineHeight: 0.9, textTransform: "uppercase", textShadow: "0 0 20px var(--terminal-glow)" }}>
-        {nameLive ? <span className="sig-live">{name}</span> : name}
+        {nameLive ? <span className="sig-live">{parseInline(name)}</span> : parseInline(name)}
       </div>
       {price != null && !posHidden && (
         <div className="sig-live" style={{ fontSize: z.price, fontWeight: 700, lineHeight: 1, textShadow: "0 0 16px var(--terminal-glow)" }}>
@@ -313,16 +324,21 @@ export function EventWindowCard({ item, toast, orientation }: { item: SignageIte
   // whole card is normally auto-hidden upstream too, but parity keeps this self-safe.
   const posHidden = !!src && (src.out_of_stock || src.pos_visible === false);
 
+  // Custom image (Phase 8) — shown in the square, above the title. Wins over drink photo.
+  const customImg = fstr(item.fields, "image_url");
+  const align = alignOf(item.fields);
+
   const linkEl = cta
     ? <span style={{ fontSize: z.body * 1.2, fontWeight: 700, letterSpacing: 2 }}>{cta}</span>
     : linkedName ? <span className="sig-live" style={{ fontSize: Math.round(headlineFont(linkedName, orientation) * 0.5), fontWeight: 700 }}>{linkedName}</span> : null;
 
   return (
-    <div style={{ height: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", position: "relative", gap: z.gap }}>
+    <div style={{ height: "100%", display: "flex", flexDirection: "column", justifyContent: "center", position: "relative", gap: z.gap, ...alignStyle(align) }}>
       <div style={{ fontSize: z.eyebrow, letterSpacing: 6, opacity: 0.7 }}>▸ ON NOW — PROMO WINDOW</div>
-      <div style={{ fontSize: headlineFont(title, orientation), fontWeight: 700, lineHeight: 0.9, textTransform: "uppercase", textShadow: "0 0 16px var(--terminal-glow)" }}>{title}</div>
+      {customImg && <SquarePhoto src={customImg} size={EVT_IMG[orientation]} feed="OPTICAL FEED" />}
+      <div style={{ fontSize: headlineFont(title, orientation), fontWeight: 700, lineHeight: 0.9, textTransform: "uppercase", textShadow: "0 0 16px var(--terminal-glow)" }}>{parseInline(title)}</div>
       {time && <div style={{ fontSize: z.time, fontWeight: 700, lineHeight: 0.85, textShadow: "0 0 24px var(--terminal-glow)" }}>{time}</div>}
-      {body && <div style={{ fontSize: z.body, opacity: 0.9, lineHeight: 1.35, maxWidth: "84%" }}>{body}</div>}
+      {body && <div style={{ fontSize: z.body, opacity: 0.9, lineHeight: 1.35, maxWidth: "84%" }}><Lines text={body} /></div>}
       {(linkEl || (price != null && !posHidden)) && (
         <>
           <div style={{ borderTop: "1px solid var(--terminal-glow)", width: "60%", margin: `${z.gap * 0.4}px 0` }} />
@@ -348,12 +364,15 @@ export function EventMessageCard({ item, toast, orientation }: { item: SignageIt
   const title = fstr(item.fields, "title") ?? ev?.name ?? "A MESSAGE";
   const body = fstr(item.fields, "body") ?? fstr(item.fields, "message");
   const price = fnum(item.fields, "price") ?? src?.price ?? undefined;
+  const customImg = fstr(item.fields, "image_url");
+  const align = alignOf(item.fields);
 
   return (
-    <div style={{ height: "100%", display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", textAlign: "center", gap: z.gap }}>
+    <div style={{ height: "100%", display: "flex", flexDirection: "column", justifyContent: "center", gap: z.gap, ...alignStyle(align) }}>
       <div style={{ fontSize: z.eyebrow, letterSpacing: 6, opacity: 0.7 }}>◈ SHELTER BULLETIN</div>
-      <div style={{ fontSize: headlineFont(title, orientation), fontWeight: 700, lineHeight: 0.92, textTransform: "uppercase", textShadow: "0 0 16px var(--terminal-glow)" }}>{title}</div>
-      {body && <div style={{ fontSize: z.body * 1.15, opacity: 0.9, lineHeight: 1.45, maxWidth: "84%" }}>{body}</div>}
+      {customImg && <SquarePhoto src={customImg} size={EVT_IMG[orientation]} feed="OPTICAL FEED" />}
+      <div style={{ fontSize: headlineFont(title, orientation), fontWeight: 700, lineHeight: 0.92, textTransform: "uppercase", textShadow: "0 0 16px var(--terminal-glow)" }}>{parseInline(title)}</div>
+      {body && <div style={{ fontSize: z.body * 1.15, opacity: 0.9, lineHeight: 1.45, maxWidth: "84%" }}><Lines text={body} /></div>}
       {price != null && src?.name && (
         <div style={{ fontSize: z.body, marginTop: z.gap }}>
           <span className="sig-live">{src.name}</span> · <span className="sig-live"><small>$</small>{formatPrice(price)}</span>

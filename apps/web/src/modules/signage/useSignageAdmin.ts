@@ -419,13 +419,24 @@ export async function saveMoment(
 
 /* ── image upload (client resize ≤1080px long edge → signage bucket) ─────── */
 
-export async function uploadSignageImage(file: File): Promise<string> {
-  const blob = await resizeToMaxEdge(file, 1080);
+/**
+ * Custom staff image upload for events + signage items (Phase 8). Resizes/re-encodes to a
+ * ≤1600px JPEG (EXIF is dropped by the canvas re-encode — see resizeToMaxEdge) and writes
+ * to `uploads/{venue_id}/{uuid}.jpg` in the PUBLIC-read `signage` bucket. That prefix is
+ * module-gated by RLS (0037: has_module('events') OR has_module('signage')) — the venue is
+ * read from the path, so nothing is hardcoded. Returns the public URL for fields.image_url.
+ *
+ * upsert is deliberately OFF: the path carries a fresh UUID so it never collides, and an
+ * upsert (INSERT … ON CONFLICT) trips the storage RLS gate — the ON-CONFLICT UPDATE path
+ * needs SELECT/UPDATE visibility this bucket doesn't grant authenticated callers. A plain
+ * insert to a new key is all we need and is what the RLS policies allow.
+ */
+export async function uploadCustomImage(file: File): Promise<string> {
+  const blob = await resizeToMaxEdge(file, 1600);
   const uuid = (crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`);
-  const path = `signage-items/${uuid}/image.jpg`;
+  const path = `uploads/${VENUE_ID}/${uuid}.jpg`;
   const { error } = await supabase.storage.from("signage").upload(path, blob, {
     contentType: "image/jpeg",
-    upsert: true,
   });
   if (error) throw error;
   return supabase.storage.from("signage").getPublicUrl(path).data.publicUrl;
