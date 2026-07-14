@@ -108,11 +108,17 @@ export function formatTMinus(totalSeconds: number): string {
  * Balance a headline into ≤ maxLines lines so the auto-shrink can size off the
  * longest LINE instead of the whole string ("ROCKET LAUNCH IMMINENT" as one
  * 22-char line renders 92px; balanced to "ROCKET LAUNCH\nIMMINENT" it earns
- * 140px+ — the owner's 20-foot test). Authored line breaks are respected
- * verbatim; otherwise pick the partition (1..maxLines lines) whose longest
- * line is shortest, preferring fewer lines on ties.
+ * 140px+ — the owner's 20-foot test). Authored line breaks are respected verbatim.
+ *
+ * Without `fontFor`: legacy behavior — the partition whose longest line is
+ * shortest wins, fewer lines on ties. WITH `fontFor` (the caller's longest-line-
+ * length → px table): a partition wins only if it actually RENDERS larger —
+ * effective size = fontFor(longest) × line-count discount (×1 / ×0.7 / ×0.55,
+ * the ratified drink-name trade), ties → fewer lines. Owner note 2026-07-14:
+ * "BEST OF OKC" split into three stacked words because extra lines cost nothing
+ * once the font table capped out — now they must pay for themselves.
  */
-export function balanceHeadline(text: string, maxLines = 3): string {
+export function balanceHeadline(text: string, maxLines = 3, fontFor?: (maxLineLen: number) => number): string {
   if (text.includes("\n")) return text;
   const words = text.trim().split(/\s+/).filter(Boolean);
   if (words.length <= 1) return text.trim();
@@ -140,13 +146,17 @@ export function balanceHeadline(text: string, maxLines = 3): string {
     return lines;
   };
 
+  const lineMult = (n: number) => (n <= 1 ? 1 : n === 2 ? 0.7 : 0.55);
   let chosen = [words.join(" ")];
-  let chosenMax = chosen[0].length;
+  let chosenScore = fontFor ? fontFor(chosen[0].length) : -chosen[0].length;
   for (let n = 2; n <= maxLines; n++) {
     const lines = partition(n);
     if (!lines) break;
     const m = Math.max(...lines.map((l) => l.length));
-    if (m < chosenMax) { chosen = lines; chosenMax = m; }
+    // With a font table, score by what actually renders (px × discount); without,
+    // by shorter-longest-line as before. Strictly-greater keeps ties on fewer lines.
+    const score = fontFor ? fontFor(m) * lineMult(n) : -m;
+    if (score > chosenScore) { chosen = lines; chosenScore = score; }
   }
   return chosen.join("\n");
 }

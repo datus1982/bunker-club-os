@@ -29,10 +29,17 @@ const SIZES: Record<Orientation, Sz> = {
  * Headline auto-shrink (docs/signage-redesign view 2 "20-foot test": titles ~9%/line).
  * Sizes off the longest \n-line so a short hero fills the screen and a long one still fits.
  */
-function headlineFont(text: string, o: Orientation): number {
-  const maxLine = Math.max(1, ...text.split("\n").map((l) => l.trim().length));
+function headlineFontByLen(maxLine: number, o: Orientation): number {
   const p = maxLine <= 6 ? 200 : maxLine <= 9 ? 168 : maxLine <= 12 ? 140 : maxLine <= 16 ? 116 : maxLine <= 22 ? 92 : 76;
   return o === "portrait" ? p : Math.round(p * 0.72);
+}
+function headlineFont(text: string, o: Orientation): number {
+  return headlineFontByLen(Math.max(1, ...text.split("\n").map((l) => l.trim().length)), o);
+}
+/** Font-aware balance (owner note 2026-07-14, shared rule with EventStages): extra
+ *  headline lines must render BIGGER to win — no more one-word-per-line stacks. */
+function balanceHero(text: string, o: Orientation): string {
+  return balanceHeadline(text, 3, (len) => headlineFontByLen(len, o));
 }
 
 /* ── DRINK PROMO sizing (view 1, amended 2026-07-14) — vertical stack: name slightly
@@ -242,7 +249,7 @@ function DrinkSquare({ src, orientation }: { src: string | undefined; orientatio
 /* ── EVENT ──────────────────────────────────────────────────────────────────── */
 export function EventItem({ item, orientation }: TemplateProps) {
   const z = SIZES[orientation];
-  const title = balanceHeadline(s(item.fields, "title") ?? "UPCOMING EVENT");
+  const title = balanceHero(s(item.fields, "title") ?? "UPCOMING EVENT", orientation);
   const blurb = s(item.fields, "blurb");
   const photo = s(item.fields, "image_url");
   const treatment = s(item.fields, "photo_treatment") ?? "viewport";
@@ -344,8 +351,8 @@ export function Celebration({ item, orientation }: TemplateProps) {
           <img src={photo} alt="" />
         </div>
       )}
-      <div style={{ fontSize: headlineFont(balanceHeadline(honoree), orientation), fontWeight: 700, lineHeight: 0.92, textTransform: "uppercase", textShadow: "0 0 20px var(--terminal-glow)" }}>
-        {balanceHeadline(honoree).split("\n").map((l, i) => <span key={i} style={{ display: "block", fontSize: "inherit" }}>{l}</span>)}
+      <div style={{ fontSize: headlineFont(balanceHero(honoree, orientation), orientation), fontWeight: 700, lineHeight: 0.92, textTransform: "uppercase", textShadow: "0 0 20px var(--terminal-glow)" }}>
+        {balanceHero(honoree, orientation).split("\n").map((l, i) => <span key={i} style={{ display: "block", fontSize: "inherit" }}>{l}</span>)}
       </div>
       <div style={{ fontSize: z.mid * 0.7, opacity: 0.85 }}>{occasionLine}</div>
       {message && <div style={{ fontSize: z.body, opacity: 0.8, maxWidth: "80%", lineHeight: 1.4, textAlign: alignOf(item.fields) }}><RichText text={message} /></div>}
