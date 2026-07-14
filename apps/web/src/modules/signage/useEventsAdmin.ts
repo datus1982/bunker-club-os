@@ -452,3 +452,21 @@ export async function deleteEvent(id: string): Promise<void> {
   const { error } = await supabase.from("scheduled_events").delete().eq("id", id);
   if (error) throw error;
 }
+
+/**
+ * Patch a few keys of an event's `fields` jsonb WITHOUT touching schedule/status/content
+ * (used by the EDIT ROTATION live-queue editor to write fields.rotation_sort and
+ * fields.duration_seconds when a manager reorders/retimes an active WINDOW/MESSAGE card).
+ *
+ * Read-modify-write against a FRESH select (not the possibly-stale display copy) so a
+ * concurrent toast-sync counter write (fields.live_count) isn't clobbered by an old
+ * snapshot. Requires has_module('events') for both the select and the update (RLS 0035) —
+ * the caller gates the controls on that, so a signage-only user never reaches here.
+ */
+export async function setEventFields(id: string, patch: Record<string, unknown>): Promise<void> {
+  const { data, error } = await supabase.from("scheduled_events").select("fields").eq("id", id).single();
+  if (error) throw error;
+  const merged = { ...((data?.fields as Record<string, unknown> | null) ?? {}), ...patch };
+  const { error: uerr } = await supabase.from("scheduled_events").update({ fields: merged }).eq("id", id);
+  if (uerr) throw uerr;
+}

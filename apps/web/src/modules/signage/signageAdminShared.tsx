@@ -103,10 +103,16 @@ export function CopyKioskButton({ slug, style }: { slug: string; style?: CSSProp
 /* ── per-slot item row (EDIT ROTATION) ──────────────────────────────────────── */
 export function ItemRow({
   item, first, last, hideReason, prev, next, onEdit, onChanged, toastRows,
+  live, windowReason,
 }: {
   item: AdminItem; first: boolean; last: boolean; hideReason: string | null;
   prev?: AdminItem; next?: AdminItem;
   onEdit: () => void; onChanged: () => void; toastRows?: ToastCacheRow[];
+  // Live-queue markers (EDIT ROTATION renders the same queue the TV resolves). `live` = the
+  // TV would show this row this minute (● NOW, full brightness); `windowReason` = why an
+  // active-but-not-live authored item is out of its time window (STARTS … / ENDED). Both are
+  // optional — omitted, the row behaves byte-identically to the pre-live-queue editor.
+  live?: boolean; windowReason?: string | null;
 }) {
   const toggle = useMutation({ mutationFn: () => setItemActive(item.id, !item.active), onSuccess: onChanged });
   const del = useMutation({ mutationFn: () => deleteItem(item.id), onSuccess: onChanged });
@@ -114,13 +120,20 @@ export function ItemRow({
   const down = useMutation({ mutationFn: () => reorderItem(item, next!), onSuccess: onChanged });
   const dur = useMutation({ mutationFn: (secs: number) => setItemDuration(item.id, secs), onSuccess: onChanged });
 
+  // Dim any row the TV is NOT showing this minute: turned OFF, out of its time window, or
+  // hidden by a 86'd / off-POS Toast source. When `live` isn't passed (no live-queue context)
+  // fall back to the original active-only dimming so behaviour is unchanged.
+  const onScreen = live === undefined ? item.active : item.active && live;
+
   return (
-    <div className="terminal-border" style={{ padding: "10px 12px", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", opacity: item.active ? 1 : 0.5 }}>
+    <div className="terminal-border" style={{ padding: "10px 12px", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", opacity: onScreen ? 1 : 0.5 }}>
       <div style={{ display: "flex", flexDirection: "column", gap: 2, flex: "1 1 200px", minWidth: 0 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           <span style={badge}>{item.template.replace(/_/g, " ").toUpperCase()}</span>
+          {live && <span className="sig-live" style={{ fontSize: 13, letterSpacing: 1, whiteSpace: "nowrap" }} title="On the TV rotation right now">● NOW</span>}
           {item.recurrence && <span className="u-amber" style={{ fontSize: 13, letterSpacing: 1 }}>↻ RECURS</span>}
           {item.show_on_website && <span style={{ fontSize: 13, letterSpacing: 1 }} title="Published to the public website">🌐 WEB</span>}
+          {windowReason && <span style={{ fontSize: 13, letterSpacing: 1, opacity: 0.7 }}>{windowReason}</span>}
           {hideReason && <span className="u-amber" style={{ fontSize: 13 }}>{hideReason}</span>}
         </div>
         <div style={{ fontSize: 20, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{summarize(item, toastRows)}</div>

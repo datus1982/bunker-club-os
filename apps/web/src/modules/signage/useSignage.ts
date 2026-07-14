@@ -156,6 +156,18 @@ export function teaseMoment(events: LiveEvent[], now: Date = new Date()): LiveEv
 
 const SCREENS_GROUP = "★ SCREENS";
 
+/**
+ * The SINGLE ordering the rotation resolves by: sort_order, then id as a STABLE tiebreak.
+ * Equal sort_order rows are reachable — two never-reordered event cards both sit at the
+ * default -100, and integer midpoint math at the extremes can tie an event against an
+ * authored item — and without a tiebreak the TV's fetch order (nondeterministic) and the
+ * editor's row order could disagree. Both surfaces sort with THIS comparator (never a
+ * hand-rolled concat order), so their queues are byte-identical (parity invariant, WARN-1).
+ */
+export function compareRotation(a: { sort_order: number; id: string }, b: { sort_order: number; id: string }): number {
+  return a.sort_order - b.sort_order || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+}
+
 /** Venue name/timezone — shared cache key so the board and the admin preview agree and
  *  nothing hardcodes 'Bunker Club' outside the fallback (venue-scope rule). */
 export function useVenue() {
@@ -315,7 +327,10 @@ export function useLiveEvents(venueId: string = VENUE_ID) {
       const { data, error } = await supabase
         .from("signage_events_live")
         .select("id, venue_id, name, kind, skin, fields, toast_guid, fire_at, tease_minutes, alert_minutes, window_minutes, interrupt_game, status")
-        .eq("venue_id", venueId);
+        .eq("venue_id", venueId)
+        // Stable fetch order so the eventCards array is deterministic; compareRotation's id
+        // tiebreak is the real guarantee, this just removes upstream nondeterminism (WARN-1).
+        .order("id");
       if (error) throw error;
       return (data ?? []) as LiveEvent[];
     },
@@ -324,10 +339,13 @@ export function useLiveEvents(venueId: string = VENUE_ID) {
 
 /** Build the rotation-level card for an active WINDOW/MESSAGE event (docs/13). */
 function eventRotationCard(ev: LiveEvent): SignageItem {
-  // Injected-at-render event cards aren't authored through EDIT ROTATION, so they can't carry
-  // a per-item seconds control — they fall back to a sensible fixed default (12s, matching the
-  // mockup rotation pace) unless the event itself specifies fields.duration_seconds.
+  // Event cards CAN now carry a per-item seconds control + a queue position, set from the
+  // EDIT ROTATION live-queue editor and persisted onto the event row's fields jsonb
+  // (fields.duration_seconds / fields.rotation_sort). Absent either, the historical defaults
+  // hold: 12s dwell (mockup pace) and sort_order -100 (event promos lead the rotation) — so
+  // TVs are byte-identical until a manager reorders/retimes a card.
   const duration = typeof ev.fields?.duration_seconds === "number" ? ev.fields.duration_seconds : 12;
+  const rotationSort = typeof ev.fields?.rotation_sort === "number" ? ev.fields.rotation_sort : -100;
   return {
     id: `event:${ev.id}`,
     slot_id: null,
@@ -337,7 +355,7 @@ function eventRotationCard(ev: LiveEvent): SignageItem {
     event: ev,
     starts_at: null,
     ends_at: null,
-    sort_order: -100, // event promos lead the rotation
+    sort_order: rotationSort, // event promos lead (-100) unless a manager reordered the card
     duration_seconds: Math.max(6, duration),
     active: true,
     materialized: true,
@@ -392,23 +410,28 @@ export function resolveRotation(
   // ★ SCREENS materialization: in-stock items in the hidden toggle group auto-appear
   // as drink_special entries (template defaults + Toast fields). These are NEVER DB
   // rows — they exist only for this render (docs/09 anti-goal: no sync writes).
-  const materialized: SignageItem[] = [];
-  for (const [guid, row] of toast) {
-    // Only in-stock AND POS-visible ★ SCREENS items advertise (0034 owner principle).
-    if (row.menu_group !== SCREENS_GROUP || row.out_of_stock || !row.pos_visible) continue;
-    materialized.push({
-      id: `screens:${guid}`,
-      slot_id: null,
-      template: "drink_special",
-      fields: { source_toast_guid: guid, photo_treatment: "viewport" },
-      starts_at: null,
-      ends_at: null,
-      sort_order: 10_000, // after authored items
-      duration_seconds: 12,
-      active: true,
-      materialized: true,
-    });
-  }
+  // Only in-stock AND POS-visible ★ SCREENS items advertise (0034 owner principle).
+  // Sort the eligible guids so the trailer order is deterministic (Map iteration follows
+  // the nondeterministic fetch order otherwise), then SPREAD them 10000, 10001, 10002 …
+  // rather than stacking every trailer on 10000 — a shared 10000 makes a below-trailer
+  // event move a silent no-op (midpoint of 10000/10000 = 10000) and reintroduces a
+  // fetch-order tie between trailers (WARN-2).
+  const screensGuids = [...toast.entries()]
+    .filter(([, row]) => row.menu_group === SCREENS_GROUP && !row.out_of_stock && row.pos_visible)
+    .map(([guid]) => guid)
+    .sort();
+  const materialized: SignageItem[] = screensGuids.map((guid, i) => ({
+    id: `screens:${guid}`,
+    slot_id: null,
+    template: "drink_special",
+    fields: { source_toast_guid: guid, photo_treatment: "viewport" },
+    starts_at: null,
+    ends_at: null,
+    sort_order: 10_000 + i, // after authored items, spread so a card can move BELOW a trailer
+    duration_seconds: 12,
+    active: true,
+    materialized: true,
+  }));
 
-  return [...eventCards, ...scheduled, ...materialized].sort((a, b) => a.sort_order - b.sort_order);
+  return [...eventCards, ...scheduled, ...materialized].sort(compareRotation);
 }
