@@ -35,16 +35,17 @@ function headlineFont(text: string, o: Orientation): number {
   return o === "portrait" ? p : Math.round(p * 0.72);
 }
 
-/* ── DRINK PROMO sizing (view 1) — its own profile: giant name + co-equal huge price.
+/* ── DRINK PROMO sizing (view 1, amended 2026-07-14) — vertical stack: name slightly
+   smaller, price directly under it slightly smaller, tagline below both (owner note).
    Takes the longest LINE length (callers balance multi-word names first). */
 function drinkNameFont(maxLineLen: number, o: Orientation): number {
   const n = maxLineLen;
-  const p = n <= 7 ? 208 : n <= 11 ? 176 : n <= 15 ? 146 : n <= 20 ? 118 : n <= 26 ? 96 : 80;
+  const p = n <= 7 ? 188 : n <= 11 ? 158 : n <= 15 ? 132 : n <= 20 ? 106 : n <= 26 ? 86 : 72;
   return o === "portrait" ? p : Math.round(p * 0.86);
 }
 function drinkPriceFont(price: number, o: Orientation): number {
   const len = formatPrice(price).length;
-  const p = len <= 2 ? 300 : len <= 4 ? 232 : 186;
+  const p = len <= 2 ? 255 : len <= 4 ? 198 : 158;
   return o === "portrait" ? p : Math.round(p * 0.84);
 }
 
@@ -139,7 +140,7 @@ export function DrinkSpecial({ item, toast, orientation, venueName }: TemplatePr
   );
 
   const flourishEl = flourish && (
-    <div className="sig-cream sig-flourish" style={{ fontSize: port ? 104 : 92, maxWidth: port ? "44%" : "60%", textShadow: "0 0 12px var(--terminal-glow)" }}>
+    <div className="sig-cream sig-flourish" style={{ fontSize: port ? 96 : 84, maxWidth: port ? "72%" : "80%", textAlign: port ? "center" : "left", textShadow: "0 0 12px var(--terminal-glow)" }}>
       {flourish}
     </div>
   );
@@ -173,11 +174,10 @@ export function DrinkSpecial({ item, toast, orientation, venueName }: TemplatePr
         <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
           {/* Owner design-beat: display images ~30% larger (720 → 940). */}
           <div style={{ width: "min(940px, 100%)", flexShrink: 0 }}>{square}</div>
+          {/* Owner note 2026-07-14: vertical stack — name, price directly under, tagline below both. */}
           <div style={{ marginTop: 4 }}>{nameEl}</div>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 28, flexWrap: "wrap" }}>
-            {priceEl}
-            {flourishEl}
-          </div>
+          {priceEl}
+          {flourishEl}
           {catrow}
         </div>
       </div>
@@ -193,10 +193,8 @@ export function DrinkSpecial({ item, toast, orientation, venueName }: TemplatePr
       <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", justifyContent: "center", gap: 18 }}>
         {ingredientsEl}
         {nameEl}
-        <div style={{ display: "flex", alignItems: "flex-end", gap: 32, flexWrap: "wrap" }}>
-          {priceEl}
-          {flourishEl}
-        </div>
+        {priceEl}
+        {flourishEl}
         {catrow}
       </div>
     </div>
