@@ -303,9 +303,12 @@ const tileBase: React.CSSProperties = {
   display: "block", padding: 18, border: "1px solid var(--terminal-green)",
   background: "#000", color: GREEN, minHeight: 110,
 };
+// Primary CTA rendered as a <Link> (an <a>, so the staff-ui `button` size rule can't
+// reach it) — match the 20px staff button scale explicitly so it lines up with real
+// <button> primaries.
 const jumpLink: React.CSSProperties = {
-  fontSize: 18, color: "#000", background: GREEN, fontWeight: 700,
-  padding: "0 14px", minHeight: 44, display: "inline-flex", alignItems: "center",
+  fontSize: 20, color: "#000", background: GREEN, fontWeight: 700,
+  padding: "0 20px", minHeight: 44, display: "inline-flex", alignItems: "center",
   textDecoration: "none", marginTop: 8, alignSelf: "flex-start", letterSpacing: 1,
 };
 const screenLink: React.CSSProperties = {
