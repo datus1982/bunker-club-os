@@ -36,6 +36,11 @@ export type EventStatus = "scheduled" | "running" | "completed" | "aborted" | "d
 export interface EventRecurrence {
   daysOfWeek: string[];
   time: string; // "HH:MM" venue-local
+  // Optional inclusive end date, venue-local "YYYY-MM-DD" (0041). Empty/absent = runs
+  // forever. DECISION: stored inside the recurrence jsonb (not a new column) — it's part
+  // of the schedule shape the tick reads; next_scheduled_occurrence() enforces it (returns
+  // null once the next occurrence falls after `until`), so this client math just mirrors it.
+  until?: string;
 }
 
 export interface EventRow {
@@ -151,22 +156,26 @@ export function nextOccurrence(
   time: string | undefined,
   after: Date,
   tz: string = VENUE_TZ,
+  until?: string, // inclusive venue-local "YYYY-MM-DD"; occurrences after it → null (0041)
 ): Date | null {
   if (!daysOfWeek?.length || !time) return null;
   const allowed = new Set(daysOfWeek.map((d) => DOW_INDEX[d.toUpperCase()]).filter((x) => x != null));
   if (!allowed.size) return null;
+  const untilDate = until && until.trim() ? until.trim() : null;
 
   const { y, mo, d } = ymdInTz(after, tz);
   for (let i = 0; i <= 7; i++) {
     const base = new Date(Date.UTC(y, mo - 1, d));
     base.setUTCDate(base.getUTCDate() + i);
     if (allowed.has(base.getUTCDay())) {
-      const iso = venueLocalToUtc(
-        `${base.getUTCFullYear()}-${pad2(base.getUTCMonth() + 1)}-${pad2(base.getUTCDate())}`,
-        time,
-        tz,
-      );
-      if (new Date(iso).getTime() > after.getTime()) return new Date(iso);
+      const candLocalDate = `${base.getUTCFullYear()}-${pad2(base.getUTCMonth() + 1)}-${pad2(base.getUTCDate())}`;
+      const iso = venueLocalToUtc(candLocalDate, time, tz);
+      if (new Date(iso).getTime() > after.getTime()) {
+        // Inclusive cutoff (mirrors 0041 SQL): fires ON `until`, retires strictly after.
+        // Lexicographic compare on YYYY-MM-DD is chronological.
+        if (untilDate && candLocalDate > untilDate) return null;
+        return new Date(iso);
+      }
     }
   }
   return null;
@@ -205,7 +214,7 @@ function isCloseTime(ms: number, tz: string): boolean {
 
 /** Recurrence as read off a row can have optional keys (loose select shapes); the phrase +
  *  status helpers guard for presence, so accept the permissive form. */
-type LooseRecurrence = { daysOfWeek?: string[]; time?: string } | null;
+type LooseRecurrence = { daysOfWeek?: string[]; time?: string; until?: string } | null;
 
 interface SchedulableShape {
   kind: EventKind;
@@ -224,16 +233,29 @@ export function schedulePhrase(row: SchedulableShape, tz: string = VENUE_TZ): st
   const rec = row.recurrence;
   if (rec?.daysOfWeek?.length && rec.time) {
     // Anchor an arbitrary matching occurrence to format the wall times (any works — the
-    // wall-clock start/end are recurrence-defined, not date-specific).
+    // wall-clock start/end are recurrence-defined, not date-specific). Anchor at epoch 0 so
+    // `until` never suppresses the sample occurrence used only for phrasing.
     const start = nextOccurrence(rec.daysOfWeek, rec.time, new Date(0), tz) ?? new Date();
     const startMs = start.getTime();
     const endMs = startMs + row.window_minutes * 60_000;
     const end = isCloseTime(endMs, tz) ? "close" : fmtTime(endMs, tz);
-    return `${daysPhrase(rec.daysOfWeek)} · ${fmtTime(startMs, tz)}–${end}`;
+    let phrase = `${daysPhrase(rec.daysOfWeek)} · ${fmtTime(startMs, tz)}–${end}`;
+    // Recurring end date (0041) — "… until Sep 1". Surfaced everywhere the phrase renders
+    // (editor WILL RUN preview + the events list) so long-runners are auditable at a glance.
+    if (rec.until && rec.until.trim()) {
+      const uMs = new Date(venueLocalToUtc(rec.until.trim(), "12:00", tz)).getTime();
+      phrase += ` until ${fmtDate(uMs, tz)}`;
+    }
+    return phrase;
   }
   if (row.fire_at) {
     const startMs = new Date(row.fire_at).getTime();
     const endMs = startMs + row.window_minutes * 60_000;
+    // A long one-shot window can span days/months (0041) — show both dates so the end time
+    // alone isn't ambiguous: "Jul 14 4 PM → Sep 1 11:59 PM · one-shot".
+    if (venueLocalParts(new Date(endMs).toISOString(), tz).date !== venueLocalParts(row.fire_at, tz).date) {
+      return `${fmtDate(startMs, tz)} ${fmtTime(startMs, tz)} → ${fmtDate(endMs, tz)} ${fmtTime(endMs, tz)} · one-shot`;
+    }
     const end = isCloseTime(endMs, tz) ? "close" : fmtTime(endMs, tz);
     return `${fmtDate(startMs, tz)} · ${fmtTime(startMs, tz)}–${end} · one-shot`;
   }
@@ -328,7 +350,7 @@ function buildFields(draft: EventDraft): Record<string, unknown> {
 /** Resolve the fire_at a draft should store (venue-TZ). Recurring → next occurrence. */
 export function draftFireAt(draft: EventDraft, now: Date = new Date()): string | null {
   if (draft.recurrence?.daysOfWeek?.length && draft.recurrence.time) {
-    return nextOccurrence(draft.recurrence.daysOfWeek, draft.recurrence.time, now, VENUE_TZ)?.toISOString() ?? null;
+    return nextOccurrence(draft.recurrence.daysOfWeek, draft.recurrence.time, now, VENUE_TZ, draft.recurrence.until)?.toISOString() ?? null;
   }
   if (draft.oneShot?.date && draft.oneShot.time) {
     return venueLocalToUtc(draft.oneShot.date, draft.oneShot.time, VENUE_TZ);
@@ -385,7 +407,7 @@ export async function pauseEvent(id: string): Promise<void> {
 export async function resumeEvent(row: EventRow): Promise<void> {
   const patch: { status: EventStatus; fire_at?: string | null } = { status: "scheduled" };
   if (row.recurrence?.daysOfWeek?.length && row.recurrence.time) {
-    patch.fire_at = nextOccurrence(row.recurrence.daysOfWeek, row.recurrence.time, new Date())?.toISOString() ?? row.fire_at;
+    patch.fire_at = nextOccurrence(row.recurrence.daysOfWeek, row.recurrence.time, new Date(), VENUE_TZ, row.recurrence.until)?.toISOString() ?? row.fire_at;
   }
   const { error } = await supabase.from("scheduled_events").update(patch).eq("id", row.id);
   if (error) throw error;

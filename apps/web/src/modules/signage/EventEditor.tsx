@@ -63,9 +63,18 @@ export function EventEditor({
   const f = editing?.fields ?? {};
   const initParts = editing?.fire_at ? venueLocalParts(editing.fire_at) : null;
   const initRecurring = !!editing?.recurrence?.daysOfWeek?.length;
+  const initKind: EventKind = editing?.kind ?? presetKind ?? "window";
+  const initWindow = editing?.window_minutes ?? 180;
+
+  // For an existing one-shot WINDOW/MESSAGE, derive the end date/time from start + window so a
+  // long (multi-day) window round-trips into the ENDS ON inputs instead of a huge minute count.
+  const initStartMs = initParts ? new Date(venueLocalToUtc(initParts.date, initParts.time)).getTime() : null;
+  const initEndParts = initStartMs != null ? venueLocalParts(new Date(initStartMs + initWindow * 60_000).toISOString()) : null;
+  const initSpanKind = (initKind === "window" || initKind === "message") && !initRecurring;
+  const initCrossDay = !!(initParts && initEndParts && initEndParts.date !== initParts.date);
 
   const [name, setName] = useState(editing?.name ?? "");
-  const [kind, setKind] = useState<EventKind>(editing?.kind ?? presetKind ?? "window");
+  const [kind, setKind] = useState<EventKind>(initKind);
   const [skin, setSkin] = useState(editing?.skin ?? "launch");
   const [toastGuid, setToastGuid] = useState<string | null>(editing?.toast_guid ?? null);
 
@@ -73,8 +82,15 @@ export function EventEditor({
   const [date, setDate] = useState(initParts?.date ?? todayLocal());
   const [time, setTime] = useState((initRecurring ? editing?.recurrence?.time : initParts?.time) ?? "16:00");
   const [days, setDays] = useState<string[]>(editing?.recurrence?.daysOfWeek ?? []);
+  // Recurring end date (0041) — inclusive venue-local "YYYY-MM-DD"; "" = runs forever.
+  const [until, setUntil] = useState<string>(editing?.recurrence?.until ?? "");
 
-  const [windowMinutes, setWindowMinutes] = useState(editing?.window_minutes ?? 180);
+  const [windowMinutes, setWindowMinutes] = useState(initWindow);
+  // One-shot WINDOW/MESSAGE length can be set two ways (same window_minutes state): short via
+  // the chips/number ("LENGTH"), or long via an explicit end date+time ("ENDS ON", 0041).
+  const [durationMode, setDurationMode] = useState<"chips" | "endson">(initSpanKind && initCrossDay ? "endson" : "chips");
+  const [endDate, setEndDate] = useState(initEndParts?.date ?? initParts?.date ?? todayLocal());
+  const [endTime, setEndTime] = useState(initEndParts?.time ?? "23:59");
   const [teaseMinutes, setTeaseMinutes] = useState(editing?.tease_minutes ?? 60);
   const [alertMinutes, setAlertMinutes] = useState(editing?.alert_minutes ?? 5);
   const [interruptGame, setInterruptGame] = useState(editing?.interrupt_game ?? false);
@@ -89,6 +105,39 @@ export function EventEditor({
 
   const [err, setErr] = useState<string | null>(null);
 
+  // ENDS ON is offered only for a one-shot WINDOW/MESSAGE (moments keep the choreography
+  // chips; recurring uses `until` for its stop date, not an end instant).
+  const isSpanKind = (kind === "window" || kind === "message") && mode === "oneshot";
+  const endsOnActive = isSpanKind && durationMode === "endson";
+  // Minutes from the venue-local start to the venue-local end (may be ≤ 0 if end precedes start).
+  const spanMinutes = useMemo(() => {
+    const s = new Date(venueLocalToUtc(date, time, VENUE_TZ)).getTime();
+    const e = new Date(venueLocalToUtc(endDate, endTime, VENUE_TZ)).getTime();
+    return Math.round((e - s) / 60_000);
+  }, [date, time, endDate, endTime]);
+  const YEAR_MIN = 366 * 24 * 60;
+  const effectiveWindow = endsOnActive ? spanMinutes : windowMinutes;
+  const windowError = endsOnActive
+    ? (!endDate || !endTime ? "set an end date and time"
+      : spanMinutes < 1 ? "the end must be after the start"
+      : spanMinutes > YEAR_MIN ? "keep the window under a year"
+      : null)
+    : null;
+
+  const recurrenceDraft = mode === "recurring"
+    ? { daysOfWeek: days, time, ...(until.trim() ? { until: until.trim() } : {}) }
+    : null;
+
+  // Seed the ENDS ON inputs from the current length when switching in, and back the other way,
+  // so the actual window never jumps when a manager flips between the two input styles.
+  const switchToEndsOn = () => {
+    const startMs = new Date(venueLocalToUtc(date, time, VENUE_TZ)).getTime();
+    const p = venueLocalParts(new Date(startMs + Math.max(1, windowMinutes) * 60_000).toISOString());
+    setEndDate(p.date); setEndTime(p.time);
+    setDurationMode("endson");
+  };
+  const switchToLength = () => { setWindowMinutes(Math.max(1, spanMinutes)); setDurationMode("chips"); };
+
   const draft: EventDraft = useMemo(() => ({
     id: editing?.id,
     name,
@@ -96,8 +145,8 @@ export function EventEditor({
     skin,
     toast_guid: toastGuid,
     oneShot: mode === "oneshot" ? { date, time } : null,
-    recurrence: mode === "recurring" ? { daysOfWeek: days, time } : null,
-    window_minutes: windowMinutes,
+    recurrence: recurrenceDraft,
+    window_minutes: Math.max(1, effectiveWindow),
     tease_minutes: teaseMinutes,
     alert_minutes: alertMinutes,
     interrupt_game: interruptGame,
@@ -107,16 +156,20 @@ export function EventEditor({
     showOnWebsite,
     baseFields: editing?.fields,
     status: editing?.status,
-  }), [editing, name, kind, skin, toastGuid, mode, date, time, days, windowMinutes, teaseMinutes, alertMinutes, interruptGame, title, body, cta, imageUrl, align, showOnWebsite]);
+  }), [editing, name, kind, skin, toastGuid, mode, date, time, days, until, effectiveWindow, teaseMinutes, alertMinutes, interruptGame, title, body, cta, imageUrl, align, showOnWebsite]);
 
   // Live plain-language preview of exactly what the manager just built (no cron, ever).
   const preview = useMemo(() => {
     if (mode === "recurring" && !days.length) return "pick at least one day";
-    return schedulePhrase(
-      { kind, fire_at: mode === "oneshot" ? isoFor(date, time) : null, recurrence: mode === "recurring" ? { daysOfWeek: days, time } : null, window_minutes: windowMinutes },
+    if (windowError) return windowError;
+    const base = schedulePhrase(
+      { kind, fire_at: mode === "oneshot" ? isoFor(date, time) : null, recurrence: recurrenceDraft, window_minutes: effectiveWindow },
       VENUE_TZ,
     );
-  }, [mode, days, kind, date, time, windowMinutes]);
+    // Make "no stop date" explicit for a recurring promo so the manager sees it will run forever.
+    if (mode === "recurring" && days.length && !until.trim()) return `${base} · no end date`;
+    return base;
+  }, [mode, days, kind, date, time, effectiveWindow, until, windowError]);
 
   const save = useMutation({
     mutationFn: () => saveEvent(draft),
@@ -141,7 +194,8 @@ export function EventEditor({
 
   const canSave =
     name.trim().length > 0 &&
-    (mode === "oneshot" ? !!date && !!time : days.length > 0 && !!time);
+    (mode === "oneshot" ? !!date && !!time : days.length > 0 && !!time) &&
+    !windowError;
   // Live-on-screen = abortable now. A window fired seconds ago is still `scheduled` until
   // the minute tick promotes it to `running`, but it is already on the TVs — so gate ABORT
   // on the actual display window, not just the status column.
@@ -206,29 +260,64 @@ export function EventEditor({
                 );
               })}
             </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-              <span style={miniLabel}>START TIME</span>
-              <input type="time" value={time} onChange={(e) => setTime(e.target.value)} style={{ ...inp, maxWidth: 160 }} />
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                <span style={miniLabel}>START TIME</span>
+                <input type="time" value={time} onChange={(e) => setTime(e.target.value)} style={{ ...inp, maxWidth: 160 }} />
+              </div>
+              {/* ENDS — optional recurring stop date (0041). Empty = runs forever. */}
+              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                <span style={miniLabel}>ENDS (optional)</span>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <input type="date" min={todayLocal()} value={until} onChange={(e) => setUntil(e.target.value)} style={{ ...inp, maxWidth: 180 }} />
+                  {until
+                    ? <button type="button" onClick={() => setUntil("")} style={clearLink}>run forever</button>
+                    : <span style={{ fontSize: 13, opacity: 0.5 }}>no end date</span>}
+                </div>
+              </div>
             </div>
           </div>
         )}
 
-        {/* DURATION */}
+        {/* DURATION — short windows via LENGTH chips; long (multi-day) via ENDS ON (0041). */}
         <div style={{ marginTop: 10 }}>
-          <span style={miniLabel}>DURATION</span>
-          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 4 }}>
-            {DURATIONS.map((d) => {
-              const on = windowMinutes === d.minutes;
-              return (
-                <button key={d.label} type="button" onClick={() => setWindowMinutes(d.minutes)} className={on ? "u-fill u-ink" : ""} style={{ ...chip, ...(on ? bold : null) }}>{d.label}</button>
-              );
-            })}
-            <button type="button" onClick={() => setWindowMinutes(minutesToClose(time))} className={windowMinutes === minutesToClose(time) ? "u-fill u-ink" : ""} style={{ ...chip, ...(windowMinutes === minutesToClose(time) ? bold : null) }}>TILL CLOSE</button>
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-              <input type="number" min={1} value={windowMinutes} onChange={(e) => setWindowMinutes(Math.max(1, Number(e.target.value) || 1))} style={{ ...inp, width: 84, padding: "8px 8px" }} />
-              <span style={{ fontSize: 14, opacity: 0.6 }}>min</span>
-            </span>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+            <span style={miniLabel}>DURATION</span>
+            {isSpanKind && (
+              <div style={{ display: "flex", gap: 6 }}>
+                <button type="button" onClick={switchToLength} className={!endsOnActive ? "u-fill u-ink" : ""} style={{ ...miniChip, ...(!endsOnActive ? bold : null) }}>LENGTH</button>
+                <button type="button" onClick={switchToEndsOn} className={endsOnActive ? "u-fill u-ink" : ""} style={{ ...miniChip, ...(endsOnActive ? bold : null) }}>ENDS ON</button>
+              </div>
+            )}
           </div>
+
+          {!endsOnActive ? (
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 6 }}>
+              {DURATIONS.map((d) => {
+                const on = windowMinutes === d.minutes;
+                return (
+                  <button key={d.label} type="button" onClick={() => setWindowMinutes(d.minutes)} className={on ? "u-fill u-ink" : ""} style={{ ...chip, ...(on ? bold : null) }}>{d.label}</button>
+                );
+              })}
+              <button type="button" onClick={() => setWindowMinutes(minutesToClose(time))} className={windowMinutes === minutesToClose(time) ? "u-fill u-ink" : ""} style={{ ...chip, ...(windowMinutes === minutesToClose(time) ? bold : null) }}>TILL CLOSE</button>
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                <input type="number" min={1} value={windowMinutes} onChange={(e) => setWindowMinutes(Math.max(1, Number(e.target.value) || 1))} style={{ ...inp, width: 84, padding: "8px 8px" }} />
+                <span style={{ fontSize: 14, opacity: 0.6 }}>min</span>
+              </span>
+            </div>
+          ) : (
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 6 }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                <span style={miniLabel}>END DATE</span>
+                <input type="date" min={date} value={endDate} onChange={(e) => setEndDate(e.target.value)} style={{ ...inp, maxWidth: 180 }} />
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                <span style={miniLabel}>END TIME</span>
+                <input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} style={{ ...inp, maxWidth: 140 }} />
+              </div>
+            </div>
+          )}
+          {windowError && <div className="u-red" style={{ fontSize: 14, marginTop: 6 }}>⚠ {windowError}</div>}
         </div>
 
         {/* live plain-phrase preview */}
@@ -355,6 +444,8 @@ function isoFor(date: string, time: string): string | null {
 const inp: CSSProperties = { background: "#000", color: "var(--terminal-green)", border: "1px solid var(--terminal-green)", padding: "10px 12px", fontSize: 18, fontFamily: MONO, minHeight: 44, width: "100%", boxSizing: "border-box" };
 const chip: CSSProperties = { background: "transparent", color: "var(--terminal-green)", border: "1px solid var(--terminal-green)", padding: "8px 14px", fontSize: 15, cursor: "pointer", fontFamily: MONO, minHeight: 44, letterSpacing: 1 };
 const dayChip: CSSProperties = { ...chip, minWidth: 46, padding: "8px 6px", textAlign: "center" };
+const miniChip: CSSProperties = { ...chip, padding: "4px 12px", fontSize: 13, minHeight: 32, letterSpacing: 1 };
+const clearLink: CSSProperties = { background: "transparent", color: "var(--terminal-green)", border: "none", borderBottom: "1px solid var(--terminal-green)", padding: 0, fontSize: 13, cursor: "pointer", fontFamily: MONO, opacity: 0.7 };
 const bold: CSSProperties = { fontWeight: 700 };
 const kindTile: CSSProperties = { display: "flex", flexDirection: "column", gap: 3, alignItems: "flex-start", textAlign: "left", background: "transparent", color: "var(--terminal-green)", border: "1px solid var(--terminal-green)", padding: "10px 12px", cursor: "pointer", fontFamily: MONO, minHeight: 44 };
 const primary: CSSProperties = { background: "var(--terminal-green)", color: "#000", border: "1px solid var(--terminal-green)", padding: "10px 18px", fontSize: 18, fontWeight: 700, cursor: "pointer", fontFamily: MONO, minHeight: 44 };

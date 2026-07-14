@@ -25,7 +25,15 @@ const ID = {
   live: "e0e70035-0000-4000-8000-0000000000b1",
   missed: "e0e70035-0000-4000-8000-0000000000b2",
   recurring: "e0e70035-0000-4000-8000-0000000000b3",
+  untilPast: "e0e70035-0000-4000-8000-0000000000b4",
+  untilFuture: "e0e70035-0000-4000-8000-0000000000b5",
 };
+
+/** Venue-local YYYY-MM-DD for `now + offsetDays` (recurrence.until is a venue-local date). */
+function localDate(offsetDays: number, tz = TZ): string {
+  const d = new Date(Date.now() + offsetDays * 86_400_000);
+  return new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
+}
 
 let failures = 0;
 function assert(label: string, got: unknown, want: unknown) {
@@ -84,6 +92,29 @@ async function testReArmMath() {
   // One-shot / malformed recurrence → null.
   assert("null recurrence → null", await nextOcc(null, "2026-07-13T17:00:00Z"), null);
   assert("empty daysOfWeek → null", await nextOcc({ daysOfWeek: [], time: "16:00" }, "2026-07-13T17:00:00Z"), null);
+
+  // ── recurrence.until (0041) — inclusive venue-local end date ──
+  // until in the FUTURE: the next occurrence is unaffected.
+  assert("until future: Mon anchor + Friday-only 20:00, until 2026-07-31 → Fri 2026-07-18 01:00Z",
+    sameInstant(await nextOcc({ daysOfWeek: ["FR"], time: "20:00", until: "2026-07-31" }, "2026-07-13T17:00:00Z"), "2026-07-18T01:00:00Z"), true);
+
+  // until BEFORE the next occurrence → null (event has expired; tick will complete it).
+  assert("until before next: Mon anchor + Friday-only 20:00, until 2026-07-16 (Thu) → null",
+    await nextOcc({ daysOfWeek: ["FR"], time: "20:00", until: "2026-07-16" }, "2026-07-13T17:00:00Z"), null);
+
+  // until == the occurrence's local date → still fires (INCLUSIVE).
+  assert("until inclusive: until 2026-07-17 == occurrence local date → still fires 2026-07-18 01:00Z",
+    sameInstant(await nextOcc({ daysOfWeek: ["FR"], time: "20:00", until: "2026-07-17" }, "2026-07-13T17:00:00Z"), "2026-07-18T01:00:00Z"), true);
+
+  // blank until treated as absent (runs forever).
+  assert("until blank → treated as absent (fires)",
+    sameInstant(await nextOcc({ daysOfWeek: ["FR"], time: "20:00", until: "" }, "2026-07-13T17:00:00Z"), "2026-07-18T01:00:00Z"), true);
+
+  // until with the DST spring-forward crossing: a far-future until must not perturb the
+  // DST-correct instant (proves the cutoff is a pure date compare, not offset math).
+  const daily2 = { daysOfWeek: ["MO", "TU", "WE", "TH", "FR", "SA", "SU"], time: "16:00", until: "2026-12-31" };
+  assert("until + spring-forward: 2026-03-07 17:30 CST + daily 16:00 until 2026-12-31 → 2026-03-08 21:00Z",
+    sameInstant(await nextOcc(daily2, "2026-03-07T23:30:00Z"), "2026-03-08T21:00:00Z"), true);
 }
 
 async function testTick() {
@@ -106,6 +137,19 @@ async function testTick() {
     fire_at: new Date(Date.now() - 2 * 3600_000).toISOString(), window_minutes: 30, status: "scheduled",
     recurrence: { daysOfWeek: ["MO", "TU", "WE", "TH", "FR", "SA", "SU"], time: "16:00" },
   });
+  // Recurring with until in the PAST (0041): window past, next daily occurrence would land
+  // after `until` (yesterday) → no next occurrence → completed, NOT re-armed.
+  await admin.from("scheduled_events").insert({
+    id: ID.untilPast, venue_id: VENUE, name: "tick until-past", kind: "window",
+    fire_at: new Date(Date.now() - 2 * 3600_000).toISOString(), window_minutes: 30, status: "scheduled",
+    recurrence: { daysOfWeek: ["MO", "TU", "WE", "TH", "FR", "SA", "SU"], time: "16:00", until: localDate(-1) },
+  });
+  // Recurring with until in the FUTURE (0041): re-arms normally, status scheduled.
+  await admin.from("scheduled_events").insert({
+    id: ID.untilFuture, venue_id: VENUE, name: "tick until-future", kind: "window",
+    fire_at: new Date(Date.now() - 2 * 3600_000).toISOString(), window_minutes: 30, status: "scheduled",
+    recurrence: { daysOfWeek: ["MO", "TU", "WE", "TH", "FR", "SA", "SU"], time: "16:00", until: localDate(8) },
+  });
 
   const beforeFireAt = (await admin.from("scheduled_events").select("fire_at").eq("id", ID.recurring).single()).data!.fire_at as string;
 
@@ -118,6 +162,10 @@ async function testTick() {
   assert("live window → running", byId[ID.live]?.status, "running");
   assert("missed one-shot → completed", byId[ID.missed]?.status, "completed");
   assert("recurring → re-armed (scheduled)", byId[ID.recurring]?.status, "scheduled");
+  assert("recurring w/ until in the past → completed (not re-armed)", byId[ID.untilPast]?.status, "completed");
+  assert("recurring w/ until in the future → re-armed (scheduled)", byId[ID.untilFuture]?.status, "scheduled");
+  assert("recurring w/ until future: fire_at advanced to a future instant",
+    new Date(byId[ID.untilFuture]?.fire_at as string).getTime() > Date.now(), true);
 
   const rearmed = byId[ID.recurring]?.fire_at as string;
   assert("recurring: fire_at advanced to a future instant", new Date(rearmed).getTime() > Date.now(), true);
