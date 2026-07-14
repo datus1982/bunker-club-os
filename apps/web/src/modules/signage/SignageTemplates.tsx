@@ -171,7 +171,8 @@ export function DrinkSpecial({ item, toast, orientation, venueName }: TemplatePr
       <div style={{ height: "100%", display: "flex", flexDirection: "column", gap: 18 }}>
         {ingredientsEl}
         <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
-          <div style={{ width: "min(720px, 100%)", flexShrink: 0 }}>{square}</div>
+          {/* Owner design-beat: display images ~30% larger (720 → 940). */}
+          <div style={{ width: "min(940px, 100%)", flexShrink: 0 }}>{square}</div>
           <div style={{ marginTop: 4 }}>{nameEl}</div>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 28, flexWrap: "wrap" }}>
             {priceEl}
@@ -252,7 +253,8 @@ export function EventItem({ item, orientation }: TemplateProps) {
           {blurb && <div style={{ fontSize: z.body, opacity: 0.85, lineHeight: 1.45, marginTop: 8 }}><RichText text={blurb} /></div>}
         </div>
       </div>
-      {photo && <Photo src={photo} treatment={treatment} height={z.photoH * 0.7} feed="ARCHIVE FEED" />}
+      {/* Owner design-beat: event photo ~30% larger (0.7 → 0.9). */}
+      {photo && <Photo src={photo} treatment={treatment} height={z.photoH * 0.9} feed="ARCHIVE FEED" />}
     </div>
   );
 }
@@ -272,7 +274,8 @@ export function Announcement({ item, orientation }: TemplateProps) {
       <div className="sig-cursor" style={{ fontSize: Math.min(z.mid + 14, headlineFont(msg, orientation)), fontWeight: 700, lineHeight: 1.25, whiteSpace: "pre-wrap", textShadow: "0 0 14px var(--terminal-glow)", textAlign: alignOf(item.fields, "left") }}>
         {parseInline(typed)}
       </div>
-      {photo && <Photo src={photo} treatment={treatment} height={z.photoH * 0.55} feed="ARCHIVE FEED" />}
+      {/* Owner design-beat: announcement photo ~30% larger (0.55 → 0.72). */}
+      {photo && <Photo src={photo} treatment={treatment} height={z.photoH * 0.72} feed="ARCHIVE FEED" />}
     </div>
   );
 }
@@ -283,9 +286,12 @@ export function ImageOnly({ item, orientation }: TemplateProps) {
   const photo = s(item.fields, "image_url");
   const treatment = s(item.fields, "photo_treatment") ?? "viewport";
   const caption = s(item.fields, "caption");
+  // Owner design-beat "images bigger": the viewport is already flex:1 + object-fit:contain,
+  // so it fills all leftover space — give it MORE by tightening the surrounding chrome
+  // (smaller eyebrow, half the gap) so the letterboxed image region grows.
   return (
-    <div style={{ height: "100%", display: "flex", flexDirection: "column", gap: z.gap }}>
-      <Eyebrow text="ARCHIVE FEED" size={z.eyebrow} />
+    <div style={{ height: "100%", display: "flex", flexDirection: "column", gap: Math.round(z.gap * 0.5) }}>
+      <Eyebrow text="ARCHIVE FEED" size={Math.round(z.eyebrow * 0.85)} />
       <div className={treatment === "phosphor" ? "sig-viewport sig-phosphor" : "sig-viewport"} style={{ flex: 1, minHeight: 0, width: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}>
         <span className="sig-feedcap" style={{ fontSize: 20 }}>OPTICAL FEED 02 — ARCHIVE</span>
         {photo && <img src={photo} alt="" style={{ maxWidth: "100%", maxHeight: "100%", width: "auto", height: "auto", objectFit: "contain" }} />}
@@ -318,7 +324,8 @@ export function Celebration({ item, orientation }: TemplateProps) {
       <Eyebrow text="DWELLER RECOGNITION PROTOCOL" size={z.eyebrow} />
       <div style={{ fontSize: z.mid, letterSpacing: 3 }}>{c.icon} {c.occasion} {c.icon}</div>
       {photo && (
-        <div className="sig-viewport" style={{ width: z.photoH * 0.9, height: z.photoH * 0.9, borderRadius: 0 }}>
+        /* Owner design-beat: DWELLER ID square ~30% larger (0.9 → 1.17). */
+        <div className="sig-viewport" style={{ width: z.photoH * 1.17, height: z.photoH * 1.17, borderRadius: 0 }}>
           <span className="sig-feedcap" style={{ fontSize: 18 }}>DWELLER ID</span>
           <img src={photo} alt="" />
         </div>
@@ -356,7 +363,7 @@ export function TopSellers({ orientation }: TemplateProps) {
   // with only the "◉ LIVE FROM THE POS" indicator in green (docs/09 color-state: green = live
   // feed) — matching the mockup rather than greening every value like a drink_special does.
   const header = (
-    <div style={{ flexShrink: 0, textAlign: "center", paddingBottom: 18, borderBottom: "1px solid var(--terminal-green)", marginBottom: orientation === "portrait" ? 28 : 14 }}>
+    <div style={{ flexShrink: 0, textAlign: "center", paddingBottom: 18, borderBottom: "1px solid var(--sig-rule)", marginBottom: orientation === "portrait" ? 28 : 14 }}>
       <div style={{ fontSize: z.header, fontWeight: 700, letterSpacing: 3, lineHeight: 0.98, textTransform: "uppercase", textShadow: "0 0 16px var(--terminal-glow)" }}>
         TOP SELLERS TONIGHT
       </div>
@@ -373,11 +380,19 @@ export function TopSellers({ orientation }: TemplateProps) {
     );
   }
   if (items.length === 0) {
+    // Owner design-beat: a proper in-world IDLE state for a fresh business day (closeout is
+    // now 4 AM, so the morning wipes sales_cache until the first order rings in). Never a
+    // blank slide or stale bars — this holds the surface, dim + centered + distance-readable.
     return (
       <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
         {header}
-        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", textAlign: "center", fontSize: orientation === "portrait" ? 52 : 44, opacity: 0.65, letterSpacing: 2 }}>
-          &gt;&gt; AWAITING TONIGHT'S FIRST POURS
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", gap: orientation === "portrait" ? 28 : 20 }}>
+          <div style={{ fontSize: orientation === "portrait" ? 96 : 76, fontWeight: 700, letterSpacing: 3, lineHeight: 0.98, opacity: 0.75, textShadow: "0 0 16px var(--terminal-glow)" }}>
+            FIRST POUR PENDING
+          </div>
+          <div style={{ fontSize: orientation === "portrait" ? 40 : 32, letterSpacing: 5, opacity: 0.5 }}>
+            ◊ SALES TELEMETRY ARMED
+          </div>
         </div>
       </div>
     );

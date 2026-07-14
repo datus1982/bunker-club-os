@@ -137,8 +137,9 @@ function Lines({ text }: { text: string }): ReactNode {
   ));
 }
 
-/* Square edge (fixed-canvas px) for a custom event-card image, per orientation. */
-const EVT_IMG: Record<Orientation, number> = { portrait: 560, landscape: 380 };
+/* Square edge (fixed-canvas px) for a custom event-card image, per orientation.
+ * Owner design-beat: display images ~30% larger (560 → 728, 380 → 494). */
+const EVT_IMG: Record<Orientation, number> = { portrait: 728, landscape: 494 };
 
 /* ── local 1s clock for countdowns (state-driven, no network, no CSS loop) ────── */
 function useSecondTick(): number {
@@ -269,7 +270,7 @@ function EventWindowStage({ event, orientation, toast }: { event: LiveEvent; ori
       )}
       {count != null && (
         <>
-          <div style={{ borderTop: "1px solid var(--terminal-glow)", width: "60%", margin: `${z.gap}px 0` }} />
+          <div style={{ borderTop: "1px solid var(--sig-rule)", width: "60%", margin: `${z.gap}px 0` }} />
           <div style={{ fontSize: z.eyebrow, letterSpacing: 4, opacity: 0.8 }}>{counterLabel}</div>
           <div key={count} className="sig-live sig-enter" style={{ fontSize: z.counter, fontWeight: 700, lineHeight: 1, fontVariantNumeric: "tabular-nums", textShadow: "0 0 26px var(--terminal-glow)" }}>
             {count}
@@ -343,7 +344,7 @@ export function EventWindowCard({ item, toast, orientation }: { item: SignageIte
       {body && <div style={{ fontSize: z.body, opacity: 0.9, lineHeight: 1.35, maxWidth: "84%" }}><Lines text={body} /></div>}
       {(linkEl || (price != null && !posHidden)) && (
         <>
-          <div style={{ borderTop: "1px solid var(--terminal-glow)", width: "60%", margin: `${z.gap * 0.4}px 0` }} />
+          <div style={{ borderTop: "1px solid var(--sig-rule)", width: "60%", margin: `${z.gap * 0.4}px 0` }} />
           <div style={{ display: "flex", alignItems: "baseline", justifyContent: "center", gap: 28, flexWrap: "wrap" }}>
             {linkEl}
             {price != null && !posHidden && (
