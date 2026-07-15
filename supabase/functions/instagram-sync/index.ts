@@ -86,20 +86,34 @@ async function graph(path: string, token: string, params: Record<string, string>
   }
 }
 
-// Mirror an Instagram CDN image into our bucket at instagram/{venue}/{media_id}.jpg. Returns the
-// storage path (stable, independent of the expiring CDN URL) or null (no usable still).
+// Outcome of a mirror attempt — WARN-1 distinguishes "we KNOW the frame is bad" from "we don't
+// know (a hiccup)", so a transient CDN failure never deletes a previously-good video row/object.
+//   • stored    — the object is in the bucket (freshly uploaded OR already present).
+//   • rejected  — a frame WAS downloaded and is confirmed unusable (non-image or under the byte
+//                 floor = near-uniform/black). Only this outcome self-heals (delete row + object).
+//   • transient — fetch failed / non-ok / upload errored / threw. Outcome unknown → leave any
+//                 existing row + object exactly as they are and retry next run.
+type MirrorOutcome =
+  | { kind: "stored"; path: string }
+  | { kind: "rejected" }
+  | { kind: "transient" };
+
+// Mirror an Instagram CDN image into our bucket at instagram/{venue}/{media_id}.jpg (a stable path,
+// independent of the expiring CDN URL).
 //   • Idempotent by default: skips the download if the object already exists.
 //   • `revalidate` forces a re-download even when the object exists — used for VIDEO posters so a
 //     previously-mirrored BLACK poster self-heals on the next run (the old idempotent skip meant a
 //     bad black object was never re-examined). Videos are few, so the extra fetch is cheap.
-//   • Rejects a non-image response (belt: a media_url that slipped through won't be `image/*`).
-//   • `minBytes` rejects a near-uniform (black/blank) frame by byte size (VIDEO posters only).
+//   • A non-image response is `rejected` (belt: a media_url that slipped through won't be image/*).
+//   • `minBytes` marks a near-uniform (black/blank) frame `rejected` by byte size (VIDEO posters).
+//   • ANY failure to actually obtain + store bytes (network, non-2xx, upload error, throw) is
+//     `transient` — never `rejected` — so the caller does NOT delete a prior good mirror (WARN-1).
 async function mirrorImage(
   admin: Admin,
   mediaId: string,
   imageUrl: string,
   opts: { revalidate?: boolean; minBytes?: number } = {},
-): Promise<string | null> {
+): Promise<MirrorOutcome> {
   const path = `instagram/${VENUE_ID}/${mediaId}.jpg`;
   try {
     if (!opts.revalidate) {
@@ -108,20 +122,20 @@ async function mirrorImage(
         search: `${mediaId}.jpg`,
         limit: 1,
       });
-      if (existing && existing.some((o) => o.name === `${mediaId}.jpg`)) return path;
+      if (existing && existing.some((o) => o.name === `${mediaId}.jpg`)) return { kind: "stored", path };
     }
 
     const res = await fetch(imageUrl);
-    if (!res.ok) return null;
+    if (!res.ok) return { kind: "transient" }; // a 4xx/5xx (e.g. expired URL) is a hiccup, not proof it's black
     const contentType = res.headers.get("content-type") ?? "image/jpeg";
-    if (!contentType.startsWith("image/")) return null; // not a displayable image — never mirror it
+    if (!contentType.startsWith("image/")) return { kind: "rejected" }; // downloaded a non-image → confirmed unusable
     const bytes = new Uint8Array(await res.arrayBuffer());
-    if (opts.minBytes && bytes.length < opts.minBytes) return null; // near-uniform (black/blank) — skip
+    if (opts.minBytes && bytes.length < opts.minBytes) return { kind: "rejected" }; // confirmed near-uniform (black/blank)
     const { error } = await admin.storage.from(BUCKET).upload(path, bytes, { contentType, upsert: true });
-    if (error) return null;
-    return path;
+    if (error) return { kind: "transient" }; // upload failed — don't nuke a prior good object over it
+    return { kind: "stored", path };
   } catch {
-    return null;
+    return { kind: "transient" };
   }
 }
 
@@ -133,19 +147,31 @@ async function upsertMedia(admin: Admin, m: IgMedia, isStory: boolean): Promise<
   // DECISION: VIDEO → thumbnail_url (a still we can display); CAROUSEL_ALBUM → the parent
   // media_url only (children are not fetched in v1). IMAGE → media_url.
   const imageUrl = (isVideo ? m.thumbnail_url : m.media_url) ?? m.thumbnail_url ?? null;
-  // VIDEO posters: re-validate every run (self-heal a previously-mirrored black poster) and reject
-  // a near-uniform (black/blank) frame by byte size. IMAGE/CAROUSEL keep the idempotent mirror.
-  const storagePath = imageUrl
-    ? await mirrorImage(admin, m.id, imageUrl, isVideo ? { revalidate: true, minBytes: MIN_VIDEO_POSTER_BYTES } : {})
-    : null;
 
-  // A VIDEO with no usable still (missing OR black/blank poster) has nothing to display — never
-  // cache it, and self-heal any stale row + its black object so it drops out of the rotation. (An
-  // IMAGE/CAROUSEL with no image still upserts: its caption + QR remain meaningful on the card.)
-  if (isVideo && !storagePath) {
-    await admin.from("instagram_cache").delete().eq("venue_id", VENUE_ID).eq("media_id", m.id);
-    await removeStorage(admin, `instagram/${VENUE_ID}/${m.id}.jpg`);
-    return false;
+  let storagePath: string | null;
+  if (isVideo) {
+    // VIDEO posters re-validate every run so a previously-mirrored BLACK poster self-heals.
+    //   • no thumbnail this pass → transient (a missing field could be a temporary API omission;
+    //     no frame was examined, so never delete a prior good row — WARN-1).
+    //   • transient outcome    → leave any existing row + object exactly as they are, retry next run.
+    //   • rejected outcome     → a frame WAS downloaded and is confirmed black/blank/non-image →
+    //     self-heal (delete row + its object) so it drops out of the rotation.
+    //   • stored               → fall through and upsert with the fresh path.
+    const outcome: MirrorOutcome = imageUrl
+      ? await mirrorImage(admin, m.id, imageUrl, { revalidate: true, minBytes: MIN_VIDEO_POSTER_BYTES })
+      : { kind: "transient" };
+    if (outcome.kind === "transient") return false; // KEEP existing — do not touch the row/object
+    if (outcome.kind === "rejected") {
+      await admin.from("instagram_cache").delete().eq("venue_id", VENUE_ID).eq("media_id", m.id);
+      await removeStorage(admin, `instagram/${VENUE_ID}/${m.id}.jpg`);
+      return false;
+    }
+    storagePath = outcome.path;
+  } else {
+    // IMAGE/CAROUSEL keep the idempotent mirror; a missing/failed still upserts as null (the card's
+    // caption + QR stay meaningful), so a transient failure here degrades to no-photo, not deletion.
+    const outcome = imageUrl ? await mirrorImage(admin, m.id, imageUrl, {}) : ({ kind: "rejected" } as const);
+    storagePath = outcome.kind === "stored" ? outcome.path : null;
   }
 
   const expiresAt = isStory ? new Date(postedAt.getTime() + 24 * 60 * 60 * 1000).toISOString() : null;
