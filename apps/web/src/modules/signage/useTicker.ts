@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase, VENUE_ID } from "@/shared/supabaseClient";
-import { eventStage, minutesToFire, type LiveEvent } from "./eventStage";
+import { eventStage, minutesToFire, flavorOf, type LiveEvent } from "./eventStage";
 
 /**
  * Footer-ticker sources (docs/09 persistent chrome). Interleaves, in order:
@@ -40,8 +40,23 @@ export function untilPhrase(endMs: number, now: number, timezone: string): strin
   return `NOW UNTIL ${fmt({ hour: "numeric", minute: "2-digit" })}`;
 }
 
+/** Reframe untilPhrase() for a BULLETIN (owner beat): a bulletin is information, not a sale,
+ *  so drop the "NOW" urgency framing. Promo keeps it. Shares the one time helper so there is
+ *  no duplicated deadline logic — only the "NOW" prefix is stripped for bulletins:
+ *    ON NOW              → (nothing — the bulletin is simply on the wall) → "◆ NAME"
+ *    NOW UNTIL 7:00 PM   → "UNTIL 7:00 PM"                               → "◆ NAME — UNTIL 7:00 PM"
+ *    NOW THRU WED 11:59 PM → "THRU WED 11:59 PM"                         → "◆ NAME — THRU WED 11:59 PM"
+ *  Exported pure for tests. */
+export function eventTickerText(name: string, flavor: "promo" | "bulletin", endMs: number, now: number, timezone: string): string {
+  const phrase = untilPhrase(endMs, now, timezone);
+  if (flavor === "promo") return `◆ ${name} — ${phrase}`;
+  const b = phrase === "ON NOW" ? "" : phrase.replace(/^NOW /, "");
+  return b ? `◆ ${name} — ${b}` : `◆ ${name}`;
+}
+
 /** Derive event ticker lines from the live events (docs/13). TEASE → T-MINUS; active
- *  WINDOW/MESSAGE and the moment EVENT window → untilPhrase(). `now`/`tz` passed in. */
+ *  WINDOW/MESSAGE and the moment EVENT window → untilPhrase(), reframed per flavor for
+ *  window/message (promo keeps NOW-framing, bulletin drops it). `now`/`tz` passed in. */
 export function buildEventTickerLines(events: LiveEvent[], timezone: string, now: number): TickerLine[] {
   const lines: TickerLine[] = [];
   for (const ev of events) {
@@ -51,7 +66,7 @@ export function buildEventTickerLines(events: LiveEvent[], timezone: string, now
       lines.push({ text: `◆ ${name} — T-MINUS ${minutesToFire(ev, now)} MIN`, live: false });
     } else if (stage === "active" || stage === "event") {
       const end = ev.fire_at ? new Date(ev.fire_at).getTime() + ev.window_minutes * 60_000 : now;
-      lines.push({ text: `◆ ${name} — ${untilPhrase(end, now, timezone)}`, live: false });
+      lines.push({ text: eventTickerText(name, flavorOf(ev.fields, ev.kind), end, now, timezone), live: false });
     }
     // alert / moment / allclear are full-screen beats — not ticker lines (docs/13).
   }

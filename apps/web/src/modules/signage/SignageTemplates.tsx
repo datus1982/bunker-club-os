@@ -1,9 +1,9 @@
-import { useEffect, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import type { Orientation, SignageItem, ToastCacheRow } from "./useSignage";
 import { EventWindowCard, EventMessageCard, EventTeaseCard } from "./EventStages";
 import { balanceHeadline } from "./eventStage";
 import { parseInline, RichText, alignOf } from "./richText";
-import { useTopSellers, itemNameFont, type DrinkItem } from "@/modules/leaderboard/useDrinks";
+import { useDrinksBoard, overallTopSellers, OVERALL_GROUP, itemNameFont, type DrinkItem } from "@/modules/leaderboard/useDrinks";
 import { QRCodeSVG } from "qrcode.react";
 import { useInstagramFeed } from "./useInstagram";
 
@@ -56,6 +56,16 @@ function drinkPriceFont(price: number, o: Orientation): number {
   const len = formatPrice(price).length;
   const p = len <= 2 ? 255 : len <= 4 ? 198 : 158;
   return o === "portrait" ? p : Math.round(p * 0.84);
+}
+/* Script flourish sizing (owner note 2026-07-14: "the tag line is wrapping too quickly").
+   Length-aware step-down so a long tagline SHRINKS to stay on one line instead of wrapping;
+   short taglines keep the big cursive. Paired with a wider maxWidth (88–90%). The cursive
+   face + −4° rotation makes width hard to predict, so the pinned category (below) absorbs any
+   residual wrap without the whole stack jittering. */
+function flourishFont(text: string, o: Orientation): number {
+  const n = text.trim().length;
+  const p = n <= 14 ? 96 : n <= 22 ? 82 : n <= 32 ? 68 : n <= 44 ? 56 : 48;
+  return o === "portrait" ? p : Math.round(p * 0.9);
 }
 
 function s(fields: Record<string, unknown>, key: string): string | undefined {
@@ -165,7 +175,7 @@ export function DrinkSpecial({ item, toast, orientation }: TemplateProps) {
   );
 
   const flourishEl = flourish && (
-    <div className="sig-cream sig-flourish" style={{ fontSize: port ? 96 : 84, maxWidth: port ? "72%" : "80%", textAlign: port ? "center" : "left", textShadow: "0 0 12px var(--terminal-glow)" }}>
+    <div className="sig-cream sig-flourish" style={{ fontSize: flourishFont(flourish, orientation), maxWidth: port ? "90%" : "88%", textAlign: port ? "center" : "left", textShadow: "0 0 12px var(--terminal-glow)" }}>
       {flourish}
     </div>
   );
@@ -182,8 +192,13 @@ export function DrinkSpecial({ item, toast, orientation }: TemplateProps) {
   // already carries the roundel + venue name) — the CATEGORY owns the bottom line now,
   // larger and centered. (This also retires the old mockup "OKLAHOMA CITY" sub-line
   // DECISION that rode on the removed venue mark.)
+  // Owner note (demo beats 1): the category must sit at a STABLE distance from the canvas
+  // bottom on every drink slide. Previously it lived INSIDE the centering stack with
+  // marginTop:auto, so a taller stack (2-line name, a wrapped flourish) overflowed and the
+  // category floated up — visibly varying between drinks. It is now a bottom-anchored SIBLING
+  // of the stack (outside the flex:1 middle), so its position is fixed regardless of stack height.
   const catrow = category && (
-    <div style={{ marginTop: "auto", paddingTop: 10, width: "100%", textAlign: "center" }}>
+    <div style={{ flexShrink: 0, paddingTop: 10, width: "100%", textAlign: "center" }}>
       <span style={{ fontSize: port ? 48 : 42, letterSpacing: 6, opacity: 0.75, textShadow: "0 0 8px var(--terminal-glow)" }}>
         ◆ {category.toUpperCase()} ◆
       </span>
@@ -194,6 +209,8 @@ export function DrinkSpecial({ item, toast, orientation }: TemplateProps) {
     return (
       <div style={{ height: "100%", display: "flex", flexDirection: "column", gap: 18 }}>
         {ingredientsEl}
+        {/* The drink stack fills the space between the ingredients strip and the pinned
+            category; minHeight:0 lets it absorb overflow without moving the category. */}
         <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
           {/* Owner design-beat: images ~30% larger (720 → 940) — but a stacked 2+ line
               name needs the vertical room back, so the photo yields a step (940 → 820)
@@ -203,8 +220,8 @@ export function DrinkSpecial({ item, toast, orientation }: TemplateProps) {
           <div style={{ marginTop: 4 }}>{nameEl}</div>
           {priceEl}
           {flourishEl}
-          {catrow}
         </div>
+        {catrow}
       </div>
     );
   }
@@ -215,11 +232,15 @@ export function DrinkSpecial({ item, toast, orientation }: TemplateProps) {
       <div style={{ flexShrink: 0, height: "100%", display: "flex" }}>
         <div style={{ height: "100%" }}>{square}</div>
       </div>
-      <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", justifyContent: "center", gap: 18 }}>
-        {ingredientsEl}
-        {nameEl}
-        {priceEl}
-        {flourishEl}
+      {/* Right column: the text stack CENTERS in the middle, the category is pinned to the
+          column's bottom (aligned with the square's bottom via the stretched row). */}
+      <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
+        <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", justifyContent: "center", gap: 18 }}>
+          {ingredientsEl}
+          {nameEl}
+          {priceEl}
+          {flourishEl}
+        </div>
         {catrow}
       </div>
     </div>
@@ -364,37 +385,92 @@ export function Celebration({ item, orientation }: TemplateProps) {
 
 /* ── TOP SELLERS (live sales leaderboard as ONE rotation slide) ─────────────── */
 /**
- * The whole-menu top sellers rendered as a single rotation slide (Phase 8 ROTATION
- * UNIFICATION — docs/signage-redesign-mockup.html views 3/4). Live realtime reader of
- * sales_cache (MAIN_MENU_ALL) via the SHARED leaderboard hook — the same source, POS gate,
- * and name auto-shrink the /drinks board uses. Distance-first: each row is rank · name ·
- * count · a proportional bar (bar #1 = 100%, the rest relative to the leader). No fields to
- * author — the slide's content is entirely live. No sub-30s polling (realtime only).
+ * The top sellers rendered as a single rotation slide (Phase 8 ROTATION UNIFICATION —
+ * docs/signage-redesign-mockup.html views 3/4). Live realtime reader of sales_cache via the
+ * SHARED leaderboard hook — the same source, POS gate, and name auto-shrink the /drinks board
+ * uses. Distance-first: each row is rank · name · count · a proportional bar (bar #1 = 100%,
+ * the rest relative to the bucket's leader). No sub-30s polling (realtime only).
+ *
+ * Demo-beats-1 owner notes:
+ *  • TOP TEN — render up to 10 rows when the data provides them. (FINDING: the toast-sync
+ *    caches MAIN_MENU_ALL at top-5, so the OVERALL bucket currently shows 5. Growing that to
+ *    10 is a sync-side change that belongs to the smart-slides arc — NOT done here; this slide
+ *    already renders whatever depth exists, so a top-10 overall lights up automatically once
+ *    the cache carries it.)
+ *  • ROTATE the bucket — the slide advances through [overall, then each menu group present in
+ *    the cache] on a per-appearance basis. The bucket is frozen at mount by a time bucket (no
+ *    mid-dwell swap, no infinite animation), matching the Instagram-card freeze pattern.
+ *    `fields.rotate_groups` default true; false = overall only (the pre-beat behavior).
+ *  • MORE GREEN — drink names + counts render in live green (sig-live: docs/09 green = live
+ *    feed); ranks, bars, the group title and the SOLD label stay ambient amber. Not a wall.
  */
 type TSz = { header: number; sub: number; rank: number; count: number; countLabel: number; barH: number; rowGap: number; nameScale: number };
 const TS_SIZES: Record<Orientation, TSz> = {
   portrait: { header: 92, sub: 30, rank: 60, count: 66, countLabel: 26, barH: 28, rowGap: 22, nameScale: 1 },
   landscape: { header: 70, sub: 24, rank: 46, count: 52, countLabel: 22, barH: 20, rowGap: 14, nameScale: 0.74 },
 };
+/** Shrink the row metrics when a bucket runs long (7–10 rows) so a full top-10 stays on the
+ *  fixed canvas. ≤6 rows keep the base (today's 5-deep buckets look unchanged). */
+function tsSizes(o: Orientation, count: number): TSz {
+  const z = TS_SIZES[o];
+  if (count <= 6) return z;
+  return {
+    ...z,
+    rank: Math.round(z.rank * 0.72),
+    count: Math.round(z.count * 0.72),
+    countLabel: Math.round(z.countLabel * 0.85),
+    barH: Math.round(z.barH * 0.6),
+    rowGap: Math.round(z.rowGap * 0.55),
+    nameScale: z.nameScale * (o === "portrait" ? 0.7 : 0.82),
+  };
+}
 
-export function TopSellers({ orientation }: TemplateProps) {
-  const { items, loading } = useTopSellers();
-  const z = TS_SIZES[orientation];
-  const maxCount = items.length ? Math.max(...items.map((it) => it.sales_count), 1) : 1;
+interface TopBucket { key: string; title: string; items: DrinkItem[] }
+/** How long each time bucket lasts for the mount-freeze (ms). A slide re-appears at least one
+ *  full rotation cycle apart (well over this), so consecutive appearances land on different
+ *  buckets → the slide "advances" per pass, deterministically, without any live animation. */
+const BUCKET_PERIOD_MS = 12_000;
 
-  // DECISION: the list renders in the ambient amber ink (a leaderboard, not a product card),
-  // with only the "◉ LIVE FROM THE POS" indicator in green (docs/09 color-state: green = live
-  // feed) — matching the mockup rather than greening every value like a drink_special does.
+export function TopSellers({ item, orientation }: TemplateProps) {
+  const { groups, sales, loading } = useDrinksBoard();
+  // Default true — rotate through overall + each group; false pins to overall only (old behavior).
+  const rotateGroups = item.fields?.rotate_groups !== false;
+
+  const buckets = useMemo<TopBucket[]>(() => {
+    const list: TopBucket[] = [];
+    const overall = overallTopSellers(sales, 10);
+    if (overall.length) list.push({ key: "__overall", title: "TOP SELLERS TONIGHT", items: overall });
+    if (rotateGroups) {
+      for (const g of groups) {
+        if (g.toast_menu_guid === OVERALL_GROUP) continue; // the OVERALL group IS the overall bucket
+        const rows = sales[g.toast_menu_guid];
+        if (rows && rows.length) {
+          list.push({ key: g.toast_menu_guid, title: g.name.toUpperCase(), items: [...rows].sort((a, b) => a.rank - b.rank).slice(0, 10) });
+        }
+      }
+    }
+    return list;
+  }, [sales, groups, rotateGroups]);
+
+  // Freeze the bucket for this appearance (mount-time time bucket; no mid-dwell swap).
+  const seedRef = useRef(Date.now());
+  const bucketIndex = buckets.length ? Math.floor(seedRef.current / BUCKET_PERIOD_MS) % buckets.length : 0;
+  const active = buckets[bucketIndex];
+
+  const z = tsSizes(orientation, active?.items.length ?? 0);
+  const title = active?.title ?? "TOP SELLERS TONIGHT";
+
+  // Header title is ambient amber chrome; the "◉ LIVE FROM THE POS" indicator is green (live).
   const header = (
     <div style={{ flexShrink: 0, textAlign: "center", paddingBottom: 18, borderBottom: "1px solid var(--sig-rule)", marginBottom: orientation === "portrait" ? 28 : 14 }}>
-      <div style={{ fontSize: z.header, fontWeight: 700, letterSpacing: 3, lineHeight: 0.98, textTransform: "uppercase", textShadow: "0 0 16px var(--terminal-glow)" }}>
-        TOP SELLERS TONIGHT
+      <div style={{ fontSize: TS_SIZES[orientation].header, fontWeight: 700, letterSpacing: 3, lineHeight: 0.98, textTransform: "uppercase", textShadow: "0 0 16px var(--terminal-glow)" }}>
+        {title}
       </div>
-      <div className="sig-live" style={{ fontSize: z.sub, letterSpacing: 4, marginTop: 10, opacity: 0.95 }}>◉ LIVE FROM THE POS</div>
+      <div className="sig-live" style={{ fontSize: TS_SIZES[orientation].sub, letterSpacing: 4, marginTop: 10, opacity: 0.95 }}>◉ LIVE FROM THE POS</div>
     </div>
   );
 
-  if (loading && items.length === 0) {
+  if (loading && !active) {
     return (
       <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
         {header}
@@ -402,7 +478,7 @@ export function TopSellers({ orientation }: TemplateProps) {
       </div>
     );
   }
-  if (items.length === 0) {
+  if (!active) {
     // Owner design-beat: a proper in-world IDLE state for a fresh business day (closeout is
     // now 4 AM, so the morning wipes sales_cache until the first order rings in). Never a
     // blank slide or stale bars — this holds the surface, dim + centered + distance-readable.
@@ -421,7 +497,9 @@ export function TopSellers({ orientation }: TemplateProps) {
     );
   }
 
-  const rows = items.map((it) => (
+  const shown = active.items;
+  const maxCount = Math.max(...shown.map((it) => it.sales_count), 1);
+  const rows = shown.map((it) => (
     <TopSellerRow key={`${it.rank}-${it.item_name}`} item={it} z={z} pct={(it.sales_count / maxCount) * 100} />
   ));
 
@@ -433,10 +511,10 @@ export function TopSellers({ orientation }: TemplateProps) {
           {rows}
         </div>
       ) : (
-        // DECISION: landscape is two columns, column-major (gridAutoFlow:column, 3 rows) so the
-        // left column reads ranks 1-3 top-to-bottom and the right 4-5 — matching mockup view 4's
-        // reading order rather than a row-major 1-2 / 3-4 / 5 fill.
-        <div style={{ flex: 1, minHeight: 0, display: "grid", gridTemplateColumns: "1fr 1fr", gridTemplateRows: "repeat(3, auto)", gridAutoFlow: "column", alignContent: "center", columnGap: 56, rowGap: z.rowGap }}>
+        // DECISION: landscape is two columns, column-major (gridAutoFlow:column) so the left
+        // column reads ranks top-to-bottom and the right continues — matching mockup view 4's
+        // reading order. Row count follows the bucket depth so 10 rows fill 5×2.
+        <div style={{ flex: 1, minHeight: 0, display: "grid", gridTemplateColumns: "1fr 1fr", gridTemplateRows: `repeat(${Math.max(1, Math.ceil(shown.length / 2))}, auto)`, gridAutoFlow: "column", alignContent: "center", columnGap: 56, rowGap: z.rowGap }}>
           {rows}
         </div>
       )}
@@ -450,10 +528,16 @@ function TopSellerRow({ item, z, pct }: { item: DrinkItem; z: TSz; pct: number }
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
       <div style={{ display: "flex", alignItems: "baseline", gap: 16 }}>
+        {/* rank: ambient amber chrome */}
         <span style={{ fontSize: z.rank, fontWeight: 700, lineHeight: 1, width: z.rank + 8, flexShrink: 0, opacity: lead ? 1 : 0.5, textAlign: "right" }}>{item.rank}</span>
-        <span style={{ fontSize: nameSize, fontWeight: 700, lineHeight: 1.02, letterSpacing: 1, textTransform: "uppercase", flex: 1, minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "clip", textShadow: lead ? "0 0 12px var(--terminal-glow)" : undefined, opacity: lead ? 1 : 0.92 }}>{item.item_name}</span>
-        <span style={{ fontSize: z.count, fontWeight: 700, lineHeight: 1, whiteSpace: "nowrap", flexShrink: 0, opacity: lead ? 1 : 0.9 }}>
-          {item.sales_count}<span style={{ fontSize: z.countLabel, opacity: 0.6, marginLeft: 8, letterSpacing: 1 }}>SOLD</span>
+        {/* name: LIVE green (docs/09) — sig-live on the same span that carries the size so the
+            global span-clamp can't shrink it. */}
+        <span className="sig-live" style={{ fontSize: nameSize, fontWeight: 700, lineHeight: 1.02, letterSpacing: 1, textTransform: "uppercase", flex: 1, minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "clip", textShadow: lead ? "0 0 12px var(--terminal-glow)" : undefined, opacity: lead ? 1 : 0.95 }}>{item.item_name}</span>
+        {/* count: the live sales figure is green; the SOLD label stays amber (inner span keeps
+            its own size via inherit so the clamp can't touch it). */}
+        <span style={{ fontSize: z.count, fontWeight: 700, lineHeight: 1, whiteSpace: "nowrap", flexShrink: 0, opacity: lead ? 1 : 0.92 }}>
+          <span className="sig-live" style={{ fontSize: "inherit" }}>{item.sales_count}</span>
+          <span style={{ fontSize: z.countLabel, opacity: 0.6, marginLeft: 8, letterSpacing: 1 }}>SOLD</span>
         </span>
       </div>
       <div style={{ height: z.barH, border: "1px solid var(--terminal-green)", position: "relative" }}>

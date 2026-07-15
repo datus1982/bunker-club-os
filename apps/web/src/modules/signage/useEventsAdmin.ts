@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase, VENUE_ID } from "@/shared/supabaseClient";
-import type { EventKind } from "./eventStage";
+import type { EventKind, EventFlavor } from "./eventStage";
 
 /**
  * Data + logic layer for the STAFF events console (/signage/events — docs/13).
@@ -312,6 +312,9 @@ export interface EventDraft {
   tease_minutes: number;
   alert_minutes: number;
   interrupt_game: boolean;
+  // PROMO vs BULLETIN voice (owner beat) — window/message only; null = follow the kind
+  // default (window → promo, message → bulletin). Persisted onto fields.flavor.
+  flavor?: EventFlavor | null;
   // what shows
   title: string;
   body: string;
@@ -348,6 +351,14 @@ function buildFields(draft: EventDraft): Record<string, unknown> {
   // Basic formatting — only persist a non-default alignment; center is the board default.
   if (draft.align === "left") f.align = "left";
   else delete f.align;
+  // PROMO/BULLETIN flavor (owner beat). MOMENTs have no flavor toggle (full choreography),
+  // so only persist for window/message; null/undefined leaves the field off → the renderer's
+  // kind-based default applies (window → promo, message → bulletin), preserving back-compat.
+  if ((draft.kind === "window" || draft.kind === "message") && (draft.flavor === "promo" || draft.flavor === "bulletin")) {
+    f.flavor = draft.flavor;
+  } else {
+    delete f.flavor;
+  }
   return f;
 }
 

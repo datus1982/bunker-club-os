@@ -1,6 +1,7 @@
 import { useMemo, useState, type CSSProperties } from "react";
 import { useMutation } from "@tanstack/react-query";
-import type { ToastCacheRow, EventKind } from "./useSignage";
+import type { ToastCacheRow, EventKind, EventFlavor } from "./useSignage";
+import { flavorOf } from "./useSignage";
 import { ToastSourcePicker, ImageUploadField, FormatControls } from "./signageAdminShared";
 import { alignOf, type Align } from "./richText";
 import {
@@ -75,6 +76,13 @@ export function EventEditor({
 
   const [name, setName] = useState(editing?.name ?? "");
   const [kind, setKind] = useState<EventKind>(initKind);
+  // PROMO/BULLETIN flavor (owner beat). null = follow the kind default (window → promo,
+  // message → bulletin) so switching KIND updates the default until a manager picks one.
+  const initFlavor = editing?.fields?.flavor;
+  const [flavor, setFlavor] = useState<EventFlavor | null>(
+    initFlavor === "promo" || initFlavor === "bulletin" ? initFlavor : null,
+  );
+  const effectiveFlavor: EventFlavor = flavor ?? flavorOf(undefined, kind);
   const [skin, setSkin] = useState(editing?.skin ?? "launch");
   const [toastGuid, setToastGuid] = useState<string | null>(editing?.toast_guid ?? null);
 
@@ -162,6 +170,7 @@ export function EventEditor({
     tease_minutes: teaseMinutes,
     alert_minutes: alertMinutes,
     interrupt_game: interruptGame,
+    flavor: kind === "moment" ? null : effectiveFlavor,
     title, body, cta,
     imageUrl,
     align,
@@ -169,7 +178,7 @@ export function EventEditor({
     baseFields: editing?.fields,
     status: editing?.status,
     existingFireAt: editing?.fire_at ?? null,
-  }), [editing, name, kind, skin, toastGuid, mode, date, time, days, until, effectiveWindow, teaseMinutes, alertMinutes, interruptGame, title, body, cta, imageUrl, align, showOnWebsite]);
+  }), [editing, name, kind, skin, toastGuid, mode, date, time, days, until, effectiveWindow, teaseMinutes, alertMinutes, interruptGame, flavor, title, body, cta, imageUrl, align, showOnWebsite]);
 
   // Live plain-language preview of exactly what the manager just built (no cron, ever).
   const preview = useMemo(() => {
@@ -243,6 +252,21 @@ export function EventEditor({
           })}
         </div>
       </Labeled>
+
+      {/* FLAVOR — PROMO vs BULLETIN voice (owner beat). MOMENTs are full choreography, no toggle. */}
+      {kind !== "moment" && (
+        <Labeled label="FLAVOR">
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <button type="button" onClick={() => setFlavor("promo")} className={effectiveFlavor === "promo" ? "u-fill u-ink" : ""} style={{ ...chip, ...(effectiveFlavor === "promo" ? bold : null) }}>▸ PROMO</button>
+            <button type="button" onClick={() => setFlavor("bulletin")} className={effectiveFlavor === "bulletin" ? "u-fill u-ink" : ""} style={{ ...chip, ...(effectiveFlavor === "bulletin" ? bold : null) }}>◈ BULLETIN</button>
+          </div>
+          <span style={{ fontSize: 14, opacity: 0.55, marginTop: 4 }}>
+            {effectiveFlavor === "bulletin"
+              ? "Information — Best of OKC, a local event, a PSA. Calm, no “ON NOW” sale framing."
+              : "A sale — happy hour, free hot dog Mondays, a firesale. Keeps the “ON NOW” urgency."}
+          </span>
+        </Labeled>
+      )}
 
       {/* SCHEDULE */}
       <Labeled label="SCHEDULE">

@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import type { Orientation, SignageItem, ToastCacheRow } from "./useSignage";
 import {
-  secondsToFire, formatTMinus, balanceHeadline, ALERT_PULSE_MS, type LiveEvent, type EventStage,
+  secondsToFire, formatTMinus, balanceHeadline, flavorOf, ALERT_PULSE_MS, type LiveEvent, type EventStage,
 } from "./eventStage";
 import { parseInline, alignOf, alignStyle } from "./richText";
 import { SquarePhoto } from "./signagePhoto";
@@ -342,13 +342,18 @@ export function EventWindowCard({ item, toast, orientation }: { item: SignageIte
   const imgSize = Math.round(EVT_IMG[orientation] * (body && cta ? 0.85 : 1));
   const align = alignOf(item.fields);
 
+  // PROMO vs BULLETIN eyebrow (owner beat). A promo is a sale → keep the "ON NOW" urgency;
+  // a bulletin is information → calm "◈ BULLETIN", no sale framing. (window default = promo)
+  const flavor = flavorOf(item.fields, item.event?.kind ?? "window");
+  const eyebrow = flavor === "bulletin" ? "◈ BULLETIN" : "▸ ON NOW — PROMO";
+
   const linkEl = cta
     ? <span style={{ fontSize: Math.round(z.body * 1.45), fontWeight: 700, letterSpacing: 2 }}>{cta}</span>
     : linkedName ? <span className="sig-live" style={{ fontSize: Math.round(headlineFont(linkedName, orientation) * 0.5), fontWeight: 700 }}>{linkedName}</span> : null;
 
   return (
     <div style={{ height: "100%", display: "flex", flexDirection: "column", justifyContent: "center", position: "relative", gap: z.gap, ...alignStyle(align) }}>
-      <div style={{ fontSize: z.eyebrow, letterSpacing: 6, opacity: 0.7 }}>▸ ON NOW — PROMO WINDOW</div>
+      <div style={{ fontSize: z.eyebrow, letterSpacing: 6, opacity: 0.7 }}>{eyebrow}</div>
       {customImg && <SquarePhoto src={customImg} size={imgSize} feed="OPTICAL FEED" fit="contain" />}
       <div style={{ fontSize: headlineFont(title, orientation), fontWeight: 700, lineHeight: 0.9, textTransform: "uppercase", textShadow: "0 0 16px var(--terminal-glow)" }}><Lines text={title} /></div>
       {time && <div style={{ fontSize: z.time, fontWeight: 700, lineHeight: 0.85, textShadow: "0 0 24px var(--terminal-glow)" }}>{time}</div>}
@@ -381,9 +386,14 @@ export function EventMessageCard({ item, toast, orientation }: { item: SignageIt
   const customImg = fstr(item.fields, "image_url");
   const align = alignOf(item.fields);
 
+  // A message defaults to BULLETIN voice; a promo-flavored message borrows the promo eyebrow
+  // (owner beat). The calm "◈ SHELTER BULLETIN" stays for the (default) bulletin case.
+  const flavor = flavorOf(item.fields, item.event?.kind ?? "message");
+  const eyebrow = flavor === "promo" ? "▸ ON NOW — PROMO" : "◈ SHELTER BULLETIN";
+
   return (
     <div style={{ height: "100%", display: "flex", flexDirection: "column", justifyContent: "center", gap: z.gap, ...alignStyle(align) }}>
-      <div style={{ fontSize: z.eyebrow, letterSpacing: 6, opacity: 0.7 }}>◈ SHELTER BULLETIN</div>
+      <div style={{ fontSize: z.eyebrow, letterSpacing: 6, opacity: 0.7 }}>{eyebrow}</div>
       {customImg && <SquarePhoto src={customImg} size={EVT_IMG[orientation]} feed="OPTICAL FEED" fit="contain" />}
       <div style={{ fontSize: headlineFont(title, orientation), fontWeight: 700, lineHeight: 0.92, textTransform: "uppercase", textShadow: "0 0 16px var(--terminal-glow)" }}>{parseInline(title)}</div>
       {body && <div style={{ fontSize: Math.round(z.body * 1.3), opacity: 0.9, lineHeight: 1.45, maxWidth: "84%" }}><Lines text={body} /></div>}
