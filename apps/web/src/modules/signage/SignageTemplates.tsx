@@ -397,11 +397,9 @@ export function Celebration({ item, orientation }: TemplateProps) {
  * the rest relative to the bucket's leader). No sub-30s polling (realtime only).
  *
  * Demo-beats-1 owner notes:
- *  • TOP TEN — render up to 10 rows when the data provides them. (FINDING: the toast-sync
- *    caches MAIN_MENU_ALL at top-5, so the OVERALL bucket currently shows 5. Growing that to
- *    10 is a sync-side change that belongs to the smart-slides arc — NOT done here; this slide
- *    already renders whatever depth exists, so a top-10 overall lights up automatically once
- *    the cache carries it.)
+ *  • TOP TEN — renders up to 10 rows. toast-sync now caches MAIN_MENU_ALL at top-10 (the
+ *    smart-slides branch made that sync change), so the OVERALL bucket shows a full 10;
+ *    per-group buckets stay top-5. The row metrics shrink (tsSizes) past 6 rows to fit.
  *  • ROTATE the bucket — the slide walks [overall, then each menu group present in the cache].
  *    Owner beat 2026-07-14 ("40s dwell set to rotate every 10 but it stays on the same
  *    listing"): it now CYCLES intra-dwell — one bucket every `fields.cycle_seconds` (default
@@ -448,8 +446,8 @@ export function TopSellers({ item, orientation }: TemplateProps) {
   // Default true — rotate through overall + each group; false pins to overall only (old behavior).
   const rotateGroups = item.fields?.rotate_groups !== false;
   // Intra-dwell cycle cadence (owner beat: a 40s dwell "set to rotate every 10" must WALK
-  // overall → group → group while displayed). Min 5s.
-  const cycleSeconds = Math.max(5, n(item.fields, "cycle_seconds") ?? 10);
+  // overall → group → group while displayed). Clamped [5,120] to match the editor (F7).
+  const cycleSeconds = clampInt(n(item.fields, "cycle_seconds") ?? 10, 5, 120);
 
   const buckets = useMemo<TopBucket[]>(() => {
     const list: TopBucket[] = [];

@@ -180,54 +180,35 @@ export interface SalesHistoryResult {
   loading: boolean;
 }
 
-/** Venue-local calendar date shifted back `back` days, as 'YYYYMMDD' (matches the
- *  sales_history/sales_cache business_date format; lexical compare works on zero-padded YMD). */
-function ymdDaysAgo(back: number, timeZone = "America/Chicago"): string {
-  const d = new Date(Date.now() - back * 86_400_000);
-  // en-CA gives YYYY-MM-DD in the target TZ; strip the dashes.
-  return new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" })
-    .format(d).replaceAll("-", "");
-}
-
-/** Whole days between two 'YYYYMMDD' strings (a ≤ b), inclusive of both ends. */
-function daysBetweenYmd(a: string, b: string): number {
-  const toDate = (y: string) => new Date(Number(y.slice(0, 4)), Number(y.slice(4, 6)) - 1, Number(y.slice(6, 8)));
-  return Math.round((toDate(b).getTime() - toDate(a).getTime()) / 86_400_000) + 1;
-}
-
 /**
- * Sum sales_history by guid over the last `days` business dates (anon read; no realtime — a
- * 60s poll, within the display-rules fallback-poll allowance). Returns per-guid totals plus
- * the TRUE window depth the data actually covers (for the CHAMPION "LAST N DAYS" honesty
- * guard). The template joins these sums to the toast cache (names/photos/POS gate) itself.
+ * Per-guid summed units over the last `days` business dates, via the SERVER-SIDE
+ * `sales_history_totals` RPC (0044). The old client-side select truncated at PostgREST's 1000
+ * -row cap — a 30-day window is >1000 rows, so the CHAMPION headline silently undercounted
+ * (reviewer F1). The RPC aggregates in SQL over EXACTLY `days` business dates ending at the
+ * CURRENT venue business date (tz + closeout computed server-side — F2), and returns the
+ * window-global date_count so trueDays stays honest on shallow history. Anon read; no realtime
+ * — a 60s poll (display-rules fallback-poll allowance). The template joins these sums to the
+ * toast cache (names/photos/POS gate) itself; zero-sellers are handled there (roster-driven).
  */
 export function useSalesHistory(days: number): SalesHistoryResult {
   const q = useQuery({
     queryKey: ["drinks", "history", days],
     refetchInterval: 60_000,
     queryFn: async (): Promise<{ sums: Map<string, HistorySum>; trueDays: number }> => {
-      // Generous lower bound (today − days): gives a full `days`-day inclusive window even
-      // with a closeout-hour boundary; trueDays is derived from the actual data below.
-      const cutoff = ymdDaysAgo(days);
-      const today = ymdDaysAgo(0);
-      const { data, error } = await supabase
-        .from("sales_history")
-        .select("toast_guid, quantity, name, menu_group, business_date")
-        .eq("venue_id", VENUE_ID)
-        .gte("business_date", cutoff)
-        .lte("business_date", today);
+      const { data, error } = await supabase.rpc("sales_history_totals", { p_venue: VENUE_ID, p_days: days });
       if (error) throw error;
-      const rows = (data ?? []) as (HistorySum & { business_date: string })[];
+      const rows = (data ?? []) as { toast_guid: string; total_qty: number; first_date: string | null; date_count: number }[];
       const sums = new Map<string, HistorySum>();
-      let minDate = "";
+      let dateCount = 0;
       for (const r of rows) {
-        if (!minDate || r.business_date < minDate) minDate = r.business_date;
-        const prev = sums.get(r.toast_guid);
-        if (prev) prev.quantity += r.quantity;
-        else sums.set(r.toast_guid, { toast_guid: r.toast_guid, quantity: r.quantity, name: r.name, menu_group: r.menu_group });
+        // name/menu_group are resolved from the toast cache in the template; the RPC returns
+        // only totals (the CHAMPION picks the top guid present + POS-visible in the cache).
+        sums.set(r.toast_guid, { toast_guid: r.toast_guid, quantity: Number(r.total_qty), name: null, menu_group: null });
+        dateCount = r.date_count; // window-global — identical on every row
       }
-      // Truthful depth: how far back the data actually reaches, capped at the requested days.
-      const trueDays = minDate ? Math.min(days, daysBetweenYmd(minDate, today)) : 0;
+      // Truthful depth = distinct business dates actually present in the window (F2), capped at
+      // the requested days (the RPC window is already `days` dates, so this never exceeds it).
+      const trueDays = Math.min(days, dateCount);
       return { sums, trueDays };
     },
   });

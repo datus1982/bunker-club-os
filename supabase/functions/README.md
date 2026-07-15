@@ -49,9 +49,12 @@ curl -sS -X POST "https://<ref>.supabase.co/functions/v1/toast-sync" \
 (≈ 30–60/day here → a few thousand rows per 90-day window). It is unbounded by design; there is
 no auto-prune. If it ever needs trimming, delete old business dates directly, keeping at least
 the longest window any live `smart_toast` CHAMPION slide requests (`fields.days`, default 30):
-`delete from public.sales_history where business_date < '<YYYYMMDD>';` (service role). The
-CHAMPION slide already states the TRUE window it has (`useSalesHistory.trueDays`), so trimming
-only shortens what it can truthfully claim — it never shows a wrong number.
+`delete from public.sales_history where business_date < '<YYYYMMDD>';` (service role). The smart
+slides sum via the server-side `sales_history_totals(p_venue, p_days)` RPC (0044) — one SQL
+aggregation over EXACTLY `p_days` business dates ending at the current venue business date, so
+there is no PostgREST 1000-row truncation and the CHAMPION headline is the true total; its
+`date_count` drives the honest "LAST N DAYS" label. Trimming old dates only shortens what the
+slide can truthfully claim — the number shown is never wrong.
 
 **MAIN_MENU_ALL depth:** `toast-sync` caches the overall bucket at **top-10** (per-group buckets
 stay top-5) so the Top Sellers slide can auto-deepen; the legacy `/drinks` board slices to 5.
