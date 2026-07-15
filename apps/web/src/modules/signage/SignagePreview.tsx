@@ -12,9 +12,11 @@ import "./signage.css";
  */
 
 const CANVAS: Record<Orientation, { w: number; h: number; pad: string }> = {
-  // Matches SlotDisplay's Rotation padding so the framing is identical to the board.
-  portrait: { w: 1080, h: 1920, pad: "56px 48px" },
-  landscape: { w: 1920, h: 1080, pad: "44px 56px" },
+  // Matches SlotDisplay's Rotation content-zone padding EXACTLY (top/right/bottom) so the framing is
+  // identical to the board. Kept in sync with SlotDisplay's `padByOrientation` — the top edge was
+  // tightened 56→26 / 44→20 (2026-07-15 buffer beat); bottom stays full for the drink category row.
+  portrait: { w: 1080, h: 1920, pad: "26px 48px 56px" },
+  landscape: { w: 1920, h: 1080, pad: "20px 56px 44px" },
 };
 
 export function SignagePreview({
