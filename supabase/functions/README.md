@@ -11,6 +11,7 @@ Supabase function secrets, never in the repo (docs/12).
 | `verify-team-pin` | server-side PIN verification (hashes/compares `pin_hash`) | 2 (docs/05) | service role |
 | `toast-sync` | Toast POS order pull → sales_cache / event counters | 3 (docs/08) | `TOAST_*` |
 | `toast-menu-sync` | Toast Menus V2 + Stock → `toast_menu_cache` (POS as CMS) | 5 (docs/09) | `TOAST_*` |
+| `instagram-sync` | @venue IG posts/stories → `instagram_cache` + image mirror (rotation card) | — (0042; `docs/runbooks/instagram-card.md`) | Vault `instagram_token` |
 
 ## docs/03 porting note (parse-powerpoint, analyze-image, toast-sync)
 The legacy versions check an **OptiDev gateway JWT**

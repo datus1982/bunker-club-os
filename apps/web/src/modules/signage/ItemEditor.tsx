@@ -28,6 +28,7 @@ const TEMPLATES: { key: Template; label: string; blurb: string; icon: string }[]
   { key: "image_only", label: "IMAGE", blurb: "Full-frame photo / flyer", icon: "🖼" },
   { key: "celebration", label: "CELEBRATION", blurb: "Birthday, bachelor, congrats", icon: "✸" },
   { key: "top_sellers", label: "TOP SELLERS", blurb: "Live top-5 from the POS", icon: "📊" },
+  { key: "instagram", label: "INSTAGRAM", blurb: "Recent @posts — caption + QR", icon: "▦" },
 ];
 
 const SKINS = ["birthday", "bachelor", "bachelorette", "anniversary", "congrats"] as const;
@@ -252,6 +253,7 @@ function ItemForm({
       {template === "announcement" && <AnnouncementFields fields={fields} setField={setField} />}
       {template === "image_only" && <ImageOnlyFields fields={fields} setField={setField} />}
       {template === "top_sellers" && <TopSellersFields />}
+      {template === "instagram" && <InstagramFields fields={fields} setField={setField} />}
       {template === "celebration" && (
         <CelebrationFields
           fields={fields}
@@ -430,6 +432,41 @@ function TopSellersFields() {
       <div style={{ opacity: 0.6, fontSize: 14 }}>
         Respects the POS-visibility rule automatically (a product pulled off the POS view never shows here).
         Tip: give it a longer duration than a quick promo so guests can read all five.
+      </div>
+    </div>
+  );
+}
+
+function InstagramFields({ fields, setField }: FieldProps) {
+  const postCount = typeof fields.post_count === "number" ? fields.post_count : 5;
+  const includeStories = fields.include_stories !== false; // default true
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <div className="terminal-border" style={{ padding: "12px 14px", display: "flex", flexDirection: "column", gap: 6, fontSize: 15, lineHeight: 1.5 }}>
+        <div style={{ fontSize: 17, fontWeight: 700, letterSpacing: 1 }}>▦ FEEDS ITSELF FROM @bunkerclubokc</div>
+        <div style={{ opacity: 0.75 }}>
+          Shows your <b>newest posts first</b>, one per pass, with the caption and a QR that opens the post.
+          No links to paste — it pulls straight from Instagram and refreshes on its own.
+        </div>
+      </div>
+      <Field label="HOW MANY RECENT POSTS IN THE CYCLE (1–10)">
+        <input
+          type="number" min={1} max={10} value={postCount}
+          onChange={(e) => setField("post_count", clamp(parseInt(e.target.value) || 5, 1, 10))}
+          style={{ ...sel, width: 120 }}
+        />
+      </Field>
+      <label style={{ ...checkLabel, alignItems: "flex-start" }}>
+        <input type="checkbox" checked={includeStories} onChange={(e) => setField("include_stories", e.target.checked)} style={{ ...checkbox, marginTop: 2 }} />
+        <span>
+          INCLUDE ACTIVE STORIES
+          <span style={{ display: "block", fontSize: 14, opacity: 0.55, letterSpacing: 0 }}>
+            A live story jumps to the front and shows a "TODAY ONLY" badge until it expires.
+          </span>
+        </span>
+      </label>
+      <div style={{ fontSize: 14, opacity: 0.6 }}>
+        Tip: give it a longer duration than a quick promo so guests can read the caption and scan the code.
       </div>
     </div>
   );

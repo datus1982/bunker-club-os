@@ -52,6 +52,10 @@ export type Template =
   // live from sales_cache (MAIN_MENU_ALL) at render time — carries no authored fields, only
   // slot + duration + active. Replaces pointing a TV at the standalone /drinks board.
   | "top_sellers"
+  // Phase (IG card, 0042): recent @venue Instagram posts/stories as ONE rotation slide,
+  // sourced live from instagram_cache at render time. Carries two authored settings
+  // (fields.post_count, fields.include_stories); the images are the sync's mirror.
+  | "instagram"
   // Phase 7 (docs/13): rotation-level cards materialized from a live scheduled_event.
   // Never authored, never DB rows — only produced by resolveRotation at render time.
   | "event_window"  // an active WINDOW promo card (title/body/cta + optional live price)
