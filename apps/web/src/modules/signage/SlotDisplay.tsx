@@ -260,9 +260,12 @@ function ChromeFooter({ ticker, live, orientation }: { ticker: TickerLine[]; liv
     <footer style={{ flexShrink: 0, borderTop: "2px solid var(--sig-rule)", padding: "16px 40px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 24, fontSize: base }}>
       {/* Dual-phosphor: the ON AIR / LIVE status light is a live-state indicator, so it
           reads green like the mockup's `.cbot .now` — a single restrained green accent. */}
-      <span className="sig-live" style={{ flexShrink: 0 }}>{live ? "■ ON AIR" : "■ ONLINE"}</span>
+      {/* fontSize is explicit on these spans: the global `.terminal-theme span` 1.5rem rule
+          beats the footer's inherited size, which left the status chip small when the
+          reprint line grew (owner note 2026-07-14). */}
+      <span className="sig-live" style={{ flexShrink: 0, fontSize: base }}>{live ? "■ ON AIR" : "■ ONLINE"}</span>
       {/* Green ◆ chrome marker (owner: "the ticker's ◆ markers can go green too"). */}
-      <span className="sig-live" style={{ flexShrink: 0, opacity: 0.85 }}>◆</span>
+      <span className="sig-live" style={{ flexShrink: 0, opacity: 0.85, fontSize: base }}>◆</span>
       {/* Reprint (key-remount) — no scroll animation (docs/09 perf + authenticity). Shrink-to-fit
           guard: the line renders at BASE and, only if it would overflow, scales down uniformly
           so the longest real line (or an extreme manual line) stays ONE line and never clips. */}
