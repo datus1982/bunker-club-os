@@ -41,7 +41,10 @@ export function DrinksDisplay() {
   }, [config.display_mode, config.auto_rotate_seconds, activeGroups.length]);
 
   const current = activeGroups[index];
-  const items = current ? sales[current.toast_menu_guid] ?? [] : [];
+  // This legacy board renders one flex:1 card per row in a fixed canvas — it was designed for
+  // 5. sales_cache now caches MAIN_MENU_ALL at top-10 (for the signage Top Sellers slide), so
+  // cap the board at 5 to keep its layout byte-identical (this route slices what it needs).
+  const items = (current ? sales[current.toast_menu_guid] ?? [] : []).slice(0, 5);
 
   return (
     <DisplayCanvas orientation="portrait">

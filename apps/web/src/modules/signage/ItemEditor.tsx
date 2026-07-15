@@ -29,6 +29,7 @@ const TEMPLATES: { key: Template; label: string; blurb: string; icon: string }[]
   { key: "celebration", label: "CELEBRATION", blurb: "Birthday, bachelor, congrats", icon: "✸" },
   { key: "top_sellers", label: "TOP SELLERS", blurb: "Live top-5 from the POS", icon: "📊" },
   { key: "instagram", label: "INSTAGRAM", blurb: "Recent @posts — caption + QR", icon: "▦" },
+  { key: "smart_toast", label: "SMART TOAST", blurb: "Underdogs or the champion — auto", icon: "🎯" },
 ];
 
 const SKINS = ["birthday", "bachelor", "bachelorette", "anniversary", "congrats"] as const;
@@ -252,8 +253,9 @@ function ItemForm({
       {template === "event" && <EventFields fields={fields} setField={setField} />}
       {template === "announcement" && <AnnouncementFields fields={fields} setField={setField} />}
       {template === "image_only" && <ImageOnlyFields fields={fields} setField={setField} />}
-      {template === "top_sellers" && <TopSellersFields />}
+      {template === "top_sellers" && <TopSellersFields fields={fields} setField={setField} />}
       {template === "instagram" && <InstagramFields fields={fields} setField={setField} />}
+      {template === "smart_toast" && <SmartToastFields fields={fields} setField={setField} toastRows={toastRows} />}
       {template === "celebration" && (
         <CelebrationFields
           fields={fields}
@@ -421,17 +423,41 @@ function AnnouncementFields({ fields, setField }: FieldProps) {
 }
 
 /* ── image_only ─────────────────────────────────────────────────────────── */
-function TopSellersFields() {
+function TopSellersFields({ fields, setField }: FieldProps) {
+  const rotateGroups = fields.rotate_groups !== false; // default true
+  const cycleSeconds = typeof fields.cycle_seconds === "number" ? fields.cycle_seconds : 10;
   return (
-    <div className="terminal-border" style={{ padding: "12px 14px", display: "flex", flexDirection: "column", gap: 6, fontSize: 15, lineHeight: 1.5 }}>
-      <div style={{ fontSize: 17, fontWeight: 700, letterSpacing: 1 }}>📊 LIVE SLIDE — NOTHING TO FILL IN</div>
-      <div style={{ opacity: 0.75 }}>
-        Shows tonight's whole-menu <b>TOP 5</b> sellers straight from the POS, updating live as pours ring up.
-        No name, price, or photo to set — just pick the slot, how long it lingers, and switch it ON.
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <div className="terminal-border" style={{ padding: "12px 14px", display: "flex", flexDirection: "column", gap: 6, fontSize: 15, lineHeight: 1.5 }}>
+        <div style={{ fontSize: 17, fontWeight: 700, letterSpacing: 1 }}>📊 LIVE SLIDE — NOTHING TO FILL IN</div>
+        <div style={{ opacity: 0.75 }}>
+          Shows tonight's whole-menu <b>TOP 10</b> sellers straight from the POS, updating live as pours ring up.
+          No name, price, or photo to set — just pick the slot, how long it lingers, and switch it ON.
+        </div>
+        <div style={{ opacity: 0.6, fontSize: 14 }}>
+          Respects the POS-visibility rule automatically (a product pulled off the POS view never shows here).
+        </div>
       </div>
-      <div style={{ opacity: 0.6, fontSize: 14 }}>
-        Respects the POS-visibility rule automatically (a product pulled off the POS view never shows here).
-        Tip: give it a longer duration than a quick promo so guests can read all five.
+      <label style={{ ...checkLabel, alignItems: "flex-start" }}>
+        <input type="checkbox" checked={rotateGroups} onChange={(e) => setField("rotate_groups", e.target.checked ? undefined : false)} style={{ ...checkbox, marginTop: 2 }} />
+        <span>
+          ROTATE THROUGH GROUPS
+          <span style={{ display: "block", fontSize: 14, opacity: 0.55, letterSpacing: 0 }}>
+            Walks overall + each menu group while the slide is up. Off = overall top 10 only.
+          </span>
+        </span>
+      </label>
+      {rotateGroups && (
+        <Field label="CYCLE SECONDS (how often it changes list, min 5)">
+          <input
+            type="number" min={5} value={cycleSeconds}
+            onChange={(e) => setField("cycle_seconds", clamp(parseInt(e.target.value) || 10, 5, 120))}
+            style={{ ...sel, width: 120 }}
+          />
+        </Field>
+      )}
+      <div style={{ fontSize: 14, opacity: 0.6 }}>
+        Tip: set the on-screen seconds to a few cycles (e.g. 40s on screen + 10s cycle = 4 lists) so guests see more than one board.
       </div>
     </div>
   );
@@ -468,6 +494,102 @@ function InstagramFields({ fields, setField }: FieldProps) {
       <div style={{ fontSize: 14, opacity: 0.6 }}>
         Tip: give it a longer duration than a quick promo so guests can read the caption and scan the code.
       </div>
+    </div>
+  );
+}
+
+/* ── smart_toast ────────────────────────────────────────────────────────────── */
+function SmartToastFields({ fields, setField, toastRows }: FieldProps & { toastRows: ToastCacheRow[] }) {
+  const mode = (str(fields.smart_mode) ?? "underdogs").toLowerCase() === "champion" ? "champion" : "underdogs";
+  const days = typeof fields.days === "number" ? fields.days : mode === "champion" ? 30 : 7;
+  const count = typeof fields.count === "number" ? fields.count : 3;
+  const menuGroup = str(fields.menu_group);
+
+  // Distinct POS menu groups from the Toast cache (the underdog roster source). Excludes the
+  // ★ SCREENS featured duplicates group so it never appears as a pickable category.
+  const groups = useMemo(() => {
+    const set = new Set<string>();
+    for (const r of toastRows) {
+      const g = (r.menu_group ?? "").trim();
+      if (g && g !== "★ SCREENS") set.add(g);
+    }
+    return [...set].sort((a, b) => a.localeCompare(b));
+  }, [toastRows]);
+
+  // When switching mode, snap `days` to the mode's sensible default if it's still on the other
+  // default (so CHAMPION opens at 30 and UNDERDOGS at 7 without clobbering a custom value).
+  const pickMode = (m: "underdogs" | "champion") => {
+    setField("smart_mode", m);
+    if (m === "champion" && (fields.days === undefined || fields.days === 7)) setField("days", 30);
+    if (m === "underdogs" && (fields.days === undefined || fields.days === 30)) setField("days", 7);
+  };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <div>
+        <div style={caption}>MODE</div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          {([["underdogs", "UNDERDOGS"], ["champion", "CHAMPION"]] as const).map(([k, label]) => (
+            <button
+              key={k}
+              type="button"
+              onClick={() => pickMode(k)}
+              className={mode === k ? "u-fill u-ink" : ""}
+              style={{ ...chip, ...(mode === k ? chipActive : null) }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="terminal-border" style={{ padding: "12px 14px", display: "flex", flexDirection: "column", gap: 6, fontSize: 15, lineHeight: 1.5 }}>
+        {mode === "underdogs" ? (
+          <>
+            <div style={{ fontSize: 17, fontWeight: 700, letterSpacing: 1 }}>🎯 GIVE THE SLOW MOVERS SOME LOVE</div>
+            <div style={{ opacity: 0.75 }}>
+              Rotates the <b>bottom {count}</b> selling drinks in a menu group over the last <b>{days} days</b>, straight from the POS.
+              Zero-sellers are included; anything 86'd or pulled off the POS view is skipped automatically.
+            </div>
+          </>
+        ) : (
+          <>
+            <div style={{ fontSize: 17, fontWeight: 700, letterSpacing: 1 }}>🎯 CROWN THE CHAMPION</div>
+            <div style={{ opacity: 0.75 }}>
+              Shows the <b>#1 seller of the last {days} days</b> big, with <b>tonight's live top 3</b> beneath it.
+              If there isn't {days} days of history yet, it says the true window it used — never a month it doesn't have.
+            </div>
+          </>
+        )}
+      </div>
+
+      {mode === "underdogs" && (
+        <Field label="MENU GROUP">
+          {groups.length > 0 ? (
+            <select value={menuGroup ?? ""} onChange={(e) => setField("menu_group", e.target.value)} style={sel}>
+              <option value="" style={opt}>— pick a group —</option>
+              {groups.map((g) => <option key={g} value={g} style={opt}>{g}</option>)}
+            </select>
+          ) : (
+            <input placeholder="e.g. Signature Cocktails (menu not synced yet)" value={menuGroup ?? ""} onChange={(e) => setField("menu_group", e.target.value)} style={sel} />
+          )}
+        </Field>
+      )}
+
+      <div style={{ display: "flex", gap: 14, flexWrap: "wrap", alignItems: "flex-end" }}>
+        <Field label={mode === "underdogs" ? "DAYS TO LOOK BACK" : "DAYS FOR THE CHAMPION"}>
+          <input type="number" min={1} max={400} value={days} onChange={(e) => setField("days", clamp(parseInt(e.target.value) || (mode === "champion" ? 30 : 7), 1, 400))} style={{ ...sel, width: 120 }} />
+        </Field>
+        {mode === "underdogs" && (
+          <Field label="HOW MANY UNDERDOGS (1–6)">
+            <input type="number" min={1} max={6} value={count} onChange={(e) => setField("count", clamp(parseInt(e.target.value) || 3, 1, 6))} style={{ ...sel, width: 120 }} />
+          </Field>
+        )}
+      </div>
+
+      {mode === "underdogs" && !menuGroup && (
+        <div className="u-amber" style={{ fontSize: 15 }}>Pick a menu group so the slide knows which underdogs to feature.</div>
+      )}
     </div>
   );
 }

@@ -160,6 +160,61 @@ export function overallTopSellers(byGroup: Record<string, DrinkItem[]>, limit = 
     .map((it, i) => ({ ...it, rank: i + 1 }));
 }
 
+/* ── SMART TOAST slides (0043) — durable per-day sales history ───────────────── */
+
+/** A guid's summed units over the window, carrying the last-seen name (fallback label). */
+export interface HistorySum {
+  toast_guid: string;
+  quantity: number;
+  name: string | null;
+  menu_group: string | null;
+}
+
+export interface SalesHistoryResult {
+  /** guid → summed units over the last `days` (only guids that sold at least once appear). */
+  sums: Map<string, HistorySum>;
+  /** The TRUTHFUL window depth actually covered by the data, capped at `days` — so a
+   *  CHAMPION slide can say "LAST 9 DAYS" when history only reaches back 9 days, never
+   *  claiming a month it doesn't have. */
+  trueDays: number;
+  loading: boolean;
+}
+
+/**
+ * Per-guid summed units over the last `days` business dates, via the SERVER-SIDE
+ * `sales_history_totals` RPC (0044). The old client-side select truncated at PostgREST's 1000
+ * -row cap — a 30-day window is >1000 rows, so the CHAMPION headline silently undercounted
+ * (reviewer F1). The RPC aggregates in SQL over EXACTLY `days` business dates ending at the
+ * CURRENT venue business date (tz + closeout computed server-side — F2), and returns the
+ * window-global date_count so trueDays stays honest on shallow history. Anon read; no realtime
+ * — a 60s poll (display-rules fallback-poll allowance). The template joins these sums to the
+ * toast cache (names/photos/POS gate) itself; zero-sellers are handled there (roster-driven).
+ */
+export function useSalesHistory(days: number): SalesHistoryResult {
+  const q = useQuery({
+    queryKey: ["drinks", "history", days],
+    refetchInterval: 60_000,
+    queryFn: async (): Promise<{ sums: Map<string, HistorySum>; trueDays: number }> => {
+      const { data, error } = await supabase.rpc("sales_history_totals", { p_venue: VENUE_ID, p_days: days });
+      if (error) throw error;
+      const rows = (data ?? []) as { toast_guid: string; total_qty: number; first_date: string | null; date_count: number }[];
+      const sums = new Map<string, HistorySum>();
+      let dateCount = 0;
+      for (const r of rows) {
+        // name/menu_group are resolved from the toast cache in the template; the RPC returns
+        // only totals (the CHAMPION picks the top guid present + POS-visible in the cache).
+        sums.set(r.toast_guid, { toast_guid: r.toast_guid, quantity: Number(r.total_qty), name: null, menu_group: null });
+        dateCount = r.date_count; // window-global — identical on every row
+      }
+      // Truthful depth = distinct business dates actually present in the window (F2), capped at
+      // the requested days (the RPC window is already `days` dates, so this never exceeds it).
+      const trueDays = Math.min(days, dateCount);
+      return { sums, trueDays };
+    },
+  });
+  return { sums: q.data?.sums ?? new Map(), trueDays: q.data?.trueDays ?? 0, loading: q.isLoading };
+}
+
 export function useDrinksBoard() {
   const qc = useQueryClient();
 

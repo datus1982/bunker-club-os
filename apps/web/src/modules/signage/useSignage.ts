@@ -57,6 +57,10 @@ export type Template =
   // sourced live from instagram_cache at render time. Carries two authored settings
   // (fields.post_count, fields.include_stories); the images are the sync's mirror.
   | "instagram"
+  // Smart Toast slides (0043): data-driven live slide sourced from sales_history at render
+  // time. fields.smart_mode = "underdogs" (bottom N of a menu group over `days`) | "champion"
+  // (top item over `days` + tonight's top 3). Carries fields.menu_group / days / count.
+  | "smart_toast"
   // Phase 7 (docs/13): rotation-level cards materialized from a live scheduled_event.
   // Never authored, never DB rows — only produced by resolveRotation at render time.
   | "event_window"  // an active WINDOW promo card (title/body/cta + optional live price)
