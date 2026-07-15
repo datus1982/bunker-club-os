@@ -86,14 +86,17 @@ export function useEvents() {
       // 2) Website-flagged signage promos (drink_special / event / celebration /
       //    announcement). drink_specials carry name/price/photo LIVE in Toast, so their
       //    guids resolve through public_menu (POS-visibility-gated) below.
+      // Order by created_at (stable): signage_items.sort_order is no longer written on create
+      // (placement/order moved to slot_queue in the hub consolidation, 0045). Cards are re-sorted
+      // by their event date below anyway; this only sets the pre-sort/tiebreak order.
       const { data: promos } = await supabase
         .from("signage_items")
-        .select("id, template, fields, ends_at, sort_order")
+        .select("id, template, fields, ends_at, created_at")
         .eq("venue_id", VENUE_ID)
         .eq("show_on_website", true)
         .eq("active", true)
         .in("template", ["drink_special", "event", "celebration", "announcement"])
-        .order("sort_order", { ascending: true })
+        .order("created_at", { ascending: true, nullsFirst: true })
         .limit(24);
 
       const nowMs = Date.now();

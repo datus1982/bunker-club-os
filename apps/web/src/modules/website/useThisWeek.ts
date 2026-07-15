@@ -116,13 +116,16 @@ export function useThisWeek() {
       // Apply the same time-window filter as useEvents (W2): drop items whose ends_at
       // has passed, and items whose starts_at is still in the future; evergreen
       // (null/null) always shows. Fetch a few extra since the filter runs client-side.
+      // Order by created_at (stable, oldest-first): signage_items.sort_order is no longer
+      // written when an asset is created (placement/order moved to slot_queue in the hub
+      // consolidation, 0045), so it's unreliable for ordering the website feed.
       const { data: promos } = await supabase
         .from("signage_items")
-        .select("id, template, fields, starts_at, ends_at, sort_order")
+        .select("id, template, fields, starts_at, ends_at, created_at")
         .eq("venue_id", VENUE_ID)
         .eq("show_on_website", true)
         .eq("active", true)
-        .order("sort_order", { ascending: true })
+        .order("created_at", { ascending: true, nullsFirst: true })
         .limit(8);
 
       const inWindow = (promos ?? []).filter((p) => {
