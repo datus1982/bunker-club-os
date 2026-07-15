@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase, VENUE_ID } from "@/shared/supabaseClient";
+import { fetchSlotQueueAdmin, fetchAssetsWithPlacements, swapQueuePositions, setQueueDuration, type AssetWithPlacements } from "./slotQueue";
 import type { Orientation, SignageItem, Template, ToastCacheRow } from "./useSignage";
 
 /**
@@ -35,7 +36,12 @@ export interface AdminTakeover {
   starts_at: string;
   ends_at: string | null;
   signage_item_id: string | null;
+  /** Per-screen scope (0045): null = all screens (venue-wide), else this one slot. */
+  slot_id: string | null;
 }
+
+/** Re-export so the hub/library can type the deduped asset list. */
+export type { AssetWithPlacements };
 
 /** recurrence jsonb shape (docs/09; same family as scheduled_events). null = one-shot. */
 export type Recurrence =
@@ -110,17 +116,12 @@ export function useLiveGame() {
 
 export function useAllItems() {
   const qc = useQueryClient();
+  // Every (slot, asset) pairing for the venue via slot_queue (0045), flattened to the legacy
+  // AdminItem shape (slot_id = the queue's slot, sort_order = position, duration_seconds = the
+  // junction dwell). Grouped by slot_id downstream (SignageHub itemsBySlot / EditRotation).
   const q = useQuery({
     queryKey: ["signage-admin", "items"],
-    queryFn: async (): Promise<AdminItem[]> => {
-      const { data, error } = await supabase
-        .from("signage_items")
-        .select("id, slot_id, template, fields, starts_at, ends_at, recurrence, sort_order, duration_seconds, active, show_on_website, created_at")
-        .eq("venue_id", VENUE_ID)
-        .order("sort_order");
-      if (error) throw error;
-      return (data ?? []) as AdminItem[];
-    },
+    queryFn: async (): Promise<AdminItem[]> => (await fetchSlotQueueAdmin()) as unknown as AdminItem[],
   });
 
   useEffect(() => {
@@ -128,6 +129,38 @@ export function useAllItems() {
       .channel("signage-admin:items")
       .on("postgres_changes", { event: "*", schema: "public", table: "signage_items", filter: `venue_id=eq.${VENUE_ID}` },
         () => qc.invalidateQueries({ queryKey: ["signage-admin", "items"] }))
+      // A reorder / dwell change / add / remove writes slot_queue, not signage_items — so the
+      // console must invalidate on junction changes too (single-venue project → no filter).
+      .on("postgres_changes", { event: "*", schema: "public", table: "slot_queue" },
+        () => qc.invalidateQueries({ queryKey: ["signage-admin", "items"] }))
+      .subscribe();
+    return () => { supabase.removeChannel(ch); };
+  }, [qc]);
+
+  return q;
+}
+
+/**
+ * The ASSET LIBRARY read (task 2): every venue asset ONCE + the screens it runs on
+ * (fetchAssetsWithPlacements). Idle assets (queued nowhere) are included, so the library
+ * grid shows them with no P/L chips lit. Invalidated by the same realtime channel as
+ * useAllItems (signage_items + slot_queue changes) via a shared queryKey prefix — but keyed
+ * separately so the two reads don't share a cache entry.
+ */
+export function useSignageAssets() {
+  const qc = useQueryClient();
+  const q = useQuery({
+    queryKey: ["signage-admin", "assets"],
+    queryFn: (): Promise<AssetWithPlacements[]> => fetchAssetsWithPlacements(),
+  });
+
+  useEffect(() => {
+    const ch = supabase
+      .channel("signage-admin:assets")
+      .on("postgres_changes", { event: "*", schema: "public", table: "signage_items", filter: `venue_id=eq.${VENUE_ID}` },
+        () => qc.invalidateQueries({ queryKey: ["signage-admin", "assets"] }))
+      .on("postgres_changes", { event: "*", schema: "public", table: "slot_queue" },
+        () => qc.invalidateQueries({ queryKey: ["signage-admin", "assets"] }))
       .subscribe();
     return () => { supabase.removeChannel(ch); };
   }, [qc]);
@@ -145,7 +178,7 @@ export function useTakeovers() {
     queryFn: async (): Promise<AdminTakeover[]> => {
       const { data, error } = await supabase
         .from("screen_takeovers")
-        .select("id, message, sub_message, starts_at, ends_at, signage_item_id")
+        .select("id, message, sub_message, starts_at, ends_at, signage_item_id, slot_id")
         .eq("venue_id", VENUE_ID)
         .order("starts_at", { ascending: false })
         .limit(8);
@@ -205,6 +238,23 @@ export function activeTakeover(list: AdminTakeover[], now = Date.now()): AdminTa
   return (
     list.find(
       (t) => new Date(t.starts_at).getTime() <= now && (!t.ends_at || new Date(t.ends_at).getTime() > now),
+    ) ?? null
+  );
+}
+
+/**
+ * The active takeover that applies to ONE screen (0045 per-screen scope). A venue-wide
+ * takeover (slot_id null) applies to every slot; a scoped one applies only to its slot. This
+ * is the SAME rule the public SlotDisplay reader scopes by (useSignage takeover query) — so
+ * the hub's per-card TAKEOVER mode can never disagree with what that TV actually shows.
+ */
+export function activeTakeoverForSlot(list: AdminTakeover[], slotId: string, now = Date.now()): AdminTakeover | null {
+  return (
+    list.find(
+      (t) =>
+        (t.slot_id === null || t.slot_id === slotId) &&
+        new Date(t.starts_at).getTime() <= now &&
+        (!t.ends_at || new Date(t.ends_at).getTime() > now),
     ) ?? null
   );
 }
@@ -275,20 +325,23 @@ export interface ItemDraft {
   show_on_website: boolean;
 }
 
-/** Insert or update an item. Returns the row id (new items get an appended sort_order). */
-export async function saveItem(draft: ItemDraft, nextSortOrder: number): Promise<string> {
+/**
+ * Insert or update the ASSET (signage_items). Returns the row id. Placement on a screen
+ * (slot_id, per-screen position + dwell) is NO LONGER written here — that lives on slot_queue
+ * (0045); the caller follows this with placeAsset() to queue/re-queue the asset. This function
+ * touches only asset-global columns, so an asset shared across screens (task 2) stays coherent.
+ */
+export async function saveItem(draft: ItemDraft): Promise<string> {
   const { data: auth } = await supabase.auth.getUser();
   if (draft.id) {
     const { error } = await supabase
       .from("signage_items")
       .update({
-        slot_id: draft.slot_id,
         template: draft.template,
         fields: draft.fields,
         starts_at: draft.starts_at,
         ends_at: draft.ends_at,
         recurrence: draft.recurrence,
-        duration_seconds: draft.duration_seconds,
         active: draft.active,
         show_on_website: draft.show_on_website,
       })
@@ -300,20 +353,12 @@ export async function saveItem(draft: ItemDraft, nextSortOrder: number): Promise
     .from("signage_items")
     .insert({
       venue_id: VENUE_ID,
-      slot_id: draft.slot_id,
       template: draft.template,
       fields: draft.fields,
       starts_at: draft.starts_at,
       ends_at: draft.ends_at,
       recurrence: draft.recurrence,
       show_on_website: draft.show_on_website,
-      // DECISION: new items append to the end of the slot (highest sort_order + 1); staff
-      // reorder with the ▲/▼ buttons afterward rather than typing a position. Matches the
-      // DrinksAdmin group ordering UX; the spec's "sort position (append default)" is honoured
-      // as append-only, keeping the mobile form short. Caller passes max(sort_order)+1 — NOT
-      // the row count, which collides after a delete leaves a gap (two items on the same order).
-      sort_order: nextSortOrder,
-      duration_seconds: draft.duration_seconds,
       active: draft.active,
       created_by: auth.user?.id ?? null,
     })
@@ -333,29 +378,39 @@ export async function setItemActive(id: string, active: boolean): Promise<void> 
   if (error) throw error;
 }
 
-/** Per-item on-screen duration (EDIT ROTATION seconds control). Writes the existing
- *  duration_seconds int (present since 0009, first surfaced in a UI in Phase 8). The public
- *  SlotDisplay rotation advance already honors this per-item (no fixed interval). */
-export async function setItemDuration(id: string, seconds: number): Promise<void> {
-  const { error } = await supabase.from("signage_items").update({ duration_seconds: seconds }).eq("id", id);
-  if (error) throw error;
+/** Per-SCREEN on-screen duration (EDIT ROTATION seconds control) → slot_queue.duration_seconds
+ *  for this (slot, asset) pairing (0045). The public SlotDisplay rotation advance honors the
+ *  flattened per-item dwell (no fixed interval). Takes the flattened AdminItem so it can key
+ *  the junction by slot_id + id. */
+export async function setItemDuration(item: AdminItem, seconds: number): Promise<void> {
+  if (!item.slot_id) return;
+  await setQueueDuration(item.slot_id, item.id, seconds);
 }
 
 /** The seconds a rotation slide can dwell (EDIT ROTATION picker). Top Sellers wants a longer
  *  dwell than a quick promo, so the ladder runs up to a full minute. */
 export const DURATION_CHOICES = [8, 12, 20, 30, 45, 60] as const;
 
-/** Swap sort_order with the adjacent item in the same slot (▲/▼ reorder). */
+/** Swap position with the adjacent asset on the same screen (▲/▼ reorder) → slot_queue.position
+ *  for the two (slot, asset) pairings (0045). Both rows are on the same slot (adjacent authored
+ *  neighbours), so slot_id matches; the flattened AdminItem carries slot_id + sort_order. */
 export async function reorderItem(a: AdminItem, b: AdminItem): Promise<void> {
-  const e1 = await supabase.from("signage_items").update({ sort_order: b.sort_order }).eq("id", a.id);
-  if (e1.error) throw e1.error;
-  const e2 = await supabase.from("signage_items").update({ sort_order: a.sort_order }).eq("id", b.id);
-  if (e2.error) throw e2.error;
+  if (!a.slot_id || !b.slot_id) return;
+  await swapQueuePositions(
+    { slot_id: a.slot_id, id: a.id, sort_order: a.sort_order },
+    { slot_id: b.slot_id, id: b.id, sort_order: b.sort_order },
+  );
 }
 
 /* ── takeover mutations ──────────────────────────────────────────────────── */
 
-export async function sendTakeover(v: { message: string; sub_message: string | null; durationMinutes: number | null }): Promise<void> {
+export async function sendTakeover(v: {
+  message: string;
+  sub_message: string | null;
+  durationMinutes: number | null;
+  /** Per-screen scope (0045, D2): null = ALL screens (venue-wide), else this one slot. */
+  slotId?: string | null;
+}): Promise<void> {
   const { data: auth } = await supabase.auth.getUser();
   const startsAt = new Date();
   const endsAt = v.durationMinutes != null ? new Date(startsAt.getTime() + v.durationMinutes * 60_000) : null;
@@ -365,6 +420,7 @@ export async function sendTakeover(v: { message: string; sub_message: string | n
     sub_message: v.sub_message,
     starts_at: startsAt.toISOString(),
     ends_at: endsAt ? endsAt.toISOString() : null,
+    slot_id: v.slotId ?? null,
     created_by: auth.user?.id ?? null,
   });
   if (error) throw error;

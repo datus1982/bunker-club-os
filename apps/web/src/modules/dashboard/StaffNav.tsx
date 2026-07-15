@@ -49,12 +49,10 @@ const SECTIONS: NavSection[] = [
   {
     label: "BAR OPS",
     children: [
-      // `end` so the hub link only lights on exactly /signage, not its child pages
-      // (/signage/screens/:slug, /signage/broadcast, /signage/events).
-      { to: "/signage", label: "SIGNAGE HUB", module: "signage", end: true },
-      // EVENTS & PROMOS = scheduled/recurring promos + moments (docs/13). Own module grant.
-      { to: "/signage/events", label: "EVENTS & PROMOS", module: "events" },
-      { to: "/signage/broadcast", label: "BROADCAST", module: "signage" },
+      // The SIGNAGE HUB now owns everything bar-ops signage: screens, the asset library,
+      // events (was EVENTS & PROMOS) and takeovers (was BROADCAST) all live inside it as
+      // slide-overs (hub-consolidation arc), so those two nav children retired.
+      { to: "/signage", label: "SIGNAGE HUB", module: "signage" },
       // TOP SELLERS = the sales-rank board config (was mislabelled "DRINKS"). Route +
       // module key unchanged; only the staff-facing label is task-named.
       { to: "/admin/drinks", label: "TOP SELLERS", module: "drinks" },

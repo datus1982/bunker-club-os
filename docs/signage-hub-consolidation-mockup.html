@@ -1,0 +1,784 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bunker Club — Signage Hub Consolidation Mockup</title>
+<link href="https://fonts.googleapis.com/css2?family=VT323&family=Share+Tech+Mono&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --phos:#00ff41; --phos-dim:rgba(0,255,65,.60); --phos-mid:rgba(0,255,65,.32); --phos-faint:rgba(0,255,65,.14);
+    --amber:#ffb000; --amber-dim:rgba(255,176,0,.62); --amber-faint:rgba(255,176,0,.14);
+    --red:#ff4136; --red-dim:rgba(255,65,54,.65); --red-faint:rgba(255,65,54,.13);
+    --cream:#f3ead9;
+    --bg:#04070a; --crt:#050d07; --panel:#081409; --panel2:#0b1a0d; --panel3:#0e2110;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    background:var(--bg);color:var(--phos);font-family:'Share Tech Mono',monospace;
+    min-height:100vh;padding:20px 16px 92px;display:flex;flex-direction:column;align-items:center;gap:16px;
+  }
+  a{color:inherit}
+
+  /* ---- page head ---- */
+  .pagehead{text-align:center;max-width:940px}
+  .pagehead h1{font-family:'VT323',monospace;font-size:36px;letter-spacing:2px;color:var(--phos);text-shadow:0 0 12px var(--phos-dim)}
+  .pagehead p{font-size:13px;color:var(--phos-dim);margin-top:6px;line-height:1.65}
+  .pagehead .quote{font-size:12.5px;color:var(--amber-dim);margin-top:10px;line-height:1.6;border-left:2px solid var(--amber-faint);padding-left:12px;text-align:left}
+  .pagehead .quote b{color:var(--amber)}
+  .viewcap{font-family:'VT323',monospace;font-size:24px;letter-spacing:2px;color:var(--phos-dim);text-align:center}
+  .viewcap b{color:var(--phos)}
+  .subcap{font-size:12.5px;color:var(--phos-mid);text-align:center;max-width:820px;line-height:1.6}
+
+  /* ---- views ---- */
+  .view{display:none;flex-direction:column;align-items:center;gap:16px;width:100%}
+  .view.on{display:flex}
+
+  /* ---- the terminal frame (shared) ---- */
+  .frame{
+    background:var(--crt);border:2px solid var(--phos-dim);position:relative;overflow:hidden;
+    box-shadow:0 0 44px var(--phos-faint), inset 0 0 90px rgba(0,0,0,.6);display:flex;flex-direction:column;
+  }
+  .frame::before{content:"";position:absolute;inset:0;pointer-events:none;z-index:80;
+    background:repeating-linear-gradient(0deg, rgba(0,0,0,.15) 0 1px, transparent 1px 3px)}
+  .frame::after{content:"";position:absolute;inset:0;pointer-events:none;z-index:81;
+    background:radial-gradient(ellipse at center, transparent 64%, rgba(0,0,0,.40) 100%)}
+  .frame.desktop{width:1140px;max-width:97vw}
+  .frame.phone{width:390px;max-width:97vw;border-radius:22px}
+  .frame.narrow{width:760px;max-width:97vw}
+
+  .scroll{position:relative;z-index:2}
+  .frame.phone .scroll{height:740px;max-height:80vh;overflow-y:auto}
+
+  /* ---- top nav (two-tier) ---- */
+  .navbar{border-bottom:1px solid var(--phos-dim);background:#000;position:relative;z-index:20}
+  .navrow{display:flex;align-items:center;gap:6px;padding:9px 16px}
+  .brand{font-family:'VT323',monospace;font-size:23px;letter-spacing:2px;color:var(--phos);white-space:nowrap;margin-right:6px;text-shadow:0 0 8px var(--phos-dim)}
+  .sect{font-family:'VT323',monospace;font-size:21px;letter-spacing:2px;color:var(--phos-dim);padding:4px 14px;border:1px solid transparent}
+  .sect.on{background:var(--phos);color:#000;font-weight:700}
+  .navspacer{flex:1}
+  .who{font-size:12px;color:var(--phos-dim);letter-spacing:1px;white-space:nowrap}
+  .subrow{display:flex;align-items:center;gap:6px;padding:7px 16px;border-top:1px solid var(--phos-faint);background:#020402;flex-wrap:wrap}
+  .subrow .kick{font-size:11px;letter-spacing:3px;color:var(--phos-mid);margin-right:4px}
+  .subitem{font-size:14px;letter-spacing:1px;color:var(--phos-dim);padding:3px 11px;border:1px solid transparent;white-space:nowrap}
+  .subitem.on{background:var(--phos);color:#000;font-weight:700}
+  .subitem.gone{color:var(--red-dim);text-decoration:line-through;opacity:.7;border:1px dashed var(--red-faint)}
+  .subitem .future{font-size:10px;opacity:.7;letter-spacing:2px}
+
+  /* ---- page body ---- */
+  .body{padding:20px 22px 26px}
+  .frame.phone .body{padding:13px 12px 20px}
+  .eyebrow{font-size:11px;letter-spacing:4px;color:var(--phos-mid);margin:0 0 4px}
+  .h2{font-family:'VT323',monospace;font-size:27px;letter-spacing:1px;color:var(--phos);margin:2px 0 4px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .h2 small{font-size:12px;letter-spacing:2px;color:var(--phos-mid);font-family:'Share Tech Mono'}
+  .divider{border:none;border-top:1px solid var(--phos-faint);margin:24px 0 14px}
+  .seclabel{font-size:13px;letter-spacing:3px;color:var(--phos-dim);margin:0 0 10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .seclabel .add{margin-left:auto}
+
+  /* ---- screen (ON AIR) cards ---- */
+  .screengrid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .frame.phone .screengrid{grid-template-columns:1fr}
+  .screen{border:1px solid var(--phos-dim);background:var(--panel2);padding:14px 15px;display:flex;flex-direction:column;gap:9px;position:relative}
+  .screen .top{display:flex;justify-content:space-between;align-items:center;gap:8px}
+  .screen .nm{font-family:'VT323',monospace;font-size:26px;letter-spacing:1px}
+  .dot{font-size:11px;white-space:nowrap;letter-spacing:1px;display:flex;align-items:center;gap:5px}
+  .dot::before{content:"●";font-size:10px}
+  .dot.live{color:var(--phos)} .dot.stale{color:var(--amber)} .dot.off{color:var(--red)}
+  .screen .meta{font-size:12px;color:var(--phos-mid);letter-spacing:1px}
+  .mode{display:inline-block;align-self:flex-start;font-size:11px;letter-spacing:2px;border:1px solid var(--phos-mid);color:var(--phos-dim);padding:2px 8px}
+  .mode.game{border-color:var(--amber-dim);color:var(--amber)}
+  .onair{font-size:12.5px;color:var(--phos-dim);line-height:1.55;min-height:34px}
+  .onair em{color:var(--phos);font-style:normal}
+  .onair .live{color:var(--phos)}
+  /* the THREE clean buttons */
+  .cardbtns{display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:7px;margin-top:2px}
+  .cbtn{font-family:'Share Tech Mono';font-size:14px;letter-spacing:1px;color:var(--phos);border:1px solid var(--phos-dim);
+    background:rgba(0,255,65,.05);padding:9px 6px;min-height:44px;display:flex;align-items:center;justify-content:center;gap:5px;text-align:center;cursor:pointer}
+  .cbtn:hover{background:rgba(0,255,65,.12)}
+  .cbtn.key{background:var(--phos);color:#000;font-weight:700;border-color:var(--phos)}
+  .cbtn.warn{color:var(--amber);border-color:var(--amber-dim);background:rgba(255,176,0,.05)}
+  .cbtn.over{padding:9px 10px;font-size:18px;color:var(--phos-mid)}
+  .oldbtns{display:flex;gap:6px;flex-wrap:wrap;margin-top:2px}
+  .oldbtn{font-size:12px;letter-spacing:1px;color:var(--red-dim);border:1px dashed var(--red-faint);padding:6px 9px;text-decoration:line-through;opacity:.75}
+
+  /* ---- asset library grid ---- */
+  .libgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+  .frame.phone .libgrid{grid-template-columns:1fr 1fr}
+  .asset{border:1px solid var(--phos-mid);background:var(--panel);display:flex;flex-direction:column;overflow:hidden;position:relative}
+  .asset .thumb{height:96px;background:
+      repeating-linear-gradient(135deg, rgba(0,255,65,.05) 0 9px, transparent 9px 18px), #030803;
+    border-bottom:1px solid var(--phos-faint);display:flex;align-items:center;justify-content:center;position:relative}
+  .asset .thumb .ic{font-size:34px;opacity:.85}
+  .asset .thumb.live::after{content:"◉ LIVE";position:absolute;top:6px;left:7px;font-size:9px;letter-spacing:1px;color:var(--phos-dim)}
+  .asset .tbadge{position:absolute;top:6px;right:7px;font-size:9px;letter-spacing:1px;color:var(--phos);background:#020602;border:1px solid var(--phos-mid);padding:2px 5px}
+  .asset .tbadge.smart{color:var(--amber);border-color:var(--amber-dim)}
+  .asset .info{padding:9px 10px;display:flex;flex-direction:column;gap:5px}
+  .asset .anm{font-family:'VT323',monospace;font-size:21px;letter-spacing:1px;line-height:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .asset .asub{font-size:11px;color:var(--phos-mid);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .asset .asub .price{color:var(--phos)}
+  .chips{display:flex;gap:4px;margin-top:2px}
+  .chip{font-size:11px;letter-spacing:1px;width:22px;height:22px;display:flex;align-items:center;justify-content:center;border:1px solid var(--phos-mid);color:var(--phos-mid)}
+  .chip.on{background:var(--phos);color:#000;border-color:var(--phos);font-weight:700}
+  .chip.event{border-color:var(--amber-dim);color:var(--amber)}
+  .chip.event.on{background:var(--amber);color:#000}
+  .asset.newtile{border-style:dashed;align-items:center;justify-content:center;min-height:210px;cursor:pointer;color:var(--phos-dim)}
+  .asset.newtile .big{font-family:'VT323',monospace;font-size:44px;line-height:1}
+  .asset.newtile .lbl{font-size:12px;letter-spacing:2px;margin-top:6px}
+
+  /* ---- picker modal ---- */
+  .modal{border:1px solid var(--phos-dim);background:var(--crt);box-shadow:0 0 40px rgba(0,0,0,.7);width:100%}
+  .modal .mhead{border-bottom:1px solid var(--phos-mid);padding:12px 16px;display:flex;justify-content:space-between;align-items:center}
+  .modal .mtitle{font-family:'VT323',monospace;font-size:26px;letter-spacing:2px}
+  .modal .mx{font-size:20px;color:var(--phos-dim)}
+  .modal .mbody{padding:16px 18px;display:flex;flex-direction:column;gap:16px}
+  .picktabs{display:flex;gap:8px}
+  .ptab{flex:1;text-align:center;font-size:14px;letter-spacing:2px;padding:9px;border:1px solid var(--phos-mid);color:var(--phos-dim)}
+  .ptab.on{background:var(--phos);color:#000;font-weight:700;border-color:var(--phos)}
+  .tiles{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:9px}
+  .frame.phone .tiles,.frame.narrow .tiles{grid-template-columns:1fr 1fr}
+  .tile{border:1px solid var(--phos-mid);background:var(--panel);padding:12px 10px;display:flex;flex-direction:column;gap:5px;align-items:flex-start;text-align:left}
+  .tile .ti{font-size:26px}
+  .tile .tl{font-size:15px;font-weight:700;letter-spacing:1px}
+  .tile .tb{font-size:11px;color:var(--phos-mid);line-height:1.4}
+  .tile.smart{border-color:var(--amber-dim)} .tile.smart .tl{color:var(--amber)}
+  .libpicklist{display:flex;flex-direction:column;gap:7px}
+  .libpickrow{border:1px solid var(--phos-mid);background:var(--panel);padding:9px 12px;display:flex;align-items:center;gap:11px}
+  .libpickrow .lt{width:34px;height:34px;border:1px solid var(--phos-mid);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;background:#030803}
+  .libpickrow .ln{flex:1;min-width:0}
+  .libpickrow .ln b{font-family:'VT323',monospace;font-size:19px;letter-spacing:1px;display:block;line-height:1.1}
+  .libpickrow .ln span{font-size:11px;color:var(--phos-mid)}
+  .libpickrow .addq{font-size:13px;letter-spacing:1px;color:#000;background:var(--phos);font-weight:700;padding:7px 12px;white-space:nowrap}
+  .libpickrow.have{opacity:.5}
+  .libpickrow.have .addq{background:transparent;color:var(--phos-mid);border:1px solid var(--phos-mid);font-weight:400}
+
+  /* ---- queue slide-over ---- */
+  .qhead{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:4px}
+  .qhead .qs{font-family:'VT323',monospace;font-size:26px;letter-spacing:1px}
+  .qnote{font-size:12.5px;color:var(--phos-mid);line-height:1.55;margin-bottom:12px}
+  .qnote .live{color:var(--phos)}
+  .qrow{border:1px solid var(--phos-mid);background:var(--panel);padding:9px 12px;display:flex;align-items:center;gap:11px}
+  .qrow+.qrow{margin-top:8px}
+  .qrow.evt{background:rgba(0,255,65,.04);border-color:var(--phos-dim)}
+  .qrow.star{opacity:.85}
+  .qrow.off{opacity:.5}
+  .qgrip{display:flex;flex-direction:column;gap:2px;color:var(--phos-dim);font-size:13px;flex-shrink:0}
+  .qthumb{width:40px;height:40px;border:1px solid var(--phos-mid);display:flex;align-items:center;justify-content:center;font-size:19px;flex-shrink:0;background:#030803}
+  .qmain{flex:1;min-width:0}
+  .qmain .qn{font-family:'VT323',monospace;font-size:20px;letter-spacing:1px;line-height:1.1;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .qmain .qmeta{font-size:11.5px;color:var(--phos-mid);margin-top:2px}
+  .qbadge{font-size:9px;letter-spacing:1px;border:1px solid var(--phos-mid);color:var(--phos-dim);padding:1px 5px}
+  .qbadge.evt{border-color:var(--amber-dim);color:var(--amber)}
+  .qbadge.star{border-color:var(--phos-mid);color:var(--phos-dim)}
+  .nowtag{font-size:10px;letter-spacing:1px;color:var(--phos)}
+  .qacts{display:flex;align-items:center;gap:6px;flex-shrink:0}
+  .secsel{background:#000;color:var(--phos);border:1px solid var(--phos-mid);font-family:'Share Tech Mono';font-size:13px;padding:5px 6px;min-height:34px}
+  .qib{width:34px;height:34px;border:1px solid var(--phos-mid);color:var(--phos-dim);display:flex;align-items:center;justify-content:center;font-size:13px;background:transparent}
+  .qib.rm{color:var(--amber);border-color:var(--amber-dim)}
+  .qib.pos{color:var(--phos-mid)}
+  .qmanage{font-size:12px;color:var(--phos-mid);letter-spacing:1px;white-space:nowrap}
+
+  /* ---- takeover / broadcast ---- */
+  .field{margin-bottom:14px}
+  .flabel{font-size:12px;letter-spacing:2px;color:var(--phos-dim);margin-bottom:5px}
+  .finput{border:1px solid var(--phos-mid);background:#020402;color:var(--phos);padding:10px 12px;font-size:16px;letter-spacing:1px;width:100%}
+  .toggle{display:flex;align-items:center;gap:10px;border:1px solid var(--phos-mid);background:var(--panel);padding:11px 13px}
+  .toggle .box{width:22px;height:22px;border:1px solid var(--phos);display:flex;align-items:center;justify-content:center;color:var(--phos);flex-shrink:0}
+  .toggle .box.on{background:var(--phos);color:#000}
+  .toggle .tt{font-size:14px;letter-spacing:1px}
+  .toggle .td{font-size:11px;color:var(--phos-mid);margin-top:2px}
+  .bigbtn{width:100%;min-height:54px;border:1px solid var(--red-dim);background:rgba(255,65,54,.08);color:var(--red);
+    font-family:'VT323',monospace;font-size:26px;letter-spacing:2px;display:flex;align-items:center;justify-content:center;gap:8px;margin-top:6px}
+  .scoped{font-size:12px;color:var(--phos-mid);text-align:center;margin-top:8px;letter-spacing:1px}
+  .scoped b{color:var(--phos)}
+
+  /* ---- schedule rows (running & upcoming) ---- */
+  .schedrow{border:1px solid var(--phos-mid);background:var(--panel);padding:10px 13px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+  .schedrow+.schedrow{margin-top:8px}
+  .schedrow .main{flex:1 1 220px;min-width:0}
+  .schedrow .rn{font-family:'VT323',monospace;font-size:21px;letter-spacing:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .schedrow .rw{font-size:12px;color:var(--phos-mid)}
+  .rbadge{font-size:10px;letter-spacing:1px;border:1px solid var(--phos-mid);color:var(--phos-dim);padding:2px 7px;white-space:nowrap}
+  .rbadge.win{border-color:var(--amber-dim);color:var(--amber)}
+  .rstat{font-size:12px;letter-spacing:1px;white-space:nowrap}
+  .rstat.now{color:var(--phos)} .rstat.up{color:var(--phos-mid)}
+  .rowbtn{font-size:12px;letter-spacing:1px;color:var(--phos);border:1px solid var(--phos-mid);padding:6px 11px;background:transparent}
+  .rowbtn.fire{color:var(--amber);border-color:var(--amber-dim)}
+
+  /* ---- ★ featured on POS ---- */
+  .featwrap{border:1px solid var(--phos-mid);background:var(--panel);padding:13px 15px}
+  .featwrap .fh{font-family:'VT323',monospace;font-size:23px;letter-spacing:1px;display:flex;gap:10px;align-items:baseline;flex-wrap:wrap}
+  .featwrap .fh small{font-size:11px;color:var(--phos-mid);letter-spacing:2px;font-family:'Share Tech Mono'}
+  .featwrap .fd{font-size:12px;color:var(--phos-mid);line-height:1.5;margin:5px 0 11px}
+  .featgrid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+  .frame.phone .featgrid{grid-template-columns:1fr}
+  .featitem{border:1px solid var(--phos-mid);display:flex;align-items:center;gap:9px;padding:7px 9px}
+  .featitem .fi{width:34px;height:34px;border:1px solid var(--phos);flex-shrink:0;background:#030803}
+  .featitem .fn{flex:1;min-width:0;font-size:16px;color:var(--phos);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .featitem .fp{font-size:15px;color:var(--phos)}
+
+  /* ---- DECISION badge (matches prior mockups' amber-callout convention) ---- */
+  .decision{border:1px solid var(--amber-dim);background:rgba(255,176,0,.06);padding:10px 13px;display:flex;gap:9px;align-items:flex-start;max-width:900px;width:100%}
+  .decision .tag{font-family:'VT323',monospace;font-size:16px;letter-spacing:2px;color:var(--amber);white-space:nowrap;flex-shrink:0;border:1px solid var(--amber-dim);padding:1px 7px;margin-top:1px}
+  .decision .dt{font-size:12.5px;color:var(--amber-dim);line-height:1.6}
+  .decision .dt b{color:var(--amber)}
+  .decision .dt .alt{color:var(--phos-mid)}
+  .decisions{display:flex;flex-direction:column;gap:9px;width:100%;max-width:900px;margin-top:2px}
+
+  /* ---- callouts ---- */
+  .callouts{max-width:900px;width:100%;display:flex;flex-direction:column;gap:8px;margin-top:4px}
+  .callout{display:flex;gap:9px;align-items:flex-start;font-size:12.5px;color:var(--phos-dim);line-height:1.6}
+  .callout::before{content:"◂";color:var(--amber-dim);flex-shrink:0}
+  .callout b{color:var(--phos)}
+  .callout.amber::before{content:"⚠";color:var(--amber)}
+  .callout.amber{color:var(--amber-dim)}
+  .callout.amber b{color:var(--amber)}
+  .annot{max-width:900px;text-align:center;font-size:12.5px;letter-spacing:1px;color:var(--phos);border:1px solid var(--phos-mid);
+    background:rgba(0,255,65,.05);padding:10px 15px;line-height:1.6}
+  .annot b{color:var(--phos)}
+
+  /* ---- schema block ---- */
+  .schema{max-width:900px;width:100%;display:flex;flex-direction:column;gap:14px}
+  .sqlbox{border:1px solid var(--phos-mid);background:#020602;padding:14px 16px;font-family:'JetBrains Mono',monospace;font-size:12.5px;line-height:1.7;overflow-x:auto;color:var(--phos-dim);white-space:pre}
+  .sqlbox .kw{color:var(--phos)} .sqlbox .cm{color:var(--phos-mid);opacity:.75} .sqlbox .am{color:var(--amber-dim)}
+  .steps{display:flex;flex-direction:column;gap:8px}
+  .step{border:1px solid var(--phos-mid);background:var(--panel);padding:11px 14px;display:flex;gap:12px;align-items:flex-start}
+  .step .no{font-family:'VT323',monospace;font-size:24px;color:var(--phos);flex-shrink:0;width:30px}
+  .step .sc{font-size:12.5px;color:var(--phos-dim);line-height:1.6}
+  .step .sc b{color:var(--phos)}
+  code{font-family:'JetBrains Mono',monospace;font-size:.9em;color:var(--phos);background:rgba(0,255,65,.08);padding:0 3px}
+
+  /* ---- view switcher ---- */
+  .switch{position:fixed;bottom:0;left:0;right:0;z-index:200;background:#000;border-top:1px solid var(--phos-dim);
+    display:flex;justify-content:center;flex-wrap:wrap;gap:5px;padding:9px 8px}
+  .switch button{font-family:'Share Tech Mono',monospace;font-size:12px;letter-spacing:1px;color:var(--phos-dim);
+    border:1px solid var(--phos-faint);background:transparent;padding:8px 11px;cursor:pointer}
+  .switch button:hover{color:var(--phos)}
+  .switch button.cur{color:#000;background:var(--phos);border-color:var(--phos);font-weight:700}
+
+  @media(max-width:900px){
+    .screengrid,.libgrid,.tiles,.featgrid{grid-template-columns:1fr 1fr!important}
+    .cardbtns{grid-template-columns:1fr 1fr 1fr auto}
+  }
+</style>
+</head>
+<body>
+
+<div class="pagehead">
+  <h1>SIGNAGE HUB — CONSOLIDATION</h1>
+  <p>Your directive, drawn up so you can ratify it at a glance. <b>One SIGNAGE screen for all of bar-ops signage</b> — no Events tab, no Broadcast tab. Assets you build once and queue on any screen. Eight views, deep-linkable (#cards · #library · #picker · #queue · #takeover · #events · #mobile · #schema).</p>
+  <div class="quote">
+    "from the signage hub i should have a <b>single click to add an item to a screen</b>" · "access to the <b>same assets</b> on both portrait and landscape but <b>different queues</b>" · "the buttons on the signage cards should be <b>cleaner</b>" · "the Events and Promos tab is redundant… I like the lower half of the hub" · "<b>broadcast tab can go away</b>" · "eliminate all tabs and only have the signage hub. future tabs would be other bar ops like the media player/scheduler."
+  </div>
+</div>
+<div class="viewcap" id="viewcap"></div>
+<div class="subcap" id="subcap"></div>
+
+<!-- ══════════════ VIEW 1 · HUB / SCREEN CARDS (#cards) ══════════════ -->
+<div class="view" id="v1">
+  <div class="frame desktop">
+    <div class="navbar">
+      <div class="navrow">
+        <span class="brand">◭ BUNKER OS</span>
+        <span class="sect">HOME</span>
+        <span class="sect">TRIVIA</span>
+        <span class="sect on">BAR OPS</span>
+        <span class="sect">SYSTEM</span>
+        <span class="navspacer"></span>
+        <span class="who">VIEWING AS ADMIN</span>
+      </div>
+      <div class="subrow">
+        <span class="kick">BAR OPS</span>
+        <span class="subitem on">SIGNAGE</span>
+        <span class="subitem">TOP SELLERS</span>
+        <span class="subitem gone">EVENTS &amp; PROMOS</span>
+        <span class="subitem gone">BROADCAST</span>
+        <span class="subitem future">▸ MEDIA PLAYER (future)</span>
+      </div>
+    </div>
+    <div class="body">
+      <div class="eyebrow">BAR OPS ▸ SIGNAGE HUB</div>
+      <div class="h2">SIGNAGE HUB <small>ONE PAGE — SCREENS, ASSETS, EVENTS</small></div>
+
+      <div class="seclabel">◉ ON AIR NOW · what each screen is showing this second</div>
+      <div class="screengrid">
+
+        <div class="screen">
+          <div class="top"><span class="nm">PORTRAIT-MAIN</span><span class="dot live">ON AIR</span></div>
+          <div class="meta">PORTRAIT · TERMINAL 01 — BY THE DOOR</div>
+          <span class="mode">MODE: ROTATION</span>
+          <div class="onair"><em>4 assets rotating:</em> SPUTNIK · TOP SELLERS · @BUNKERCLUBOKC · POISON APPLE <span class="live">· + ★ featured</span></div>
+          <div class="cardbtns">
+            <span class="cbtn key">+ ADD</span>
+            <span class="cbtn">QUEUE</span>
+            <span class="cbtn warn">TAKEOVER</span>
+            <span class="cbtn over">⋯</span>
+          </div>
+        </div>
+
+        <div class="screen">
+          <div class="top"><span class="nm">LANDSCAPE-BAR</span><span class="dot live">ON AIR</span></div>
+          <div class="meta">LANDSCAPE · TERMINAL 02 — BEHIND THE BAR</div>
+          <span class="mode">MODE: ROTATION</span>
+          <div class="onair"><em>3 assets rotating:</em> TOP SELLERS · SPUTNIK · BEST OF OKC <span class="live">· + ★ featured</span></div>
+          <div class="cardbtns">
+            <span class="cbtn key">+ ADD</span>
+            <span class="cbtn">QUEUE</span>
+            <span class="cbtn warn">TAKEOVER</span>
+            <span class="cbtn over">⋯</span>
+          </div>
+        </div>
+
+      </div>
+
+      <div class="callout" style="margin-top:11px"><span>The <b>⋯ overflow</b> holds KIOSK URL (copy), PREVIEW (rotation-only, never a TV), and screen health details — demoted so the three buttons that matter read clean.</span></div>
+
+      <hr class="divider">
+      <div class="seclabel">RUNNING &amp; UPCOMING · promos &amp; events, live and scheduled <span class="add"><span class="rowbtn" style="color:#000;background:var(--phos);font-weight:700;border-color:var(--phos)">+ NEW EVENT</span></span></div>
+      <div class="schedrow">
+        <div class="main"><div class="rn">HAPPY HOUR</div><div class="rw">daily 4:00–7:00 PM · WINDOW</div></div>
+        <span class="rbadge win">WINDOW</span><span class="rstat now">● ACTIVE NOW</span>
+        <span class="rowbtn fire">PAUSE</span><span class="rowbtn">EDIT</span>
+      </div>
+      <div class="schedrow">
+        <div class="main"><div class="rn">BEST OF OKC — VOTE</div><div class="rw">till close · MESSAGE · 🌐 on the website</div></div>
+        <span class="rbadge">MESSAGE</span><span class="rstat now">● ACTIVE NOW</span>
+        <span class="rowbtn fire">PAUSE</span><span class="rowbtn">EDIT</span>
+      </div>
+      <div class="schedrow">
+        <div class="main"><div class="rn">ROCKET LAUNCH</div><div class="rw">Sun Jul 20 · 4:00 PM · MOMENT · live counter</div></div>
+        <span class="rbadge">MOMENT</span><span class="rstat up">▲ UPCOMING</span>
+        <span class="rowbtn fire">FIRE NOW</span><span class="rowbtn">EDIT</span>
+      </div>
+      <div class="callout amber" style="margin-top:10px"><span>This is <b>exactly the panel you already like</b> — it now owns events outright. <b>+ NEW EVENT</b> is inline and a row click opens the event editor as a slide-over. That is what lets the EVENTS &amp; PROMOS tab retire.</span></div>
+
+      <hr class="divider">
+      <div class="featwrap">
+        <div class="fh">★ FEATURED ON POS <small>read-only — flipped at the register</small></div>
+        <div class="fd">In-stock items in the Toast ★ SCREENS group auto-rotate onto every screen. Managed at the POS (Toast access is read-only) — unchanged.</div>
+        <div class="featgrid">
+          <div class="featitem"><span class="fi"></span><span class="fn">MANHATTAN PROJECT</span><span class="fp">$11</span></div>
+          <div class="featitem"><span class="fi"></span><span class="fn">GREEN TEA SHOT</span><span class="fp">$5</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="annot"><b>The whole page is the hub.</b> Screen cards up top (3 clean buttons each), the running/upcoming panel you like in the middle, ★ POS at the bottom. Everything that used to be a tab now lives here or opens as a slide-over.</div>
+
+  <div class="decisions">
+    <div class="decision"><span class="tag">DECISION 1</span><span class="dt"><b>Screen cards get exactly three buttons: + ADD · QUEUE · TAKEOVER</b> — KIOSK URL, PREVIEW &amp; health move to a ⋯ overflow. <span class="alt">Alt: keep EDIT ROTATION as a labelled button and skip the overflow. This mock demotes the URL because you copy it once at setup, not daily.</span></span></div>
+    <div class="decision"><span class="tag">DECISION 2</span><span class="dt"><b>TAKEOVER on a card targets THAT screen; an "all screens" toggle inside sends venue-wide.</b> <span class="alt">Today every takeover is venue-wide only — per-screen is a new capability (schema note in #schema). Alt: keep takeover venue-wide, one button, no per-screen scoping.</span></span></div>
+  </div>
+</div>
+
+<!-- ══════════════ VIEW 2 · ASSET LIBRARY (#library) ══════════════ -->
+<div class="view" id="v2">
+  <div class="frame desktop">
+    <div class="navbar">
+      <div class="navrow">
+        <span class="brand">◭ BUNKER OS</span>
+        <span class="sect on">BAR OPS</span><span class="sect">TRIVIA</span><span class="sect">SYSTEM</span>
+        <span class="navspacer"></span><span class="who">VIEWING AS ADMIN</span>
+      </div>
+    </div>
+    <div class="body">
+      <div class="eyebrow">BAR OPS ▸ SIGNAGE HUB ▸ ASSET LIBRARY</div>
+      <div class="h2">ASSET LIBRARY <small>BUILD ONCE · QUEUE ANYWHERE</small></div>
+      <div class="callout" style="margin-bottom:14px"><span>Every signage item is a <b>venue-wide asset</b>. Build it once here; queue it on portrait, landscape, or both. The <b>P</b> / <b>L</b> chips show which screens it currently runs on.</span></div>
+
+      <div class="libgrid">
+        <div class="asset newtile"><span class="big">+</span><span class="lbl">NEW ASSET</span></div>
+
+        <div class="asset">
+          <div class="thumb live"><span class="ic">🍸</span></div>
+          <span class="tbadge">DRINK</span>
+          <div class="info">
+            <div class="anm">SPUTNIK</div>
+            <div class="asub"><span class="price">$9</span> · SIGNATURE COCKTAIL · live from Toast</div>
+            <div class="chips"><span class="chip on">P</span><span class="chip on">L</span></div>
+          </div>
+        </div>
+
+        <div class="asset">
+          <div class="thumb live"><span class="ic">📊</span></div>
+          <span class="tbadge smart">TOP 5</span>
+          <div class="info">
+            <div class="anm">TOP SELLERS</div>
+            <div class="asub">live top-5 from the POS · auto</div>
+            <div class="chips"><span class="chip on">P</span><span class="chip on">L</span></div>
+          </div>
+        </div>
+
+        <div class="asset">
+          <div class="thumb live"><span class="ic">▦</span></div>
+          <span class="tbadge smart">INSTAGRAM</span>
+          <div class="info">
+            <div class="anm">@BUNKERCLUBOKC</div>
+            <div class="asub">recent posts · caption + QR</div>
+            <div class="chips"><span class="chip on">P</span><span class="chip">L</span></div>
+          </div>
+        </div>
+
+        <div class="asset">
+          <div class="thumb"><span class="ic">🍸</span></div>
+          <span class="tbadge">DRINK</span>
+          <div class="info">
+            <div class="anm">POISON APPLE</div>
+            <div class="asub"><span class="price">$10</span> · SEASONAL · live from Toast</div>
+            <div class="chips"><span class="chip on">P</span><span class="chip">L</span></div>
+          </div>
+        </div>
+
+        <div class="asset">
+          <div class="thumb"><span class="ic">🎯</span></div>
+          <span class="tbadge smart">SMART TOAST</span>
+          <div class="info">
+            <div class="anm">UNDERDOGS</div>
+            <div class="asub">auto — bottom sellers this week</div>
+            <div class="chips"><span class="chip">P</span><span class="chip on">L</span></div>
+          </div>
+        </div>
+
+        <div class="asset">
+          <div class="thumb"><span class="ic">▮</span></div>
+          <span class="tbadge">MESSAGE</span>
+          <div class="info">
+            <div class="anm">FOLLOW US</div>
+            <div class="asub">announcement · typewriter</div>
+            <div class="chips"><span class="chip">P</span><span class="chip">L</span></div>
+          </div>
+        </div>
+
+        <div class="asset">
+          <div class="thumb"><span class="ic">🖼</span></div>
+          <span class="tbadge">IMAGE</span>
+          <div class="info">
+            <div class="anm">PATIO FLYER</div>
+            <div class="asub">full-frame photo · uploaded</div>
+            <div class="chips"><span class="chip">P</span><span class="chip">L</span></div>
+          </div>
+        </div>
+
+      </div>
+
+      <div class="callout amber" style="margin-top:14px"><span>An asset with <b>no P/L chips lit is idle</b> — it exists in the library but isn't queued on any screen. Building an asset never forces it on air; queueing does. Deleting an asset removes it everywhere and is a separate, guarded action (see #queue).</span></div>
+    </div>
+  </div>
+
+  <div class="decisions">
+    <div class="decision"><span class="tag">DECISION 3</span><span class="dt"><b>Library is a thumbnail GRID with a type badge + P/L chips</b>, not the current list of schedule rows. <span class="alt">Alt: a denser list view (sortable, one row each). Grid reads faster at a glance and shows the photo; list packs more on a phone.</span></span></div>
+    <div class="decision"><span class="tag">DECISION 5</span><span class="dt"><b>TOP SELLERS, INSTAGRAM &amp; SMART TOAST are just assets</b> — click one to open its settings; no separate tab or page anywhere. They render live/auto, so their "content" is the POS/IG feed, not typed copy. <span class="alt">This is the "eliminate all tabs" ask applied to the smart cards.</span></span></div>
+  </div>
+</div>
+
+<!-- ══════════════ VIEW 3 · + ADD PICKER (#picker) ══════════════ -->
+<div class="view" id="v3">
+  <div class="frame narrow">
+    <div class="body">
+      <div class="eyebrow">PORTRAIT-MAIN ▸ + ADD</div>
+      <div class="modal">
+        <div class="mhead"><span class="mtitle">ADD TO PORTRAIT-MAIN</span><span class="mx">✕</span></div>
+        <div class="mbody">
+          <div class="picktabs"><span class="ptab on">NEW ASSET</span><span class="ptab">FROM LIBRARY</span></div>
+
+          <div>
+            <div class="flabel">CREATE A NEW ASSET AND QUEUE IT HERE</div>
+            <div class="tiles">
+              <div class="tile"><span class="ti">🍺</span><span class="tl">DRINK SPECIAL</span><span class="tb">Featured pour — price + photo</span></div>
+              <div class="tile"><span class="ti">📅</span><span class="tl">EVENT</span><span class="tb">Upcoming night — date + blurb</span></div>
+              <div class="tile"><span class="ti">▮</span><span class="tl">ANNOUNCEMENT</span><span class="tb">Text bulletin, typewriter</span></div>
+              <div class="tile"><span class="ti">🖼</span><span class="tl">IMAGE</span><span class="tb">Full-frame photo / flyer</span></div>
+              <div class="tile"><span class="ti">✸</span><span class="tl">CELEBRATION</span><span class="tb">Birthday, bachelor, congrats</span></div>
+              <div class="tile"><span class="ti">📊</span><span class="tl">TOP SELLERS</span><span class="tb">Live top-5 from the POS</span></div>
+              <div class="tile"><span class="ti">▦</span><span class="tl">INSTAGRAM</span><span class="tb">Recent @posts — caption + QR</span></div>
+              <div class="tile smart"><span class="ti">🎯</span><span class="tl">SMART TOAST</span><span class="tb">Underdogs or champion — auto</span></div>
+            </div>
+          </div>
+
+          <hr class="divider" style="margin:6px 0">
+
+          <div>
+            <div class="flabel">…OR PULL ONE YOU ALREADY BUILT (NOT YET ON THIS SCREEN)</div>
+            <div class="libpicklist">
+              <div class="libpickrow"><span class="lt">📊</span><span class="ln"><b>TOP SELLERS</b><span>live top-5 · already on landscape</span></span><span class="addq">+ QUEUE</span></div>
+              <div class="libpickrow"><span class="lt">🎯</span><span class="ln"><b>UNDERDOGS</b><span>smart toast · already on landscape</span></span><span class="addq">+ QUEUE</span></div>
+              <div class="libpickrow"><span class="lt">🖼</span><span class="ln"><b>PATIO FLYER</b><span>image · idle</span></span><span class="addq">+ QUEUE</span></div>
+              <div class="libpickrow have"><span class="lt">🍸</span><span class="ln"><b>SPUTNIK</b><span>already queued here</span></span><span class="addq">ON THIS SCREEN</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="annot"><b>One click, two paths.</b> <b>+ ADD</b> on a screen card opens this. Build something new (top) or drop in an asset you already made (bottom) — this is the "same assets on both screens" ask. Either way it lands in this screen's queue in one tap.</div>
+
+  <div class="decisions">
+    <div class="decision"><span class="tag">DECISION 6</span><span class="dt"><b>FROM LIBRARY lists only assets NOT already on this screen</b>; ones already queued show greyed as "ON THIS SCREEN". <span class="alt">This is what makes "same asset, both screens, different queues" a single tap rather than a rebuild.</span></span></div>
+  </div>
+</div>
+
+<!-- ══════════════ VIEW 4 · QUEUE SLIDE-OVER (#queue) ══════════════ -->
+<div class="view" id="v4">
+  <div class="frame narrow">
+    <div class="body">
+      <div class="eyebrow">PORTRAIT-MAIN ▸ QUEUE</div>
+      <div class="qhead"><span class="qs">PORTRAIT-MAIN QUEUE</span><span class="dot live" style="margin-left:auto">ON AIR</span></div>
+      <div class="qnote">The exact order the TV resolves right now. <span class="live">● NOW</span> = on screen this minute. Drag ⠿ to reorder; per-screen <b>SECS</b> is this screen's dwell — the same asset can run longer on landscape. This is your <b>live-queue editor</b>, unchanged in feel — only the rows are library assets now.</div>
+
+      <div class="qrow">
+        <span class="qgrip">⠿</span>
+        <span class="qthumb">🍸</span>
+        <div class="qmain"><div class="qn">SPUTNIK <span class="qbadge">DRINK</span> <span class="nowtag">● NOW</span></div><div class="qmeta">live $9 from Toast · shared asset</div></div>
+        <div class="qacts"><select class="secsel"><option>20s</option></select><span class="qib">▲</span><span class="qib">▼</span><span class="qib rm" title="Remove from THIS queue (asset stays in the library)">✕</span></div>
+      </div>
+
+      <div class="qrow evt">
+        <span class="qgrip">⠿</span>
+        <span class="qthumb">📅</span>
+        <div class="qmain"><div class="qn">HAPPY HOUR <span class="qbadge evt">EVENT · ALL SCREENS</span> <span class="nowtag">● NOW</span></div><div class="qmeta">ENDS 7:00 PM · venue-wide event — reordering moves it everywhere</div></div>
+        <div class="qacts"><select class="secsel"><option>12s</option></select><span class="qib">▲</span><span class="qib">▼</span></div>
+      </div>
+
+      <div class="qrow">
+        <span class="qgrip">⠿</span>
+        <span class="qthumb">📊</span>
+        <div class="qmain"><div class="qn">TOP SELLERS <span class="qbadge">TOP 5</span> <span class="nowtag">● NOW</span></div><div class="qmeta">live from the POS · shared asset (also on landscape)</div></div>
+        <div class="qacts"><select class="secsel"><option>25s</option></select><span class="qib">▲</span><span class="qib">▼</span><span class="qib rm" title="Remove from THIS queue">✕</span></div>
+      </div>
+
+      <div class="qrow">
+        <span class="qgrip">⠿</span>
+        <span class="qthumb">▦</span>
+        <div class="qmain"><div class="qn">@BUNKERCLUBOKC <span class="qbadge">INSTAGRAM</span> <span class="nowtag">● NOW</span></div><div class="qmeta">recent posts · shared asset</div></div>
+        <div class="qacts"><select class="secsel"><option>15s</option></select><span class="qib">▲</span><span class="qib">▼</span><span class="qib rm">✕</span></div>
+      </div>
+
+      <div class="qrow star">
+        <span class="qgrip" style="opacity:.3">⠿</span>
+        <span class="qthumb">★</span>
+        <div class="qmain"><div class="qn">MANHATTAN PROJECT <span class="qbadge star">★ SCREENS</span> <span class="nowtag">● NOW</span></div><div class="qmeta">auto — flipped in at the POS · 20s</div></div>
+        <div class="qacts"><span class="qmanage">MANAGE AT POS</span></div>
+      </div>
+
+      <div class="qrow off">
+        <span class="qgrip">⠿</span>
+        <span class="qthumb">🍸</span>
+        <div class="qmain"><div class="qn">POISON APPLE <span class="qbadge">DRINK</span></div><div class="qmeta">off — outside its 8PM–close window right now</div></div>
+        <div class="qacts"><select class="secsel"><option>20s</option></select><span class="qib">▲</span><span class="qib">▼</span><span class="qib rm">✕</span></div>
+      </div>
+
+      <div class="callout amber" style="margin-top:14px"><span><b>Two different actions, kept visually distinct:</b> <span style="color:var(--amber)">✕ REMOVE</span> takes an asset off THIS screen's queue — it stays in the library and on any other screen. <b>DELETE</b> (destroys the asset everywhere) lives only inside the asset's own editor, behind a confirm. You can never delete an asset by clearing a queue.</span></div>
+    </div>
+  </div>
+
+  <div class="decisions">
+    <div class="decision"><span class="tag">DECISION 4</span><span class="dt"><b>Remove-from-queue and delete-asset are separate affordances.</b> ✕ on a queue row only unqueues; DELETE is inside the asset editor. <span class="alt">Alt: a single ✕ that deletes when the asset is on no other screen. This mock keeps them apart so a queue tidy-up never nukes an asset.</span></span></div>
+    <div class="decision"><span class="tag">DECISION 7</span><span class="dt"><b>Editing a shared asset changes it on EVERY screen it runs.</b> Sputnik's price/photo edit once, everywhere. <span class="alt">Alt: per-screen overrides (a copy-on-edit fork). This mock treats an asset as one object; per-screen difference is limited to position + SECS. Flag if you want per-screen content overrides.</span></span></div>
+    <div class="decision"><span class="tag">DECISION 8</span><span class="dt"><b>Events stay their own venue-wide object</b> and materialize into every queue as an "ALL SCREENS" row (as today) — they are NOT converted into library assets. <span class="alt">Keeps your RUNNING &amp; UPCOMING panel authoritative for scheduling; the queue just shows where the event card lands.</span></span></div>
+  </div>
+</div>
+
+<!-- ══════════════ VIEW 5 · TAKEOVER (#takeover) ══════════════ -->
+<div class="view" id="v5">
+  <div class="frame narrow">
+    <div class="body">
+      <div class="eyebrow">PORTRAIT-MAIN ▸ TAKEOVER</div>
+      <div class="modal">
+        <div class="mhead"><span class="mtitle">SEND A TAKEOVER</span><span class="mx">✕</span></div>
+        <div class="mbody">
+          <div class="field">
+            <div class="flabel">MESSAGE</div>
+            <div class="finput">LAST CALL — GET YOUR FINAL ROUND IN</div>
+          </div>
+          <div class="field">
+            <div class="flabel">HOLD FOR</div>
+            <div class="finput" style="display:flex;justify-content:space-between"><span>5 MINUTES</span><span style="color:var(--phos-mid)">▾</span></div>
+          </div>
+          <div class="field">
+            <div class="toggle">
+              <span class="box">✓</span>
+              <div><div class="tt">ALL SCREENS</div><div class="td">off = just PORTRAIT-MAIN · on = every screen in the venue</div></div>
+            </div>
+          </div>
+          <div class="bigbtn">■ PUSH TAKEOVER</div>
+          <div class="scoped">Scoped to <b>PORTRAIT-MAIN</b> — one click from that card's TAKEOVER button. Flip <b>ALL SCREENS</b> for a venue-wide priority broadcast (the old Broadcast tab's whole job).</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="annot">The <b>Broadcast tab is gone.</b> Its one job — push a priority message over the screens — is now the <b>TAKEOVER</b> button on each card. Per-screen by default, venue-wide with one toggle. This is the "one click on the sign card to the picker you already have designed" ask.</div>
+
+  <div class="callout amber"><span><b>Cost note:</b> today <code>screen_takeovers</code> is venue-wide only — there is no per-screen column. Per-screen takeover needs a nullable <code>slot_id</code> on that table (null = all screens). Small, additive; detailed in #schema.</span></div>
+</div>
+
+<!-- ══════════════ VIEW 6 · RUNNING & UPCOMING + EVENT SLIDE-OVER (#events) ══════════════ -->
+<div class="view" id="v6">
+  <div class="frame desktop">
+    <div class="body">
+      <div class="eyebrow">BAR OPS ▸ SIGNAGE HUB ▸ RUNNING &amp; UPCOMING</div>
+      <div class="h2">RUNNING &amp; UPCOMING <small>THIS RETIRES THE EVENTS &amp; PROMOS TAB</small></div>
+      <div class="callout" style="margin-bottom:14px"><span>You said you like this panel and that the Events tab just repeats it. So the panel <b>absorbs the tab</b>: <b>+ NEW EVENT</b> inline, and clicking any row opens the full event editor as a slide-over — no separate page.</span></div>
+
+      <div class="seclabel">EVENTS &amp; PROMOS · live and scheduled <span class="add"><span class="rowbtn" style="color:#000;background:var(--phos);font-weight:700;border-color:var(--phos)">+ NEW EVENT</span></span></div>
+      <div class="schedrow" style="border-color:var(--phos-dim);background:rgba(0,255,65,.05)">
+        <div class="main"><div class="rn">HAPPY HOUR ◂ editing</div><div class="rw">daily 4:00–7:00 PM · WINDOW</div></div>
+        <span class="rbadge win">WINDOW</span><span class="rstat now">● ACTIVE NOW</span>
+        <span class="rowbtn fire">PAUSE</span><span class="rowbtn" style="color:#000;background:var(--phos);font-weight:700">EDITING ▾</span>
+      </div>
+
+      <!-- slide-over editor, inline under the row being edited -->
+      <div class="modal" style="margin:8px 0 2px;border-color:var(--phos-dim)">
+        <div class="mhead"><span class="mtitle" style="font-size:22px">EDIT EVENT — HAPPY HOUR</span><span class="mx">✕</span></div>
+        <div class="mbody">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+            <div class="field" style="margin:0"><div class="flabel">TITLE</div><div class="finput">HAPPY HOUR</div></div>
+            <div class="field" style="margin:0"><div class="flabel">KIND</div><div class="finput" style="display:flex;justify-content:space-between"><span>WINDOW</span><span style="color:var(--phos-mid)">▾</span></div></div>
+            <div class="field" style="margin:0"><div class="flabel">WINDOW</div><div class="finput">daily · 4:00 PM → 7:00 PM</div></div>
+            <div class="field" style="margin:0"><div class="flabel">DIRECTIVE</div><div class="finput">ALL DRAFTS &amp; WELLS — HALF OFF</div></div>
+          </div>
+          <div class="toggle" style="margin-top:12px"><span class="box on">✓</span><div><div class="tt">🌐 ADVERTISE ON THE WEBSITE</div><div class="td">also shows in the site's What's-On feed</div></div></div>
+          <div style="display:flex;gap:9px;margin-top:6px"><span class="bigbtn" style="min-height:46px;color:#000;background:var(--phos);border-color:var(--phos);font-size:22px">SAVE</span><span class="bigbtn" style="min-height:46px;color:var(--amber);background:transparent;border-color:var(--amber-dim);font-size:22px">FIRE NOW</span></div>
+        </div>
+      </div>
+
+      <div class="schedrow">
+        <div class="main"><div class="rn">BEST OF OKC — VOTE</div><div class="rw">till close · MESSAGE · 🌐 on the website</div></div>
+        <span class="rbadge">MESSAGE</span><span class="rstat now">● ACTIVE NOW</span>
+        <span class="rowbtn fire">PAUSE</span><span class="rowbtn">EDIT</span>
+      </div>
+      <div class="schedrow">
+        <div class="main"><div class="rn">ROCKET LAUNCH</div><div class="rw">Sun Jul 20 · 4:00 PM · MOMENT · live counter</div></div>
+        <span class="rbadge">MOMENT</span><span class="rstat up">▲ UPCOMING</span>
+        <span class="rowbtn fire">FIRE NOW</span><span class="rowbtn">EDIT</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="annot">Nothing about scheduling changes — same WINDOW / MESSAGE / MOMENT kinds, same 🌐 website toggle, same FIRE NOW / PAUSE. It just moves <b>into the hub</b> instead of a tab you have to go find.</div>
+</div>
+
+<!-- ══════════════ VIEW 7 · MOBILE (#mobile) ══════════════ -->
+<div class="view" id="v7">
+  <div class="frame phone">
+    <div class="scroll">
+      <div class="navbar">
+        <div class="navrow" style="padding:8px 12px"><span class="brand" style="font-size:20px">◭ BUNKER OS</span><span class="navspacer"></span><span class="sect on" style="font-size:16px;padding:3px 9px">≡</span></div>
+        <div class="subrow" style="padding:6px 12px"><span class="subitem on">SIGNAGE</span><span class="subitem">TOP SELLERS</span></div>
+      </div>
+      <div class="body">
+        <div class="eyebrow">BAR OPS ▸ SIGNAGE HUB</div>
+        <div class="h2" style="font-size:23px">SIGNAGE HUB</div>
+
+        <div class="seclabel" style="font-size:11px">◉ ON AIR NOW</div>
+        <div class="screengrid">
+          <div class="screen">
+            <div class="top"><span class="nm" style="font-size:22px">PORTRAIT-MAIN</span><span class="dot live">ON AIR</span></div>
+            <div class="meta">PORTRAIT · TERMINAL 01</div>
+            <span class="mode">MODE: ROTATION</span>
+            <div class="onair">4 assets: SPUTNIK · TOP SELLERS · @BUNKERCLUBOKC <span class="live">· + ★</span></div>
+            <div class="cardbtns"><span class="cbtn key">+ ADD</span><span class="cbtn">QUEUE</span><span class="cbtn warn">TAKEOVER</span><span class="cbtn over">⋯</span></div>
+          </div>
+          <div class="screen">
+            <div class="top"><span class="nm" style="font-size:22px">LANDSCAPE-BAR</span><span class="dot live">ON AIR</span></div>
+            <div class="meta">LANDSCAPE · TERMINAL 02</div>
+            <span class="mode">MODE: ROTATION</span>
+            <div class="onair">3 assets: TOP SELLERS · SPUTNIK · BEST OF OKC <span class="live">· + ★</span></div>
+            <div class="cardbtns"><span class="cbtn key">+ ADD</span><span class="cbtn">QUEUE</span><span class="cbtn warn">TAKEOVER</span><span class="cbtn over">⋯</span></div>
+          </div>
+        </div>
+
+        <hr class="divider">
+        <div class="seclabel" style="font-size:11px">RUNNING &amp; UPCOMING <span class="add"><span class="rowbtn" style="color:#000;background:var(--phos);font-weight:700;font-size:11px;padding:5px 9px">+ NEW</span></span></div>
+        <div class="schedrow"><div class="main"><div class="rn" style="font-size:18px">HAPPY HOUR</div><div class="rw">daily 4–7 PM</div></div><span class="rbadge win">WINDOW</span><span class="rstat now">● NOW</span></div>
+        <div class="schedrow"><div class="main"><div class="rn" style="font-size:18px">ROCKET LAUNCH</div><div class="rw">Jul 20 · 4 PM</div></div><span class="rbadge">MOMENT</span><span class="rstat up">▲ UP</span></div>
+
+        <hr class="divider">
+        <div class="featwrap" style="padding:11px 12px">
+          <div class="fh" style="font-size:19px">★ FEATURED ON POS <small>read-only</small></div>
+          <div class="featgrid"><div class="featitem"><span class="fi"></span><span class="fn">GREEN TEA SHOT</span><span class="fp">$5</span></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="annot">Bar-ops is <b>mobile-first</b> — you run this from your phone at the bar. Cards stack one-up, the three buttons stay full-width and thumb-sized, ADD / QUEUE / TAKEOVER open full-screen slide-overs. Same page, one column.</div>
+</div>
+
+<!-- ══════════════ VIEW 8 · SCHEMA (#schema) ══════════════ -->
+<div class="view" id="v8">
+  <div class="viewcap" style="margin-bottom:2px"><b>WHAT MAKES THIS REAL</b> — the one structural change under the hood</div>
+  <div class="subcap" style="margin-bottom:8px">Today a signage item <b>belongs to one screen</b> (<code>signage_items.slot_id</code>). The library model needs items to be venue-wide and a small junction table to say "this asset runs on that screen, in this position, for this long." Nothing on the TVs changes at cutover.</div>
+
+  <div class="schema">
+    <div class="sqlbox"><span class="cm">-- TODAY: an item is nailed to exactly one screen</span>
+signage_items ( id, <span class="am">slot_id</span>, template, fields jsonb, sort_order, duration_seconds, active, … )
+
+<span class="cm">-- PROPOSED: the item becomes a venue-wide ASSET (drop the slot binding)…</span>
+signage_items ( id, <span class="kw">venue_id</span>, template, fields jsonb, active, … )   <span class="cm">-- no slot_id</span>
+
+<span class="cm">-- …and a junction says which screens it's queued on, where, and for how long</span>
+<span class="kw">CREATE TABLE</span> slot_queue (
+  slot_id           <span class="kw">references</span> signage_slots,
+  item_id           <span class="kw">references</span> signage_items,
+  position          int,        <span class="cm">-- per-screen order (was signage_items.sort_order)</span>
+  duration_seconds  int,        <span class="cm">-- per-screen dwell (the "different queues" ask)</span>
+  active            boolean,
+  <span class="kw">primary key</span> (slot_id, item_id)
+);
+
+<span class="cm">-- per-screen takeover: a nullable slot scopes the broadcast (null = all screens)</span>
+<span class="kw">ALTER TABLE</span> screen_takeovers <span class="kw">ADD COLUMN</span> <span class="am">slot_id</span> uuid <span class="kw">null references</span> signage_slots;</div>
+
+    <div class="steps">
+      <div class="step"><span class="no">1</span><span class="sc"><b>Migration.</b> New <code>slot_queue</code> junction + move <code>position</code>/<code>duration_seconds</code>/<code>active</code> onto it; drop <code>signage_items.slot_id</code>. Add nullable <code>screen_takeovers.slot_id</code>. RLS mirrors the existing <code>has_module('signage')</code> pattern.</span></div>
+      <div class="step"><span class="no">2</span><span class="sc"><b>Backfill (nothing visible changes).</b> Each existing item becomes an asset queued on its original screen — one <code>slot_queue</code> row per item carrying its old <code>sort_order</code>/<code>duration_seconds</code>. The TVs render byte-identically at cutover.</span></div>
+      <div class="step"><span class="no">3</span><span class="sc"><b>Reader.</b> <code>resolveRotation()</code> already interleaves authored items + event cards + ★ trailers. It now reads a screen's assets <b>via <code>slot_queue</code></b> instead of <code>signage_items.slot_id</code> — same output shape, so the public <code>SlotDisplay</code> and the hub/TV parity invariant hold.</span></div>
+      <div class="step"><span class="no">4</span><span class="sc"><b>Live-queue editor = the QUEUE surface.</b> The PR #29 EDIT ROTATION editor becomes the slide-over, with library assets in place of slot-bound items (its ▲/▼/SECS now write <code>slot_queue.position</code>/<code>duration_seconds</code>). Events stay venue-wide and materialize in exactly as they do today.</span></div>
+      <div class="step"><span class="no">5</span><span class="sc"><b>Editors move to slide-overs.</b> <code>ItemEditor</code> (asset create/edit + DELETE), the event editor, and the takeover console all open over the hub — no routed sub-pages. <code>/signage/events</code> and <code>/signage/broadcast</code> routes retire (redirect to <code>/signage</code>).</span></div>
+    </div>
+
+    <div class="callout amber"><span><b>Honest cost callout.</b> The migration itself is routine, but <code>slot_id</code> is <b>load-bearing across the whole signage module</b>: <code>ItemEditor</code> writes it, <code>SignageHub</code> groups items by it (<code>itemsBySlot</code>), <code>EditRotation</code> filters by it, <code>resolveRotation</code>'s callers pass slot-scoped lists, and the ★-materialization + preview paths all assume one-item-one-screen. This is a real refactor of the module's data spine, not a UI reskin — plan it as its own phase with a reviewer pass, exactly like PR #29. Events being <b>already venue-wide</b> is the free part; the item→asset flip is the work.</span></div>
+    <div class="callout"><span>Everything the owner asked for — one-click add, shared assets / different queues, cleaner cards, retired Events &amp; Broadcast tabs, all-in-the-hub — is <b>reachable with this one junction</b>. No change to Toast sync, the display engine's render, or the trivia takeover ladder.</span></div>
+  </div>
+</div>
+
+<!-- ══════════════ VIEW SWITCHER ══════════════ -->
+<div class="switch" id="switch">
+  <button data-v="v1" class="cur">1 · HUB / CARDS</button>
+  <button data-v="v2">2 · ASSET LIBRARY</button>
+  <button data-v="v3">3 · + ADD PICKER</button>
+  <button data-v="v4">4 · QUEUE</button>
+  <button data-v="v5">5 · TAKEOVER</button>
+  <button data-v="v6">6 · EVENTS IN-HUB</button>
+  <button data-v="v7">7 · MOBILE</button>
+  <button data-v="v8">8 · SCHEMA</button>
+</div>
+
+<script>
+const CAPS = {
+  v1:{hash:'cards',  cap:'VIEW 1 · <b>The hub &amp; screen cards</b>',        sub:"One page. Screen cards with three clean buttons (+ ADD · QUEUE · TAKEOVER), the RUNNING &amp; UPCOMING panel you like, and ★ FEATURED ON POS — no Events tab, no Broadcast tab."},
+  v2:{hash:'library',cap:'VIEW 2 · <b>Asset library</b>',                    sub:"Every signage item is a venue-wide asset. Build once; the P / L chips show which screens it runs on. Idle assets exist but aren't on air."},
+  v3:{hash:'picker', cap:'VIEW 3 · <b>+ ADD — the one-click picker</b>',     sub:"NEW ASSET (template tiles) or FROM LIBRARY (assets not yet on this screen). Either way it lands in the queue in one tap."},
+  v4:{hash:'queue',  cap:'VIEW 4 · <b>The queue (live-queue editor)</b>',    sub:"The PR #29 editor, now over library assets. Per-screen SECS + order; ✕ removes from THIS screen only; DELETE lives in the asset editor."},
+  v5:{hash:'takeover',cap:'VIEW 5 · <b>Takeover — the retired Broadcast tab</b>', sub:"One click from a card's TAKEOVER button. Per-screen by default; an ALL SCREENS toggle sends venue-wide."},
+  v6:{hash:'events', cap:'VIEW 6 · <b>Events, absorbed into the hub</b>',    sub:"+ NEW EVENT inline and click-a-row-to-edit as a slide-over. Same kinds, same 🌐 toggle — this is what retires the EVENTS &amp; PROMOS tab."},
+  v7:{hash:'mobile', cap:'VIEW 7 · <b>Mobile (390px)</b>',                   sub:"Bar-ops is mobile-first. Cards stack, buttons stay thumb-sized, everything opens as a full-screen slide-over."},
+  v8:{hash:'schema', cap:'VIEW 8 · <b>Schema — what makes it real</b>',      sub:"One junction table (slot_queue) turns items into shared assets. Backfill keeps the TVs identical at cutover. Honest cost callout inside."},
+};
+const HASH2V = Object.fromEntries(Object.entries(CAPS).map(([v,o])=>[o.hash,v]));
+const cap = document.getElementById('viewcap');
+const sub = document.getElementById('subcap');
+function show(v){
+  document.querySelectorAll('.view').forEach(el=>el.classList.toggle('on', el.id===v));
+  document.querySelectorAll('#switch button').forEach(b=>b.classList.toggle('cur', b.dataset.v===v));
+  cap.innerHTML = CAPS[v].cap; sub.innerHTML = CAPS[v].sub;
+  if(location.hash.slice(1)!==CAPS[v].hash) history.replaceState(null,'','#'+CAPS[v].hash);
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+document.querySelectorAll('#switch button').forEach(b=>b.addEventListener('click',()=>show(b.dataset.v)));
+window.addEventListener('hashchange',()=>{const v=HASH2V[location.hash.slice(1)]; if(v) show(v);});
+show(HASH2V[location.hash.slice(1)] || 'v1');
+</script>
+</body>
+</html>
