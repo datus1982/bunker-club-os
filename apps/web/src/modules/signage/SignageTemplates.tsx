@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import type { Orientation, SignageItem, ToastCacheRow } from "./useSignage";
 import { EventWindowCard, EventMessageCard, EventTeaseCard } from "./EventStages";
 import { balanceHeadline } from "./eventStage";
 import { parseInline, RichText, alignOf } from "./richText";
-import { useDrinksBoard, overallTopSellers, OVERALL_GROUP, itemNameFont, type DrinkItem } from "@/modules/leaderboard/useDrinks";
+import { useDrinksBoard, useSalesCache, useSalesHistory, overallTopSellers, OVERALL_GROUP, itemNameFont, type DrinkItem, type HistorySum } from "@/modules/leaderboard/useDrinks";
 import { QRCodeSVG } from "qrcode.react";
 import { useInstagramFeed } from "./useInstagram";
 
@@ -197,8 +197,13 @@ export function DrinkSpecial({ item, toast, orientation }: TemplateProps) {
   // marginTop:auto, so a taller stack (2-line name, a wrapped flourish) overflowed and the
   // category floated up — visibly varying between drinks. It is now a bottom-anchored SIBLING
   // of the stack (outside the flex:1 middle), so its position is fixed regardless of stack height.
+  // Owner beat 2026-07-14: nudge the category ~40px LOWER (portrait 171→~130 canvas-px from the
+  // canvas bottom, landscape proportional ~115). The row stays a bottom-anchored SIBLING of the
+  // stack (the demo-beats stability property holds — its position doesn't move with stack
+  // height); a negative marginBottom just lets it ride down INTO the content zone's own bottom
+  // padding without touching that padding globally (other templates keep it).
   const catrow = category && (
-    <div style={{ flexShrink: 0, paddingTop: 10, width: "100%", textAlign: "center" }}>
+    <div style={{ flexShrink: 0, paddingTop: 10, marginBottom: port ? -40 : -34, width: "100%", textAlign: "center" }}>
       <span style={{ fontSize: port ? 48 : 42, letterSpacing: 6, opacity: 0.75, textShadow: "0 0 8px var(--terminal-glow)" }}>
         ◆ {category.toUpperCase()} ◆
       </span>
@@ -397,10 +402,14 @@ export function Celebration({ item, orientation }: TemplateProps) {
  *    10 is a sync-side change that belongs to the smart-slides arc — NOT done here; this slide
  *    already renders whatever depth exists, so a top-10 overall lights up automatically once
  *    the cache carries it.)
- *  • ROTATE the bucket — the slide advances through [overall, then each menu group present in
- *    the cache] on a per-appearance basis. The bucket is frozen at mount by a time bucket (no
- *    mid-dwell swap, no infinite animation), matching the Instagram-card freeze pattern.
- *    `fields.rotate_groups` default true; false = overall only (the pre-beat behavior).
+ *  • ROTATE the bucket — the slide walks [overall, then each menu group present in the cache].
+ *    Owner beat 2026-07-14 ("40s dwell set to rotate every 10 but it stays on the same
+ *    listing"): it now CYCLES intra-dwell — one bucket every `fields.cycle_seconds` (default
+ *    10, min 5) via a finite re-armed one-shot timeout (the Instagram-card A1 pattern: no
+ *    interval, no infinite animation, cleared on unmount). The START bucket is a
+ *    session-monotonic counter (topSellersSeq) so consecutive passes begin on DIFFERENT lists
+ *    — the old floor(now/period)%n time-bucket could alias to the same list every pass (the
+ *    literal bug the owner saw). `fields.rotate_groups` default true; false = overall only.
  *  • MORE GREEN — drink names + counts render in live green (sig-live: docs/09 green = live
  *    feed); ranks, bars, the group title and the SOLD label stay ambient amber. Not a wall.
  */
@@ -426,15 +435,21 @@ function tsSizes(o: Orientation, count: number): TSz {
 }
 
 interface TopBucket { key: string; title: string; items: DrinkItem[] }
-/** How long each time bucket lasts for the mount-freeze (ms). A slide re-appears at least one
- *  full rotation cycle apart (well over this), so consecutive appearances land on different
- *  buckets → the slide "advances" per pass, deterministically, without any live animation. */
-const BUCKET_PERIOD_MS = 12_000;
+
+/** Session-monotonic seed shared by every TopSellers mount: each mount takes the next value as
+ *  its STARTING bucket, so consecutive passes begin on DIFFERENT lists. Replaces the old
+ *  floor(now/period)%n time-bucket, which could alias to the same list every pass when the
+ *  rotation cycle length lined up with the bucket period (owner: "stays on the same listing").
+ *  Resets on the nightly page reload — fine, it's session-scoped. */
+let topSellersSeq = 0;
 
 export function TopSellers({ item, orientation }: TemplateProps) {
   const { groups, sales, loading } = useDrinksBoard();
   // Default true — rotate through overall + each group; false pins to overall only (old behavior).
   const rotateGroups = item.fields?.rotate_groups !== false;
+  // Intra-dwell cycle cadence (owner beat: a 40s dwell "set to rotate every 10" must WALK
+  // overall → group → group while displayed). Min 5s.
+  const cycleSeconds = Math.max(5, n(item.fields, "cycle_seconds") ?? 10);
 
   const buckets = useMemo<TopBucket[]>(() => {
     const list: TopBucket[] = [];
@@ -452,9 +467,19 @@ export function TopSellers({ item, orientation }: TemplateProps) {
     return list;
   }, [sales, groups, rotateGroups]);
 
-  // Freeze the bucket for this appearance (mount-time time bucket; no mid-dwell swap).
-  const seedRef = useRef(Date.now());
-  const bucketIndex = buckets.length ? Math.floor(seedRef.current / BUCKET_PERIOD_MS) % buckets.length : 0;
+  // Seed at a session-monotonic index (no cross-pass aliasing), then walk one bucket every
+  // cycleSeconds via a FINITE re-armed one-shot timeout (A1 pattern — no interval, no infinite
+  // animation, cleared on unmount). In a multi-item rotation a short dwell unmounts the slide
+  // before the first tick fires → one list per pass (graceful degrade); in a single-item slot
+  // this timer is what walks the lists continuously.
+  const [start] = useState(() => topSellersSeq++);
+  const [step, setStep] = useState(0);
+  useEffect(() => {
+    if (buckets.length <= 1) return;
+    const id = window.setTimeout(() => setStep((s) => s + 1), cycleSeconds * 1000);
+    return () => window.clearTimeout(id);
+  }, [step, buckets.length, cycleSeconds]);
+  const bucketIndex = buckets.length ? (start + step) % buckets.length : 0;
   const active = buckets[bucketIndex];
 
   const z = tsSizes(orientation, active?.items.length ?? 0);
@@ -565,24 +590,26 @@ function TopSellerRow({ item, z, pct }: { item: DrinkItem; z: TSz; pct: number }
  * permalink with "SCAN TO OPEN THE POST" microcopy. NO Instagram glyph/wordmark (brand-safety:
  * no third-party marks on our surfaces — the @handle is content, the pointer).
  */
+/** Session-monotonic seed for the IG card (same rationale as topSellersSeq): consecutive
+ *  passes start on DIFFERENT posts, never aliasing to the same post every pass. The per-dwell
+ *  internal walk is unchanged. */
+let instagramSeq = 0;
+
 export function InstagramCard({ item, orientation }: TemplateProps) {
   const postCount = clampInt(n(item.fields, "post_count") ?? 5, 1, 10);
   const includeStories = item.fields?.include_stories !== false; // default true
   const dwell = Math.max(4, item.duration_seconds || 12);
   const { items, loading } = useInstagramFeed(postCount, includeStories);
 
-  // Which post shows is a time-bucket = floor(now / dwell). It is SEEDED at mount from
-  // Date.now() (WARN-2: no mid-dwell swap under a guest — a live Date.now() read on
-  // SlotDisplay's 30s re-render would flip the photo/caption/QR), then advanced ONLY by a
-  // finite one-shot timer re-armed each dwell (A1). This is the same re-arm pattern
-  // SlotDisplay's Rotation uses (finite setTimeout, no interval, no infinite animation) and
-  // it fixes the dedicated-social-screen case: when the IG card is a slot's ONLY item,
-  // Rotation never remounts it, so without this internal tick a frozen bucket would show one
-  // post forever. In a MULTI-item rotation the card unmounts at dwell end and remounts with a
-  // fresh Date.now() bucket = seed+1 (one dwell elapsed) — the SAME value this timer would
-  // have produced, so remount and timer agree: no double-advance, no flash (cleanup clears
-  // the pending timer on unmount either way).
-  const [bucket, setBucket] = useState(() => Math.floor(Date.now() / (dwell * 1000)));
+  // Which post shows is a bucket SEEDED at mount from a session-monotonic counter (no mid-dwell
+  // swap under a guest; no cross-pass aliasing — the old floor(now/dwell) seed could repeat a
+  // post every pass), then advanced ONLY by a finite one-shot timer re-armed each dwell (A1 —
+  // no interval, no infinite animation). This fixes the dedicated-social-screen case: when the
+  // IG card is a slot's ONLY item, Rotation never remounts it, so this internal tick walks the
+  // feed. In a MULTI-item rotation the card unmounts at dwell end and remounts with the next
+  // counter value (= seed+1) — the SAME value this timer would have produced, so remount and
+  // timer agree: no double-advance, no flash (cleanup clears the pending timer on unmount).
+  const [bucket, setBucket] = useState(() => instagramSeq++);
   useEffect(() => {
     const id = window.setTimeout(() => setBucket((b) => b + 1), dwell * 1000);
     return () => window.clearTimeout(id);
@@ -698,6 +725,220 @@ export function InstagramCard({ item, orientation }: TemplateProps) {
   );
 }
 
+/* ── SMART TOAST (data-driven live slide from sales_history — 0043) ──────────── */
+/**
+ * Two owner-asked modes, both distance-first and one-slide-per-pass (no sub-rotation, finite
+ * animations, 60s poll max — same discipline as top_sellers / instagram):
+ *
+ *  • UNDERDOGS — the bottom `count` POS-visible items of a menu group by units sold over the
+ *    last `days` (default 3 / Signature Cocktails / 7 days). ZERO-sellers included (the roster
+ *    is the live POS menu from the toast cache, LEFT-joined to history sums — an item that
+ *    sold nothing still appears, the ultimate underdog). 86'd / off-POS items are excluded
+ *    (owner principle: never advertise what isn't on the POS view). In-world "give them some
+ *    love" framing. One slide shows all `count` rows.
+ *
+ *  • CHAMPION — the single top item over the last `days` (default 30) big, with tonight's live
+ *    "RIGHT NOW TOP 3" beneath (from sales_cache MAIN_MENU_ALL, already POS-gated). If history
+ *    depth < `days` (early weeks) the slide states the TRUE window it used ("LAST 9 DAYS"),
+ *    never claiming a month it doesn't have (useSalesHistory.trueDays).
+ *
+ * Live sales figures render GREEN (docs/09 color-state: green = live feed); chrome stays amber.
+ */
+export function SmartToast({ item, toast, orientation }: TemplateProps) {
+  const mode = (s(item.fields, "smart_mode") ?? "underdogs").toLowerCase() === "champion" ? "champion" : "underdogs";
+  const days = clampInt(n(item.fields, "days") ?? (mode === "champion" ? 30 : 7), 1, 400);
+  const count = clampInt(n(item.fields, "count") ?? 3, 1, 6);
+  const menuGroup = s(item.fields, "menu_group");
+
+  const { sums, trueDays, loading } = useSalesHistory(days);
+  const { byGroup, isLoading: salesLoading } = useSalesCache();
+
+  const port = orientation === "portrait";
+  const z = SIZES[orientation];
+
+  if (mode === "champion") {
+    return <SmartChampion sums={sums} trueDays={trueDays} loading={loading || salesLoading} byGroup={byGroup} toast={toast} orientation={orientation} />;
+  }
+
+  // UNDERDOGS — roster is the live POS menu for the group; history sums are a left-join.
+  const roster = [...toast.values()].filter(
+    (r) => r.menu_group && menuGroup && r.menu_group.toLowerCase() === menuGroup.toLowerCase() && r.pos_visible && !r.out_of_stock,
+  );
+  const ranked = roster
+    .map((r) => ({ row: r, qty: sums.get(r.guid)?.quantity ?? 0 }))
+    // Bottom sellers first; ties broken by name so the order is deterministic across renders.
+    .sort((a, b) => a.qty - b.qty || (a.row.name ?? "").localeCompare(b.row.name ?? ""))
+    .slice(0, count);
+
+  const header = (
+    <div style={{ flexShrink: 0 }}>
+      <Eyebrow text="CIVIL DEFENSE — RATION WATCH" size={z.eyebrow} />
+      <div style={{ fontSize: port ? 88 : 66, fontWeight: 700, letterSpacing: 2, lineHeight: 0.98, textTransform: "uppercase", textShadow: "0 0 16px var(--terminal-glow)", marginTop: 8 }}>
+        SHOW THESE SOME LOVE
+      </div>
+      <div style={{ fontSize: port ? 30 : 26, letterSpacing: 4, opacity: 0.7, marginTop: 6 }}>
+        ◊ {(menuGroup ?? "MENU").toUpperCase()} — SLOWEST {ranked.length} {periodLabel(days)}
+      </div>
+    </div>
+  );
+
+  if (loading && roster.length === 0) {
+    return <SmartFrame header={header}><div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", fontSize: z.mid, opacity: 0.6 }}>SYNCING SALES…</div></SmartFrame>;
+  }
+  if (ranked.length === 0) {
+    return (
+      <SmartFrame header={header}>
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", gap: 16 }}>
+          <div style={{ fontSize: port ? 76 : 60, fontWeight: 700, letterSpacing: 3, opacity: 0.75, textShadow: "0 0 16px var(--terminal-glow)" }}>NO SLOW MOVERS</div>
+          <div style={{ fontSize: port ? 34 : 28, letterSpacing: 4, opacity: 0.5 }}>◊ EVERYTHING'S POURING — PICK A GROUP</div>
+        </div>
+      </SmartFrame>
+    );
+  }
+
+  return (
+    <SmartFrame header={header}>
+      <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", justifyContent: "center", gap: port ? 22 : 16 }}>
+        {ranked.map(({ row, qty }) => (
+          <UnderdogRow key={row.guid} name={(row.name ?? "SPECIAL").toUpperCase()} photo={row.image ?? undefined} qty={qty} days={days} orientation={orientation} />
+        ))}
+      </div>
+    </SmartFrame>
+  );
+}
+
+function SmartFrame({ header, children }: { header: ReactNode; children: ReactNode }) {
+  return (
+    <div style={{ height: "100%", display: "flex", flexDirection: "column", gap: 18 }}>
+      {header}
+      {children}
+    </div>
+  );
+}
+
+/** "THIS WEEK" for a 7-day window, else "LAST {n}D" (distance-readable). */
+function periodLabel(days: number): string {
+  if (days === 7) return "THIS WEEK";
+  if (days === 30) return "THIS MONTH";
+  return `LAST ${days}D`;
+}
+
+function UnderdogRow({ name, photo, qty, days, orientation }: { name: string; photo: string | undefined; qty: number; days: number; orientation: Orientation }) {
+  const port = orientation === "portrait";
+  const thumb = port ? 148 : 116;
+  const nameSize = Math.round(itemNameFont(name) * (port ? 1 : 0.8));
+  const soldLabel = days === 7 ? "SOLD THIS WEEK" : `SOLD · ${periodLabel(days)}`;
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: port ? 28 : 22 }}>
+      {photo ? (
+        <div className="sig-viewport sig-sq" style={{ width: thumb, height: thumb, flexShrink: 0 }}>
+          <img src={photo} alt="" />
+        </div>
+      ) : (
+        <div className="sig-sq sig-sq-ph" style={{ width: thumb, height: thumb, flexShrink: 0 }} />
+      )}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: nameSize, fontWeight: 700, lineHeight: 1.02, letterSpacing: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "clip", textShadow: "0 0 12px var(--terminal-glow)" }}>{name}</div>
+        <div style={{ fontSize: port ? 40 : 32, fontWeight: 700, marginTop: 6 }}>
+          <span className="sig-live" style={{ fontSize: "inherit" }}>{qty}</span>
+          <span style={{ fontSize: port ? 26 : 22, opacity: 0.6, marginLeft: 10, letterSpacing: 2 }}>{soldLabel}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SmartChampion({
+  sums, trueDays, loading, byGroup, toast, orientation,
+}: {
+  sums: Map<string, HistorySum>;
+  trueDays: number;
+  loading: boolean;
+  byGroup: Record<string, DrinkItem[]>;
+  toast: Map<string, ToastCacheRow>;
+  orientation: Orientation;
+}) {
+  const port = orientation === "portrait";
+  const z = SIZES[orientation];
+
+  // Pick the highest-selling guid that is present in the toast cache AND POS-visible/in-stock
+  // (owner principle) — walk the sorted list until one qualifies.
+  const sorted = [...sums.values()].sort((a, b) => b.quantity - a.quantity);
+  let champ: { name: string; qty: number; photo: string | undefined; category: string | undefined } | null = null;
+  for (const h of sorted) {
+    const row = toast.get(h.toast_guid);
+    if (!row || !row.pos_visible || row.out_of_stock) continue;
+    champ = { name: (row.name ?? h.name ?? "SPECIAL").toUpperCase(), qty: h.quantity, photo: row.image ?? undefined, category: row.menu_group ?? h.menu_group ?? undefined };
+    break;
+  }
+
+  // Tonight's live top 3 (sales_cache MAIN_MENU_ALL, POS-gated by useSalesCache).
+  const top3 = overallTopSellers(byGroup, 3);
+
+  const header = (
+    <div style={{ flexShrink: 0 }}>
+      <Eyebrow text="SHELTER RECORDS — TOP OF THE CHARTS" size={z.eyebrow} />
+    </div>
+  );
+
+  if (loading && !champ) {
+    return <SmartFrame header={header}><div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", fontSize: z.mid, opacity: 0.6 }}>SYNCING SALES…</div></SmartFrame>;
+  }
+  if (!champ) {
+    return (
+      <SmartFrame header={header}>
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", gap: 16 }}>
+          <div style={{ fontSize: port ? 84 : 66, fontWeight: 700, letterSpacing: 3, opacity: 0.75, textShadow: "0 0 16px var(--terminal-glow)" }}>NO CHAMPION YET</div>
+          <div className="sig-live" style={{ fontSize: port ? 36 : 30, letterSpacing: 4, opacity: 0.85 }}>◊ TALLYING THE POURS</div>
+        </div>
+      </SmartFrame>
+    );
+  }
+
+  const balName = balanceHeadline(champ.name);
+  const nameSize = headlineFont(balName, orientation);
+
+  return (
+    <SmartFrame header={header}>
+      <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: port ? "column" : "row", gap: port ? 20 : 40, alignItems: port ? "stretch" : "center" }}>
+        {/* Champion hero */}
+        <div style={{ flex: port ? "0 0 auto" : 1, minWidth: 0, display: "flex", flexDirection: "column", alignItems: port ? "center" : "flex-start", gap: 12 }}>
+          {champ.photo && (
+            <div className="sig-viewport sig-sq" style={{ width: port ? "min(720px, 100%)" : undefined, height: port ? undefined : Math.round(z.photoH * 0.95), aspectRatio: port ? undefined : "1 / 1" }}>
+              <span className="sig-feedcap sig-live" style={{ fontSize: 20 }}>◉ CHART LEADER</span>
+              <img src={champ.photo} alt="" />
+            </div>
+          )}
+          <div style={{ fontSize: nameSize, fontWeight: 700, lineHeight: 0.9, letterSpacing: 1, textTransform: "uppercase", textAlign: port ? "center" : "left", textShadow: "0 0 16px var(--terminal-glow)" }}>
+            {balName.split("\n").map((l, i) => <span key={i} style={{ display: "block", fontSize: "inherit" }}>{l}</span>)}
+          </div>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 14, justifyContent: port ? "center" : "flex-start" }}>
+            <span className="sig-live" style={{ fontSize: port ? 150 : 120, fontWeight: 700, lineHeight: 0.8, textShadow: "0 0 26px var(--terminal-glow)" }}>{champ.qty}</span>
+            <span style={{ fontSize: port ? 40 : 34, letterSpacing: 2, opacity: 0.75 }}>SOLD · LAST {trueDays} DAY{trueDays === 1 ? "" : "S"}</span>
+          </div>
+        </div>
+
+        {/* RIGHT NOW top 3 */}
+        {top3.length > 0 && (
+          <div style={{ flex: port ? "1 1 auto" : "0 0 40%", minWidth: 0, minHeight: 0, display: "flex", flexDirection: "column", justifyContent: "center", borderTop: port ? "1px solid var(--sig-rule)" : "none", borderLeft: port ? "none" : "1px solid var(--sig-rule)", paddingTop: port ? 16 : 0, paddingLeft: port ? 0 : 36, gap: port ? 12 : 14 }}>
+            <div style={{ fontSize: port ? 34 : 30, letterSpacing: 4, opacity: 0.7 }}>◉ RIGHT NOW — TONIGHT'S TOP 3</div>
+            {top3.map((it) => (
+              <div key={it.rank} style={{ display: "flex", alignItems: "baseline", gap: 14 }}>
+                <span style={{ fontSize: port ? 44 : 38, fontWeight: 700, opacity: 0.5, width: port ? 40 : 34, flexShrink: 0 }}>{it.rank}</span>
+                <span className="sig-live" style={{ flex: 1, minWidth: 0, fontSize: port ? 42 : 34, fontWeight: 700, letterSpacing: 1, textTransform: "uppercase", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "clip" }}>{it.item_name}</span>
+                <span style={{ fontSize: port ? 34 : 28, fontWeight: 700, flexShrink: 0 }}>
+                  <span className="sig-live" style={{ fontSize: "inherit" }}>{it.sales_count}</span>
+                  <span style={{ fontSize: port ? 22 : 20, opacity: 0.6, marginLeft: 6 }}>SOLD</span>
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </SmartFrame>
+  );
+}
+
 /* ── dispatcher ─────────────────────────────────────────────────────────────── */
 export interface TemplateProps {
   item: SignageItem;
@@ -717,6 +958,7 @@ export function TemplateView(props: TemplateProps) {
     case "celebration": return <Celebration {...props} />;
     case "top_sellers": return <TopSellers {...props} />;
     case "instagram": return <InstagramCard {...props} />;
+    case "smart_toast": return <SmartToast {...props} />;
     // Phase 7 rotation-level event cards (docs/13) — materialized from a live event.
     case "event_window": return <EventWindowCard item={props.item} toast={props.toast} orientation={props.orientation} />;
     case "event_message": return <EventMessageCard item={props.item} toast={props.toast} orientation={props.orientation} />;
