@@ -221,17 +221,20 @@ function ChromeHeader({ slot, venueName, timezone }: { slot: Slot; venueName: st
   const label = (slot.location_label ?? "").trim().toUpperCase();
   const terminalLine = `TERMINAL ${String(slot.terminal_number ?? 0).padStart(2, "0")}${label ? ` — ${label}` : ""} · ${clock}`;
   return (
-    // Owner design-beat: tightened vertical padding (22 → 13px); chrome rule shifted to dim
-    // green (--sig-rule) while body ink stays amber ("the mix of the two is working").
-    <header style={{ flexShrink: 0, borderBottom: "2px solid var(--sig-rule)", padding: "13px 40px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 20 }}>
+    // Owner design-beats: header BAR height is right, but the content grows into the
+    // negative space (2026-07-14: "reduce some of the negative space and bump the text
+    // and logo sizes") — padding 13 → 8px vertical while roundel 52 → 64, wordmark
+    // 56 → 68, right block 24 → 30 w/ tighter leading: net bar height ~unchanged.
+    // Chrome rule stays dim green (--sig-rule); body ink stays amber.
+    <header style={{ flexShrink: 0, borderBottom: "2px solid var(--sig-rule)", padding: "8px 40px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 22 }}>
         {/* Official white 1-color roundel — used byte-identical, NEVER recolored (brand rule).
             An external SVG in an <img> is isolated from the terminal-theme cascade, so it
             stays white-on-dark (correct on the amber CRT). Sized to the wordmark cap height. */}
-        <img src="/brand/roundel-white.svg" alt="" style={{ height: 52, width: "auto", display: "block", flexShrink: 0 }} />
-        <div style={{ fontSize: 56, fontWeight: 700, letterSpacing: 2, textShadow: "0 0 10px var(--terminal-glow)" }}>{venueName.toUpperCase()}</div>
+        <img src="/brand/roundel-white.svg" alt="" style={{ height: 64, width: "auto", display: "block", flexShrink: 0 }} />
+        <div style={{ fontSize: 68, fontWeight: 700, letterSpacing: 2, textShadow: "0 0 10px var(--terminal-glow)" }}>{venueName.toUpperCase()}</div>
       </div>
-      <div style={{ fontSize: 24, opacity: 0.75, textAlign: "right", lineHeight: 1.5 }}>
+      <div style={{ fontSize: 30, opacity: 0.75, textAlign: "right", lineHeight: 1.35 }}>
         BUNKER UNIFIED OS v2.1<br />
         {terminalLine}
       </div>
