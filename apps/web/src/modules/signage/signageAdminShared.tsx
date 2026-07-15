@@ -281,8 +281,10 @@ export function summarize(item: AdminItem, toastRows?: ToastCacheRow[]): string 
     case "celebration": return `${(g("skin") || "celebration").toUpperCase()} — ${g("honoree") || "guest"}`;
     case "top_sellers": return "Top sellers — live top-5 from the POS";
     case "instagram": {
+      // No hardcoded venue handle (venue-scope rule) — summarize can't read the IG cache, so
+      // use a neutral phrase; the account handle shows on the card itself (from the post data).
       const count = typeof f.post_count === "number" ? f.post_count : 5;
-      return `@bunkerclubokc — last ${count} post${count === 1 ? "" : "s"}`;
+      return `Instagram — last ${count} post${count === 1 ? "" : "s"}`;
     }
     default: return item.template;
   }

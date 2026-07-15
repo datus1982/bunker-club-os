@@ -171,12 +171,14 @@ Deno.serve(async (req) => {
       limit: "12",
     });
     // Any auth failure (OAuthException / 401) → record status, don't crash the schedule.
+    // Scrub the token from these status strings too (belt-and-braces: an API error body could
+    // conceivably echo the request/token — never leak it into the anon-readable status row).
     if (media.status === 401 || media.body?.error?.type === "OAuthException") {
-      await writeStatus({ ok: false, error: `auth: ${media.body?.error?.message ?? media.status}` });
+      await writeStatus({ ok: false, error: scrub(`auth: ${media.body?.error?.message ?? media.status}`, token) });
       return json({ error: "instagram auth failed" }, 200);
     }
     if (media.status !== 200) {
-      await writeStatus({ ok: false, error: `media ${media.status}: ${JSON.stringify(media.body?.error ?? media.body).slice(0, 200)}` });
+      await writeStatus({ ok: false, error: scrub(`media ${media.status}: ${JSON.stringify(media.body?.error ?? media.body).slice(0, 200)}`, token) });
       return json({ error: `me/media ${media.status}` }, 200);
     }
     const posts: IgMedia[] = media.body.data ?? [];
