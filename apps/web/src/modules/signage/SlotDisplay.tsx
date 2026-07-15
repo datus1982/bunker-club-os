@@ -142,7 +142,7 @@ function SlotScreen({
           <div style={{ flex: 1, position: "relative", overflow: "hidden" }}>
             {mode === "event" && moment ? (
               // MOMENT holds the surface (skin-framed stage), chrome + ticker retained.
-              <div className="sig-enter" style={{ position: "absolute", inset: 0, padding: slot.orientation === "portrait" ? "40px 40px" : "32px 48px" }}>
+              <div className="sig-enter" style={{ position: "absolute", inset: 0, padding: slot.orientation === "portrait" ? "24px 40px 40px" : "18px 48px 32px" }}>
                 <EventStageView event={moment.event} stage={moment.stage} orientation={slot.orientation} toast={toast} />
               </div>
             ) : (
@@ -190,7 +190,13 @@ function Rotation({ slot, rotation, toast, teaseEvent, venueName }: { slot: Slot
     return () => window.clearTimeout(id);
   }, [turn, teaseTurn, len, teaseEvent, current?.duration_seconds]);
 
-  const padByOrientation = slot.orientation === "portrait" ? "56px 48px" : "44px 56px";
+  // Owner design-beat 2026-07-15 ("a rather large buffer between the divider and the first
+  // content"): halve the TOP padding of the content zone so every rotation template gains
+  // usable canvas right under the chrome divider. Bottom padding is kept full — the
+  // drink_special category row rides down INTO it via a negative marginBottom, so shrinking
+  // it there would clip the category. Written as explicit top/right/bottom/left (was the
+  // "56px 48px" / "44px 56px" shorthand) to move only the top edge.
+  const padByOrientation = slot.orientation === "portrait" ? "26px 48px 56px" : "20px 56px 44px";
 
   // Empty rotation: STANDBY — unless a tease is due this turn (it can ride an empty board).
   if (len === 0 && !teaseTurn) {

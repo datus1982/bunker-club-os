@@ -51,20 +51,32 @@ function minutesToClose(time: string): number {
   return mins > 0 ? mins : 60; // guard a post-2AM start
 }
 
+/** Content-only duplicate of a past event for RE-RUN (item 6): everything that defines WHAT the
+ *  event is, none of its old timing. The editor treats it as a brand-new event (no id) pre-filled
+ *  with this content, so the owner just sets a new date/time/length and saves. */
+export type EventSeed = Pick<EventRow, "name" | "kind" | "skin" | "fields" | "toast_guid" | "show_on_website" | "interrupt_game">;
+
 export function EventEditor({
-  editing, presetKind, toastRows, onSaved, onCancel, onDeleted,
+  editing, seed, presetKind, toastRows, onSaved, onCancel, onDeleted,
 }: {
   editing: EventRow | null;
+  /** RE-RUN pre-fill (item 6). Ignored when `editing` is set. Content only — schedule stays fresh. */
+  seed?: EventSeed | null;
   presetKind?: EventKind;
   toastRows: ToastCacheRow[];
   onSaved: (id: string) => void;
   onCancel: () => void;
   onDeleted: () => void;
 }) {
-  const f = editing?.fields ?? {};
+  // CONTENT (name/kind/skin/fields/toast/website/interrupt) comes from the row being edited OR,
+  // for a RE-RUN, from the seed. SCHEDULE (fire_at/window/recurrence/status/id) reads from
+  // `editing` ONLY — a RE-RUN opens as a NEW event with a fresh, un-scheduled schedule so the
+  // owner picks the new date/time/length. `editing` always wins over `seed`.
+  const src = editing ?? seed ?? null;
+  const f = src?.fields ?? {};
   const initParts = editing?.fire_at ? venueLocalParts(editing.fire_at) : null;
   const initRecurring = !!editing?.recurrence?.daysOfWeek?.length;
-  const initKind: EventKind = editing?.kind ?? presetKind ?? "window";
+  const initKind: EventKind = src?.kind ?? presetKind ?? "window";
   const initWindow = editing?.window_minutes ?? 180;
 
   // For an existing one-shot WINDOW/MESSAGE, derive the end date/time from start + window so a
@@ -74,17 +86,17 @@ export function EventEditor({
   const initSpanKind = (initKind === "window" || initKind === "message") && !initRecurring;
   const initCrossDay = !!(initParts && initEndParts && initEndParts.date !== initParts.date);
 
-  const [name, setName] = useState(editing?.name ?? "");
+  const [name, setName] = useState(src?.name ?? "");
   const [kind, setKind] = useState<EventKind>(initKind);
   // PROMO/BULLETIN flavor (owner beat). null = follow the kind default (window → promo,
   // message → bulletin) so switching KIND updates the default until a manager picks one.
-  const initFlavor = editing?.fields?.flavor;
+  const initFlavor = src?.fields?.flavor;
   const [flavor, setFlavor] = useState<EventFlavor | null>(
     initFlavor === "promo" || initFlavor === "bulletin" ? initFlavor : null,
   );
   const effectiveFlavor: EventFlavor = flavor ?? flavorOf(undefined, kind);
-  const [skin, setSkin] = useState(editing?.skin ?? "launch");
-  const [toastGuid, setToastGuid] = useState<string | null>(editing?.toast_guid ?? null);
+  const [skin, setSkin] = useState(src?.skin ?? "launch");
+  const [toastGuid, setToastGuid] = useState<string | null>(src?.toast_guid ?? null);
 
   const [mode, setMode] = useState<ScheduleMode>(initRecurring ? "recurring" : "oneshot");
   const [date, setDate] = useState(initParts?.date ?? todayLocal());
@@ -101,9 +113,9 @@ export function EventEditor({
   const [endTime, setEndTime] = useState(initEndParts?.time ?? "23:59");
   const [teaseMinutes, setTeaseMinutes] = useState(editing?.tease_minutes ?? 60);
   const [alertMinutes, setAlertMinutes] = useState(editing?.alert_minutes ?? 5);
-  const [interruptGame, setInterruptGame] = useState(editing?.interrupt_game ?? false);
+  const [interruptGame, setInterruptGame] = useState(src?.interrupt_game ?? false);
 
-  const [showOnWebsite, setShowOnWebsite] = useState(editing?.show_on_website ?? false);
+  const [showOnWebsite, setShowOnWebsite] = useState(src?.show_on_website ?? false);
 
   const [title, setTitle] = useState(str(f.title));
   const [body, setBody] = useState(str(f.body) || str(f.directive) || str(f.message));
@@ -175,10 +187,13 @@ export function EventEditor({
     imageUrl,
     align,
     showOnWebsite,
-    baseFields: editing?.fields,
+    // RE-RUN inherits the seed's fields (image_url, duration_seconds, flavor, …) so buildFields
+    // preserves keys the form doesn't surface; an insert (no id) drops the old counters via a
+    // fresh row anyway. `editing` still wins for an edit.
+    baseFields: src?.fields,
     status: editing?.status,
     existingFireAt: editing?.fire_at ?? null,
-  }), [editing, name, kind, skin, toastGuid, mode, date, time, days, until, effectiveWindow, teaseMinutes, alertMinutes, interruptGame, flavor, title, body, cta, imageUrl, align, showOnWebsite]);
+  }), [editing, src, name, kind, skin, toastGuid, mode, date, time, days, until, effectiveWindow, teaseMinutes, alertMinutes, interruptGame, flavor, title, body, cta, imageUrl, align, showOnWebsite]);
 
   // Live plain-language preview of exactly what the manager just built (no cron, ever).
   const preview = useMemo(() => {

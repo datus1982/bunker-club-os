@@ -19,7 +19,7 @@ import {
 } from "./signageAdminShared";
 import { addToQueue } from "./slotQueue";
 import { ItemEditor } from "./ItemEditor";
-import { EventEditor } from "./EventEditor";
+import { EventEditor, type EventSeed } from "./EventEditor";
 import { QueuePanel } from "./QueuePanel";
 import { AddAssetPicker } from "./AddAssetPicker";
 import { TakeoverPanel } from "./TakeoverPanel";
@@ -54,7 +54,7 @@ type Overlay =
   | { kind: "add"; slot: AdminSlot }
   | { kind: "queue"; slot: AdminSlot }
   | { kind: "takeover"; slot: AdminSlot }
-  | { kind: "event"; editing: EventRow | null }
+  | { kind: "event"; editing: EventRow | null; seed?: EventSeed | null }
   | { kind: "asset"; editing: AdminItem | null; preset: Template | null; queueOnSlotId: string | null };
 
 export function SignageHub({ openQueueSlug }: { openQueueSlug?: string }) {
@@ -78,7 +78,25 @@ export function SignageHub({ openQueueSlug }: { openQueueSlug?: string }) {
   const toastRows = useMemo(() => toastQ.data ?? [], [toastQ.data]);
   const takeovers = takeoversQ.data ?? [];
   const liveEvents = useMemo(() => liveEventsQ.data ?? [], [liveEventsQ.data]);
-  const events = eventsQ.data ?? [];
+  const allEvents = useMemo(() => eventsQ.data ?? [], [eventsQ.data]);
+  // Split the flat list into exact complements: RUNNING & UPCOMING holds everything still in play
+  // (running, scheduled, paused, aborted); PAST archives every COMPLETED event so a finished promo
+  // is findable + re-runnable (item 6). This includes completed RECURRING events: 0041 marks a
+  // recurring row `completed` once its `until` retires it, and tick_scheduled_events only touches
+  // scheduled/running rows — so a completed recurring event is terminal too (it would otherwise
+  // strand in RUNNING & UPCOMING as DONE forever). RE-RUN seeds a fresh un-scheduled schedule, so
+  // resurrecting either kind is coherent.
+  const isPast = (ev: EventRow) => ev.status === "completed";
+  const events = useMemo(() => allEvents.filter((ev) => !isPast(ev)), [allEvents]);
+  const pastEvents = useMemo(
+    () =>
+      allEvents
+        .filter(isPast)
+        // Most recent run first — fire_at is the last-armed occurrence; created_at is the tiebreak.
+        .sort((a, b) => (b.fire_at ?? b.created_at ?? "").localeCompare(a.fire_at ?? a.created_at ?? ""))
+        .slice(0, 10),
+    [allEvents],
+  );
   const tmap = useMemo(() => toastMap(toastRows), [toastRows]);
 
   // Venue-wide mode inputs (a live game + a moment each hold EVERY screen); the takeover is now
@@ -250,6 +268,23 @@ export function SignageHub({ openQueueSlug }: { openQueueSlug?: string }) {
           </div>
         </div>
 
+        {/* ── C2 · PAST (completed events, re-runnable) — item 6 ─────────── */}
+        {pastEvents.length > 0 && (
+          <div style={{ marginTop: 24 }}>
+            <SectionLabel style={{ margin: 0, opacity: 0.55 }}>PAST · finished events — RE-RUN to schedule again</SectionLabel>
+            <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 6 }}>
+              {pastEvents.map((ev) => (
+                <PastEventRow
+                  key={ev.id}
+                  row={ev}
+                  canEvents={canEvents}
+                  onReRun={() => setOverlay({ kind: "event", editing: null, seed: seedFromEvent(ev) })}
+                />
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* ── D · ★ FEATURED ON POS (read-only) ──────────────────────────── */}
         <div style={{ marginTop: 32 }}>
           <FeaturedPanel featured={featuredItems(toastRows)} />
@@ -296,9 +331,10 @@ export function SignageHub({ openQueueSlug }: { openQueueSlug?: string }) {
       )}
 
       {overlay?.kind === "event" && (
-        <SlideOver eyebrow="RUNNING & UPCOMING" title={overlay.editing ? "EDIT EVENT" : "NEW EVENT"} onClose={() => setOverlay(null)}>
+        <SlideOver eyebrow="RUNNING & UPCOMING" title={overlay.editing ? "EDIT EVENT" : overlay.seed ? "RE-RUN EVENT" : "NEW EVENT"} onClose={() => setOverlay(null)}>
           <EventEditor
             editing={overlay.editing}
+            seed={overlay.seed ?? null}
             toastRows={toastRows}
             onSaved={() => { invalidateEvents(); setOverlay(null); }}
             onCancel={() => setOverlay(null)}
@@ -570,6 +606,43 @@ function EventRowCard({ row, canEvents, onEdit, onChanged }: { row: EventRow; ca
         )
       )}
       {canEvents && <button type="button" onClick={onEdit} style={rowBtn}>EDIT</button>}
+    </div>
+  );
+}
+
+/* ── C2 · PAST event archive + RE-RUN (item 6) ──────────────────────────────── */
+/** Content-only duplicate of a completed event for RE-RUN. Copies WHAT it is (name/kind/skin/
+ *  fields/toast/website/interrupt) and drops the old TIMING (fire_at/window/recurrence/status/id
+ *  never travel — the editor opens as a fresh NEW event). Per-run counter keys are stripped so a
+ *  re-run doesn't inherit a stale tally. */
+function seedFromEvent(row: EventRow): EventSeed {
+  const { live_count: _lc, final_stats: _fs, ...fields } = row.fields ?? {};
+  void _lc; void _fs;
+  return {
+    name: row.name,
+    kind: row.kind,
+    skin: row.skin,
+    fields,
+    toast_guid: row.toast_guid,
+    show_on_website: row.show_on_website,
+    interrupt_game: row.interrupt_game,
+  };
+}
+
+/** A quiet archive row: what it was + when it ran + a RE-RUN affordance (gated on canEvents; the
+ *  list itself renders read-only for signage-only users). RE-RUN only OPENS the editor pre-filled;
+ *  nothing goes live until the owner saves a new schedule. */
+function PastEventRow({ row, canEvents, onReRun }: { row: EventRow; canEvents: boolean; onReRun: () => void }) {
+  const phrase = useMemo(() => schedulePhrase(row), [row]);
+  return (
+    <div className="terminal-border" style={{ padding: "8px 13px", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", opacity: 0.6 }}>
+      <div style={{ flex: "1 1 220px", minWidth: 0 }}>
+        <div style={{ fontSize: 19, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{row.name}</div>
+        <div style={{ fontSize: 13, opacity: 0.7 }}>ran {phrase}{row.show_on_website ? " · 🌐" : ""}</div>
+      </div>
+      <EventKindBadge kind={row.kind} />
+      <span style={{ fontSize: 13, letterSpacing: 1, opacity: 0.6 }}>DONE</span>
+      {canEvents && <button type="button" onClick={onReRun} style={rowBtn}>↻ RE-RUN</button>}
     </div>
   );
 }

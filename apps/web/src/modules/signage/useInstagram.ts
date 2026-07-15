@@ -72,7 +72,14 @@ export function useInstagramFeed(postCount: number, includeStories: boolean) {
 
       // Active stories always ride at the head (they jump the queue), then the newest posts
       // fill out to `limit`. The head stories don't count against the post cap.
-      const stories = mapped.filter((m) => m.is_story);
+      //
+      // Belt guard (2026-07-15): a story is purely visual, so a story with NO mirrored still has
+      // nothing to show — drop it rather than render a dead/black card. The authoritative fix is
+      // server-side (instagram-sync now rejects black/blank VIDEO posters and doesn't cache them);
+      // this catches the window before the next sync pass. NB: a black-but-valid JPEG can't be
+      // detected here — the mirrored image is cross-origin, so a canvas pixel read would taint —
+      // hence the edge fn is where black posters are actually screened out.
+      const stories = mapped.filter((m) => m.is_story && !!m.image);
       const posts = mapped.filter((m) => !m.is_story).slice(0, limit);
       return [...stories, ...posts];
     },

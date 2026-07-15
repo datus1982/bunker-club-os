@@ -115,10 +115,12 @@ export function useThisWeek() {
       // ── 2) PROMOS (website-flagged signage_items) ────────────────────────
       // Apply the same time-window filter as useEvents (W2): drop items whose ends_at
       // has passed, and items whose starts_at is still in the future; evergreen
-      // (null/null) always shows. Fetch a few extra since the filter runs client-side.
+      // (null/null) always shows. Fetch generously since the filter runs client-side.
       // Order by created_at (stable, oldest-first): signage_items.sort_order is no longer
       // written when an asset is created (placement/order moved to slot_queue in the hub
       // consolidation, 0045), so it's unreliable for ordering the website feed.
+      // Limit raised 8→24 (2026-07-15): the owner programs more than a handful of 🌐 promos
+      // and every one should rotate through the feed.
       const { data: promos } = await supabase
         .from("signage_items")
         .select("id, template, fields, starts_at, ends_at, created_at")
@@ -126,7 +128,7 @@ export function useThisWeek() {
         .eq("show_on_website", true)
         .eq("active", true)
         .order("created_at", { ascending: true, nullsFirst: true })
-        .limit(8);
+        .limit(24);
 
       const inWindow = (promos ?? []).filter((p) => {
         if (p.ends_at && new Date(p.ends_at).getTime() < nowMs) return false; // ended
@@ -172,9 +174,12 @@ export function useThisWeek() {
         });
       }
 
+      // Cap raised 3→12 (2026-07-15) so every programmed 🌐 promo rotates, not just the
+      // first few. The contentless-skip and off-POS gates below are unchanged — a promo
+      // still only counts toward the cap once it resolves to a real, POS-visible card.
       let shown = 0;
       for (const p of inWindow) {
-        if (shown >= 3) break;
+        if (shown >= 12) break;
         const guid = fieldStr(p.fields, ["source_toast_guid"]);
         // Toast-sourced but off-POS / 86'd (absent from public_menu) → skip entirely.
         const src = guid ? menu.get(guid) : undefined;

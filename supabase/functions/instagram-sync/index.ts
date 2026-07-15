@@ -14,7 +14,10 @@
 //   2. Fetch me/media (limit 12) + me/stories. Upsert rows; mirror each item's image to the
 //      bucket at instagram/{venue}/{media_id}.jpg (only if not already stored). VIDEO uses
 //      thumbnail_url; CAROUSEL_ALBUM uses the parent media_url only (DECISION: children
-//      skipped in v1). One bad image doesn't kill the run.
+//      skipped in v1). VIDEO posters are re-validated every run and a BLACK/blank poster frame
+//      (near-uniform, byte-size gated) is rejected — the item is skipped and any stale black row
+//      self-heals — so a video whose poster is black never renders solid black on the TVs. One
+//      bad image doesn't kill the run.
 //   3. Delete expired story rows (+ their storage objects) and prune posts beyond the newest 24.
 //   4. Token refresh: if the stored token is ≥30 days old (refreshed_at in venue_settings),
 //      call refresh_access_token and instagram_token_set the new 60-day token. Tolerate the
@@ -31,6 +34,12 @@ const GRAPH = "https://graph.instagram.com/v21.0";
 const BUCKET = "signage";
 const POSTS_KEEP = 24; // prune post rows beyond the newest N
 const REFRESH_AFTER_DAYS = 30; // refresh the 60-day token once it is comfortably old enough
+// A full-frame JPEG that compresses below ~20KB is necessarily near-uniform — i.e. a BLACK or
+// blank video poster frame. Instagram sometimes returns one as a video's thumbnail_url (a story
+// or reel whose first frame is black / whose poster hasn't been generated). Mirroring it makes the
+// card render solid black on the TVs (2026-07-15 owner report). Real photographic posters are
+// 50KB+ at story resolution, so this threshold separates cleanly. Applied to VIDEO posters only.
+const MIN_VIDEO_POSTER_BYTES = 20_000;
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -77,28 +86,56 @@ async function graph(path: string, token: string, params: Record<string, string>
   }
 }
 
-// Mirror an Instagram CDN image into our bucket at instagram/{venue}/{media_id}.jpg.
-// Idempotent: skips the download if the object already exists. Returns the storage path
-// (stable, independent of the expiring CDN URL) or null on any failure.
-async function mirrorImage(admin: Admin, mediaId: string, imageUrl: string): Promise<string | null> {
+// Outcome of a mirror attempt — WARN-1 distinguishes "we KNOW the frame is bad" from "we don't
+// know (a hiccup)", so a transient CDN failure never deletes a previously-good video row/object.
+//   • stored    — the object is in the bucket (freshly uploaded OR already present).
+//   • rejected  — a frame WAS downloaded and is confirmed unusable (non-image or under the byte
+//                 floor = near-uniform/black). Only this outcome self-heals (delete row + object).
+//   • transient — fetch failed / non-ok / upload errored / threw. Outcome unknown → leave any
+//                 existing row + object exactly as they are and retry next run.
+type MirrorOutcome =
+  | { kind: "stored"; path: string }
+  | { kind: "rejected" }
+  | { kind: "transient" };
+
+// Mirror an Instagram CDN image into our bucket at instagram/{venue}/{media_id}.jpg (a stable path,
+// independent of the expiring CDN URL).
+//   • Idempotent by default: skips the download if the object already exists.
+//   • `revalidate` forces a re-download even when the object exists — used for VIDEO posters so a
+//     previously-mirrored BLACK poster self-heals on the next run (the old idempotent skip meant a
+//     bad black object was never re-examined). Videos are few, so the extra fetch is cheap.
+//   • A non-image response is `rejected` (belt: a media_url that slipped through won't be image/*).
+//   • `minBytes` marks a near-uniform (black/blank) frame `rejected` by byte size (VIDEO posters).
+//   • ANY failure to actually obtain + store bytes (network, non-2xx, upload error, throw) is
+//     `transient` — never `rejected` — so the caller does NOT delete a prior good mirror (WARN-1).
+async function mirrorImage(
+  admin: Admin,
+  mediaId: string,
+  imageUrl: string,
+  opts: { revalidate?: boolean; minBytes?: number } = {},
+): Promise<MirrorOutcome> {
   const path = `instagram/${VENUE_ID}/${mediaId}.jpg`;
   try {
-    // Already stored? (list the exact object) — avoids re-downloading unchanged posts.
-    const { data: existing } = await admin.storage.from(BUCKET).list(`instagram/${VENUE_ID}`, {
-      search: `${mediaId}.jpg`,
-      limit: 1,
-    });
-    if (existing && existing.some((o) => o.name === `${mediaId}.jpg`)) return path;
+    if (!opts.revalidate) {
+      // Already stored? (list the exact object) — avoids re-downloading unchanged posts.
+      const { data: existing } = await admin.storage.from(BUCKET).list(`instagram/${VENUE_ID}`, {
+        search: `${mediaId}.jpg`,
+        limit: 1,
+      });
+      if (existing && existing.some((o) => o.name === `${mediaId}.jpg`)) return { kind: "stored", path };
+    }
 
     const res = await fetch(imageUrl);
-    if (!res.ok) return null;
+    if (!res.ok) return { kind: "transient" }; // a 4xx/5xx (e.g. expired URL) is a hiccup, not proof it's black
     const contentType = res.headers.get("content-type") ?? "image/jpeg";
+    if (!contentType.startsWith("image/")) return { kind: "rejected" }; // downloaded a non-image → confirmed unusable
     const bytes = new Uint8Array(await res.arrayBuffer());
+    if (opts.minBytes && bytes.length < opts.minBytes) return { kind: "rejected" }; // confirmed near-uniform (black/blank)
     const { error } = await admin.storage.from(BUCKET).upload(path, bytes, { contentType, upsert: true });
-    if (error) return null;
-    return path;
+    if (error) return { kind: "transient" }; // upload failed — don't nuke a prior good object over it
+    return { kind: "stored", path };
   } catch {
-    return null;
+    return { kind: "transient" };
   }
 }
 
@@ -106,10 +143,37 @@ async function mirrorImage(admin: Admin, mediaId: string, imageUrl: string): Pro
 async function upsertMedia(admin: Admin, m: IgMedia, isStory: boolean): Promise<boolean> {
   if (!m.id || !m.permalink) return false;
   const postedAt = m.timestamp ? new Date(m.timestamp) : new Date();
+  const isVideo = m.media_type === "VIDEO";
   // DECISION: VIDEO → thumbnail_url (a still we can display); CAROUSEL_ALBUM → the parent
   // media_url only (children are not fetched in v1). IMAGE → media_url.
-  const imageUrl = (m.media_type === "VIDEO" ? m.thumbnail_url : m.media_url) ?? m.thumbnail_url ?? null;
-  const storagePath = imageUrl ? await mirrorImage(admin, m.id, imageUrl) : null;
+  const imageUrl = (isVideo ? m.thumbnail_url : m.media_url) ?? m.thumbnail_url ?? null;
+
+  let storagePath: string | null;
+  if (isVideo) {
+    // VIDEO posters re-validate every run so a previously-mirrored BLACK poster self-heals.
+    //   • no thumbnail this pass → transient (a missing field could be a temporary API omission;
+    //     no frame was examined, so never delete a prior good row — WARN-1).
+    //   • transient outcome    → leave any existing row + object exactly as they are, retry next run.
+    //   • rejected outcome     → a frame WAS downloaded and is confirmed black/blank/non-image →
+    //     self-heal (delete row + its object) so it drops out of the rotation.
+    //   • stored               → fall through and upsert with the fresh path.
+    const outcome: MirrorOutcome = imageUrl
+      ? await mirrorImage(admin, m.id, imageUrl, { revalidate: true, minBytes: MIN_VIDEO_POSTER_BYTES })
+      : { kind: "transient" };
+    if (outcome.kind === "transient") return false; // KEEP existing — do not touch the row/object
+    if (outcome.kind === "rejected") {
+      await admin.from("instagram_cache").delete().eq("venue_id", VENUE_ID).eq("media_id", m.id);
+      await removeStorage(admin, `instagram/${VENUE_ID}/${m.id}.jpg`);
+      return false;
+    }
+    storagePath = outcome.path;
+  } else {
+    // IMAGE/CAROUSEL keep the idempotent mirror; a missing/failed still upserts as null (the card's
+    // caption + QR stay meaningful), so a transient failure here degrades to no-photo, not deletion.
+    const outcome = imageUrl ? await mirrorImage(admin, m.id, imageUrl, {}) : ({ kind: "rejected" } as const);
+    storagePath = outcome.kind === "stored" ? outcome.path : null;
+  }
+
   const expiresAt = isStory ? new Date(postedAt.getTime() + 24 * 60 * 60 * 1000).toISOString() : null;
   const { error } = await admin.from("instagram_cache").upsert(
     {
@@ -194,8 +258,29 @@ Deno.serve(async (req) => {
     let storiesUpserted = 0;
     for (const st of storyItems) if (await upsertMedia(admin, st, true)) storiesUpserted++;
 
-    // 4. Prune: expired stories (+ storage), then posts beyond the newest POSTS_KEEP (+ storage).
+    // 4. Prune stories. Two rules, both delete the row + its storage object:
+    //   (a) RECONCILE against the live set — any cached story whose media_id is NOT in the current
+    //       me/stories response is no longer on Instagram (expired or pulled), so drop it NOW rather
+    //       than waiting up to 24h for expires_at. This is what makes a black-poster story that has
+    //       already left IG self-heal immediately (its upsert path only fires while it's still live);
+    //       it also drops early-pulled stories promptly. GUARDED on stories.status === 200 so a
+    //       failed fetch (storyItems=[]) never wipes the whole set.
+    //   (b) expires_at safety net — catches anything the reconcile missed (e.g. a fetch that failed
+    //       this run) once its 24h window lapses.
     const nowIso = new Date().toISOString();
+    if (stories.status === 200) {
+      const liveIds = new Set(storyItems.map((s) => s.id));
+      const { data: cachedStories } = await admin
+        .from("instagram_cache")
+        .select("id, media_id, storage_path")
+        .eq("venue_id", VENUE_ID)
+        .eq("is_story", true);
+      for (const s of (cachedStories ?? []) as Array<{ id: string; media_id: string; storage_path: string | null }>) {
+        if (liveIds.has(s.media_id)) continue;
+        await removeStorage(admin, s.storage_path);
+        await admin.from("instagram_cache").delete().eq("id", s.id);
+      }
+    }
     const { data: deadStories } = await admin
       .from("instagram_cache")
       .select("id, storage_path")
@@ -206,9 +291,6 @@ Deno.serve(async (req) => {
       await removeStorage(admin, s.storage_path);
       await admin.from("instagram_cache").delete().eq("id", s.id);
     }
-    // Also drop stories that vanished from the live feed (expired but expires_at already past
-    // handled above; a story pulled early won't reappear in me/stories — the expires_at prune
-    // catches it within 24h, acceptable for v1).
 
     const { data: keptPosts } = await admin
       .from("instagram_cache")
