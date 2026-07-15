@@ -280,6 +280,10 @@ export function summarize(item: AdminItem, toastRows?: ToastCacheRow[]): string 
     case "image_only": return g("caption") || "Image";
     case "celebration": return `${(g("skin") || "celebration").toUpperCase()} — ${g("honoree") || "guest"}`;
     case "top_sellers": return "Top sellers — live top-5 from the POS";
+    case "instagram": {
+      const count = typeof f.post_count === "number" ? f.post_count : 5;
+      return `@bunkerclubokc — last ${count} post${count === 1 ? "" : "s"}`;
+    }
     default: return item.template;
   }
 }

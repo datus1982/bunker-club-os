@@ -87,6 +87,9 @@ error}` on any auth/media failure — status only, never the token).
   thumbnail. IMAGE uses media_url.
 - Stories are pruned when `expires_at` passes (≤24h after posting); a story pulled early stays
   until its expiry prune. Acceptable for v1.
-- One post per rotation pass, chosen by a stable time bucket keyed off the item's dwell
-  (`duration_seconds`) — consecutive passes show consecutive posts, and a preview at the same
-  minute matches the TV. No internal sub-rotation, no infinite animation (display rules).
+- One post per rotation pass, chosen by a time bucket keyed off the item's dwell
+  (`duration_seconds`) and FROZEN at mount so it never swaps mid-dwell. On a slot whose only
+  item is this card the bucket steps one post per pass; interleaved with other items it steps
+  by however many buckets elapsed between passes (samples the feed rather than strictly
+  incrementing). A preview at roughly the same minute lands on roughly the same post — close,
+  not a guaranteed exact match. No internal sub-rotation, no infinite animation (display rules).

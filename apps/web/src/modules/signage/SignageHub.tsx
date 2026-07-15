@@ -351,6 +351,7 @@ function typeBadge(item: AdminItem): string {
     case "image_only": return "IMAGE";
     case "celebration": return "MESSAGE";
     case "top_sellers": return "TOP 5";
+    case "instagram": return "INSTAGRAM";
     default: return "ITEM";
   }
 }

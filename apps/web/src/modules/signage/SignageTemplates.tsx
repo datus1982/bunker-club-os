@@ -466,10 +466,14 @@ function TopSellerRow({ item, z, pct }: { item: DrinkItem; z: TSz; pct: number }
 /* ── INSTAGRAM (recent @venue posts/stories as ONE rotation slide) ───────────── */
 /**
  * Renders ONE Instagram post per rotation pass (0042 DECISION: no internal sub-rotation, no
- * infinite animation). Which post is deterministic from a stable time bucket keyed off the
- * item's dwell (duration_seconds), so consecutive rotation passes show consecutive posts AND
- * a preview at the same minute shows the same post the TV does. Active stories ride at the
- * head of the feed (they jump the queue) and carry a STORY — TODAY ONLY badge.
+ * infinite animation). Which post is a time bucket — floor(mount-time / dwell) — FROZEN at
+ * mount (WARN-2), so the post never swaps mid-dwell and each new pass (a fresh mount) steps
+ * the bucket forward. On a slot whose ONLY item is this card, that walks the feed one post at
+ * a time; interleaved with other rotation items the step is by however many buckets elapsed
+ * between passes, so it samples rather than strictly increments (still deterministic, never a
+ * mid-view swap). A preview at roughly the same minute lands on roughly the same post, not a
+ * guaranteed exact match. Active stories ride at the head of the feed (they jump the queue)
+ * and carry a STORY — TODAY ONLY badge.
  *
  * Distance-first (memory [[signage-design-principles]]): square mirrored photo in the OPTICAL
  * FEED viewport · caption in body type (trailing #hashtag/@mention blocks stripped, ~140-char
@@ -482,6 +486,14 @@ export function InstagramCard({ item, orientation }: TemplateProps) {
   const includeStories = item.fields?.include_stories !== false; // default true
   const dwell = Math.max(4, item.duration_seconds || 12);
   const { items, loading } = useInstagramFeed(postCount, includeStories);
+
+  // FREEZE the pick at mount (WARN-2): the card remounts every rotation pass (SlotDisplay
+  // keys the content div), but SlotDisplay ALSO re-renders every 30s while a card is on
+  // screen — a live Date.now() pick would swap the photo/caption/QR mid-dwell under a guest's
+  // eyes. Capturing the time-bucket once per mount keeps ONE post for the whole dwell and
+  // still advances across passes (each mount = a fresh bucket). Items may arrive after mount;
+  // the frozen bucket is stable, so idx = bucket % len picks-then-holds once data lands.
+  const [bucket] = useState(() => Math.floor(Date.now() / (dwell * 1000)));
 
   const port = orientation === "portrait";
   const z = SIZES[orientation];
@@ -512,16 +524,17 @@ export function InstagramCard({ item, orientation }: TemplateProps) {
     );
   }
 
-  // Deterministic pick by time bucket (see the component doc). Both surfaces at the same
-  // instant compute the same index; consecutive dwell-length passes advance by one.
-  const idx = Math.floor(Date.now() / (dwell * 1000)) % items.length;
+  // The bucket was frozen at mount; the pick holds for this dwell and advances next pass.
+  const idx = bucket % items.length;
   const post = items[idx];
   const caption = cleanCaption(post.caption ?? "");
   const handle = post.username ? `@${post.username}` : "@bunkerclubokc";
   const rel = relativeTime(post.posted_at).toUpperCase();
 
   const square = (
-    <div className="sig-viewport sig-sq" style={port ? { width: "100%" } : { height: "100%", width: "auto" }}>
+    // sig-contain (owner note 2026-07-14): IG posts are 4:5 / 1.91:1 — letterbox inside the
+    // square frame, never crop heads/text (unlike drink_special, which keeps Toast's own square crop).
+    <div className="sig-viewport sig-sq sig-contain" style={port ? { width: "100%" } : { height: "100%", width: "auto" }}>
       <span className="sig-feedcap sig-live" style={{ fontSize: 22 }}>◉ OPTICAL FEED — LIVE</span>
       {post.image
         ? <img src={post.image} alt="" />

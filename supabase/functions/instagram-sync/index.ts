@@ -51,14 +51,30 @@ interface IgMedia {
   username?: string;
 }
 
-// Fetch a Graph edge; returns { status, body }. Never logs the token.
+// Scrub the access token out of any string before it can reach logs, the response body, or
+// the anon-readable status row (WARN-1). The token rides in the request URL, so a Deno fetch
+// NETWORK error ("error sending request for url (…access_token=<TOKEN>)") carries the full
+// token in its message — this removes it defensively at every exit. Strips both the raw token
+// value AND anything after "access_token=" (belt and braces for URLs we didn't build).
+function scrub(s: string, token: string): string {
+  let out = s;
+  if (token) out = out.split(token).join("[token]");
+  return out.replace(/access_token=[^&\s"')]+/gi, "access_token=[token]");
+}
+
+// Fetch a Graph edge; returns { status, body }. NEVER lets the token escape in an error:
+// a fetch failure message contains the request URL (incl. access_token) — rethrow scrubbed.
 async function graph(path: string, token: string, params: Record<string, string> = {}): Promise<{ status: number; body: any }> {
   const u = new URL(`${GRAPH}/${path}`);
   for (const [k, v] of Object.entries(params)) u.searchParams.set(k, v);
   u.searchParams.set("access_token", token);
-  const r = await fetch(u);
-  const body = await r.json().catch(() => ({}));
-  return { status: r.status, body };
+  try {
+    const r = await fetch(u);
+    const body = await r.json().catch(() => ({}));
+    return { status: r.status, body };
+  } catch (e) {
+    throw new Error(scrub(e instanceof Error ? e.message : String(e), token));
+  }
 }
 
 // Mirror an Instagram CDN image into our bucket at instagram/{venue}/{media_id}.jpg.
@@ -136,10 +152,14 @@ Deno.serve(async (req) => {
     );
   };
 
+  // Held outside the try so the top-level catch can defensively scrub the token from any
+  // message before it hits console.error / the status row / the response body (WARN-1).
+  let tokenForScrub = "";
   try {
     // 1. Token from Vault (service-role RPC). Never logged.
     const { data: token, error: tokErr } = await admin.rpc("instagram_token_get");
     if (tokErr) throw new Error(`token_get failed: ${tokErr.message}`);
+    if (typeof token === "string") tokenForScrub = token;
     if (!token || typeof token !== "string") {
       await writeStatus({ ok: false, error: "no_token_in_vault" });
       return json({ error: "no instagram token in vault (seed vault secret 'instagram_token')" }, 500);
@@ -232,7 +252,9 @@ Deno.serve(async (req) => {
     await writeStatus({ ok: true, posts: postsUpserted, stories: storiesUpserted, refreshed });
     return json({ ok: true, postsUpserted, storiesUpserted, activeStories: storyItems.length, refreshed }, 200);
   } catch (error) {
-    const msg = error instanceof Error ? error.message : String(error);
+    // Defensively scrub the token from EVERY exit (belt and braces — graph() already scrubs
+    // its own fetch failures, but a future code path shouldn't be able to reintroduce a leak).
+    const msg = scrub(error instanceof Error ? error.message : String(error), tokenForScrub);
     console.error("instagram-sync error:", msg);
     await writeStatus({ ok: false, error: msg.slice(0, 200) });
     return json({ error: msg }, 500);

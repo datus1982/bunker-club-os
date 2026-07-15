@@ -49,6 +49,13 @@
   object-fit: cover;
   display: block;
 }
+/* CONTAIN opt-in (owner note 2026-07-14): for photos whose aspect we DON'T control — IG posts
+   (4:5, 1.91:1) and manager event-card uploads — letterbox inside the square frame instead of
+   cropping heads/text. The dark bars read as optical-feed chrome. drink_special stays `cover`
+   (Toast crops its own shots square by design, so cover keeps parity with Toast). */
+.sig-viewport.sig-contain > img {
+  object-fit: contain;
+}
 .sig-viewport .sig-feedcap {
   position: absolute;
   top: 10px;
