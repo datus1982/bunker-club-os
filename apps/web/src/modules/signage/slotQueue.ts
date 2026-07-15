@@ -95,6 +95,52 @@ export async function fetchSlotQueueAdmin(): Promise<SignageItem[]> {
     .filter((x): x is SignageItem => x !== null);
 }
 
+/** Where one asset is queued: the slot + its per-screen position/dwell/on-air flag. */
+export interface Placement {
+  slot_id: string;
+  position: number;
+  duration_seconds: number;
+  active: boolean;
+}
+
+/** A venue-wide asset (signage_items row) + every screen it's queued on. */
+export interface AssetWithPlacements {
+  asset: SignageItem & { recurrence: unknown; created_at: string | null };
+  placements: Placement[];
+}
+
+/**
+ * ASSET LIBRARY (task 2): every venue asset ONCE, with the screens it runs on. Unlike
+ * fetchSlotQueueAdmin (one row per (slot,asset) pairing, and INNER-joined so idle assets
+ * vanish), this reads signage_items directly — so an asset queued on NO screen (idle) still
+ * appears — and attaches its slot_queue placements. Two plain reads joined client-side
+ * (slot_queue carries no venue_id — single-venue project — so it's scoped by intersecting
+ * item_ids against the venue's assets rather than trusting a bare junction select).
+ */
+export async function fetchAssetsWithPlacements(): Promise<AssetWithPlacements[]> {
+  const [assetsRes, queuesRes] = await Promise.all([
+    supabase
+      .from("signage_items")
+      .select(ASSET_COLS_ADMIN)
+      .eq("venue_id", VENUE_ID)
+      .order("created_at", { ascending: true, nullsFirst: true }),
+    supabase.from("slot_queue").select("slot_id, item_id, position, duration_seconds, active"),
+  ]);
+  if (assetsRes.error) throw assetsRes.error;
+  if (queuesRes.error) throw queuesRes.error;
+
+  const assets = (assetsRes.data ?? []) as unknown as AssetWithPlacements["asset"][];
+  const assetIds = new Set(assets.map((a) => a.id));
+  const byItem = new Map<string, Placement[]>();
+  for (const q of (queuesRes.data ?? []) as Array<Placement & { item_id: string }>) {
+    if (!assetIds.has(q.item_id)) continue; // ignore any cross-venue junction rows (defensive)
+    const list = byItem.get(q.item_id) ?? [];
+    list.push({ slot_id: q.slot_id, position: q.position, duration_seconds: q.duration_seconds, active: q.active });
+    byItem.set(q.item_id, list);
+  }
+  return assets.map((asset) => ({ asset, placements: byItem.get(asset.id) ?? [] }));
+}
+
 /* ── write helpers (keyed by slot_id + item_id — the junction PK) ──────────── */
 
 /** Queue an asset onto a screen at `position` for `duration` seconds (new placement). */
