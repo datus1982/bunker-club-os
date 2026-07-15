@@ -133,6 +133,46 @@ export function useTopSellers(): { items: DrinkItem[]; loading: boolean } {
   return { items: overallTopSellers(byGroup), loading: isLoading };
 }
 
+/**
+ * The enabled menu-group registry (name ↔ sales_cache bucket guid). Shares the
+ * `["drinks","groups"]` query key with useDrinksBoard so both hooks resolve to ONE fetch /
+ * cache entry (react-query dedupes) — used by the group-filtered CHAMPION slide to map a
+ * picked group NAME (from the Toast cache, e.g. "Signature Cocktails") to its per-group
+ * sales_cache bucket guid. Anon-readable (the /drinks board already reads this table).
+ */
+export function useMenuGroups(): { groups: DrinkGroup[]; loading: boolean } {
+  const q = useQuery({
+    queryKey: ["drinks", "groups"],
+    queryFn: async (): Promise<DrinkGroup[]> => {
+      const { data, error } = await supabase
+        .from("drinks_menu_groups")
+        .select("toast_menu_guid, name, display_order")
+        .eq("venue_id", VENUE_ID)
+        .eq("enabled", true)
+        .order("display_order");
+      if (error) throw error;
+      return (data ?? []) as DrinkGroup[];
+    },
+  });
+  return { groups: q.data ?? [], loading: q.isLoading };
+}
+
+/** Resolve a menu-group NAME to its sales_cache bucket guid (case-insensitive — the Toast cache
+ *  names are title-case "Signature Cocktails" while drinks_menu_groups is uppercase). Returns
+ *  undefined for an unconfigured group (no per-group sales bucket exists). Pure. */
+export function groupGuidByName(groups: DrinkGroup[], name: string | undefined): string | undefined {
+  if (!name) return undefined;
+  const needle = name.trim().toLowerCase();
+  return groups.find((g) => g.name.trim().toLowerCase() === needle && g.toast_menu_guid !== OVERALL_GROUP)?.toast_menu_guid;
+}
+
+/** Top-N of a single per-group sales_cache bucket, by rank (pure — unit-friendly). Empty when
+ *  the group isn't a configured sales bucket. */
+export function groupTopSellers(byGroup: Record<string, DrinkItem[]>, guid: string | undefined, limit = 3): DrinkItem[] {
+  if (!guid) return [];
+  return [...(byGroup[guid] ?? [])].sort((a, b) => a.rank - b.rank).slice(0, limit);
+}
+
 /** Derive the overall top-5 from grouped sales (pure — unit-friendly). */
 export function overallTopSellers(byGroup: Record<string, DrinkItem[]>, limit = 5): DrinkItem[] {
   // DECISION: the Top Sellers slide sources the toast-sync's MAIN_MENU_ALL rows (the owner has

@@ -3,7 +3,7 @@ import type { Orientation, SignageItem, ToastCacheRow } from "./useSignage";
 import { EventWindowCard, EventMessageCard, EventTeaseCard } from "./EventStages";
 import { balanceHeadline } from "./eventStage";
 import { parseInline, RichText, alignOf } from "./richText";
-import { useDrinksBoard, useSalesCache, useSalesHistory, overallTopSellers, OVERALL_GROUP, itemNameFont, type DrinkItem, type HistorySum } from "@/modules/leaderboard/useDrinks";
+import { useDrinksBoard, useSalesCache, useSalesHistory, useMenuGroups, overallTopSellers, groupGuidByName, groupTopSellers, OVERALL_GROUP, itemNameFont, type DrinkItem, type HistorySum } from "@/modules/leaderboard/useDrinks";
 import { QRCodeSVG } from "qrcode.react";
 import { useInstagramFeed } from "./useInstagram";
 
@@ -750,17 +750,32 @@ export function SmartToast({ item, toast, orientation }: TemplateProps) {
 
   const { sums, trueDays, loading } = useSalesHistory(days);
   const { byGroup, isLoading: salesLoading } = useSalesCache();
+  const { groups } = useMenuGroups();
 
   const port = orientation === "portrait";
   const z = SIZES[orientation];
 
   if (mode === "champion") {
-    return <SmartChampion sums={sums} trueDays={trueDays} loading={loading || salesLoading} byGroup={byGroup} toast={toast} orientation={orientation} />;
+    // Optional group filter (owner fast-follow): empty/unset = whole menu (the "hot-dog nod",
+    // unchanged); set = candidates restricted to that Toast group. The per-group live top-3 is
+    // sourced from that group's sales_cache bucket (undefined = unconfigured → no sub-list).
+    return (
+      <SmartChampion
+        sums={sums}
+        trueDays={trueDays}
+        loading={loading || salesLoading}
+        byGroup={byGroup}
+        toast={toast}
+        orientation={orientation}
+        menuGroup={menuGroup}
+        groupGuid={groupGuidByName(groups, menuGroup)}
+      />
+    );
   }
 
   // UNDERDOGS — roster is the live POS menu for the group; history sums are a left-join.
   const roster = [...toast.values()].filter(
-    (r) => r.menu_group && menuGroup && r.menu_group.toLowerCase() === menuGroup.toLowerCase() && r.pos_visible && !r.out_of_stock,
+    (r) => menuGroup && sameMenuGroup(r.menu_group, menuGroup) && r.pos_visible && !r.out_of_stock,
   );
   const ranked = roster
     .map((r) => ({ row: r, qty: sums.get(r.guid)?.quantity ?? 0 }))
@@ -814,6 +829,13 @@ function SmartFrame({ header, children }: { header: ReactNode; children: ReactNo
   );
 }
 
+/** Case-insensitive Toast menu-group equality — the ONE string-match both smart_toast modes
+ *  (UNDERDOGS roster + CHAMPION candidate/label) share, so a group filter can't drift between
+ *  them. Toast cache names are title-case ("Signature Cocktails"); the picker stores that name. */
+function sameMenuGroup(rowGroup: string | null, menuGroup: string): boolean {
+  return !!rowGroup && rowGroup.trim().toLowerCase() === menuGroup.trim().toLowerCase();
+}
+
 /** "THIS WEEK" for a 7-day window, else "LAST {n}D" (distance-readable). */
 function periodLabel(days: number): string {
   if (days === 7) return "THIS WEEK";
@@ -847,7 +869,7 @@ function UnderdogRow({ name, photo, qty, days, orientation }: { name: string; ph
 }
 
 function SmartChampion({
-  sums, trueDays, loading, byGroup, toast, orientation,
+  sums, trueDays, loading, byGroup, toast, orientation, menuGroup, groupGuid,
 }: {
   sums: Map<string, HistorySum>;
   trueDays: number;
@@ -855,27 +877,45 @@ function SmartChampion({
   byGroup: Record<string, DrinkItem[]>;
   toast: Map<string, ToastCacheRow>;
   orientation: Orientation;
+  /** Optional Toast menu-group name; empty/unset = whole menu (the hot-dog nod). */
+  menuGroup?: string;
+  /** Resolved sales_cache bucket guid for menuGroup (undefined if unset/unconfigured). */
+  groupGuid?: string;
 }) {
   const port = orientation === "portrait";
   const z = SIZES[orientation];
 
   // Pick the highest-selling guid that is present in the toast cache AND POS-visible/in-stock
-  // (owner principle) — walk the sorted list until one qualifies.
+  // (owner principle) — walk the sorted list until one qualifies. When a group filter is set,
+  // the candidate must ALSO belong to that group (same sameMenuGroup() match as UNDERDOGS, so
+  // the two modes can't drift); empty group = whole menu, unchanged.
   const sorted = [...sums.values()].sort((a, b) => b.quantity - a.quantity);
   let champ: { name: string; qty: number; photo: string | undefined; category: string | undefined } | null = null;
   for (const h of sorted) {
     const row = toast.get(h.toast_guid);
     if (!row || !row.pos_visible || row.out_of_stock) continue;
+    if (menuGroup && !sameMenuGroup(row.menu_group, menuGroup)) continue;
     champ = { name: (row.name ?? h.name ?? "SPECIAL").toUpperCase(), qty: h.quantity, photo: row.image ?? undefined, category: row.menu_group ?? h.menu_group ?? undefined };
     break;
   }
 
-  // Tonight's live top 3 (sales_cache MAIN_MENU_ALL, POS-gated by useSalesCache).
-  const top3 = overallTopSellers(byGroup, 3);
+  // Tonight's live top 3: whole menu → sales_cache MAIN_MENU_ALL; group set → that group's
+  // per-group bucket (never fall back to the whole-menu list — a group slide showing the
+  // overall top-3 would mislead). An unconfigured group (no bucket) simply shows no sub-list.
+  const top3 = menuGroup ? groupTopSellers(byGroup, groupGuid, 3) : overallTopSellers(byGroup, 3);
 
   const header = (
     <div style={{ flexShrink: 0 }}>
       <Eyebrow text="SHELTER RECORDS — TOP OF THE CHARTS" size={z.eyebrow} />
+      {menuGroup && (
+        // DECISION: group-set framing reads "{GROUP} CHAMPION — LAST {trueDays} DAYS" (trueDays
+        // keeps the window honest on shallow history, same as the hero's SOLD line). Kept as the
+        // literal group name rather than singularizing ("Signature Cocktail") — the owner's Toast
+        // group names are the source of truth and read fine as a banner.
+        <div style={{ fontSize: port ? 30 : 26, letterSpacing: 4, opacity: 0.7, marginTop: 6 }}>
+          ◊ {menuGroup.toUpperCase()} CHAMPION — LAST {trueDays} DAY{trueDays === 1 ? "" : "S"}
+        </div>
+      )}
     </div>
   );
 

@@ -563,17 +563,23 @@ function SmartToastFields({ fields, setField, toastRows }: FieldProps & { toastR
         )}
       </div>
 
-      {mode === "underdogs" && (
-        <Field label="MENU GROUP">
-          {groups.length > 0 ? (
-            <select value={menuGroup ?? ""} onChange={(e) => setField("menu_group", e.target.value)} style={sel}>
-              <option value="" style={opt}>— pick a group —</option>
-              {groups.map((g) => <option key={g} value={g} style={opt}>{g}</option>)}
-            </select>
-          ) : (
-            <input placeholder="e.g. Signature Cocktails (menu not synced yet)" value={menuGroup ?? ""} onChange={(e) => setField("menu_group", e.target.value)} style={sel} />
-          )}
-        </Field>
+      <Field label="MENU GROUP">
+        {groups.length > 0 ? (
+          <select value={menuGroup ?? ""} onChange={(e) => setField("menu_group", e.target.value)} style={sel}>
+            {/* CHAMPION allows WHOLE MENU (the overall champion — empty = whole menu, unchanged
+                behavior); UNDERDOGS still requires a group to have a roster. */}
+            <option value="" style={opt}>{mode === "champion" ? "WHOLE MENU (overall champion)" : "— pick a group —"}</option>
+            {groups.map((g) => <option key={g} value={g} style={opt}>{g}</option>)}
+          </select>
+        ) : (
+          <input placeholder="e.g. Signature Cocktails (menu not synced yet)" value={menuGroup ?? ""} onChange={(e) => setField("menu_group", e.target.value)} style={sel} />
+        )}
+      </Field>
+
+      {mode === "champion" && (
+        <div style={{ fontSize: 15, opacity: 0.75 }}>
+          Leave on <b>WHOLE MENU</b> for the overall champion (the top seller across everything). Set a group for a category champion — e.g. your top <b>Signature Cocktail</b>. Tonight's live top 3 beneath follows the same filter.
+        </div>
       )}
 
       <div style={{ display: "flex", gap: 14, flexWrap: "wrap", alignItems: "flex-end" }}>
