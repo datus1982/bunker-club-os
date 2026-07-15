@@ -904,16 +904,24 @@ function SmartChampion({
   // overall top-3 would mislead). An unconfigured group (no bucket) simply shows no sub-list.
   const top3 = menuGroup ? groupTopSellers(byGroup, groupGuid, 3) : overallTopSellers(byGroup, 3);
 
+  // Owner design-beat 2026-07-15: the CHAMPION slide needs a LARGER header that explains what
+  // it is — before, whole-menu mode showed only the eyebrow, so the slide read as a bare drink
+  // name + big number. Now it carries a distance-first headline ("REIGNING CHAMPION") + a window
+  // sub-line ("MOST POURED — LAST N DAYS", or "{GROUP} — LAST N DAYS" when filtered), parallel
+  // to the UNDERDOGS header idiom above. trueDays keeps the window honest on shallow history; the
+  // sub-line is suppressed until there's at least one day of data so it never flashes "LAST 0 DAYS".
+  // DECISION: kept the literal Toast group name rather than singularizing ("Signature Cocktail") —
+  // the owner's Toast group names are the source of truth and read fine as a banner.
+  const windowLine = `◊ ${menuGroup ? `${menuGroup.toUpperCase()} — ` : "MOST POURED — "}LAST ${trueDays} DAY${trueDays === 1 ? "" : "S"}`;
   const header = (
     <div style={{ flexShrink: 0 }}>
       <Eyebrow text="SHELTER RECORDS — TOP OF THE CHARTS" size={z.eyebrow} />
-      {menuGroup && (
-        // DECISION: group-set framing reads "{GROUP} CHAMPION — LAST {trueDays} DAYS" (trueDays
-        // keeps the window honest on shallow history, same as the hero's SOLD line). Kept as the
-        // literal group name rather than singularizing ("Signature Cocktail") — the owner's Toast
-        // group names are the source of truth and read fine as a banner.
+      <div style={{ fontSize: port ? 88 : 66, fontWeight: 700, letterSpacing: 2, lineHeight: 0.98, textTransform: "uppercase", textShadow: "0 0 16px var(--terminal-glow)", marginTop: 8 }}>
+        REIGNING CHAMPION
+      </div>
+      {trueDays > 0 && (
         <div style={{ fontSize: port ? 30 : 26, letterSpacing: 4, opacity: 0.7, marginTop: 6 }}>
-          ◊ {menuGroup.toUpperCase()} CHAMPION — LAST {trueDays} DAY{trueDays === 1 ? "" : "S"}
+          {windowLine}
         </div>
       )}
     </div>
@@ -950,7 +958,10 @@ function SmartChampion({
           <div style={{ fontSize: nameSize, fontWeight: 700, lineHeight: 0.9, letterSpacing: 1, textTransform: "uppercase", textAlign: port ? "center" : "left", textShadow: "0 0 16px var(--terminal-glow)" }}>
             {balName.split("\n").map((l, i) => <span key={i} style={{ display: "block", fontSize: "inherit" }}>{l}</span>)}
           </div>
-          <div style={{ display: "flex", alignItems: "baseline", gap: 14, justifyContent: port ? "center" : "flex-start" }}>
+          {/* Owner design-beat 2026-07-15: the SOLD · LAST N DAYS line must break to its own
+              line BELOW the big count, not ride beside it (it read as "name + price"). Column
+              stack, count then label. */}
+          <div style={{ display: "flex", flexDirection: "column", alignItems: port ? "center" : "flex-start", gap: 4 }}>
             <span className="sig-live" style={{ fontSize: port ? 150 : 120, fontWeight: 700, lineHeight: 0.8, textShadow: "0 0 26px var(--terminal-glow)" }}>{champ.qty}</span>
             <span style={{ fontSize: port ? 40 : 34, letterSpacing: 2, opacity: 0.75 }}>SOLD · LAST {trueDays} DAY{trueDays === 1 ? "" : "S"}</span>
           </div>
