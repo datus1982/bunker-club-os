@@ -4,6 +4,8 @@ import { EventWindowCard, EventMessageCard, EventTeaseCard } from "./EventStages
 import { balanceHeadline } from "./eventStage";
 import { parseInline, RichText, alignOf } from "./richText";
 import { useTopSellers, itemNameFont, type DrinkItem } from "@/modules/leaderboard/useDrinks";
+import { QRCodeSVG } from "qrcode.react";
+import { useInstagramFeed } from "./useInstagram";
 
 /**
  * Signage template components (docs/09). Each renders one item inside the slot's
@@ -461,6 +463,157 @@ function TopSellerRow({ item, z, pct }: { item: DrinkItem; z: TSz; pct: number }
   );
 }
 
+/* ── INSTAGRAM (recent @venue posts/stories as ONE rotation slide) ───────────── */
+/**
+ * Renders ONE Instagram post at a time (0042 DECISION: no internal sub-rotation, no infinite
+ * animation). Which post is a time bucket — floor(now / dwell) — SEEDED at mount from
+ * Date.now() (WARN-2: never swaps mid-dwell under a guest) and advanced by ONE finite,
+ * re-armed setTimeout per dwell (A1). So it steps one post per dwell whether the card is a
+ * slot's only item (Rotation never remounts it — the internal timer walks the feed) or one of
+ * several (each remount reseeds to seed+1, the same value the timer would produce, so they
+ * agree — no double-advance, no flash). Because the pick is time-derived, a preview at roughly
+ * the same minute lands on roughly the same post, not a guaranteed exact match. Active stories
+ * ride at the head of the feed (they jump the queue) and carry a STORY — TODAY ONLY badge.
+ *
+ * Distance-first (memory [[signage-design-principles]]): square mirrored photo in the OPTICAL
+ * FEED viewport · caption in body type (trailing #hashtag/@mention blocks stripped, ~140-char
+ * hard truncate, 3-line clamp) · @handle + relative time in live green · a QR to the post's
+ * permalink with "SCAN TO OPEN THE POST" microcopy. NO Instagram glyph/wordmark (brand-safety:
+ * no third-party marks on our surfaces — the @handle is content, the pointer).
+ */
+export function InstagramCard({ item, orientation }: TemplateProps) {
+  const postCount = clampInt(n(item.fields, "post_count") ?? 5, 1, 10);
+  const includeStories = item.fields?.include_stories !== false; // default true
+  const dwell = Math.max(4, item.duration_seconds || 12);
+  const { items, loading } = useInstagramFeed(postCount, includeStories);
+
+  // Which post shows is a time-bucket = floor(now / dwell). It is SEEDED at mount from
+  // Date.now() (WARN-2: no mid-dwell swap under a guest — a live Date.now() read on
+  // SlotDisplay's 30s re-render would flip the photo/caption/QR), then advanced ONLY by a
+  // finite one-shot timer re-armed each dwell (A1). This is the same re-arm pattern
+  // SlotDisplay's Rotation uses (finite setTimeout, no interval, no infinite animation) and
+  // it fixes the dedicated-social-screen case: when the IG card is a slot's ONLY item,
+  // Rotation never remounts it, so without this internal tick a frozen bucket would show one
+  // post forever. In a MULTI-item rotation the card unmounts at dwell end and remounts with a
+  // fresh Date.now() bucket = seed+1 (one dwell elapsed) — the SAME value this timer would
+  // have produced, so remount and timer agree: no double-advance, no flash (cleanup clears
+  // the pending timer on unmount either way).
+  const [bucket, setBucket] = useState(() => Math.floor(Date.now() / (dwell * 1000)));
+  useEffect(() => {
+    const id = window.setTimeout(() => setBucket((b) => b + 1), dwell * 1000);
+    return () => window.clearTimeout(id);
+  }, [bucket, dwell]);
+
+  const port = orientation === "portrait";
+  const z = SIZES[orientation];
+
+  const header = (
+    <div style={{ flexShrink: 0 }}>
+      <Eyebrow text="SOCIAL FEED — TRANSMISSION LOG" size={z.eyebrow} />
+    </div>
+  );
+
+  if (loading && items.length === 0) {
+    return (
+      <div style={{ height: "100%", display: "flex", flexDirection: "column", gap: z.gap }}>
+        {header}
+        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", fontSize: z.mid, opacity: 0.6 }}>TUNING THE FEED…</div>
+      </div>
+    );
+  }
+  if (items.length === 0) {
+    return (
+      <div style={{ height: "100%", display: "flex", flexDirection: "column", gap: z.gap }}>
+        {header}
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", gap: 18 }}>
+          <div style={{ fontSize: port ? 84 : 68, fontWeight: 700, letterSpacing: 3, opacity: 0.75, textShadow: "0 0 16px var(--terminal-glow)" }}>NO SIGNAL YET</div>
+          <div className="sig-live" style={{ fontSize: port ? 40 : 32, letterSpacing: 4, opacity: 0.85 }}>◊ AWAITING NEXT POST</div>
+        </div>
+      </div>
+    );
+  }
+
+  // The bucket holds for this dwell and steps forward one post per dwell (single-item slots)
+  // or per remount (multi-item rotations) — see the seed/timer note above.
+  const idx = bucket % items.length;
+  const post = items[idx];
+  const caption = cleanCaption(post.caption ?? "");
+  // A2: the handle comes from the post data (the account's own username), never a hardcoded
+  // venue handle. Neutral, non-branded fallback when a row somehow lacks a username.
+  const handle = post.username ? `@${post.username}` : "SOCIAL FEED";
+  const rel = relativeTime(post.posted_at).toUpperCase();
+
+  const square = (
+    // sig-contain (owner note 2026-07-14): IG posts are 4:5 / 1.91:1 — letterbox inside the
+    // square frame, never crop heads/text (unlike drink_special, which keeps Toast's own square crop).
+    <div className="sig-viewport sig-sq sig-contain" style={port ? { width: "100%" } : { height: "100%", width: "auto" }}>
+      <span className="sig-feedcap sig-live" style={{ fontSize: 22 }}>◉ OPTICAL FEED — LIVE</span>
+      {post.image
+        ? <img src={post.image} alt="" />
+        : <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", fontSize: port ? 44 : 36, opacity: 0.45, letterSpacing: 3 }}>NO IMAGE</div>}
+    </div>
+  );
+
+  const qr = (
+    <div style={{ display: "flex", alignItems: "center", gap: port ? 20 : 16, flexShrink: 0 }}>
+      <div style={{ background: "#000", padding: 8, border: "2px solid var(--terminal-green)", lineHeight: 0, flexShrink: 0 }}>
+        <QRCodeSVG value={post.permalink} size={port ? 150 : 128} bgColor="#000000" fgColor="#00ff41" level="M" />
+      </div>
+      <div style={{ fontSize: port ? 26 : 22, letterSpacing: 3, opacity: 0.8, lineHeight: 1.25 }}>
+        SCAN TO<br />OPEN THE<br />POST
+      </div>
+    </div>
+  );
+
+  const captionBlock = (
+    <div style={{ display: "flex", flexDirection: "column", gap: port ? 14 : 10, minWidth: 0 }}>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 16, flexWrap: "wrap" }}>
+        <span className="sig-live" style={{ fontSize: port ? 48 : 40, fontWeight: 700, letterSpacing: 1, textShadow: "0 0 12px var(--terminal-glow)" }}>{handle}</span>
+        {post.is_story
+          ? <span style={{ fontSize: port ? 22 : 20, letterSpacing: 2, border: "2px solid var(--terminal-green)", padding: "3px 10px", opacity: 0.9 }}>STORY — TODAY ONLY</span>
+          : <span className="sig-live" style={{ fontSize: port ? 26 : 22, letterSpacing: 2, opacity: 0.85 }}>{rel}</span>}
+      </div>
+      {caption && (
+        <div style={{
+          fontSize: port ? z.body : Math.round(z.body * 0.95), lineHeight: 1.4, opacity: 0.9,
+          display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden",
+        }}>
+          {caption}
+        </div>
+      )}
+    </div>
+  );
+
+  if (port) {
+    return (
+      <div style={{ height: "100%", display: "flex", flexDirection: "column", gap: z.gap }}>
+        {header}
+        <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", gap: 22 }}>
+          <div style={{ width: "min(880px, 100%)", flexShrink: 0, margin: "0 auto" }}>{square}</div>
+          {captionBlock}
+          <div style={{ marginTop: "auto", display: "flex", justifyContent: "flex-start" }}>{qr}</div>
+        </div>
+      </div>
+    );
+  }
+
+  // Landscape: square photo left, caption + QR stacked right.
+  return (
+    <div style={{ height: "100%", display: "flex", flexDirection: "column", gap: z.gap }}>
+      {header}
+      <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "row", gap: 44, alignItems: "stretch" }}>
+        <div style={{ flexShrink: 0, height: "100%", display: "flex" }}>
+          <div style={{ height: "100%" }}>{square}</div>
+        </div>
+        <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", justifyContent: "center", gap: 28 }}>
+          {captionBlock}
+          {qr}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ── dispatcher ─────────────────────────────────────────────────────────────── */
 export interface TemplateProps {
   item: SignageItem;
@@ -479,6 +632,7 @@ export function TemplateView(props: TemplateProps) {
     case "image_only": return <ImageOnly {...props} />;
     case "celebration": return <Celebration {...props} />;
     case "top_sellers": return <TopSellers {...props} />;
+    case "instagram": return <InstagramCard {...props} />;
     // Phase 7 rotation-level event cards (docs/13) — materialized from a live event.
     case "event_window": return <EventWindowCard item={props.item} toast={props.toast} orientation={props.orientation} />;
     case "event_message": return <EventMessageCard item={props.item} toast={props.toast} orientation={props.orientation} />;
@@ -490,6 +644,41 @@ export function TemplateView(props: TemplateProps) {
 /* ── helpers ────────────────────────────────────────────────────────────────── */
 function formatPrice(p: number): string {
   return Number.isInteger(p) ? String(p) : p.toFixed(2);
+}
+
+function clampInt(v: number, lo: number, hi: number): number {
+  return Math.min(hi, Math.max(lo, Math.round(v)));
+}
+
+/**
+ * Clean an Instagram caption for a distance-first slide (0042 DECISION): strip the trailing
+ * block of #hashtags / @mentions (the usual spam tail), collapse whitespace, and hard-truncate
+ * to ~140 chars with an ellipsis. A caption that is ONLY hashtags collapses to empty (fine —
+ * the card just shows the photo + handle).
+ */
+function cleanCaption(raw: string): string {
+  let s = raw.replace(/\s+/g, " ").trim();
+  const tokens = s.split(" ");
+  while (tokens.length && /^[#@][\w.À-￿]+$/.test(tokens[tokens.length - 1])) tokens.pop();
+  s = tokens.join(" ").trim();
+  if (s.length > 140) s = s.slice(0, 139).replace(/\s+\S*$/, "").trimEnd() + "…";
+  return s;
+}
+
+/** Relative time, e.g. "2 hours ago" (for the Instagram card). */
+function relativeTime(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime();
+  const mins = Math.floor(diff / 60_000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins} minute${mins === 1 ? "" : "s"} ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs} hour${hrs === 1 ? "" : "s"} ago`;
+  const days = Math.floor(hrs / 24);
+  if (days < 7) return `${days} day${days === 1 ? "" : "s"} ago`;
+  const weeks = Math.floor(days / 7);
+  if (weeks < 5) return `${weeks} week${weeks === 1 ? "" : "s"} ago`;
+  const months = Math.floor(days / 30);
+  return `${months} month${months === 1 ? "" : "s"} ago`;
 }
 
 /** Typewriter that reveals `msg` once (28ms/char), then idles. No loop (perf rule). */

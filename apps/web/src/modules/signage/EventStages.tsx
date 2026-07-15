@@ -266,7 +266,7 @@ function EventWindowStage({ event, orientation, toast }: { event: LiveEvent; ori
   return (
     <div className="evt-stage" style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", justifyContent: "center", padding: z.pad, gap: z.gap, ...alignStyle(align) }}>
       <div style={{ fontSize: z.eyebrow, letterSpacing: 4, opacity: 0.8 }}>{sk.windowLabel} — {remainClock} REMAINING</div>
-      {customImg && <SquarePhoto src={customImg} size={EVT_IMG[orientation]} feed="OPTICAL FEED" />}
+      {customImg && <SquarePhoto src={customImg} size={EVT_IMG[orientation]} feed="OPTICAL FEED" fit="contain" />}
       <div style={{ fontSize: headlineFont(name, orientation), fontWeight: 700, lineHeight: 0.9, textTransform: "uppercase", textShadow: "0 0 20px var(--terminal-glow)" }}>
         {nameLive ? <span className="sig-live" style={{ fontSize: "inherit" }}><Lines text={name} /></span> : <Lines text={name} />}
       </div>
@@ -349,7 +349,7 @@ export function EventWindowCard({ item, toast, orientation }: { item: SignageIte
   return (
     <div style={{ height: "100%", display: "flex", flexDirection: "column", justifyContent: "center", position: "relative", gap: z.gap, ...alignStyle(align) }}>
       <div style={{ fontSize: z.eyebrow, letterSpacing: 6, opacity: 0.7 }}>▸ ON NOW — PROMO WINDOW</div>
-      {customImg && <SquarePhoto src={customImg} size={imgSize} feed="OPTICAL FEED" />}
+      {customImg && <SquarePhoto src={customImg} size={imgSize} feed="OPTICAL FEED" fit="contain" />}
       <div style={{ fontSize: headlineFont(title, orientation), fontWeight: 700, lineHeight: 0.9, textTransform: "uppercase", textShadow: "0 0 16px var(--terminal-glow)" }}><Lines text={title} /></div>
       {time && <div style={{ fontSize: z.time, fontWeight: 700, lineHeight: 0.85, textShadow: "0 0 24px var(--terminal-glow)" }}>{time}</div>}
       {body && <div style={{ fontSize: Math.round(z.body * 1.25), opacity: 0.9, lineHeight: 1.35, maxWidth: "84%" }}><Lines text={body} /></div>}
@@ -384,7 +384,7 @@ export function EventMessageCard({ item, toast, orientation }: { item: SignageIt
   return (
     <div style={{ height: "100%", display: "flex", flexDirection: "column", justifyContent: "center", gap: z.gap, ...alignStyle(align) }}>
       <div style={{ fontSize: z.eyebrow, letterSpacing: 6, opacity: 0.7 }}>◈ SHELTER BULLETIN</div>
-      {customImg && <SquarePhoto src={customImg} size={EVT_IMG[orientation]} feed="OPTICAL FEED" />}
+      {customImg && <SquarePhoto src={customImg} size={EVT_IMG[orientation]} feed="OPTICAL FEED" fit="contain" />}
       <div style={{ fontSize: headlineFont(title, orientation), fontWeight: 700, lineHeight: 0.92, textTransform: "uppercase", textShadow: "0 0 16px var(--terminal-glow)" }}>{parseInline(title)}</div>
       {body && <div style={{ fontSize: Math.round(z.body * 1.3), opacity: 0.9, lineHeight: 1.45, maxWidth: "84%" }}><Lines text={body} /></div>}
       {price != null && src?.name && (
