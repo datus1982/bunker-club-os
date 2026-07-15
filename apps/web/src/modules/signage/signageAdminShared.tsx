@@ -118,7 +118,7 @@ export function ItemRow({
   const del = useMutation({ mutationFn: () => deleteItem(item.id), onSuccess: onChanged });
   const up = useMutation({ mutationFn: () => reorderItem(item, prev!), onSuccess: onChanged });
   const down = useMutation({ mutationFn: () => reorderItem(item, next!), onSuccess: onChanged });
-  const dur = useMutation({ mutationFn: (secs: number) => setItemDuration(item.id, secs), onSuccess: onChanged });
+  const dur = useMutation({ mutationFn: (secs: number) => setItemDuration(item, secs), onSuccess: onChanged });
 
   // Dim any row the TV is NOT showing this minute: turned OFF, out of its time window, or
   // hidden by a 86'd / off-POS Toast source. When `live` isn't passed (no live-queue context)

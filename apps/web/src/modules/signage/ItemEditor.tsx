@@ -5,6 +5,7 @@ import {
   type AdminItem, type AdminSlot, type ItemDraft, type Recurrence,
   saveItem, uploadCustomImage, linkedMoment, saveMoment, toastMap,
 } from "./useSignageAdmin";
+import { placeAsset } from "./slotQueue";
 import { FormatControls } from "./signageAdminShared";
 import { alignOf } from "./richText";
 import { SignagePreview } from "./SignagePreview";
@@ -200,7 +201,19 @@ function ItemForm({
         active,
         show_on_website: showOnWebsite,
       };
-      const id = await saveItem(draft, nextSortOrder(slotId));
+      const id = await saveItem(draft);
+      // Placement lives on slot_queue now (0045): queue the asset on the chosen screen (new),
+      // update its dwell in place (same-slot edit), or move it (slot changed). fromSlotId is the
+      // slot the edited asset was on; null for a new asset. nextSortOrder = append position.
+      if (slotId) {
+        await placeAsset({
+          itemId: id,
+          slotId,
+          fromSlotId: editing?.slot_id ?? null,
+          duration,
+          nextPosition: nextSortOrder(slotId),
+        });
+      }
       // Only touch the linked moment once its query has resolved (N8) — otherwise a save
       // that races the load would delete an existing shout-out. The submit button is also
       // disabled until momentLoaded, so this is belt-and-suspenders.

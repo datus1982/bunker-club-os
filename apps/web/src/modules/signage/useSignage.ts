@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase, VENUE_ID } from "@/shared/supabaseClient";
+import { fetchSlotQueuePublic } from "./slotQueue";
 import { eventStage, isTakeoverStage, type LiveEvent } from "./eventStage";
 
 // Re-export the pure events surface so the app imports it from one place. The pure
@@ -213,31 +214,30 @@ export function useSlot(slug: string) {
   });
   const slotId = slot.data?.id ?? null;
 
+  // This screen's authored assets, read through slot_queue (0045) and flattened to the
+  // legacy per-slot item shape (sort_order = position, duration_seconds = the junction dwell,
+  // active = asset-global). resolveRotation's inputs are byte-identical to the old slot_id read.
   const items = useQuery({
     queryKey: ["signage", "items", slotId],
     enabled: !!slotId,
-    queryFn: async (): Promise<SignageItem[]> => {
-      const { data, error } = await supabase
-        .from("signage_items")
-        .select("id, slot_id, template, fields, starts_at, ends_at, sort_order, duration_seconds, active")
-        .eq("slot_id", slotId)
-        .eq("active", true)
-        .order("sort_order");
-      if (error) throw error;
-      return (data ?? []) as SignageItem[];
-    },
+    queryFn: (): Promise<SignageItem[]> => fetchSlotQueuePublic(slotId as string),
   });
 
   const takeover = useQuery({
-    queryKey: ["signage", "takeover"],
+    queryKey: ["signage", "takeover", slotId],
     queryFn: async (): Promise<Takeover | null> => {
       const nowIso = new Date().toISOString();
-      const { data, error } = await supabase
+      let q = supabase
         .from("screen_takeovers")
-        .select("id, message, sub_message, starts_at, ends_at")
+        .select("id, message, sub_message, starts_at, ends_at, slot_id")
         .eq("venue_id", VENUE_ID)
         .lte("starts_at", nowIso)
-        .or(`ends_at.is.null,ends_at.gt.${nowIso}`)
+        .or(`ends_at.is.null,ends_at.gt.${nowIso}`);
+      // Per-screen scope (0045): a takeover applies iff its slot_id is null (all screens) OR
+      // equals THIS slot. Broadcast sends null today, so this is a no-op until per-screen
+      // sends exist (task 2); scoping it here means the reader needs no change then.
+      q = slotId ? q.or(`slot_id.is.null,slot_id.eq.${slotId}`) : q.is("slot_id", null);
+      const { data, error } = await q
         .order("starts_at", { ascending: false })
         .limit(1)
         .maybeSingle();
@@ -307,6 +307,11 @@ export function useSlot(slug: string) {
     const ch = supabase
       .channel("signage:slot")
       .on("postgres_changes", { event: "*", schema: "public", table: "signage_items", filter: `venue_id=eq.${VENUE_ID}` },
+        () => qc.invalidateQueries({ queryKey: ["signage", "items"] }))
+      // slot_queue carries per-screen order/dwell now (0045) — a queue edit must re-fetch the
+      // rotation. No venue_id column on the junction (single-venue project), so subscribe
+      // unfiltered and invalidate; the flattened read re-joins the assets.
+      .on("postgres_changes", { event: "*", schema: "public", table: "slot_queue" },
         () => qc.invalidateQueries({ queryKey: ["signage", "items"] }))
       .on("postgres_changes", { event: "*", schema: "public", table: "screen_takeovers", filter: `venue_id=eq.${VENUE_ID}` },
         () => qc.invalidateQueries({ queryKey: ["signage", "takeover"] }))
