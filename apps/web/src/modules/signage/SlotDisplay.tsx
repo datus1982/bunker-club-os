@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 import { DisplayCanvas } from "@/shared/DisplayCanvas";
 import { supabase } from "@/shared/supabaseClient";
@@ -149,7 +149,7 @@ function SlotScreen({
               <Rotation slot={slot} rotation={rotation} toast={toast} teaseEvent={tease} venueName={venueName} />
             )}
           </div>
-          <ChromeFooter ticker={ticker} live={mode !== "rotation"} />
+          <ChromeFooter ticker={ticker} live={mode !== "rotation"} orientation={slot.orientation} />
         </>
       )}
 
@@ -239,7 +239,13 @@ function ChromeHeader({ slot, venueName, timezone }: { slot: Slot; venueName: st
   );
 }
 
-function ChromeFooter({ ticker, live }: { ticker: TickerLine[]; live: boolean }) {
+// Owner design-beat 2026-07-14 ("the scroll text could be larger, fill the space more"): the
+// reprint line is sized up to genuinely fill the footer bar and read at 20 feet. The bar
+// height is governed by BASE (a transform-scale never shrinks the layout box), so both
+// orientations keep a consistent taller bar; the markers ride the same base for proportion.
+const TICKER_BASE: Record<"portrait" | "landscape", number> = { portrait: 46, landscape: 42 };
+
+function ChromeFooter({ ticker, live, orientation }: { ticker: TickerLine[]; live: boolean; orientation: "portrait" | "landscape" }) {
   const [ti, setTi] = useState(0);
   useEffect(() => {
     if (ticker.length <= 1) return;
@@ -247,20 +253,50 @@ function ChromeFooter({ ticker, live }: { ticker: TickerLine[]; live: boolean })
     return () => window.clearInterval(id);
   }, [ticker.length]);
   const line = ticker[ti % Math.max(1, ticker.length)] ?? { text: "", live: false };
+  const base = TICKER_BASE[orientation];
 
   return (
-    // Owner design-beat: chrome rule shifted to dim green (--sig-rule).
-    <footer style={{ flexShrink: 0, borderTop: "2px solid var(--sig-rule)", padding: "16px 40px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 24, fontSize: 26 }}>
+    // Owner design-beat: chrome rule shifted to dim green (--sig-rule); ticker sized up.
+    <footer style={{ flexShrink: 0, borderTop: "2px solid var(--sig-rule)", padding: "16px 40px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 24, fontSize: base }}>
       {/* Dual-phosphor: the ON AIR / LIVE status light is a live-state indicator, so it
           reads green like the mockup's `.cbot .now` — a single restrained green accent. */}
       <span className="sig-live" style={{ flexShrink: 0 }}>{live ? "■ ON AIR" : "■ ONLINE"}</span>
       {/* Green ◆ chrome marker (owner: "the ticker's ◆ markers can go green too"). */}
       <span className="sig-live" style={{ flexShrink: 0, opacity: 0.85 }}>◆</span>
-      {/* Reprint (key-remount) — no scroll animation (docs/09 perf + authenticity). */}
-      <span key={ti} className={`sig-enter${line.live ? " sig-live" : ""}`} style={{ flex: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+      {/* Reprint (key-remount) — no scroll animation (docs/09 perf + authenticity). Shrink-to-fit
+          guard: the line renders at BASE and, only if it would overflow, scales down uniformly
+          so the longest real line (or an extreme manual line) stays ONE line and never clips. */}
+      <TickerReprint key={ti} line={line} base={base} />
+    </footer>
+  );
+}
+
+/** One reprinted ticker line, sized to fill the bar and measured-scaled to never wrap/clip.
+ *  CSS transforms do NOT change offsetWidth (a pre-transform layout metric), so the natural
+ *  width at BASE is read directly and the scale set in one pass — no reset-flicker. The
+ *  fixed canvas means clientWidth is stable (DisplayCanvas scales the whole surface), so no
+ *  resize listener is needed. */
+function TickerReprint({ line, base }: { line: TickerLine; base: number }) {
+  const boxRef = useRef<HTMLDivElement>(null);
+  const spanRef = useRef<HTMLSpanElement>(null);
+  const [scale, setScale] = useState(1);
+  useLayoutEffect(() => {
+    const box = boxRef.current, span = spanRef.current;
+    if (!box || !span) return;
+    const avail = box.clientWidth;
+    const need = span.offsetWidth; // natural width at BASE (transform-independent)
+    setScale(avail > 0 && need > avail ? avail / need : 1);
+  }, [line.text, base]);
+  return (
+    <div ref={boxRef} style={{ flex: 1, minWidth: 0, overflow: "hidden" }}>
+      <span
+        ref={spanRef}
+        className={`sig-enter${line.live ? " sig-live" : ""}`}
+        style={{ display: "inline-block", whiteSpace: "nowrap", fontSize: base, transform: `scale(${scale})`, transformOrigin: "left center" }}
+      >
         {line.text}
       </span>
-    </footer>
+    </div>
   );
 }
 

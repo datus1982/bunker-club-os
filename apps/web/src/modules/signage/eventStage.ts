@@ -13,6 +13,22 @@
 
 export type EventKind = "window" | "message" | "moment";
 
+/**
+ * PROMO vs BULLETIN flavor (owner design-beat 2026-07-14): the same WINDOW/MESSAGE plumbing
+ * carries two voices. A PROMO is a sale ("free hot dog Mondays", happy hour) — it keeps the
+ * "ON NOW" urgency framing. A BULLETIN is information (Best of OKC, a local event, a PSA) —
+ * calm, no sale framing. Stored on the event's `fields.flavor`. Back-compat: rows saved
+ * before this beat have no `flavor` key, so the default follows the kind — window → promo,
+ * message → bulletin — which matches how each kind already read.
+ */
+export type EventFlavor = "promo" | "bulletin";
+
+export function flavorOf(fields: Record<string, unknown> | undefined, kind: EventKind): EventFlavor {
+  const f = fields?.flavor;
+  if (f === "promo" || f === "bulletin") return f;
+  return kind === "message" ? "bulletin" : "promo";
+}
+
 /** The stage a live event is in, from the display's point of view.
  *  - moment kinds resolve to tease | alert | moment | event | allclear
  *  - window/message kinds resolve to 'active' (a rotation card + ticker line)

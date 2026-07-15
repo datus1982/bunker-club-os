@@ -14,8 +14,9 @@ export {
   MOMENT_PAYOFF_MS,
   ALL_CLEAR_MS,
   ALERT_PULSE_MS,
+  flavorOf,
 } from "./eventStage";
-export type { LiveEvent, EventStage, EventKind } from "./eventStage";
+export type { LiveEvent, EventStage, EventKind, EventFlavor } from "./eventStage";
 
 /**
  * Data layer for the PUBLIC signage slot page (/signage/s/:slug — docs/09).
