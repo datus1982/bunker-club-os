@@ -1,28 +1,39 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useMutation } from "@tanstack/react-query";
 import { Modal, Field, input as inputStyle, btnGhost } from "@/modules/trivia/ui";
 import type { Orientation, SignageItem, Template, ToastCacheRow } from "./useSignage";
 import {
   type AdminItem, type AdminSlot, type ItemDraft, type Recurrence,
-  saveItem, uploadCustomImage, linkedMoment, saveMoment, toastMap,
+  saveItem, deleteItem, uploadCustomImage, linkedMoment, saveMoment, toastMap,
 } from "./useSignageAdmin";
-import { placeAsset } from "./slotQueue";
+import { addToQueue } from "./slotQueue";
 import { FormatControls } from "./signageAdminShared";
 import { alignOf } from "./richText";
 import { SignagePreview } from "./SignagePreview";
 
 /**
- * Add/edit a signage item (/signage — docs/09 Admin). Modal flow:
- *   new  → template picker (5 tiles) → template-specific form + live preview
+ * Add/edit a signage ASSET (docs/signage-hub-consolidation-mockup.html, D7). Modal flow:
+ *   new  → template picker (8 tiles) → template-specific form + live preview
  *   edit → straight to the form.
  *
- * Mobile-first (owner works from his phone at the bar): one column, ≥44px controls,
- * the live preview pinned under the header so field edits are visible immediately.
- * Toast is READ-ONLY (docs/09 amendment) — the source picker only stamps
- * source_toast_guid; name/price/photo then render LIVE (green) from the cache.
+ * The asset is VENUE-WIDE (slot_queue owns placement, 0045). This editor edits the asset's
+ * CONTENT — never its per-screen placement (D7: editing a shared asset changes it on every
+ * screen it runs; position + SECS are the only per-screen difference, and those live in the
+ * QUEUE). So:
+ *   • CREATE — saves the asset, then (when opened from a screen card's + ADD) queues it on
+ *     that screen via addToQueue. From the library's + NEW ASSET it stays idle until queued.
+ *   • EDIT   — saves content only; placements are untouched. DELETE removes the asset from
+ *     EVERY screen (D4 — the destructive action lives here, behind a confirm, not on a queue row).
+ *
+ * Mobile-first (owner works from his phone at the bar): one column, ≥44px controls, the live
+ * preview pinned under the header. Toast is READ-ONLY (docs/09 amendment) — the source picker
+ * only stamps source_toast_guid; name/price/photo then render LIVE (green) from the cache.
  */
 
 const MONO = "'VT323','Share Tech Mono',monospace";
-const TEMPLATES: { key: Template; label: string; blurb: string; icon: string }[] = [
+/** The asset templates a manager can create — shared with the hub's + ADD picker
+ *  (docs/signage-hub-consolidation-mockup.html view 3 NEW ASSET tiles) so the two never drift. */
+export const ITEM_TEMPLATES: { key: Template; label: string; blurb: string; icon: string }[] = [
   { key: "drink_special", label: "DRINK SPECIAL", blurb: "Featured pour — price + photo", icon: "🍺" },
   { key: "event", label: "EVENT", blurb: "Upcoming night — date + blurb", icon: "📅" },
   { key: "announcement", label: "ANNOUNCEMENT", blurb: "Text bulletin, typewriter", icon: "▮" },
@@ -37,29 +48,36 @@ const SKINS = ["birthday", "bachelor", "bachelorette", "anniversary", "congrats"
 const DOW = ["SU", "MO", "TU", "WE", "TH", "FR", "SA"];
 
 export function ItemEditor({
-  slots, toastRows, defaultSlotId, editing, presetTemplate, venueName, nextSortOrder, onClose, onSaved,
+  slots, toastRows, editing, presetTemplate, venueName, queueOnSlotId, placementSlotIds, nextPosition, onClose, onSaved, onDeleted,
 }: {
   slots: AdminSlot[];
   toastRows: ToastCacheRow[];
-  defaultSlotId: string | null;
   editing: AdminItem | null;
-  /** Skip the template picker and open straight into this template (hub quick actions).
+  /** Skip the template picker and open straight into this template (card + ADD ▸ NEW ASSET).
    *  Only applies when creating (editing === null); editing always uses its own template. */
   presetTemplate?: Template | null;
   /** Venue mark for the live preview's drink_special footer (threaded to SignagePreview). */
   venueName?: string;
-  nextSortOrder: (slotId: string | null) => number;
+  /** Slot to QUEUE a NEW asset on after save (a screen card's + ADD). null/undefined = create
+   *  it idle (library + NEW ASSET). Ignored on edit — placement is never touched there (D7). */
+  queueOnSlotId?: string | null;
+  /** Slots the edited asset currently runs on (read-only "on these screens" line). */
+  placementSlotIds?: string[];
+  /** Append position for the queue placement on create (max existing position + 1 on that slot). */
+  nextPosition?: (slotId: string) => number;
   onClose: () => void;
   onSaved: () => void;
+  /** Called after DELETE removes the asset from every screen. */
+  onDeleted?: () => void;
 }) {
   const [template, setTemplate] = useState<Template | null>(editing?.template ?? presetTemplate ?? null);
 
   if (!template) {
     return (
-      <Modal title="NEW SIGNAGE ITEM" onClose={onClose}>
+      <Modal title="NEW ASSET" onClose={onClose}>
         <div style={{ fontSize: 18, opacity: 0.7 }}>Pick a template:</div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-          {TEMPLATES.map((t) => (
+          {ITEM_TEMPLATES.map((t) => (
             <button
               key={t.key}
               type="button"
@@ -81,32 +99,44 @@ export function ItemEditor({
       template={template}
       slots={slots}
       toastRows={toastRows}
-      defaultSlotId={defaultSlotId}
       editing={editing}
       venueName={venueName}
-      nextSortOrder={nextSortOrder}
+      queueOnSlotId={queueOnSlotId}
+      placementSlotIds={placementSlotIds}
+      nextPosition={nextPosition}
       onClose={onClose}
       onSaved={onSaved}
+      onDeleted={onDeleted}
     />
   );
 }
 
 /* ── the form ───────────────────────────────────────────────────────────── */
 function ItemForm({
-  template, slots, toastRows, defaultSlotId, editing, venueName, nextSortOrder, onClose, onSaved,
+  template, slots, toastRows, editing, venueName, queueOnSlotId, placementSlotIds, nextPosition, onClose, onSaved, onDeleted,
 }: {
   template: Template;
   slots: AdminSlot[];
   toastRows: ToastCacheRow[];
-  defaultSlotId: string | null;
   editing: AdminItem | null;
   venueName?: string;
-  nextSortOrder: (slotId: string | null) => number;
+  queueOnSlotId?: string | null;
+  placementSlotIds?: string[];
+  nextPosition?: (slotId: string) => number;
   onClose: () => void;
   onSaved: () => void;
+  onDeleted?: () => void;
 }) {
   const isCeleb = template === "celebration";
-  const [slotId, setSlotId] = useState<string | null>(editing?.slot_id ?? defaultSlotId ?? slots[0]?.id ?? null);
+  // Placement is NOT edited here (D7). The preview just needs an orientation to render at;
+  // default to the slot we're queueing a new asset on, else the slot the edited asset already
+  // runs on, else portrait. A toggle lets the manager check both orientations (the asset can
+  // run on either screen).
+  const queueSlot = slots.find((s) => s.id === queueOnSlotId);
+  const firstPlacementSlot = slots.find((s) => (placementSlotIds ?? []).includes(s.id));
+  const [previewOri, setPreviewOri] = useState<Orientation>(
+    queueSlot?.orientation ?? firstPlacementSlot?.orientation ?? "portrait",
+  );
   const [active, setActive] = useState(editing?.active ?? true);
   const [showOnWebsite, setShowOnWebsite] = useState(editing?.show_on_website ?? false);
   const [duration, setDuration] = useState(editing?.duration_seconds ?? 12);
@@ -153,8 +183,13 @@ function ItemForm({
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  const orientation: Orientation = slots.find((x) => x.id === slotId)?.orientation ?? "portrait";
+  const orientation: Orientation = previewOri;
   const tmap = useMemo(() => toastMap(toastRows), [toastRows]);
+  const del = useMutation({
+    mutationFn: () => deleteItem(editing!.id),
+    onSuccess: () => { onDeleted?.(); onClose(); },
+    onError: (e: unknown) => setErr(e instanceof Error ? e.message : "Delete failed."),
+  });
 
   const setField = (k: string, v: unknown) =>
     setFields((f) => {
@@ -166,7 +201,7 @@ function ItemForm({
 
   const draftItem: SignageItem = {
     id: editing?.id ?? "draft",
-    slot_id: slotId,
+    slot_id: null,
     template,
     fields: isCeleb ? { ...fields, date: celebDate } : fields,
     starts_at: null,
@@ -191,7 +226,7 @@ function ItemForm({
       }
       const draft: ItemDraft = {
         id: editing?.id,
-        slot_id: slotId,
+        slot_id: null, // placement is on slot_queue now (0045); the asset row is venue-wide
         template,
         fields: outFields,
         starts_at: ns,
@@ -202,17 +237,11 @@ function ItemForm({
         show_on_website: showOnWebsite,
       };
       const id = await saveItem(draft);
-      // Placement lives on slot_queue now (0045): queue the asset on the chosen screen (new),
-      // update its dwell in place (same-slot edit), or move it (slot changed). fromSlotId is the
-      // slot the edited asset was on; null for a new asset. nextSortOrder = append position.
-      if (slotId) {
-        await placeAsset({
-          itemId: id,
-          slotId,
-          fromSlotId: editing?.slot_id ?? null,
-          duration,
-          nextPosition: nextSortOrder(slotId),
-        });
+      // On CREATE from a screen card's + ADD, queue the new asset on that screen (append) with
+      // the chosen dwell (D6). On EDIT we never touch placement (D7) — the queue owns position +
+      // SECS per screen, so a content edit can't move or re-dwell a shared card.
+      if (!editing && queueOnSlotId) {
+        await addToQueue(queueOnSlotId, id, nextPosition ? nextPosition(queueOnSlotId) : 0, duration);
       }
       // Only touch the linked moment once its query has resolved (N8) — otherwise a save
       // that races the load would delete an existing shout-out. The submit button is also
@@ -242,12 +271,23 @@ function ItemForm({
 
   return (
     <Modal
-      title={editing ? "EDIT ITEM" : `NEW — ${labelFor(template)}`}
+      title={editing ? "EDIT ASSET" : `NEW — ${labelFor(template)}`}
       onClose={onClose}
       footer={
         <>
+          {editing && (
+            <button
+              type="button"
+              onClick={() => { if (confirm("Delete this asset? It will be removed from EVERY screen it runs on. This can't be undone.")) del.mutate(); }}
+              disabled={busy || del.isPending}
+              className="u-amber"
+              style={{ ...btnGhost, borderColor: "var(--terminal-amber, #ffb000)", color: "var(--terminal-amber, #ffb000)", marginRight: "auto" }}
+            >
+              {del.isPending ? "DELETING…" : "DELETE"}
+            </button>
+          )}
           <button type="button" onClick={onClose} style={btnGhost}>CANCEL</button>
-          <button type="button" onClick={submit} disabled={busy || !momentLoaded} className="u-fill u-ink" style={{ ...btnPrimary, opacity: busy || !momentLoaded ? 0.5 : 1 }}>
+          <button type="button" onClick={submit} disabled={busy || del.isPending || !momentLoaded} className="u-fill u-ink" style={{ ...btnPrimary, opacity: busy || !momentLoaded ? 0.5 : 1 }}>
             {busy ? "SAVING…" : !momentLoaded ? "LOADING…" : editing ? "SAVE" : "CREATE"}
           </button>
         </>
@@ -290,14 +330,31 @@ function ItemForm({
 
       <div className="terminal-separator" style={{ margin: "4px 0" }} />
 
-      {/* Common placement / scheduling */}
-      <Field label="SLOT">
-        <select value={slotId ?? ""} onChange={(e) => setSlotId(e.target.value || null)} style={sel}>
-          {slots.map((s) => (
-            <option key={s.id} value={s.id} style={opt}>{s.name} ({s.orientation})</option>
+      {/* PREVIEW AS — the asset can run on either screen; check both orientations here. It
+          is preview-only (no placement is written from this control). */}
+      <Field label="PREVIEW AS">
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          {(["portrait", "landscape"] as const).map((o) => (
+            <button key={o} type="button" onClick={() => setPreviewOri(o)} className={previewOri === o ? "u-fill u-ink" : ""} style={{ ...chip, ...(previewOri === o ? chipActive : null) }}>
+              {o.toUpperCase()}
+            </button>
           ))}
-        </select>
+        </div>
       </Field>
+
+      {/* Where this asset runs (read-only). Add/remove screens from the QUEUE, not here (D7). */}
+      {editing && (
+        <div style={{ fontSize: 14, opacity: 0.6, lineHeight: 1.5 }}>
+          {(placementSlotIds?.length ?? 0) === 0
+            ? "IDLE — not on any screen. Queue it from a screen's + ADD."
+            : `ON: ${slots.filter((s) => (placementSlotIds ?? []).includes(s.id)).map((s) => s.name).join(" · ")}. Add/remove screens & set per-screen SECS in the QUEUE.`}
+        </div>
+      )}
+      {!editing && queueOnSlotId && (
+        <div style={{ fontSize: 14, opacity: 0.6 }}>
+          Will be queued on <b>{slots.find((s) => s.id === queueOnSlotId)?.name ?? "this screen"}</b> on save. Queue it on other screens from their + ADD.
+        </div>
+      )}
 
       {!isCeleb && (
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
@@ -311,12 +368,16 @@ function ItemForm({
       )}
 
       <div style={{ display: "flex", gap: 14, flexWrap: "wrap", alignItems: "flex-end" }}>
-        <Field label="ON SCREEN (SECONDS)">
-          <input type="number" min={4} value={duration} onChange={(e) => setDuration(Math.max(4, parseInt(e.target.value) || 12))} style={{ ...sel, width: 120 }} />
-        </Field>
+        {/* On-screen SECONDS is PER-SCREEN (slot_queue.duration_seconds). On create it seeds the
+            first queue placement's dwell; on edit it's set per-screen in the QUEUE, so hide it. */}
+        {!editing && (
+          <Field label="ON SCREEN (SECONDS)">
+            <input type="number" min={4} value={duration} onChange={(e) => setDuration(Math.max(4, parseInt(e.target.value) || 12))} style={{ ...sel, width: 120 }} />
+          </Field>
+        )}
         <label style={checkLabel}>
           <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} style={checkbox} />
-          <span>ACTIVE</span>
+          <span>ACTIVE {editing ? <span style={{ fontSize: 13, opacity: 0.55 }}>(on every screen)</span> : null}</span>
         </label>
       </div>
 
@@ -895,7 +956,7 @@ function fromLocalInput(local: string): string {
   return new Date(local).toISOString();
 }
 function labelFor(t: Template): string {
-  return TEMPLATES.find((x) => x.key === t)?.label ?? t.toUpperCase();
+  return ITEM_TEMPLATES.find((x) => x.key === t)?.label ?? t.toUpperCase();
 }
 
 /* ── styles ─────────────────────────────────────────────────────────────── */

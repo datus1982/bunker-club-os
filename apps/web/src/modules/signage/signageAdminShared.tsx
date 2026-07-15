@@ -1,10 +1,10 @@
 import { useMemo, useRef, useState, type CSSProperties } from "react";
 import { useMutation } from "@tanstack/react-query";
 import {
-  activeTakeover, dismissTakeover, sendTakeover, deleteItem, setItemActive, setItemDuration, reorderItem, featuredItems,
+  setItemActive, setItemDuration, reorderItem, featuredItems,
   uploadCustomImage,
   DURATION_CHOICES,
-  type AdminItem, type AdminTakeover, type Recurrence, type ScreenHealth,
+  type AdminItem, type Recurrence, type ScreenHealth,
 } from "./useSignageAdmin";
 import type { EventKind, ToastCacheRow } from "./useSignage";
 import type { Align } from "./richText";
@@ -100,22 +100,25 @@ export function CopyKioskButton({ slug, style }: { slug: string; style?: CSSProp
   );
 }
 
-/* ── per-slot item row (EDIT ROTATION) ──────────────────────────────────────── */
+/* ── per-slot item row (QUEUE / EDIT ROTATION) ──────────────────────────────── */
 export function ItemRow({
-  item, first, last, hideReason, prev, next, onEdit, onChanged, toastRows,
+  item, first, last, hideReason, prev, next, onEdit, onRemove, onChanged, toastRows,
   live, windowReason,
 }: {
   item: AdminItem; first: boolean; last: boolean; hideReason: string | null;
   prev?: AdminItem; next?: AdminItem;
-  onEdit: () => void; onChanged: () => void; toastRows?: ToastCacheRow[];
-  // Live-queue markers (EDIT ROTATION renders the same queue the TV resolves). `live` = the
-  // TV would show this row this minute (● NOW, full brightness); `windowReason` = why an
-  // active-but-not-live authored item is out of its time window (STARTS … / ENDED). Both are
-  // optional — omitted, the row behaves byte-identically to the pre-live-queue editor.
+  onEdit: () => void;
+  // ✕ REMOVE — unqueue this asset from THIS screen only (slot_queue delete; the asset stays
+  // in the library and on any other screen). D4: destructive DELETE-the-asset lives in the
+  // asset editor, never on a queue row, so a queue tidy-up can't nuke a shared asset.
+  onRemove: () => void;
+  onChanged: () => void; toastRows?: ToastCacheRow[];
+  // Live-queue markers (the queue renders the same list the TV resolves). `live` = the TV
+  // would show this row this minute (● NOW, full brightness); `windowReason` = why an
+  // active-but-not-live authored item is out of its time window (STARTS … / ENDED).
   live?: boolean; windowReason?: string | null;
 }) {
   const toggle = useMutation({ mutationFn: () => setItemActive(item.id, !item.active), onSuccess: onChanged });
-  const del = useMutation({ mutationFn: () => deleteItem(item.id), onSuccess: onChanged });
   const up = useMutation({ mutationFn: () => reorderItem(item, prev!), onSuccess: onChanged });
   const down = useMutation({ mutationFn: () => reorderItem(item, next!), onSuccess: onChanged });
   const dur = useMutation({ mutationFn: (secs: number) => setItemDuration(item, secs), onSuccess: onChanged });
@@ -163,81 +166,17 @@ export function ItemRow({
         </label>
         <button type="button" onClick={() => up.mutate()} disabled={first} style={iconBtn} aria-label="Move up">▲</button>
         <button type="button" onClick={() => down.mutate()} disabled={last} style={iconBtn} aria-label="Move down">▼</button>
-        <button type="button" onClick={() => toggle.mutate()} className={item.active ? "u-fill u-ink" : ""} style={{ ...iconBtn, minWidth: 62 }}>{item.active ? "● ON" : "○ OFF"}</button>
+        <button type="button" onClick={() => toggle.mutate()} className={item.active ? "u-fill u-ink" : ""} title="Pause/resume this asset on EVERY screen it runs on" style={{ ...iconBtn, minWidth: 62 }}>{item.active ? "● ON" : "○ OFF"}</button>
         <button type="button" onClick={onEdit} style={iconBtn}>EDIT</button>
-        <button type="button" onClick={() => { if (confirm("Delete this item?")) del.mutate(); }} className="u-amber" style={iconBtn}>DEL</button>
+        <button
+          type="button"
+          onClick={() => { if (confirm("Remove from THIS screen? The asset stays in the library and on any other screen.")) onRemove(); }}
+          className="u-amber"
+          title="Remove from THIS screen only (the asset stays in the library)"
+          aria-label="Remove from this screen"
+          style={iconBtn}
+        >✕</button>
       </div>
-    </div>
-  );
-}
-
-/* ── takeover / broadcast console (BROADCAST page) ──────────────────────────── */
-export function TakeoverConsole({ takeovers, onChanged }: { takeovers: AdminTakeover[]; onChanged: () => void }) {
-  const active = activeTakeover(takeovers);
-  const [message, setMessage] = useState("");
-  const [sub, setSub] = useState("");
-  const [duration, setDuration] = useState<number | null>(5);
-
-  const send = useMutation({
-    mutationFn: () => sendTakeover({ message: message.trim(), sub_message: sub.trim() || null, durationMinutes: duration }),
-    onSuccess: () => { setMessage(""); setSub(""); onChanged(); },
-  });
-  const dismiss = useMutation({ mutationFn: (id: string) => dismissTakeover(id), onSuccess: onChanged });
-  const resend = useMutation({
-    mutationFn: (t: AdminTakeover) => sendTakeover({ message: t.message, sub_message: t.sub_message, durationMinutes: 5 }),
-    onSuccess: onChanged,
-  });
-
-  return (
-    <div className="terminal-border" style={{ padding: "14px 16px", display: "flex", flexDirection: "column", gap: 12, boxShadow: "0 0 18px var(--terminal-glow)" }}>
-      <div style={{ fontSize: 26, fontWeight: 700, letterSpacing: 2 }}>■ BROADCAST — TAKEOVER</div>
-      <div style={{ fontSize: 15, opacity: 0.65, marginTop: -6 }}>Overrides every screen instantly. Use for LAST CALL, TRIVIA STARTS, a shout-out.</div>
-
-      {active ? (
-        <div className="terminal-border" style={{ padding: "12px 14px", display: "flex", flexDirection: "column", gap: 8 }}>
-          <div style={{ fontSize: 14, letterSpacing: 2, opacity: 0.6 }}>■ ON AIR NOW</div>
-          <div style={{ fontSize: 26, fontWeight: 700 }}>{active.message}</div>
-          {active.sub_message && <div style={{ fontSize: 18, opacity: 0.8 }}>{active.sub_message}</div>}
-          <div style={{ fontSize: 15, opacity: 0.6 }}><Countdown endsAt={active.ends_at} /></div>
-          <button type="button" onClick={() => dismiss.mutate(active.id)} className="u-amber" style={{ ...ghost, alignSelf: "flex-start" }}>DISMISS NOW</button>
-        </div>
-      ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          <input placeholder="MESSAGE (e.g. LAST CALL)" value={message} onChange={(e) => setMessage(e.target.value)} style={field} />
-          <input placeholder="sub-message (optional)" value={sub} onChange={(e) => setSub(e.target.value)} style={field} />
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-            <span style={{ fontSize: 15, opacity: 0.7 }}>DURATION:</span>
-            {[2, 5, 10].map((m) => (
-              <button key={m} type="button" onClick={() => setDuration(m)} className={duration === m ? "u-fill u-ink" : ""} style={{ ...chip, ...(duration === m ? { fontWeight: 700 } : null) }}>{m} MIN</button>
-            ))}
-            <button type="button" onClick={() => setDuration(null)} className={duration === null ? "u-fill u-ink" : ""} style={{ ...chip, ...(duration === null ? { fontWeight: 700 } : null) }}>UNTIL DISMISSED</button>
-          </div>
-          <button
-            type="button"
-            disabled={!message.trim() || send.isPending}
-            onClick={() => { if (confirm(`Broadcast "${message.trim()}" to every screen?`)) send.mutate(); }}
-            className="u-fill u-ink"
-            style={{ ...primary, opacity: !message.trim() ? 0.5 : 1 }}
-          >
-            {send.isPending ? "SENDING…" : "SEND BROADCAST →"}
-          </button>
-        </div>
-      )}
-
-      {takeovers.length > 0 && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-          <div style={caption}>RECENT</div>
-          {takeovers.slice(0, 5).map((t) => (
-            <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 16 }}>
-              <span style={{ flex: 1, minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", opacity: 0.85 }}>
-                {t.signage_item_id ? "★ " : ""}{t.message}
-              </span>
-              <span style={{ fontSize: 13, opacity: 0.5, whiteSpace: "nowrap" }}>{new Date(t.starts_at).toLocaleString([], { month: "numeric", day: "numeric", hour: "numeric", minute: "2-digit" })}</span>
-              <button type="button" onClick={() => resend.mutate(t)} style={{ ...ghost, fontSize: 13, padding: "4px 8px" }}>RESEND</button>
-            </div>
-          ))}
-        </div>
-      )}
     </div>
   );
 }
@@ -288,6 +227,43 @@ export function summarize(item: AdminItem, toastRows?: ToastCacheRow[]): string 
     }
     default: return item.template;
   }
+}
+
+/** Emoji glyph for an asset template — the library grid thumbnail + queue/picker rows.
+ *  Mirrors the ItemEditor template tiles + the ratified mockup's asset icons. */
+export function templateIcon(template: AdminItem["template"]): string {
+  switch (template) {
+    case "drink_special": return "🍸";
+    case "event": return "📅";
+    case "announcement": return "▮";
+    case "image_only": return "🖼";
+    case "celebration": return "✸";
+    case "top_sellers": return "📊";
+    case "instagram": return "▦";
+    case "smart_toast": return "🎯";
+    default: return "▣";
+  }
+}
+
+/** Short type badge for an asset (mockup D3: DRINK / TOP 5 / INSTAGRAM / SMART TOAST / …). */
+export function templateBadge(template: AdminItem["template"]): string {
+  switch (template) {
+    case "drink_special": return "DRINK";
+    case "event": return "EVENT";
+    case "announcement": return "MESSAGE";
+    case "image_only": return "IMAGE";
+    case "celebration": return "MESSAGE";
+    case "top_sellers": return "TOP 5";
+    case "instagram": return "INSTAGRAM";
+    case "smart_toast": return "SMART TOAST";
+    default: return "ITEM";
+  }
+}
+
+/** True for a data-driven "smart" asset (renders live/auto, no typed content). Used to tint
+ *  its badge amber in the library grid + picker (mockup D5). */
+export function isSmartTemplate(template: AdminItem["template"]): boolean {
+  return template === "top_sellers" || template === "instagram" || template === "smart_toast";
 }
 
 export function scheduleLabel(item: AdminItem): string {
