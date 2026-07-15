@@ -79,17 +79,20 @@ export function SignageHub({ openQueueSlug }: { openQueueSlug?: string }) {
   const takeovers = takeoversQ.data ?? [];
   const liveEvents = useMemo(() => liveEventsQ.data ?? [], [liveEventsQ.data]);
   const allEvents = useMemo(() => eventsQ.data ?? [], [eventsQ.data]);
-  // Split the flat list: RUNNING & UPCOMING holds everything still in play (running, scheduled,
-  // paused, aborted, recurring); PAST archives COMPLETED one-shots (recurrence null) so a
-  // finished promo like last night's "Best of OKC" one-shot is findable + re-runnable (item 6).
-  // A completed RECURRING event stays in RUNNING & UPCOMING (the tick re-arms it — it's not done).
-  const isPastOneShot = (ev: EventRow) => ev.status === "completed" && !ev.recurrence?.daysOfWeek?.length;
-  const events = useMemo(() => allEvents.filter((ev) => !isPastOneShot(ev)), [allEvents]);
+  // Split the flat list into exact complements: RUNNING & UPCOMING holds everything still in play
+  // (running, scheduled, paused, aborted); PAST archives every COMPLETED event so a finished promo
+  // is findable + re-runnable (item 6). This includes completed RECURRING events: 0041 marks a
+  // recurring row `completed` once its `until` retires it, and tick_scheduled_events only touches
+  // scheduled/running rows — so a completed recurring event is terminal too (it would otherwise
+  // strand in RUNNING & UPCOMING as DONE forever). RE-RUN seeds a fresh un-scheduled schedule, so
+  // resurrecting either kind is coherent.
+  const isPast = (ev: EventRow) => ev.status === "completed";
+  const events = useMemo(() => allEvents.filter((ev) => !isPast(ev)), [allEvents]);
   const pastEvents = useMemo(
     () =>
       allEvents
-        .filter(isPastOneShot)
-        // Most recent run first — one-shots always have a fire_at; created_at is the tiebreak.
+        .filter(isPast)
+        // Most recent run first — fire_at is the last-armed occurrence; created_at is the tiebreak.
         .sort((a, b) => (b.fire_at ?? b.created_at ?? "").localeCompare(a.fire_at ?? a.created_at ?? ""))
         .slice(0, 10),
     [allEvents],
@@ -265,10 +268,10 @@ export function SignageHub({ openQueueSlug }: { openQueueSlug?: string }) {
           </div>
         </div>
 
-        {/* ── C2 · PAST (completed one-shots, re-runnable) — item 6 ──────── */}
+        {/* ── C2 · PAST (completed events, re-runnable) — item 6 ─────────── */}
         {pastEvents.length > 0 && (
           <div style={{ marginTop: 24 }}>
-            <SectionLabel style={{ margin: 0, opacity: 0.55 }}>PAST · finished one-shots — RE-RUN to schedule again</SectionLabel>
+            <SectionLabel style={{ margin: 0, opacity: 0.55 }}>PAST · finished events — RE-RUN to schedule again</SectionLabel>
             <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 6 }}>
               {pastEvents.map((ev) => (
                 <PastEventRow
