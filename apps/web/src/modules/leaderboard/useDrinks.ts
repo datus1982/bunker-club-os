@@ -160,6 +160,80 @@ export function overallTopSellers(byGroup: Record<string, DrinkItem[]>, limit = 
     .map((it, i) => ({ ...it, rank: i + 1 }));
 }
 
+/* ── SMART TOAST slides (0043) — durable per-day sales history ───────────────── */
+
+/** A guid's summed units over the window, carrying the last-seen name (fallback label). */
+export interface HistorySum {
+  toast_guid: string;
+  quantity: number;
+  name: string | null;
+  menu_group: string | null;
+}
+
+export interface SalesHistoryResult {
+  /** guid → summed units over the last `days` (only guids that sold at least once appear). */
+  sums: Map<string, HistorySum>;
+  /** The TRUTHFUL window depth actually covered by the data, capped at `days` — so a
+   *  CHAMPION slide can say "LAST 9 DAYS" when history only reaches back 9 days, never
+   *  claiming a month it doesn't have. */
+  trueDays: number;
+  loading: boolean;
+}
+
+/** Venue-local calendar date shifted back `back` days, as 'YYYYMMDD' (matches the
+ *  sales_history/sales_cache business_date format; lexical compare works on zero-padded YMD). */
+function ymdDaysAgo(back: number, timeZone = "America/Chicago"): string {
+  const d = new Date(Date.now() - back * 86_400_000);
+  // en-CA gives YYYY-MM-DD in the target TZ; strip the dashes.
+  return new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" })
+    .format(d).replaceAll("-", "");
+}
+
+/** Whole days between two 'YYYYMMDD' strings (a ≤ b), inclusive of both ends. */
+function daysBetweenYmd(a: string, b: string): number {
+  const toDate = (y: string) => new Date(Number(y.slice(0, 4)), Number(y.slice(4, 6)) - 1, Number(y.slice(6, 8)));
+  return Math.round((toDate(b).getTime() - toDate(a).getTime()) / 86_400_000) + 1;
+}
+
+/**
+ * Sum sales_history by guid over the last `days` business dates (anon read; no realtime — a
+ * 60s poll, within the display-rules fallback-poll allowance). Returns per-guid totals plus
+ * the TRUE window depth the data actually covers (for the CHAMPION "LAST N DAYS" honesty
+ * guard). The template joins these sums to the toast cache (names/photos/POS gate) itself.
+ */
+export function useSalesHistory(days: number): SalesHistoryResult {
+  const q = useQuery({
+    queryKey: ["drinks", "history", days],
+    refetchInterval: 60_000,
+    queryFn: async (): Promise<{ sums: Map<string, HistorySum>; trueDays: number }> => {
+      // Generous lower bound (today − days): gives a full `days`-day inclusive window even
+      // with a closeout-hour boundary; trueDays is derived from the actual data below.
+      const cutoff = ymdDaysAgo(days);
+      const today = ymdDaysAgo(0);
+      const { data, error } = await supabase
+        .from("sales_history")
+        .select("toast_guid, quantity, name, menu_group, business_date")
+        .eq("venue_id", VENUE_ID)
+        .gte("business_date", cutoff)
+        .lte("business_date", today);
+      if (error) throw error;
+      const rows = (data ?? []) as (HistorySum & { business_date: string })[];
+      const sums = new Map<string, HistorySum>();
+      let minDate = "";
+      for (const r of rows) {
+        if (!minDate || r.business_date < minDate) minDate = r.business_date;
+        const prev = sums.get(r.toast_guid);
+        if (prev) prev.quantity += r.quantity;
+        else sums.set(r.toast_guid, { toast_guid: r.toast_guid, quantity: r.quantity, name: r.name, menu_group: r.menu_group });
+      }
+      // Truthful depth: how far back the data actually reaches, capped at the requested days.
+      const trueDays = minDate ? Math.min(days, daysBetweenYmd(minDate, today)) : 0;
+      return { sums, trueDays };
+    },
+  });
+  return { sums: q.data?.sums ?? new Map(), trueDays: q.data?.trueDays ?? 0, loading: q.isLoading };
+}
+
 export function useDrinksBoard() {
   const qc = useQueryClient();
 

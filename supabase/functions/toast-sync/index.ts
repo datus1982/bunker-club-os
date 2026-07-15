@@ -125,10 +125,60 @@ async function getOrders(token: string, businessDate: string): Promise<ToastOrde
 
 interface TopItem { rank: number; item_guid: string; item_name: string; price: number; sales_count: number; sales_percentage: number }
 
-// Aggregate top-5 items for a menu group (or MAIN_MENU_ALL for overall). Ports the legacy
+// ── per-item quantities for the day (sales_history source) ────────────────────
+// EVERY item with qty>0 on the business date, aggregated the SAME way calculateTopItems
+// counts (skip excessFood orders + voided selections — NOT check/order voided, to match the
+// existing sales_cache math byte-for-byte so a charting item's history reconciles with its
+// sales_cache.sales_count). Additive: feeds sales_history (0043) for the smart_toast slides;
+// existing sales_cache output is untouched.
+interface DayItem { name: string; menu_group: string | null; quantity: number }
+function allItemQuantities(orders: ToastOrder[]): Map<string, DayItem> {
+  const items = new Map<string, DayItem>();
+  for (const order of orders) {
+    if (order.excessFood) continue;
+    for (const check of order.checks ?? []) {
+      for (const sel of check.selections ?? []) {
+        if (sel.voided) continue;
+        if (!sel.item) continue;
+        const guid = sel.item.guid;
+        const qty = sel.quantity || 1;
+        const existing = items.get(guid);
+        if (existing) existing.quantity += qty;
+        else items.set(guid, { name: sel.displayName, menu_group: sel.itemGroup?.name ?? null, quantity: qty });
+      }
+    }
+  }
+  return items;
+}
+
+// Upsert a business date's per-item quantities into sales_history (idempotent on
+// venue_id,business_date,toast_guid). Only rows with qty>0 exist in the map, so a re-run
+// overwrites the running total for the day; items that stopped selling keep their last count
+// (fine — we never delete history). Chunked to stay well under PostgREST payload limits.
+async function upsertSalesHistory(admin: Admin, venueId: string, businessDate: string, day: Map<string, DayItem>): Promise<number> {
+  const rows = [...day.entries()].map(([guid, v]) => ({
+    venue_id: venueId,
+    business_date: businessDate,
+    toast_guid: guid,
+    name: v.name,
+    menu_group: v.menu_group,
+    quantity: v.quantity,
+    updated_at: new Date().toISOString(),
+  }));
+  for (let i = 0; i < rows.length; i += 500) {
+    const { error } = await admin
+      .from("sales_history")
+      .upsert(rows.slice(i, i + 500), { onConflict: "venue_id,business_date,toast_guid" });
+    if (error) throw error;
+  }
+  return rows.length;
+}
+
+// Aggregate top items for a menu group (or MAIN_MENU_ALL for overall). Ports the legacy
 // calculateTopItems: skip waste orders + voided selections; count quantity; price from
 // receiptLinePrice; rank by units sold. (Top-customers mode intentionally dropped — PII on
-// a public screen, out of docs/08 scope.)
+// a public screen, out of docs/08 scope.) DEPTH (smart-slides arc): MAIN_MENU_ALL keeps the
+// deepest list (top-10) so the Top Sellers slide can auto-deepen; per-group buckets stay top-5.
 function calculateTopItems(orders: ToastOrder[], menuGuid: string): TopItem[] {
   const overall = menuGuid === "MAIN_MENU_ALL";
   const items = new Map<string, { name: string; price: number; count: number }>();
@@ -154,7 +204,9 @@ function calculateTopItems(orders: ToastOrder[], menuGuid: string): TopItem[] {
   const arr = [...items.entries()].map(([guid, v]) => ({ guid, ...v }));
   arr.sort((a, b) => b.count - a.count);
   const total = arr.reduce((s, i) => s + i.count, 0);
-  return arr.slice(0, 5).map((i, idx) => ({
+  // Overall = top-10 (the Top Sellers slide renders up to 10 + auto-deepens); groups = top-5.
+  const limit = overall ? 10 : 5;
+  return arr.slice(0, limit).map((i, idx) => ({
     rank: idx + 1,
     item_guid: i.guid,
     item_name: i.name,
@@ -336,6 +388,53 @@ async function runEventsPass(
   return { live_updated: liveUpdated, stats_written: statsWritten, running: running.length, completed: completed.length, skips };
 }
 
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+// ── one-time BACKFILL (smart-slides arc) ─────────────────────────────────────
+// Sweep the last N business dates of Toast orders into sales_history so "last month's top
+// seller" is truthful immediately (the July "underdog sweep" pattern). CRON_SECRET-gated
+// invocation ONLY (same gate as the normal run) — never on a public surface, never on the
+// 60s cron (which posts an empty body). Sequential day fetches with a small delay to be
+// gentle on the orders API. `backfillOffset` lets a huge sweep be paged across calls if a
+// single call would risk the edge wall-clock limit.
+async function runBackfill(
+  admin: Admin,
+  venue: { id: string; tz: string },
+  token: string,
+  closeoutHour: number,
+  days: number,
+  offset: number,
+): Promise<{ venue: string; datesProcessed: number; rowsUpserted: number; from: string; to: string; sample: Record<string, unknown>[] }> {
+  // Per-venue effective closeout (honor venue_settings.toast_closeout_hour like the normal run).
+  const { data: coRow } = await admin
+    .from("venue_settings").select("value").eq("venue_id", venue.id).eq("key", "toast_closeout_hour").maybeSingle();
+  const coVal = typeof coRow?.value === "number" ? coRow.value : Number(coRow?.value);
+  const effectiveCloseout = Number.isFinite(coVal) && coVal >= 0 && coVal <= 23 ? coVal : closeoutHour;
+
+  const now = Date.now();
+  const seen = new Set<string>();
+  const sample: Record<string, unknown>[] = [];
+  let datesProcessed = 0;
+  let rowsUpserted = 0;
+  let from = "", to = "";
+  for (let i = offset; i < offset + days; i++) {
+    const d = new Date(now - i * 86_400_000);
+    const bd = businessDateFor(d, venue.tz, effectiveCloseout);
+    if (seen.has(bd)) continue;
+    seen.add(bd);
+    const orders = await getOrders(token, bd);
+    const dayItems = allItemQuantities(orders);
+    const n = await upsertSalesHistory(admin, venue.id, bd, dayItems);
+    datesProcessed++;
+    rowsUpserted += n;
+    if (!to || bd > to) to = bd;
+    if (!from || bd < from) from = bd;
+    if (sample.length < 8) sample.push({ business_date: bd, orders: orders.length, items: n });
+    await sleep(150); // gentle on the orders API
+  }
+  return { venue: venue.id, datesProcessed, rowsUpserted, from, to, sample };
+}
+
 // ── main ─────────────────────────────────────────────────────────────────────
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: cors });
@@ -351,6 +450,11 @@ Deno.serve(async (req) => {
   // Optional businessDate override (YYYYMMDD) for manual backfill / testing. Only
   // reachable behind the cron secret, so it's not an public surface.
   const dateOverride: string | null = typeof body?.businessDate === "string" && /^\d{8}$/.test(body.businessDate) ? body.businessDate : null;
+  // One-time sales_history backfill (smart-slides arc). Positive int = sweep that many past
+  // business dates into sales_history and return (no normal sales/events pass). Cron-secret
+  // gated already; the 60s cron never sets it.
+  const backfillDays: number | null = Number.isInteger(body?.backfillDays) && body.backfillDays > 0 ? Math.min(400, body.backfillDays) : null;
+  const backfillOffset: number = Number.isInteger(body?.backfillOffset) && body.backfillOffset >= 0 ? body.backfillOffset : 0;
 
   if (!TOAST_CLIENT_ID || !TOAST_CLIENT_SECRET || !TOAST_RESTAURANT_GUID) {
     return json({ error: "Toast credentials not configured" }, 500);
@@ -364,6 +468,18 @@ Deno.serve(async (req) => {
 
     const token = await getToastToken();
     const closeoutHour = await getCloseoutHour(token);
+
+    // BACKFILL branch (one-time): sweep past business dates into sales_history and return.
+    // Runs BEFORE the menu/sales work so a huge sweep never touches sales_cache or events.
+    if (backfillDays !== null) {
+      const backfills: Record<string, unknown>[] = [];
+      for (const venue of venues ?? []) {
+        const tz = (venue.timezone as string) || "America/Chicago";
+        backfills.push(await runBackfill(admin, { id: venue.id, tz }, token, closeoutHour, backfillDays, backfillOffset));
+      }
+      return json({ ok: true, backfill: { days: backfillDays, offset: backfillOffset }, results: backfills }, 200);
+    }
+
     const menuGroups = await getMenuGroups(token);
     const groupName = new Map(menuGroups.map((g) => [g.guid, g.name]));
 
@@ -459,6 +575,11 @@ Deno.serve(async (req) => {
         .eq("venue_id", venue.id)
         .not("menu_group_guid", "in", `(${targetGuids.map((g) => `"${g}"`).join(",")})`);
 
+      // HISTORY PASS (additive, smart-slides arc): upsert TODAY's per-item quantities into
+      // sales_history so the smart_toast slides can answer "last 7 days" / "last month". Same
+      // orders + same counting as sales_cache above (no extra Toast call). Idempotent per day.
+      const historyRows = await upsertSalesHistory(admin, venue.id, businessDate, allItemQuantities(orders));
+
       // LAST ITEM RUNG IN → venue_settings.signage_last_rung (NOW POURING ticker source).
       // Only when orders exist AND a qualifying selection is found — otherwise leave the prior
       // value in place (the display ages it out after 90 min).
@@ -480,7 +601,7 @@ Deno.serve(async (req) => {
         }
       }
 
-      results.push({ venue: venue.id, businessDate, closeoutHour: effectiveCloseout, orders: orders.length, groups: targetGuids.length, rowsWritten, groupNames: targetGuids.map((g) => groupName.get(g) ?? g), last_rung: lastRung?.name ?? null, events });
+      results.push({ venue: venue.id, businessDate, closeoutHour: effectiveCloseout, orders: orders.length, groups: targetGuids.length, rowsWritten, historyRows, groupNames: targetGuids.map((g) => groupName.get(g) ?? g), last_rung: lastRung?.name ?? null, events });
     }
 
     return json({ ok: true, results }, 200);
