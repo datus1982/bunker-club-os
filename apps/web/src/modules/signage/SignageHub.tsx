@@ -1,198 +1,340 @@
-import { useMemo, useState, type CSSProperties } from "react";
-import { useQueryClient } from "@tanstack/react-query";
-import { Link, useNavigate } from "react-router-dom";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { Link } from "react-router-dom";
 import {
-  useAdminSlots, useAllItems, useTakeovers, useToastCache, useScheduledEvents, useLiveGame,
-  screenHealth, activeTakeover, featuredItems, toastMap,
-  type AdminItem, type AdminSlot, type ScheduledEvent,
+  useAdminSlots, useAllItems, useSignageAssets, useTakeovers, useToastCache, useLiveGame,
+  screenHealth, activeTakeoverForSlot, featuredItems, toastMap,
+  type AdminItem, type AdminSlot, type AssetWithPlacements,
 } from "./useSignageAdmin";
 import {
   resolveRotation, resolveSlotMode, useLiveEvents, activeMoment, useVenue,
   type SlotMode, type SignageItem, type ToastCacheRow, type Template,
 } from "./useSignage";
 import {
+  useEventsList, schedulePhrase, statusInfo, pauseEvent, resumeEvent, fireNowEvent, type EventRow,
+} from "./useEventsAdmin";
+import {
   MONO, SectionLabel, HealthDot, CopyKioskButton, EventKindBadge,
-  ghost, badge, summarize, scheduleLabel, recurrencePhrase, sourceHideReason,
+  ghost, summarize, templateIcon, templateBadge, isSmartTemplate,
 } from "./signageAdminShared";
-import { schedulePhrase, statusInfo } from "./useEventsAdmin";
+import { addToQueue } from "./slotQueue";
 import { ItemEditor } from "./ItemEditor";
+import { EventEditor } from "./EventEditor";
+import { QueuePanel } from "./QueuePanel";
+import { AddAssetPicker } from "./AddAssetPicker";
+import { TakeoverPanel } from "./TakeoverPanel";
+import { SlideOver } from "./SlideOver";
+import { useRole } from "@/shared/useRole";
 import "./signage.css";
 
 /**
- * /signage — the SIGNAGE HUB (docs/ux-refinement-mockup.html view 2/4, owner-ratified).
- * The landing answers "what is the room showing right NOW", then gives the actions to
- * change it, then everything scheduled. The old per-slot templater moved one level down to
- * /signage/screens/:slug (EDIT ROTATION); BROADCAST moved to /signage/broadcast.
+ * /signage — THE SIGNAGE HUB (docs/signage-hub-consolidation-mockup.html, owner-ratified).
  *
- * Sections: A ON AIR NOW (live screen cards) · B quick actions · C RUNNING & UPCOMING ·
- * D ★ FEATURED ON POS (read-only). Mobile-first — the owner runs this from his phone.
+ * ONE page for all of bar-ops signage. No Events tab, no Broadcast tab, no routed sub-pages:
+ *   • ON AIR NOW — screen cards, each with exactly three buttons + ADD · QUEUE · TAKEOVER and
+ *     a ⋯ overflow (KIOSK URL / PREVIEW / health) (D1).
+ *   • ASSET LIBRARY — every venue-wide asset ONCE, as a thumbnail grid with a type badge +
+ *     P/L chips showing which screens it runs on; click one to edit it (D3/D5/D7).
+ *   • RUNNING & UPCOMING — events, live and scheduled, with + NEW EVENT inline and click-to-
+ *     edit; this retires the EVENTS & PROMOS tab (D8).
+ *   • ★ FEATURED ON POS — read-only (Toast is read-only).
+ * Everything below opens as a slide-over OVER the hub. Mobile-first — the owner runs this
+ * from his phone at the bar.
  */
-export function SignageHub() {
+
+/** Which screen a slot's P/L chip abbreviates. Single-letter orientation code matches the
+ *  ratified mockup (P / L) for this venue's one-portrait-one-landscape setup.
+ *  DECISION: two same-orientation screens would both read "P"; the chip carries the slot name
+ *  as a tooltip, and a 3+-screen venue can graduate this to a terminal-number code later. */
+function slotCode(slot: AdminSlot): string {
+  return (slot.orientation[0] ?? "?").toUpperCase();
+}
+
+type Overlay =
+  | { kind: "add"; slot: AdminSlot }
+  | { kind: "queue"; slot: AdminSlot }
+  | { kind: "takeover"; slot: AdminSlot }
+  | { kind: "event"; editing: EventRow | null }
+  | { kind: "asset"; editing: AdminItem | null; preset: Template | null; queueOnSlotId: string | null };
+
+export function SignageHub({ openQueueSlug }: { openQueueSlug?: string }) {
   const qc = useQueryClient();
-  const navigate = useNavigate();
+  const { can } = useRole();
+  const canEvents = can("events");
+
   const slotsQ = useAdminSlots();
   const itemsQ = useAllItems();
+  const assetsQ = useSignageAssets();
   const takeoversQ = useTakeovers();
   const toastQ = useToastCache();
-  const eventsQ = useScheduledEvents();
   const liveGameQ = useLiveGame();
-  // Same horizon-gated live-event feed the TVs read (signage_events_live) — so the MODE
-  // chip resolves the EXACT ladder SlotDisplay renders (hub/TV must never disagree, PR #12).
   const liveEventsQ = useLiveEvents();
+  const eventsQ = useEventsList();
   const venueQ = useVenue();
 
-  const slots = slotsQ.data ?? [];
+  const slots = useMemo(() => slotsQ.data ?? [], [slotsQ.data]);
   const items = itemsQ.data ?? [];
-  const toastRows = toastQ.data ?? [];
+  const assets = assetsQ.data ?? [];
+  const toastRows = useMemo(() => toastQ.data ?? [], [toastQ.data]);
+  const takeovers = takeoversQ.data ?? [];
+  const liveEvents = useMemo(() => liveEventsQ.data ?? [], [liveEventsQ.data]);
+  const events = eventsQ.data ?? [];
   const tmap = useMemo(() => toastMap(toastRows), [toastRows]);
 
-  // Mode ladder inputs are venue-wide (a takeover and a live game each override EVERY
-  // screen), so every slot resolves to the same mode — the same precedence SlotDisplay
-  // renders (resolveSlotMode is the single source of that ladder).
-  const active = activeTakeover(takeoversQ.data ?? []);
+  // Venue-wide mode inputs (a live game + a moment each hold EVERY screen); the takeover is now
+  // per-screen (0045), resolved per card. Same ladder the public SlotDisplay renders.
   const liveGame = liveGameQ.data ?? null;
-  const moment = activeMoment(liveEventsQ.data ?? []);
-  const mode: SlotMode = resolveSlotMode({
-    takeover: !!active,
-    liveGame: !!liveGame,
-    moment: moment ? { stage: moment.stage, interruptGame: moment.event.interrupt_game } : null,
-  });
+  const moment = activeMoment(liveEvents);
   const eventLabel = moment ? `${moment.event.name.toUpperCase()} · ${moment.stage.toUpperCase()}` : null;
-
-  // Reveal a stale game date on the game-mode card (a past-dated `active` game still pins
-  // the screens into game mode — surfacing that date is a feature, not a bug).
-  // DECISION: compare against the browser-local date (en-CA = YYYY-MM-DD). The venue is
-  // single-tz (America/Chicago) and staff run this locally, so this matches games.game_date
-  // in practice without a venue-timezone fetch; worst case it's off only at the midnight
-  // boundary from another tz, which still correctly flags the date as not "today".
   const staleGameDate =
     liveGame?.game_date && liveGame.game_date !== new Date().toLocaleDateString("en-CA")
       ? liveGame.game_date
       : null;
 
-  // Quick-action editor: preset a template, skip the picker.
-  const [editorOpen, setEditorOpen] = useState(false);
-  const [preset, setPreset] = useState<Template | null>(null);
-  const openQuick = (template: Template) => { setPreset(template); setEditorOpen(true); };
-  const invalidate = () => {
-    qc.invalidateQueries({ queryKey: ["signage-admin", "items"] });
-    qc.invalidateQueries({ queryKey: ["signage-admin", "takeovers"] });
-  };
-
   const itemsBySlot = useMemo(() => {
-    const m = new Map<string | null, AdminItem[]>();
+    const m = new Map<string, AdminItem[]>();
     for (const it of items) {
+      if (!it.slot_id) continue;
       if (!m.has(it.slot_id)) m.set(it.slot_id, []);
       m.get(it.slot_id)!.push(it);
     }
+    for (const list of m.values()) list.sort((a, b) => a.sort_order - b.sort_order);
     return m;
   }, [items]);
 
-  const [editItem, setEditItem] = useState<AdminItem | null>(null);
-  const openEdit = (it: AdminItem) => { setEditItem(it); setPreset(null); setEditorOpen(true); };
+  const nextPosition = (slotId: string) => {
+    const list = itemsBySlot.get(slotId) ?? [];
+    return list.length ? Math.max(...list.map((i) => i.sort_order)) + 1 : 0;
+  };
 
-  // RUNNING & UPCOMING: signage_items with a schedule/recurrence + any scheduled_events.
-  const scheduledItems = useMemo(
-    () => items.filter((it) => it.recurrence || it.starts_at || it.ends_at),
-    [items],
-  );
-  const events = eventsQ.data ?? [];
-  const nothingScheduled = scheduledItems.length === 0 && events.length === 0;
+  const invalidateItems = () => {
+    qc.invalidateQueries({ queryKey: ["signage-admin", "items"] });
+    qc.invalidateQueries({ queryKey: ["signage-admin", "assets"] });
+  };
+  const invalidateTakeovers = () => qc.invalidateQueries({ queryKey: ["signage-admin", "takeovers"] });
+  const invalidateEvents = () => {
+    qc.invalidateQueries({ queryKey: ["events-admin", "list"] });
+    qc.invalidateQueries({ queryKey: ["signage", "events"] });
+  };
+
+  const [overlay, setOverlay] = useState<Overlay | null>(null);
+  const [overflowSlot, setOverflowSlot] = useState<string | null>(null);
+  const [busyQueueId, setBusyQueueId] = useState<string | null>(null);
+
+  // Legacy bookmark /signage/screens/:slug → open that screen's queue, then normalize the URL.
+  // The URL is rewritten with history.replaceState (NOT react-router navigate): navigate would
+  // unmount this component (the /signage/screens/:slug route) and remount the bare /signage
+  // route, discarding the just-opened overlay. replaceState only rewrites the address bar, so
+  // the slide-over stays open and the manager lands exactly where the bookmark pointed.
+  const [bootstrapped, setBootstrapped] = useState(false);
+  useEffect(() => {
+    if (bootstrapped || !openQueueSlug) return;
+    if (slots.length) {
+      const s = slots.find((x) => x.slug === openQueueSlug);
+      if (s) setOverlay({ kind: "queue", slot: s });
+      setBootstrapped(true);
+      window.history.replaceState(null, "", "/signage");
+    } else if (!slotsQ.isLoading) {
+      setBootstrapped(true);
+      window.history.replaceState(null, "", "/signage");
+    }
+  }, [openQueueSlug, slots, slotsQ.isLoading, bootstrapped]);
+
+  // Queue an existing library asset onto a screen (AddPicker FROM LIBRARY, D6).
+  const queueExisting = useMutation({
+    mutationFn: async ({ slot, a }: { slot: AdminSlot; a: AssetWithPlacements }) => {
+      setBusyQueueId(a.asset.id);
+      await addToQueue(slot.id, a.asset.id, nextPosition(slot.id), 12);
+    },
+    onSettled: () => setBusyQueueId(null),
+    onSuccess: invalidateItems,
+  });
+
+  const openAsset = (a: AssetWithPlacements) =>
+    setOverlay({ kind: "asset", editing: a.asset as unknown as AdminItem, preset: null, queueOnSlotId: null });
 
   return (
-    <div className="terminal-theme" style={{ minHeight: "100%", padding: "20px clamp(12px,4vw,40px)", fontFamily: MONO, color: "var(--terminal-green)" }}>
+    <div className="terminal-theme staff-ui" style={{ minHeight: "100%", padding: "20px clamp(12px,4vw,40px)", fontFamily: MONO, color: "var(--terminal-green)" }}>
       <div style={{ maxWidth: 1100, margin: "0 auto" }}>
         <div style={{ fontSize: 18, opacity: 0.6, letterSpacing: 3 }}>BAR OPS ▸ SIGNAGE HUB</div>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", flexWrap: "wrap", gap: 8 }}>
-          <h1 style={{ fontSize: "clamp(28px,6vw,44px)", fontWeight: 700, letterSpacing: 2 }}>SIGNAGE HUB</h1>
+          <h1 style={{ fontSize: "clamp(28px,6vw,44px)", fontWeight: 700, letterSpacing: 2 }}>SIGNAGE HUB <span style={{ fontSize: 14, opacity: 0.5, letterSpacing: 2 }}>ONE PAGE — SCREENS · ASSETS · EVENTS</span></h1>
           <Link to="/dashboard" style={{ ...ghost, textDecoration: "none", fontSize: 16 }}>← DASHBOARD</Link>
         </div>
         <div className="terminal-separator" style={{ margin: "12px 0 20px" }} />
 
         {/* ── A · ON AIR NOW ─────────────────────────────────────────────── */}
-        <SectionLabel>◉ ON AIR NOW · what the room is showing this second</SectionLabel>
+        <SectionLabel>◉ ON AIR NOW · what each screen is showing this second</SectionLabel>
         {slotsQ.isLoading ? (
           <div style={{ fontSize: 20 }}>LOADING SCREENS…</div>
         ) : slots.length === 0 ? (
           <div style={{ opacity: 0.6 }}>No screens provisioned. Seed one in signage_slots.</div>
         ) : (
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(min(100%,300px),1fr))", gap: 12 }}>
-            {slots.map((s) => (
-              <ScreenCard
-                key={s.id}
-                slot={s}
-                mode={mode}
-                takeoverMessage={active?.message ?? null}
-                staleGameDate={staleGameDate}
-                eventLabel={eventLabel}
-                slotItems={itemsBySlot.get(s.id) ?? []}
-                tmap={tmap}
-              />
-            ))}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(min(100%,320px),1fr))", gap: 14 }}>
+            {slots.map((s) => {
+              const takeover = activeTakeoverForSlot(takeovers, s.id);
+              const mode = resolveSlotMode({
+                takeover: !!takeover,
+                liveGame: !!liveGame,
+                moment: moment ? { stage: moment.stage, interruptGame: moment.event.interrupt_game } : null,
+              });
+              return (
+                <ScreenCard
+                  key={s.id}
+                  slot={s}
+                  mode={mode}
+                  takeoverMessage={takeover?.message ?? null}
+                  staleGameDate={staleGameDate}
+                  eventLabel={eventLabel}
+                  slotItems={itemsBySlot.get(s.id) ?? []}
+                  tmap={tmap}
+                  overflowOpen={overflowSlot === s.id}
+                  onToggleOverflow={() => setOverflowSlot((cur) => (cur === s.id ? null : s.id))}
+                  onAdd={() => setOverlay({ kind: "add", slot: s })}
+                  onQueue={() => setOverlay({ kind: "queue", slot: s })}
+                  onTakeover={() => setOverlay({ kind: "takeover", slot: s })}
+                />
+              );
+            })}
           </div>
         )}
 
-        {/* ── B · QUICK ACTIONS ──────────────────────────────────────────── */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,220px),1fr))", gap: 10, marginTop: 18 }}>
-          <button type="button" onClick={() => openQuick("drink_special")} className="u-fill u-ink" style={quickPrimary}>★ PROMO A DRINK</button>
-          <button type="button" onClick={() => navigate("/signage/events?new=message")} style={quickBtn}>📅 SCHEDULE A MESSAGE</button>
-          <button type="button" onClick={() => navigate("/signage/broadcast")} style={quickBtn}>📢 BROADCAST NOW</button>
-        </div>
-        <div style={{ fontSize: 13, opacity: 0.5, textAlign: "center", marginTop: 8, letterSpacing: 1 }}>
-          THE MANAGER TEST — promo a drink or schedule a message in minutes, from your phone at the bar.
-        </div>
-
-        {/* ── C · RUNNING & UPCOMING ─────────────────────────────────────── */}
-        <div style={{ marginTop: 30 }}>
-          <SectionLabel>RUNNING &amp; UPCOMING · promos &amp; events, live and scheduled</SectionLabel>
-          {eventsQ.isLoading || itemsQ.isLoading ? (
-            <div style={{ fontSize: 18, opacity: 0.7 }}>LOADING…</div>
-          ) : nothingScheduled ? (
-            <div className="terminal-border" style={{ padding: "18px 16px", opacity: 0.85, fontSize: 17, lineHeight: 1.5, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-              <span>NOTHING SCHEDULED.</span>
-              <Link to="/signage/events?new=window" className="u-fill u-ink" style={{ ...ghost, textDecoration: "none", fontWeight: 700 }}>+ NEW EVENT</Link>
-            </div>
+        {/* ── B · ASSET LIBRARY ──────────────────────────────────────────── */}
+        <div style={{ marginTop: 32 }}>
+          <SectionLabel>ASSET LIBRARY · build once — queue on any screen</SectionLabel>
+          {assetsQ.isLoading ? (
+            <div style={{ fontSize: 18, opacity: 0.7 }}>LOADING ASSETS…</div>
           ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {scheduledItems.map((it) => (
-                <ItemScheduleRow key={it.id} item={it} toastRows={toastRows} onEdit={() => openEdit(it)} />
-              ))}
-              {events.map((ev) => (
-                <EventScheduleRow key={ev.id} event={ev} />
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(min(100%,200px),1fr))", gap: 12 }}>
+              <button
+                type="button"
+                onClick={() => setOverlay({ kind: "asset", editing: null, preset: null, queueOnSlotId: null })}
+                style={newAssetTile}
+              >
+                <span style={{ fontSize: 40, lineHeight: 1 }}>+</span>
+                <span style={{ fontSize: 13, letterSpacing: 2, marginTop: 6 }}>NEW ASSET</span>
+              </button>
+              {assets.map((a) => (
+                <AssetCard key={a.asset.id} a={a} slots={slots} toastRows={toastRows} tmap={tmap} onOpen={() => openAsset(a)} />
               ))}
             </div>
           )}
+          {!assetsQ.isLoading && assets.length === 0 && (
+            <div style={{ opacity: 0.6, fontSize: 16, marginTop: 8 }}>No assets yet — + NEW ASSET to build one.</div>
+          )}
+        </div>
+
+        {/* ── C · RUNNING & UPCOMING (events, D8) ────────────────────────── */}
+        <div style={{ marginTop: 32 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+            <SectionLabel style={{ margin: 0 }}>RUNNING &amp; UPCOMING · promos &amp; events, live and scheduled</SectionLabel>
+            {canEvents && (
+              <button type="button" onClick={() => setOverlay({ kind: "event", editing: null })} className="u-fill u-ink" style={{ ...ghost, fontWeight: 700, background: "var(--terminal-green)", color: "#000" }}>+ NEW EVENT</button>
+            )}
+          </div>
+          <div style={{ marginTop: 10 }}>
+            {eventsQ.isLoading ? (
+              <div style={{ fontSize: 18, opacity: 0.7 }}>LOADING…</div>
+            ) : events.length === 0 ? (
+              <div className="terminal-border" style={{ padding: "18px 16px", opacity: 0.85, fontSize: 17, lineHeight: 1.5, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+                <span>NOTHING SCHEDULED.</span>
+                {canEvents && <button type="button" onClick={() => setOverlay({ kind: "event", editing: null })} className="u-fill u-ink" style={{ ...ghost, fontWeight: 700, background: "var(--terminal-green)", color: "#000" }}>+ NEW EVENT</button>}
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {events.map((ev) => (
+                  <EventRowCard key={ev.id} row={ev} canEvents={canEvents} onEdit={() => setOverlay({ kind: "event", editing: ev })} onChanged={invalidateEvents} />
+                ))}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* ── D · ★ FEATURED ON POS (read-only) ──────────────────────────── */}
-        <div style={{ marginTop: 30 }}>
+        <div style={{ marginTop: 32 }}>
           <FeaturedPanel featured={featuredItems(toastRows)} />
         </div>
       </div>
 
-      {editorOpen && (
+      {/* ── slide-overs ─────────────────────────────────────────────────── */}
+      {overlay?.kind === "add" && (
+        <SlideOver eyebrow={`${overlay.slot.name} ▸ + ADD`} title={`ADD TO ${overlay.slot.name}`} onClose={() => setOverlay(null)}>
+          <AddAssetPicker
+            slot={overlay.slot}
+            assets={assets}
+            toastRows={toastRows}
+            busyItemId={busyQueueId}
+            onPickTemplate={(t) => setOverlay({ kind: "asset", editing: null, preset: t, queueOnSlotId: overlay.slot.id })}
+            onQueueExisting={(a) => queueExisting.mutate({ slot: overlay.slot, a })}
+          />
+        </SlideOver>
+      )}
+
+      {overlay?.kind === "queue" && (
+        <SlideOver eyebrow={`${overlay.slot.name} ▸ QUEUE`} title={`${overlay.slot.name} QUEUE`} onClose={() => setOverlay(null)}>
+          <QueuePanel
+            slot={overlay.slot}
+            slotItems={itemsBySlot.get(overlay.slot.id) ?? []}
+            toastRows={toastRows}
+            liveEvents={liveEvents}
+            gameOn={!!liveGame}
+            takeovers={takeovers}
+            canEvents={canEvents}
+            onAdd={() => setOverlay({ kind: "add", slot: overlay.slot })}
+            onEditAsset={(item) => setOverlay({ kind: "asset", editing: item, preset: null, queueOnSlotId: null })}
+            onChanged={invalidateItems}
+            onEventsChanged={invalidateEvents}
+            onTakeover={() => setOverlay({ kind: "takeover", slot: overlay.slot })}
+          />
+        </SlideOver>
+      )}
+
+      {overlay?.kind === "takeover" && (
+        <SlideOver eyebrow={`${overlay.slot.name} ▸ TAKEOVER`} title="SEND A TAKEOVER" onClose={() => setOverlay(null)}>
+          <TakeoverPanel slot={overlay.slot} takeovers={takeovers} onChanged={invalidateTakeovers} />
+        </SlideOver>
+      )}
+
+      {overlay?.kind === "event" && (
+        <SlideOver eyebrow="RUNNING & UPCOMING" title={overlay.editing ? "EDIT EVENT" : "NEW EVENT"} onClose={() => setOverlay(null)}>
+          <EventEditor
+            editing={overlay.editing}
+            toastRows={toastRows}
+            onSaved={() => { invalidateEvents(); setOverlay(null); }}
+            onCancel={() => setOverlay(null)}
+            onDeleted={() => { invalidateEvents(); setOverlay(null); }}
+          />
+        </SlideOver>
+      )}
+
+      {overlay?.kind === "asset" && (
         <ItemEditor
           slots={slots}
           toastRows={toastRows}
-          defaultSlotId={slots[0]?.id ?? null}
-          editing={editItem}
-          presetTemplate={preset}
+          editing={overlay.editing}
+          presetTemplate={overlay.preset}
           venueName={venueQ.data?.name}
-          nextSortOrder={(slotId) => {
-            const list = itemsBySlot.get(slotId) ?? [];
-            return list.length ? Math.max(...list.map((i) => i.sort_order)) + 1 : 0;
-          }}
-          onClose={() => { setEditorOpen(false); setEditItem(null); setPreset(null); }}
-          onSaved={invalidate}
+          queueOnSlotId={overlay.queueOnSlotId}
+          placementSlotIds={overlay.editing ? placementsFor(assets, overlay.editing.id) : undefined}
+          nextPosition={nextPosition}
+          onClose={() => setOverlay(null)}
+          onSaved={invalidateItems}
+          onDeleted={invalidateItems}
         />
       )}
     </div>
   );
 }
 
-/* ── A · screen card ────────────────────────────────────────────────────────── */
+/** Slot ids an asset is queued on (for the editor's read-only "ON: …" line). */
+function placementsFor(assets: AssetWithPlacements[], itemId: string): string[] {
+  return assets.find((a) => a.asset.id === itemId)?.placements.map((p) => p.slot_id) ?? [];
+}
+
+/* ── A · screen card (D1: three buttons + ⋯ overflow) ───────────────────────── */
 function ScreenCard({
   slot, mode, takeoverMessage, staleGameDate, eventLabel, slotItems, tmap,
+  overflowOpen, onToggleOverflow, onAdd, onQueue, onTakeover,
 }: {
   slot: AdminSlot;
   mode: SlotMode;
@@ -201,6 +343,11 @@ function ScreenCard({
   eventLabel: string | null;
   slotItems: AdminItem[];
   tmap: Map<string, ToastCacheRow>;
+  overflowOpen: boolean;
+  onToggleOverflow: () => void;
+  onAdd: () => void;
+  onQueue: () => void;
+  onTakeover: () => void;
 }) {
   const health = screenHealth(slot.last_seen);
   const summary = useMemo(() => rotationSummary(slotItems, tmap), [slotItems, tmap]);
@@ -208,7 +355,7 @@ function ScreenCard({
   return (
     <div className="terminal-border" style={{ padding: "13px 14px", display: "flex", flexDirection: "column", gap: 8, minWidth: 0 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
-        <span style={{ fontSize: 22, fontWeight: 700, letterSpacing: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{slot.name}</span>
+        <span style={{ fontSize: 24, fontWeight: 700, letterSpacing: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{slot.name}</span>
         <HealthDot health={health} />
       </div>
       <div style={{ fontSize: 13, opacity: 0.55 }}>
@@ -217,7 +364,6 @@ function ScreenCard({
 
       <ModeChip mode={mode} eventLabel={eventLabel} />
 
-      {/* Body varies by mode — the same ladder SlotDisplay renders. */}
       {mode === "rotation" ? (
         <div style={{ fontSize: 14, opacity: 0.75, lineHeight: 1.5, minHeight: 40 }}>{summary}</div>
       ) : mode === "event" ? (
@@ -231,23 +377,35 @@ function ScreenCard({
         </div>
       ) : (
         <div style={{ fontSize: 14, opacity: 0.75, lineHeight: 1.5, minHeight: 40 }}>
-          <span className="u-red">Priority broadcast overriding all screens</span>{takeoverMessage ? `: “${takeoverMessage}”` : ""}. Dismiss from BROADCAST.
+          <span className="u-red">Priority takeover on this screen</span>{takeoverMessage ? `: “${takeoverMessage}”` : ""}. Dismiss from TAKEOVER.
         </div>
       )}
 
-      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 2 }}>
-        <a
-          href={`/signage/s/${slot.slug}?preview=1`}
-          target="_blank"
-          rel="noreferrer"
-          title="Staff preview only — NEVER point a TV at a ?preview=1 URL (it never shows takeovers or game mode)."
-          style={{ ...miniBtn, textDecoration: "none" }}
-        >
-          PREVIEW
-        </a>
-        <Link to={`/signage/screens/${slot.slug}`} style={{ ...miniBtn, ...miniKey, textDecoration: "none" }}>EDIT ROTATION</Link>
-        <CopyKioskButton slug={slot.slug} style={miniBtn} />
+      {/* the three clean buttons + ⋯ overflow (D1) */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr auto", gap: 7, marginTop: 2 }}>
+        <button type="button" onClick={onAdd} className="u-fill u-ink" style={{ ...cardBtn, background: "var(--terminal-green)", color: "#000", fontWeight: 700 }}>+ ADD</button>
+        <button type="button" onClick={onQueue} style={cardBtn}>QUEUE</button>
+        <button type="button" onClick={onTakeover} className="u-amber" style={{ ...cardBtn, color: "var(--terminal-amber, #ffb000)", borderColor: "var(--terminal-amber, #ffb000)" }}>TAKEOVER</button>
+        <button type="button" onClick={onToggleOverflow} aria-label="More" title="KIOSK URL · PREVIEW · health" style={{ ...cardBtn, padding: "9px 10px", fontSize: 20, opacity: 0.75 }}>⋯</button>
       </div>
+
+      {overflowOpen && (
+        <div className="terminal-border" style={{ padding: "10px 12px", display: "flex", flexDirection: "column", gap: 8, marginTop: 2 }}>
+          <div style={{ fontSize: 13, opacity: 0.6 }}>
+            SCREEN HEALTH: <HealthDot health={health} />{slot.last_seen ? ` · last seen ${new Date(slot.last_seen).toLocaleString([], { hour: "numeric", minute: "2-digit", month: "numeric", day: "numeric" })}` : " · never checked in"}
+          </div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <a
+              href={`/signage/s/${slot.slug}?preview=1`}
+              target="_blank"
+              rel="noreferrer"
+              title="Staff preview only — NEVER point a TV at a ?preview=1 URL (it never shows takeovers or game mode)."
+              style={{ ...miniBtn, textDecoration: "none" }}
+            >PREVIEW ↗</a>
+            <CopyKioskButton slug={slot.slug} style={miniBtn} />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -266,9 +424,8 @@ function ModeChip({ mode, eventLabel }: { mode: SlotMode; eventLabel?: string | 
   );
 }
 
-/** "N items rotating: a · b · c · +K more" (+ ★ featured). Counts only currently-visible
- *  authored items — resolveRotation applies the exact in-window + OOS/POS-hide rules the
- *  screen uses; the ★ SCREENS materialization is reported separately. */
+/** "N assets rotating: a · b · c · +K more" (+ ★ featured). Counts only currently-visible
+ *  authored items — resolveRotation applies the exact in-window + OOS/POS-hide rules. */
 function rotationSummary(slotItems: AdminItem[], tmap: Map<string, ToastCacheRow>): string {
   const activeItems = slotItems.filter((it) => it.active);
   const rotation = resolveRotation(activeItems as SignageItem[], tmap, new Date());
@@ -276,13 +433,13 @@ function rotationSummary(slotItems: AdminItem[], tmap: Map<string, ToastCacheRow
   const hasFeatured = rotation.some((r) => r.materialized);
   const names = authored.map((it) => rotationName(it, tmap));
 
-  if (authored.length === 0 && !hasFeatured) return "Nothing rotating yet — EDIT ROTATION to add an item.";
+  if (authored.length === 0 && !hasFeatured) return "Nothing rotating yet — + ADD an asset.";
   if (authored.length === 0) return "★ featured items only (flipped in at the POS).";
 
   const shown = names.slice(0, 3).join(" · ");
   const more = authored.length > 3 ? ` · +${authored.length - 3} more` : "";
   const featured = hasFeatured ? " · + ★ featured" : "";
-  return `${authored.length} item${authored.length === 1 ? "" : "s"} rotating: ${shown}${more}${featured}`;
+  return `${authored.length} asset${authored.length === 1 ? "" : "s"} rotating: ${shown}${more}${featured}`;
 }
 
 function rotationName(it: SignageItem, tmap: Map<string, ToastCacheRow>): string {
@@ -297,76 +454,124 @@ function rotationName(it: SignageItem, tmap: Map<string, ToastCacheRow>): string
   return summarize(it as AdminItem);
 }
 
-/* ── C · schedule rows ──────────────────────────────────────────────────────── */
-function ItemScheduleRow({ item, toastRows, onEdit }: { item: AdminItem; toastRows: ToastCacheRow[]; onEdit: () => void }) {
-  const type = typeBadge(item);
-  const rec = recurrencePhrase(item.recurrence);
-  const when = [scheduleLabel(item), rec].filter((x) => x && x !== "EVERGREEN").join(" · ") || "evergreen";
-  const base = itemStatus(item);
-  // An item in its window still won't reach the screens if its Toast source is 86'd or
-  // pulled from the POS view (resolveRotation drops it) — so "ACTIVE NOW" would lie.
-  // sourceHideReason is the same gate the public board + EDIT ROTATION apply.
-  const hideReason = base.active ? sourceHideReason(item, toastRows) : null;
-  const status = hideReason
-    ? { label: `▲ HIDDEN — ${hideReason.startsWith("86") ? "86'd on POS" : "off POS view"}`, active: false }
-    : base;
+/* ── B · asset library card (D3) ────────────────────────────────────────────── */
+function AssetCard({
+  a, slots, toastRows, tmap, onOpen,
+}: {
+  a: AssetWithPlacements;
+  slots: AdminSlot[];
+  toastRows: ToastCacheRow[];
+  tmap: Map<string, ToastCacheRow>;
+  onOpen: () => void;
+}) {
+  const item = a.asset as unknown as AdminItem;
+  const name = summarize(item, toastRows);
+  const image = assetImage(item, tmap);
+  const smart = isSmartTemplate(item.template);
+  const placedSlots = new Set(a.placements.map((p) => p.slot_id));
+  const sub = assetSubtitle(item, tmap);
+
   return (
-    <div className="terminal-border" style={{ padding: "10px 12px", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-      <div style={{ flex: "1 1 200px", minWidth: 0 }}>
-        <div style={{ fontSize: 20, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{summarize(item, toastRows)}</div>
-        <div style={{ fontSize: 13, opacity: 0.6 }}>{when}</div>
+    <button
+      type="button"
+      onClick={onOpen}
+      className="terminal-border"
+      style={{ display: "flex", flexDirection: "column", overflow: "hidden", padding: 0, background: "transparent", color: "var(--terminal-green)", cursor: "pointer", fontFamily: MONO, textAlign: "left", minWidth: 0 }}
+    >
+      <div style={{ position: "relative", height: 96, borderBottom: "1px solid rgba(0,255,65,0.2)", display: "flex", alignItems: "center", justifyContent: "center", background: "#030803" }}>
+        {image ? (
+          <img src={image} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+        ) : (
+          <span style={{ fontSize: 34, opacity: 0.85 }}>{templateIcon(item.template)}</span>
+        )}
+        <span
+          className={smart ? "u-amber" : ""}
+          style={{ position: "absolute", top: 6, right: 6, fontSize: 10, letterSpacing: 1, padding: "2px 5px", background: "#020602", border: `1px solid ${smart ? "var(--terminal-amber, #ffb000)" : "var(--terminal-green)"}`, color: smart ? "var(--terminal-amber, #ffb000)" : "var(--terminal-green)" }}
+        >{templateBadge(item.template)}</span>
       </div>
-      <span style={badge}>{type}</span>
-      <span className={hideReason ? "u-amber" : undefined} style={{ fontSize: 13, whiteSpace: "nowrap", letterSpacing: 1, opacity: hideReason ? 1 : status.active ? 1 : 0.6 }}>{status.label}</span>
-      <button type="button" onClick={onEdit} style={{ ...ghost, fontSize: 14, padding: "6px 12px" }}>EDIT</button>
+      <div style={{ padding: "9px 10px", display: "flex", flexDirection: "column", gap: 5, minWidth: 0 }}>
+        <div style={{ fontSize: 20, letterSpacing: 1, lineHeight: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{name}</div>
+        <div style={{ fontSize: 12, opacity: 0.6, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{sub}</div>
+        <div style={{ display: "flex", gap: 4, marginTop: 2 }}>
+          {slots.map((s) => {
+            const on = placedSlots.has(s.id);
+            return (
+              <span
+                key={s.id}
+                title={`${s.name} — ${on ? "queued" : "not queued"}`}
+                className={on ? "u-fill u-ink" : ""}
+                style={{ width: 22, height: 22, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: on ? 700 : 400, border: "1px solid var(--terminal-green)", background: on ? "var(--terminal-green)" : "transparent", color: on ? "#000" : "rgba(0,255,65,0.5)" }}
+              >{slotCode(s)}</span>
+            );
+          })}
+          {a.placements.length === 0 && <span style={{ fontSize: 11, opacity: 0.45, alignSelf: "center", letterSpacing: 1 }}>IDLE</span>}
+        </div>
+      </div>
+    </button>
+  );
+}
+
+/** Thumbnail image for a library asset (custom upload wins, else the linked Toast photo). */
+function assetImage(item: AdminItem, tmap: Map<string, ToastCacheRow>): string | null {
+  const f = item.fields ?? {};
+  const url = typeof f.image_url === "string" && f.image_url.trim() ? (f.image_url as string) : null;
+  if (url) return url;
+  const guid = typeof f.source_toast_guid === "string" ? (f.source_toast_guid as string) : "";
+  if (guid) return tmap.get(guid)?.image ?? null;
+  return null;
+}
+
+function assetSubtitle(item: AdminItem, tmap: Map<string, ToastCacheRow>): string {
+  const f = item.fields ?? {};
+  const guid = typeof f.source_toast_guid === "string" ? (f.source_toast_guid as string) : "";
+  const src = guid ? tmap.get(guid) : undefined;
+  switch (item.template) {
+    case "drink_special": {
+      const price = typeof f.price === "number" ? `$${f.price}` : src?.price != null ? `$${src.price}` : "";
+      const grp = (typeof f.category === "string" && f.category) || src?.menu_group || "";
+      return [price, grp && grp.toString().toUpperCase(), src ? "live from Toast" : ""].filter(Boolean).join(" · ") || "drink special";
+    }
+    case "top_sellers": return "live top-5 from the POS · auto";
+    case "instagram": return "recent posts · caption + QR";
+    case "smart_toast": return `${(typeof f.smart_mode === "string" ? f.smart_mode : "underdogs")} · auto`;
+    case "event": return typeof f.date === "string" ? `event · ${f.date}` : "event";
+    case "celebration": return "celebration";
+    case "image_only": return "full-frame photo";
+    default: return templateBadge(item.template).toLowerCase();
+  }
+}
+
+/* ── C · running & upcoming event row (D8) ──────────────────────────────────── */
+function EventRowCard({ row, canEvents, onEdit, onChanged }: { row: EventRow; canEvents: boolean; onEdit: () => void; onChanged: () => void }) {
+  const phrase = useMemo(() => schedulePhrase(row), [row]);
+  const st = statusInfo(row);
+  const done = row.status === "completed" || row.status === "aborted";
+  const paused = row.status === "disabled";
+  const isLive = st.tone === "now";
+
+  const toggle = useMutation({ mutationFn: () => (paused ? resumeEvent(row) : pauseEvent(row.id)), onSuccess: onChanged });
+  const fire = useMutation({ mutationFn: () => fireNowEvent(row), onSuccess: onChanged });
+
+  return (
+    <div className="terminal-border" style={{ padding: "10px 13px", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", opacity: done ? 0.65 : 1 }}>
+      <button type="button" onClick={onEdit} style={{ flex: "1 1 220px", minWidth: 0, textAlign: "left", background: "transparent", border: "none", color: "inherit", fontFamily: MONO, cursor: "pointer", padding: 0 }}>
+        <div style={{ fontSize: 21, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{row.name}</div>
+        <div style={{ fontSize: 13, opacity: 0.6 }}>{phrase}{row.interrupt_game ? " · interrupts game" : ""}{row.show_on_website ? " · 🌐" : ""}</div>
+      </button>
+      <EventKindBadge kind={row.kind} />
+      <span className={st.tone === "one" ? "u-amber" : undefined} style={{ fontSize: 13, whiteSpace: "nowrap", letterSpacing: 1, opacity: st.tone === "up" || st.tone === "done" ? 0.7 : 1 }}>{st.label}</span>
+      {canEvents && !done && (
+        isLive || paused ? (
+          <button type="button" onClick={() => toggle.mutate()} disabled={toggle.isPending} className={paused ? "" : "u-fill u-ink"} style={{ ...rowBtn, ...(paused ? null : { fontWeight: 700, background: "var(--terminal-green)", color: "#000" }) }}>
+            {paused ? "▶ RESUME" : "❚❚ PAUSE"}
+          </button>
+        ) : (
+          <button type="button" onClick={() => { if (confirm(row.kind === "moment" ? "Fire this MOMENT now? It skips the tease and lands in ALERT." : "Put this on the screens now?")) fire.mutate(); }} disabled={fire.isPending} className="u-amber" style={{ ...rowBtn, color: "var(--terminal-amber, #ffb000)", borderColor: "var(--terminal-amber, #ffb000)" }}>▶ FIRE NOW</button>
+        )
+      )}
+      {canEvents && <button type="button" onClick={onEdit} style={rowBtn}>EDIT</button>}
     </div>
   );
-}
-
-function EventScheduleRow({ event }: { event: ScheduledEvent }) {
-  const phrase = schedulePhrase(event);
-  const st = statusInfo(event);
-  const done = event.status === "completed" || event.status === "aborted";
-  return (
-    <Link
-      to="/signage/events"
-      className="terminal-border"
-      style={{ padding: "10px 12px", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", opacity: done ? 0.65 : 1, textDecoration: "none", color: "var(--terminal-green)" }}
-    >
-      <div style={{ flex: "1 1 200px", minWidth: 0 }}>
-        <div style={{ fontSize: 20, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{event.name}</div>
-        <div style={{ fontSize: 13, opacity: 0.6 }}>{phrase}{event.interrupt_game ? " · interrupts game" : ""}</div>
-      </div>
-      <EventKindBadge kind={event.kind} />
-      <span className={st.tone === "one" ? "u-amber" : undefined} style={{ fontSize: 13, whiteSpace: "nowrap", letterSpacing: 1, opacity: st.tone === "up" || st.tone === "done" ? 0.7 : 1 }}>{st.label}</span>
-    </Link>
-  );
-}
-
-function typeBadge(item: AdminItem): string {
-  switch (item.template) {
-    case "drink_special": return "PROMO";
-    case "event": return "EVENT";
-    case "announcement": return "MESSAGE";
-    case "image_only": return "IMAGE";
-    case "celebration": return "MESSAGE";
-    case "top_sellers": return "TOP 5";
-    case "instagram": return "INSTAGRAM";
-    default: return "ITEM";
-  }
-}
-
-function itemStatus(item: AdminItem): { label: string; active: boolean } {
-  const t = Date.now();
-  const started = !item.starts_at || new Date(item.starts_at).getTime() <= t;
-  const ended = !!item.ends_at && new Date(item.ends_at).getTime() <= t;
-  if (item.active && started && !ended) return { label: "● ACTIVE NOW", active: true };
-  if (!ended && item.starts_at && new Date(item.starts_at).getTime() > t) {
-    return { label: `next ${new Date(item.starts_at).toLocaleString([], { month: "numeric", day: "numeric", hour: "numeric", minute: "2-digit" })}`, active: false };
-  }
-  if (item.recurrence) return { label: "recurring", active: false };
-  if (ended) return { label: "ended", active: false };
-  return { label: item.active ? "scheduled" : "paused", active: false };
 }
 
 /* ── D · ★ SCREENS featured (read-only) ─────────────────────────────────────── */
@@ -398,16 +603,23 @@ function FeaturedPanel({ featured }: { featured: ReturnType<typeof featuredItems
 }
 
 /* ── styles ─────────────────────────────────────────────────────────────────── */
-const quickBtn: CSSProperties = {
-  minHeight: 56, border: "1px solid var(--terminal-green)", background: "rgba(0,255,65,0.06)",
-  color: "var(--terminal-green)", fontFamily: MONO, fontSize: 22, letterSpacing: 1,
-  display: "flex", alignItems: "center", justifyContent: "center", gap: 8, cursor: "pointer",
-  textAlign: "center", padding: "8px 12px",
+const cardBtn: CSSProperties = {
+  fontFamily: MONO, fontSize: 14, letterSpacing: 1, color: "var(--terminal-green)",
+  border: "1px solid var(--terminal-green)", background: "rgba(0,255,65,0.05)", padding: "9px 6px",
+  minHeight: 44, display: "flex", alignItems: "center", justifyContent: "center", gap: 4, cursor: "pointer", textAlign: "center",
 };
-const quickPrimary: CSSProperties = { ...quickBtn, background: "var(--terminal-green)", color: "#000", fontWeight: 700 };
 const miniBtn: CSSProperties = {
   fontFamily: MONO, fontSize: 13, letterSpacing: 1, color: "var(--terminal-green)",
   border: "1px solid var(--terminal-green)", background: "transparent", padding: "8px 10px",
   minHeight: 44, cursor: "pointer", display: "inline-flex", alignItems: "center",
 };
-const miniKey: CSSProperties = { fontWeight: 700 };
+const rowBtn: CSSProperties = {
+  fontFamily: MONO, fontSize: 13, letterSpacing: 1, color: "var(--terminal-green)",
+  border: "1px solid var(--terminal-green)", background: "transparent", padding: "7px 11px",
+  minHeight: 44, cursor: "pointer", whiteSpace: "nowrap",
+};
+const newAssetTile: CSSProperties = {
+  display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+  border: "1px dashed var(--terminal-green)", background: "transparent", color: "var(--terminal-green)",
+  cursor: "pointer", fontFamily: MONO, minHeight: 210, opacity: 0.8,
+};

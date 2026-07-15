@@ -49,11 +49,10 @@ const GameDisplay = namedLazy(triviaRoutes, "GameDisplay");
 const DrinksDisplay = namedLazy(leaderboardRoutes, "DrinksDisplay");
 const DrinksAdmin = namedLazy(leaderboardRoutes, "DrinksAdmin");
 
-// Signage hub + child pages (edit-rotation, broadcast) + public slot display.
+// Signage hub (consolidated — Events & Broadcast tabs folded in) + legacy queue redirect
+// + public slot display.
 const SignageHub = namedLazy(signageRoutes, "SignageHub");
 const EditRotation = namedLazy(signageRoutes, "EditRotation");
-const Broadcast = namedLazy(signageRoutes, "Broadcast");
-const EventsAdmin = namedLazy(signageRoutes, "EventsAdmin");
 const SlotDisplay = namedLazy(signageRoutes, "SlotDisplay");
 
 // Admin shell (dashboard, persistent staff layout, users).
@@ -183,9 +182,11 @@ export function App() {
 
         {/* Module surfaces — each gated on its own grant; seasons stays admin-only */}
         <Route path="/signage" element={<RequireModule module="signage"><SignageHub /></RequireModule>} />
+        {/* Legacy per-screen editor bookmark — opens the hub's QUEUE slide-over then normalizes the URL. */}
         <Route path="/signage/screens/:slug" element={<RequireModule module="signage"><EditRotation /></RequireModule>} />
-        <Route path="/signage/broadcast" element={<RequireModule module="signage"><Broadcast /></RequireModule>} />
-        <Route path="/signage/events" element={<RequireModule module="events"><EventsAdmin /></RequireModule>} />
+        {/* Retired tabs (folded into the hub) — redirect any stale bookmark to the hub. */}
+        <Route path="/signage/broadcast" element={<Navigate to="/signage" replace />} />
+        <Route path="/signage/events" element={<Navigate to="/signage" replace />} />
         <Route path="/admin/drinks" element={<RequireModule module="drinks"><DrinksAdmin /></RequireModule>} />
         <Route path="/admin/seasons" element={<RequireRole role="admin"><SeasonsAdmin /></RequireRole>} />
         <Route path="/admin/users" element={<RequireRole role="admin"><Users /></RequireRole>} />
