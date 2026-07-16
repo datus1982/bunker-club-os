@@ -158,7 +158,7 @@ unpacked dir for local inspection.
         "width": 1920,
         "height": 1080,
         "size_bytes": 48210433,
-        "status": "ready",                            // or "unsupported"
+        "status": "present",                          // or "unsupported" ("missing" is server-derived)
         "thumb_b64": "<jpeg base64>"                  // ONLY for not-yet-acked hashes
       }
     ],

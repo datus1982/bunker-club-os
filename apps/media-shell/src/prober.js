@@ -12,10 +12,11 @@
  * can't read) is returned with status 'unsupported' and no thumbnail — the
  * catalog still lists it so staff can see it exists.
  *
- * DECISION: the catalog `status` enum is 'ready' | 'unsupported'. The contract
- * names the field but not its values; these two are what the receiving edge fn
- * should expect. A probe that yields metadata but no thumbnail still counts as
- * 'ready' (thumb_b64 simply absent) — the frame grab is best-effort.
+ * The catalog `status` values the shell emits are 'present' | 'unsupported',
+ * matching the media_files.status CHECK constraint (migration 0047; 'missing'
+ * is server-derived when a hash vanishes from the catalog — the shell never
+ * sends it). A probe that yields metadata but no thumbnail still counts as
+ * 'present' (thumb_b64 simply absent) — the frame grab is best-effort.
  */
 
 const { spawn } = require('child_process');
@@ -114,7 +115,7 @@ async function grabThumb(absPath, durationSeconds) {
 }
 
 /**
- * @returns {Promise<{status:'ready'|'unsupported', duration_seconds:number|null,
+ * @returns {Promise<{status:'present'|'unsupported', duration_seconds:number|null,
  *   width:number|null, height:number|null, codec:string|null, thumb:Buffer|null}>}
  */
 async function probe(absPath) {
@@ -126,7 +127,7 @@ async function probe(absPath) {
     } catch {
       thumb = null; // metadata is good even if the thumbnail frame failed
     }
-    return { status: 'ready', ...meta, thumb };
+    return { status: 'present', ...meta, thumb };
   } catch {
     return {
       status: 'unsupported',

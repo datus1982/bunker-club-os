@@ -98,7 +98,7 @@ async function main() {
 
   const entry = [...library.byHash.values()][0];
   ok(!!entry, 'entry present');
-  ok(entry && entry.status === 'ready', 'entry status ready', entry && entry.status);
+  ok(entry && entry.status === 'present', 'entry status present', entry && entry.status);
   ok(entry && entry.duration_seconds === 5, 'duration ~5s', entry && String(entry.duration_seconds));
   ok(entry && entry.width === 320 && entry.height === 240, 'dimensions 320x240',
     entry && `${entry.width}x${entry.height}`);
