@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import type { Orientation, SignageItem, ToastCacheRow } from "./useSignage";
 import { EventWindowCard, EventMessageCard, EventTeaseCard } from "./EventStages";
 import { balanceHeadline } from "./eventStage";
 import { parseInline, RichText, alignOf } from "./richText";
-import { useDrinksBoard, useSalesCache, useSalesHistory, useMenuGroups, overallTopSellers, groupGuidByName, groupTopSellers, OVERALL_GROUP, itemNameFont, type DrinkItem, type HistorySum } from "@/modules/leaderboard/useDrinks";
+import { useDrinksBoard, useSalesCache, useSalesHistory, useMenuGroups, overallTopSellers, groupGuidByName, groupTopSellers, OVERALL_GROUP, type DrinkItem, type HistorySum } from "@/modules/leaderboard/useDrinks";
 import { QRCodeSVG } from "qrcode.react";
 import { useInstagramFeed } from "./useInstagram";
 
@@ -388,6 +388,71 @@ export function Celebration({ item, orientation }: TemplateProps) {
   );
 }
 
+/* ── Shared list-density helpers (owner beat 2026-07-15: "fit ten in the space") ──
+ * The signage list slides (top_sellers / smart_toast UNDERDOGS) used to cluster fixed-size
+ * rows in the middle of the content zone, leaving dead canvas below. These two primitives let
+ * a list fill the AVAILABLE height between the slide's fixed header and the content bottom:
+ *
+ *  • useFillHeight — measures the list container's own clientHeight ONCE per layout via
+ *    useLayoutEffect (before paint, so no flicker). The display canvas is FIXED-SIZE
+ *    (DisplayCanvas scales the whole surface: portrait 1080×1920 / landscape 1920×1080), so
+ *    the container's height is a stable layout metric — the same reason TickerReprint reads
+ *    clientWidth with no resize listener. Returns [ref, height]; height is 0 until mounted, so
+ *    callers guard with a sane fallback for the first (never-painted) frame.
+ *
+ *  • FitText — a single-line, never-truncating name cell. It reuses the TickerReprint idiom
+ *    (PR #22/#32 shrink-to-fit): render at the desired px, read the span's transform-independent
+ *    offsetWidth, and if it exceeds the cell, apply a CSS transform:scale so the name shrinks to
+ *    fit THAT row while the row grid stays aligned (a long name never ellipsizes, and never
+ *    reflows the row height). offsetWidth is a pre-transform metric, so setting the scale can't
+ *    feed back into the measurement — one pass, no loop.
+ */
+function useFillHeight<T extends HTMLElement>(): [React.RefObject<T | null>, number] {
+  const ref = useRef<T>(null);
+  const [h, setH] = useState(0);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (el && el.clientHeight !== h) setH(el.clientHeight);
+  });
+  return [ref, h];
+}
+
+function FitText({
+  text, size, className, color, glow, align = "left", style,
+}: {
+  text: string; size: number; className?: string; color?: string; glow?: string;
+  align?: "left" | "center"; style?: CSSProperties;
+}) {
+  const boxRef = useRef<HTMLDivElement>(null);
+  const spanRef = useRef<HTMLSpanElement>(null);
+  const [scale, setScale] = useState(1);
+  useLayoutEffect(() => {
+    const box = boxRef.current, span = spanRef.current;
+    if (!box || !span) return;
+    const avail = box.clientWidth;
+    const need = span.offsetWidth; // natural width at BASE size (transform-independent)
+    setScale(avail > 0 && need > avail ? avail / need : 1);
+  }, [text, size]);
+  return (
+    <div ref={boxRef} style={{ minWidth: 0, overflow: "hidden", textAlign: align, ...style }}>
+      <span
+        ref={spanRef}
+        className={className}
+        style={{
+          display: "inline-block", whiteSpace: "nowrap", fontSize: size, fontWeight: 700,
+          lineHeight: 1.02, letterSpacing: 1, textTransform: "uppercase",
+          transform: `scale(${scale})`, transformOrigin: `${align} center`,
+          color, textShadow: glow,
+        }}
+      >
+        {text}
+      </span>
+    </div>
+  );
+}
+
+const clampN = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
+
 /* ── TOP SELLERS (live sales leaderboard as ONE rotation slide) ─────────────── */
 /**
  * The top sellers rendered as a single rotation slide (Phase 8 ROTATION UNIFICATION —
@@ -411,24 +476,41 @@ export function Celebration({ item, orientation }: TemplateProps) {
  *  • MORE GREEN — drink names + counts render in live green (sig-live: docs/09 green = live
  *    feed); ranks, bars, the group title and the SOLD label stay ambient amber. Not a wall.
  */
-type TSz = { header: number; sub: number; rank: number; count: number; countLabel: number; barH: number; rowGap: number; nameScale: number };
-const TS_SIZES: Record<Orientation, TSz> = {
-  portrait: { header: 92, sub: 30, rank: 60, count: 66, countLabel: 26, barH: 28, rowGap: 22, nameScale: 1 },
-  landscape: { header: 70, sub: 24, rank: 46, count: 52, countLabel: 22, barH: 20, rowGap: 14, nameScale: 0.74 },
+/** Fixed header chrome for the slide (owner re-ratified — NOT resized by this beat). */
+const TS_HEADER: Record<Orientation, { header: number; sub: number }> = {
+  portrait: { header: 92, sub: 30 },
+  landscape: { header: 70, sub: 24 },
 };
-/** Shrink the row metrics when a bucket runs long (7–10 rows) so a full top-10 stays on the
- *  fixed canvas. ≤6 rows keep the base (today's 5-deep buckets look unchanged). */
-function tsSizes(o: Orientation, count: number): TSz {
-  const z = TS_SIZES[o];
-  if (count <= 6) return z;
+
+/** The tallest a list can be: portrait stacks 10 rows in one column; landscape lays 10 rows as
+ *  5×2, so its vertical division is by 5. Every list — 3, 5 or 10 rows — uses the SAME fixed row
+ *  size computed from this division, and rows populate TOP-DOWN (owner beat 2026-07-15): the
+ *  10-row case fills the canvas edge-to-edge with bigger text than before, and a short list is
+ *  just the top slice of that grid, leaving the space below deliberately empty. */
+function tsMaxRows(o: Orientation): number { return o === "portrait" ? 10 : 5; }
+
+interface TSRow { rowH: number; name: number; rank: number; count: number; countLabel: number; barH: number; nameGap: number }
+/** Fixed row size derived from the available height / max rows (the 10-row division). No
+ *  count-dependence — a 3-row list shows these SAME rows, just fewer of them, top-aligned. The
+ *  caps only guard against an unexpectedly tall container; at the real canvas the height budget
+ *  drives the size (bigger than the old fixed metrics). */
+function tsRowSizes(availH: number, o: Orientation): TSRow {
+  const port = o === "portrait";
+  const rows = tsMaxRows(o);
+  const rowH = availH > 0 ? availH / rows : (port ? 150 : 150);
+  const barH = Math.round(clampN(rowH * 0.20, 8, port ? 34 : 26));
+  const nameGap = Math.round(clampN(rowH * 0.05, 4, 12));
+  // Height left for the name/count line after the bar + inner gap; sized off line-height 1.05.
+  const lineBudget = rowH * (port ? 0.86 : 0.82) - barH - nameGap;
+  const name = Math.round(clampN(lineBudget / 1.05, 30, port ? 104 : 76));
   return {
-    ...z,
-    rank: Math.round(z.rank * 0.72),
-    count: Math.round(z.count * 0.72),
-    countLabel: Math.round(z.countLabel * 0.85),
-    barH: Math.round(z.barH * 0.6),
-    rowGap: Math.round(z.rowGap * 0.55),
-    nameScale: z.nameScale * (o === "portrait" ? 0.7 : 0.82),
+    rowH,
+    name,
+    rank: Math.round(name * 0.72),
+    count: Math.round(name * 0.86),
+    countLabel: Math.round(clampN(name * 0.38, 16, 40)),
+    barH,
+    nameGap,
   };
 }
 
@@ -480,16 +562,18 @@ export function TopSellers({ item, orientation }: TemplateProps) {
   const bucketIndex = buckets.length ? (start + step) % buckets.length : 0;
   const active = buckets[bucketIndex];
 
-  const z = tsSizes(orientation, active?.items.length ?? 0);
   const title = active?.title ?? "TOP SELLERS TONIGHT";
+  // Measure the list container so rows can be sized off the fixed 10-row division (top-down fill).
+  const [listRef, listH] = useFillHeight<HTMLDivElement>();
+  const sz = tsRowSizes(listH, orientation);
 
   // Header title is ambient amber chrome; the "◉ LIVE FROM THE POS" indicator is green (live).
   const header = (
-    <div style={{ flexShrink: 0, textAlign: "center", paddingBottom: 18, borderBottom: "1px solid var(--sig-rule)", marginBottom: orientation === "portrait" ? 28 : 14 }}>
-      <div style={{ fontSize: TS_SIZES[orientation].header, fontWeight: 700, letterSpacing: 3, lineHeight: 0.98, textTransform: "uppercase", textShadow: "0 0 16px var(--terminal-glow)" }}>
+    <div style={{ flexShrink: 0, textAlign: "center", paddingBottom: 18, borderBottom: "1px solid var(--sig-rule)", marginBottom: orientation === "portrait" ? 24 : 12 }}>
+      <div style={{ fontSize: TS_HEADER[orientation].header, fontWeight: 700, letterSpacing: 3, lineHeight: 0.98, textTransform: "uppercase", textShadow: "0 0 16px var(--terminal-glow)" }}>
         {title}
       </div>
-      <div className="sig-live" style={{ fontSize: TS_SIZES[orientation].sub, letterSpacing: 4, marginTop: 10, opacity: 0.95 }}>◉ LIVE FROM THE POS</div>
+      <div className="sig-live" style={{ fontSize: TS_HEADER[orientation].sub, letterSpacing: 4, marginTop: 10, opacity: 0.95 }}>◉ LIVE FROM THE POS</div>
     </div>
   );
 
@@ -497,7 +581,7 @@ export function TopSellers({ item, orientation }: TemplateProps) {
     return (
       <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
         {header}
-        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", fontSize: z.count, opacity: 0.6 }}>SYNCING SALES…</div>
+        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", fontSize: orientation === "portrait" ? 66 : 52, opacity: 0.6 }}>SYNCING SALES…</div>
       </div>
     );
   }
@@ -523,21 +607,25 @@ export function TopSellers({ item, orientation }: TemplateProps) {
   const shown = active.items;
   const maxCount = Math.max(...shown.map((it) => it.sales_count), 1);
   const rows = shown.map((it) => (
-    <TopSellerRow key={`${it.rank}-${it.item_name}`} item={it} z={z} pct={(it.sales_count / maxCount) * 100} />
+    <TopSellerRow key={`${it.rank}-${it.item_name}`} item={it} sz={sz} pct={(it.sales_count / maxCount) * 100} />
   ));
 
+  // Owner beat 2026-07-15: rows are a FIXED size (from the 10-row division) and fill TOP-DOWN
+  // from directly under the header — a short list is the top slice of that grid, leaving the
+  // space below deliberately empty (no middle-out centering, no per-count upscaling).
   return (
     <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
       {header}
       {orientation === "portrait" ? (
-        <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", justifyContent: "center", gap: z.rowGap }}>
+        <div ref={listRef} style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", justifyContent: "flex-start", overflow: "hidden" }}>
           {rows}
         </div>
       ) : (
         // DECISION: landscape is two columns, column-major (gridAutoFlow:column) so the left
         // column reads ranks top-to-bottom and the right continues — matching mockup view 4's
-        // reading order. Row count follows the bucket depth so 10 rows fill 5×2.
-        <div style={{ flex: 1, minHeight: 0, display: "grid", gridTemplateColumns: "1fr 1fr", gridTemplateRows: `repeat(${Math.max(1, Math.ceil(shown.length / 2))}, auto)`, gridAutoFlow: "column", alignContent: "center", columnGap: 56, rowGap: z.rowGap }}>
+        // reading order. Rows are a FIXED height (availH / 5) so a full 10 fill 5×2 edge-to-edge
+        // and a 3-item list is the top slice of the left column.
+        <div ref={listRef} style={{ flex: 1, minHeight: 0, display: "grid", gridTemplateColumns: "1fr 1fr", gridTemplateRows: `repeat(${tsMaxRows("landscape")}, ${sz.rowH}px)`, gridAutoFlow: "column", alignContent: "start", columnGap: 56, overflow: "hidden" }}>
           {rows}
         </div>
       )}
@@ -545,25 +633,33 @@ export function TopSellers({ item, orientation }: TemplateProps) {
   );
 }
 
-function TopSellerRow({ item, z, pct }: { item: DrinkItem; z: TSz; pct: number }) {
+function TopSellerRow({ item, sz, pct }: { item: DrinkItem; sz: TSRow; pct: number }) {
   const lead = item.rank === 1;
-  const nameSize = Math.round(itemNameFont(item.item_name) * z.nameScale);
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-      <div style={{ display: "flex", alignItems: "baseline", gap: 16 }}>
+    <div style={{ height: sz.rowH, display: "flex", flexDirection: "column", justifyContent: "center", gap: sz.nameGap, minWidth: 0 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 16, minWidth: 0 }}>
         {/* rank: ambient amber chrome */}
-        <span style={{ fontSize: z.rank, fontWeight: 700, lineHeight: 1, width: z.rank + 8, flexShrink: 0, opacity: lead ? 1 : 0.5, textAlign: "right" }}>{item.rank}</span>
-        {/* name: LIVE green (docs/09) — sig-live on the same span that carries the size so the
-            global span-clamp can't shrink it. */}
-        <span className="sig-live" style={{ fontSize: nameSize, fontWeight: 700, lineHeight: 1.02, letterSpacing: 1, textTransform: "uppercase", flex: 1, minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "clip", textShadow: lead ? "0 0 12px var(--terminal-glow)" : undefined, opacity: lead ? 1 : 0.95 }}>{item.item_name}</span>
+        <span style={{ fontSize: sz.rank, fontWeight: 700, lineHeight: 1, width: sz.rank + 8, flexShrink: 0, opacity: lead ? 1 : 0.5, textAlign: "right" }}>{item.rank}</span>
+        {/* name: LIVE green (docs/09), single-line shrink-to-fit so a long name never truncates
+            and never reflows the fixed row height (FitText scales that row's name only). */}
+        <FitText
+          text={item.item_name}
+          size={sz.name}
+          className="sig-live"
+          align="left"
+          glow={lead ? "0 0 12px var(--terminal-glow)" : undefined}
+          // marginRight guarantees a gap before the count even when a long name shrinks to
+          // fill its cell (the fit width excludes the margin).
+          style={{ flex: 1, marginRight: 28, opacity: lead ? 1 : 0.95 }}
+        />
         {/* count: the live sales figure is green; the SOLD label stays amber (inner span keeps
             its own size via inherit so the clamp can't touch it). */}
-        <span style={{ fontSize: z.count, fontWeight: 700, lineHeight: 1, whiteSpace: "nowrap", flexShrink: 0, opacity: lead ? 1 : 0.92 }}>
+        <span style={{ fontSize: sz.count, fontWeight: 700, lineHeight: 1, whiteSpace: "nowrap", flexShrink: 0, opacity: lead ? 1 : 0.92 }}>
           <span className="sig-live" style={{ fontSize: "inherit" }}>{item.sales_count}</span>
-          <span style={{ fontSize: z.countLabel, opacity: 0.6, marginLeft: 8, letterSpacing: 1 }}>SOLD</span>
+          <span style={{ fontSize: sz.countLabel, opacity: 0.6, marginLeft: 8, letterSpacing: 1 }}>SOLD</span>
         </span>
       </div>
-      <div style={{ height: z.barH, border: "1px solid var(--terminal-green)", position: "relative" }}>
+      <div style={{ height: sz.barH, border: "1px solid var(--terminal-green)", position: "relative" }}>
         <div style={{ position: "absolute", inset: 0, right: "auto", width: `${Math.max(2, pct)}%`, background: "var(--terminal-green)", boxShadow: "0 0 10px var(--terminal-glow)", opacity: lead ? 1 : 0.82 }} />
       </div>
     </div>
@@ -754,6 +850,9 @@ export function SmartToast({ item, toast, orientation }: TemplateProps) {
 
   const port = orientation === "portrait";
   const z = SIZES[orientation];
+  // Measured list height for the UNDERDOGS adaptive fill (called unconditionally to keep hook
+  // order stable across the champion early-return; ignored in champion mode).
+  const [udRef, udH] = useFillHeight<HTMLDivElement>();
 
   if (mode === "champion") {
     // Optional group filter (owner fast-follow): empty/unset = whole menu (the "hot-dog nod",
@@ -809,15 +908,38 @@ export function SmartToast({ item, toast, orientation }: TemplateProps) {
     );
   }
 
+  // ADAPTIVE fill (owner beat 2026-07-15 — UNDERDOGS keeps this, unlike the fixed-row top-sellers):
+  // fewer rows get TALLER slots and bigger photos/text, so a 3-item board fills the canvas with
+  // generous rows and a 5-item board compacts proportionally. Rows are flex:1 so they share the
+  // measured height evenly regardless of rounding.
+  const udSz = underdogRowSizes(udH, ranked.length, orientation);
   return (
     <SmartFrame header={header}>
-      <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", justifyContent: "center", gap: port ? 22 : 16 }}>
+      <div ref={udRef} style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", gap: udSz.gap, overflow: "hidden" }}>
         {ranked.map(({ row, qty }) => (
-          <UnderdogRow key={row.guid} name={(row.name ?? "SPECIAL").toUpperCase()} photo={row.image ?? undefined} qty={qty} days={days} orientation={orientation} />
+          <UnderdogRow key={row.guid} name={(row.name ?? "SPECIAL").toUpperCase()} photo={row.image ?? undefined} qty={qty} days={days} orientation={orientation} sz={udSz} />
         ))}
       </div>
     </SmartFrame>
   );
+}
+
+interface UDRow { thumb: number; name: number; qty: number; label: number; gap: number }
+/** Adaptive UNDERDOGS row sizing: divides the measured list height among `count` rows, so a
+ *  small N yields big rows/photos and a larger N compacts. Caps keep it from getting cartoonish. */
+function underdogRowSizes(availH: number, count: number, o: Orientation): UDRow {
+  const port = o === "portrait";
+  const H = availH > 0 ? availH : (port ? 1400 : 700);
+  const n = Math.max(1, count);
+  const gap = Math.round(clampN((H / n) * 0.10, 8, port ? 40 : 28));
+  const rowH = (H - (n - 1) * gap) / n;
+  return {
+    thumb: Math.round(clampN(rowH * 0.92, 96, port ? 320 : 220)),
+    name: Math.round(clampN(rowH * 0.34, 40, port ? 116 : 84)),
+    qty: Math.round(clampN(rowH * 0.24, 30, port ? 88 : 60)),
+    label: Math.round(clampN(rowH * 0.24 * 0.55, 20, port ? 40 : 30)),
+    gap,
+  };
 }
 
 function SmartFrame({ header, children }: { header: ReactNode; children: ReactNode }) {
@@ -843,25 +965,25 @@ function periodLabel(days: number): string {
   return `LAST ${days}D`;
 }
 
-function UnderdogRow({ name, photo, qty, days, orientation }: { name: string; photo: string | undefined; qty: number; days: number; orientation: Orientation }) {
+function UnderdogRow({ name, photo, qty, days, orientation, sz }: { name: string; photo: string | undefined; qty: number; days: number; orientation: Orientation; sz: UDRow }) {
   const port = orientation === "portrait";
-  const thumb = port ? 148 : 116;
-  const nameSize = Math.round(itemNameFont(name) * (port ? 1 : 0.8));
   const soldLabel = days === 7 ? "SOLD THIS WEEK" : `SOLD · ${periodLabel(days)}`;
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: port ? 28 : 22 }}>
+    <div style={{ flex: "1 1 0", minHeight: 0, display: "flex", alignItems: "center", gap: port ? 28 : 22 }}>
       {photo ? (
-        <div className="sig-viewport sig-sq" style={{ width: thumb, height: thumb, flexShrink: 0 }}>
+        <div className="sig-viewport sig-sq" style={{ width: sz.thumb, height: sz.thumb, flexShrink: 0 }}>
           <img src={photo} alt="" />
         </div>
       ) : (
-        <div className="sig-sq sig-sq-ph" style={{ width: thumb, height: thumb, flexShrink: 0 }} />
+        <div className="sig-sq sig-sq-ph" style={{ width: sz.thumb, height: sz.thumb, flexShrink: 0 }} />
       )}
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: nameSize, fontWeight: 700, lineHeight: 1.02, letterSpacing: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "clip", textShadow: "0 0 12px var(--terminal-glow)" }}>{name}</div>
-        <div style={{ fontSize: port ? 40 : 32, fontWeight: 700, marginTop: 6 }}>
+      <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", justifyContent: "center" }}>
+        {/* Name shrinks to fit its column (never truncates), so a long underdog name stays on
+            one line while the row grid keeps its alignment (FitText). */}
+        <FitText text={name} size={sz.name} align="left" glow="0 0 12px var(--terminal-glow)" style={{ width: "100%" }} />
+        <div style={{ fontSize: sz.qty, fontWeight: 700, marginTop: 6 }}>
           <span className="sig-live" style={{ fontSize: "inherit" }}>{qty}</span>
-          <span style={{ fontSize: port ? 26 : 22, opacity: 0.6, marginLeft: 10, letterSpacing: 2 }}>{soldLabel}</span>
+          <span style={{ fontSize: sz.label, opacity: 0.6, marginLeft: 10, letterSpacing: 2 }}>{soldLabel}</span>
         </div>
       </div>
     </div>
