@@ -1,0 +1,8 @@
+{
+  "slug": "landscape-bar",
+  "mediaDir": "C:\\BunkerMedia",
+  "port": 48151,
+  "catalogUrl": "https://ysrqvdutayirpoibdlbf.supabase.co/functions/v1/media-catalog-sync",
+  "deviceToken": "PASTE-DEVICE-TOKEN-HERE",
+  "appUrl": "https://os.bunkerokc.com"
+}
