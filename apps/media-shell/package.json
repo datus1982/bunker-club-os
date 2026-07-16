@@ -1,0 +1,52 @@
+{
+  "name": "@bunker/media-shell",
+  "productName": "Bunker Media Shell",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Thin Electron kiosk shell for the bar's media PC — serves a local video library over 127.0.0.1 and drives a signage screen (media module M1).",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron .",
+    "verify": "node scripts/verify.js",
+    "dist:win": "electron-builder --win --x64",
+    "pack": "electron-builder --dir"
+  },
+  "dependencies": {
+    "chokidar": "^3.6.0",
+    "ffmpeg-static": "^5.2.0",
+    "ffprobe-static": "^3.1.0"
+  },
+  "devDependencies": {
+    "electron": "^31.0.0",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "com.bunkerokc.mediashell",
+    "productName": "Bunker Media Shell",
+    "files": [
+      "src/**/*",
+      "package.json"
+    ],
+    "asar": true,
+    "asarUnpack": [
+      "node_modules/ffmpeg-static/**",
+      "node_modules/ffprobe-static/**"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        }
+      ],
+      "artifactName": "BunkerMediaShell-Setup-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "runAfterFinish": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    }
+  }
+}

@@ -1,0 +1,7 @@
+node_modules/
+dist/
+out/
+config.json
+sent-thumbs.json
+*.log
+.DS_Store
