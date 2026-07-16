@@ -11,6 +11,8 @@ import {
 import { useTicker, type TickerLine } from "./useTicker";
 import { TemplateView } from "./SignageTemplates";
 import { EventStageView, EventTeaseCard } from "./EventStages";
+import { PlaylistProgram } from "./PlaylistProgram";
+import { resolveMediaBase } from "./mediaProgram";
 import { SUPPORT_TEXT } from "./supportText";
 import "./signage.css";
 
@@ -125,6 +127,13 @@ function SlotScreen({
 
   const ticker = useTicker({ events: liveEvents, timezone });
 
+  // PROGRAM tier (docs/15): a `playlist` program renders INSIDE rotation mode (the bottom of the
+  // ladder) — so takeover/moment/game already preempt it (mode !== 'rotation' unmounts it, and
+  // the <video> stops with it). Only 'playlist' renders in M1; capture/multiview are reserved.
+  const programPlaylistId =
+    mode === "rotation" && slot.program?.kind === "playlist" ? slot.program.playlist_id : null;
+  const mediaBase = useMemo(() => resolveMediaBase(params), [params]);
+
   return (
     <div className={`signage-slot signage-${ink}`} style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", color: "var(--terminal-green)", background: "#000" }}>
       {/* Game mode replaces the surface with the reused trivia board (no chrome). */}
@@ -137,6 +146,16 @@ function SlotScreen({
           )}
           {showBoot && <BootOverlay />}
         </div>
+      ) : programPlaylistId ? (
+        // Playlist program: framed keeps the chrome, fullbleed hides it (PlaylistProgram decides
+        // from the playlist's presentation toggle). The <video> unmounts the moment mode flips.
+        <PlaylistProgram
+          slot={slot}
+          playlistId={programPlaylistId}
+          base={mediaBase}
+          header={<ChromeHeader slot={slot} venueName={venueName} timezone={timezone} />}
+          footer={<ChromeFooter ticker={ticker} live={false} orientation={slot.orientation} />}
+        />
       ) : (
         <>
           <ChromeHeader slot={slot} venueName={venueName} timezone={timezone} />

@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase, VENUE_ID } from "@/shared/supabaseClient";
 import { fetchSlotQueuePublic } from "./slotQueue";
 import { eventStage, isTakeoverStage, type LiveEvent } from "./eventStage";
+import type { SlotProgram } from "./mediaProgram";
 
 // Re-export the pure events surface so the app imports it from one place. The pure
 // module (no react/supabase) is what scripts/test-event-stage.ts imports directly.
@@ -42,6 +43,9 @@ export interface Slot {
   location_label: string | null;
   overscan_inset_pct: number;
   scale_adjust: number;
+  /** The programmable bottom tier of the mode ladder (docs/15). null = today's rotation.
+   *  Only `playlist` renders in M1; capture/multiview are reserved (M2/M3). */
+  program: SlotProgram | null;
 }
 
 export type Template =
@@ -205,7 +209,7 @@ export function useSlot(slug: string) {
     queryFn: async (): Promise<Slot | null> => {
       const { data, error } = await supabase
         .from("signage_slots")
-        .select("id, venue_id, name, orientation, slug, terminal_number, location_label, overscan_inset_pct, scale_adjust")
+        .select("id, venue_id, name, orientation, slug, terminal_number, location_label, overscan_inset_pct, scale_adjust, program")
         .eq("slug", slug)
         .maybeSingle();
       if (error) throw error;
@@ -319,6 +323,11 @@ export function useSlot(slug: string) {
         () => qc.invalidateQueries({ queryKey: ["signage", "liveGame"] }))
       .on("postgres_changes", { event: "*", schema: "public", table: "toast_menu_cache", filter: `venue_id=eq.${VENUE_ID}` },
         () => qc.invalidateQueries({ queryKey: ["signage", "toast"] }))
+      // A PROGRAM switch (ROTATION ↔ PLAYLIST, docs/15) writes signage_slots.program — re-fetch
+      // the slot row so the TV flips into/out of a playlist program with no reload, same as every
+      // other admin action. (This channel didn't watch signage_slots before M1.)
+      .on("postgres_changes", { event: "*", schema: "public", table: "signage_slots", filter: `venue_id=eq.${VENUE_ID}` },
+        () => qc.invalidateQueries({ queryKey: ["signage", "slot"] }))
       .subscribe();
     return () => { supabase.removeChannel(ch); };
   }, [qc]);
