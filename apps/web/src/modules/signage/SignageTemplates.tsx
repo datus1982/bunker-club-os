@@ -1055,10 +1055,14 @@ function SmartChampion({
   // DECISION: kept the literal Toast group name rather than singularizing ("Signature Cocktail") —
   // the owner's Toast group names are the source of truth and read fine as a banner.
   const windowLine = `◊ ${menuGroup ? `${menuGroup.toUpperCase()} · ` : ""}CALCULATED OVER THE LAST ${trueDays} DAY${trueDays === 1 ? "" : "S"}`;
+  // Header CENTERED on the champion slide (owner round-3 2026-07-15: "i also feel like the
+  // header should be centered on this one … i like the occasional left justification for
+  // some things but this one in particular [centered]"). Champion-only — no other slide's
+  // header alignment is touched.
   const header = (
-    <div style={{ flexShrink: 0 }}>
+    <div style={{ flexShrink: 0, textAlign: "center" }}>
       <Eyebrow text="SHELTER RECORDS — TOP OF THE CHARTS" size={z.eyebrow} />
-      <div style={{ fontSize: port ? 88 : 66, fontWeight: 700, letterSpacing: 2, lineHeight: 0.98, textTransform: "uppercase", textShadow: "0 0 16px var(--terminal-glow)", marginTop: 8 }}>
+      <div style={{ fontSize: port ? 92 : 66, fontWeight: 700, letterSpacing: 2, lineHeight: 0.98, textTransform: "uppercase", textShadow: "0 0 16px var(--terminal-glow)", marginTop: 8 }}>
         REIGNING CHAMPION
       </div>
     </div>
@@ -1083,17 +1087,25 @@ function SmartChampion({
   // so the slide doesn't re-acquire the promo silhouette (big name over a photo).
   const nameSize = Math.min(headlineFont(balName, orientation), port ? 116 : 84);
 
-  // ODOMETER count block: boxed two-compartment counter (number | SOLD), ambient AMBER — the
-  // deliberate anti-price treatment (the promo's price is huge GREEN with a "$"; this has neither).
+  // ODOMETER count block: boxed STACKED counter — big number over a "SOLD" caption, split by a
+  // rule. Owner round-3 2026-07-15: "i dont like the sold in a box next to the number, maybe make
+  // the sold below it, i dont hate the box for making the distinction obvious i just dont like the
+  // current side by side." Ambient AMBER, NO "$" — the deliberate anti-price treatment (the promo's
+  // price is huge GREEN with a "$"; this has neither), kept so a glance can't mis-read it as a price.
   const countBlock = (
-    <div style={{ display: "inline-flex", alignItems: "stretch", border: "4px solid var(--terminal-green)", boxShadow: "0 0 26px var(--terminal-glow)", alignSelf: port ? "center" : "flex-start", flexShrink: 0 }}>
-      <span style={{ fontSize: port ? 176 : 128, fontWeight: 700, lineHeight: 0.9, padding: port ? "10px 30px" : "6px 22px", letterSpacing: 2, fontVariantNumeric: "tabular-nums", textShadow: "0 0 22px var(--terminal-glow)" }}>{champ.qty}</span>
-      <span style={{ display: "flex", alignItems: "center", fontSize: port ? 56 : 42, fontWeight: 700, letterSpacing: 6, padding: port ? "0 26px" : "0 18px", borderLeft: "4px solid var(--terminal-green)", opacity: 0.9 }}>SOLD</span>
+    <div style={{ display: "inline-flex", flexDirection: "column", alignItems: "stretch", border: "4px solid var(--terminal-green)", boxShadow: "0 0 26px var(--terminal-glow)", alignSelf: port ? "center" : "flex-start", flexShrink: 0 }}>
+      <span style={{ textAlign: "center", fontSize: port ? 210 : 150, fontWeight: 700, lineHeight: 0.84, padding: port ? "18px 56px 12px" : "10px 40px 6px", letterSpacing: 2, fontVariantNumeric: "tabular-nums", textShadow: "0 0 22px var(--terminal-glow)" }}>{champ.qty}</span>
+      <span style={{ textAlign: "center", fontSize: port ? 52 : 40, fontWeight: 700, letterSpacing: 14, padding: port ? "12px 56px 14px" : "8px 40px", borderTop: "4px solid var(--terminal-green)", opacity: 0.9, textIndent: 14 }}>SOLD</span>
     </div>
   );
 
+  // Owner round-3: fill the canvas. The live top-3 sub-list is OPTIONAL — a group champion whose
+  // per-group sales_cache bucket is empty tonight (common early in service) renders no ranking, so
+  // the image absorbs the freed space instead of leaving dead air at the bottom. With a ranking
+  // present the image stays moderate so the (flex-filled) strip below has room to grow.
+  const hasTop3 = top3.length > 0;
   const imageEl = champ.photo && (
-    <div className="sig-viewport sig-sq" style={{ width: port ? "min(500px, 100%)" : undefined, height: port ? undefined : Math.round(z.photoH * 0.9), aspectRatio: port ? undefined : "1 / 1", flexShrink: 0 }}>
+    <div className="sig-viewport sig-sq" style={{ width: port ? (hasTop3 ? "min(540px, 100%)" : "min(760px, 100%)") : undefined, height: port ? undefined : Math.round(z.photoH * 0.9), aspectRatio: port ? undefined : "1 / 1", flexShrink: 0 }}>
       <span className="sig-feedcap sig-live" style={{ fontSize: 20 }}>◉ CHART LEADER</span>
       <img src={champ.photo} alt="" />
     </div>
@@ -1109,16 +1121,20 @@ function SmartChampion({
     <div style={{ fontSize: port ? 30 : 26, letterSpacing: 4, opacity: 0.7, textAlign: port ? "center" : "left" }}>{windowLine}</div>
   );
 
+  // Owner round-3: grow image AND ranking to fill the canvas. In portrait the strip takes
+  // flex:1 so it consumes the slack under the name (no more dead space at the bottom); rows
+  // space out with justify-content:space-around and the fonts step up. overflow:hidden keeps a
+  // pathological long-name reign from ever pushing the strip off-canvas (graceful clip, WARN-2).
   const top3El = top3.length > 0 && (
-    <div style={{ minWidth: 0, minHeight: 0, display: "flex", flexDirection: "column", justifyContent: "center", gap: port ? 10 : 12, borderTop: port ? "1px solid var(--sig-rule)" : "none", borderLeft: port ? "none" : "1px solid var(--sig-rule)", paddingTop: port ? 14 : 0, paddingLeft: port ? 0 : 36 }}>
-      <div style={{ fontSize: port ? 32 : 30, letterSpacing: 4, opacity: 0.7 }}>◉ RIGHT NOW — TONIGHT'S TOP 3</div>
+    <div style={{ minWidth: 0, minHeight: 0, flex: port ? "1 1 0" : undefined, alignSelf: port ? "stretch" : undefined, overflow: "hidden", display: "flex", flexDirection: "column", justifyContent: port ? "space-around" : "center", gap: port ? 6 : 12, borderTop: port ? "1px solid var(--sig-rule)" : "none", borderLeft: port ? "none" : "1px solid var(--sig-rule)", paddingTop: port ? 16 : 0, paddingLeft: port ? 0 : 36 }}>
+      <div style={{ fontSize: port ? 36 : 30, letterSpacing: 4, opacity: 0.7 }}>◉ RIGHT NOW — TONIGHT'S TOP 3</div>
       {top3.map((it) => (
-        <div key={it.rank} style={{ display: "flex", alignItems: "baseline", gap: 14 }}>
-          <span style={{ fontSize: port ? 40 : 38, fontWeight: 700, opacity: 0.5, width: port ? 38 : 34, flexShrink: 0 }}>{it.rank}</span>
-          <span className="sig-live" style={{ flex: 1, minWidth: 0, fontSize: port ? 40 : 34, fontWeight: 700, letterSpacing: 1, textTransform: "uppercase", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "clip" }}>{it.item_name}</span>
-          <span style={{ fontSize: port ? 32 : 28, fontWeight: 700, flexShrink: 0 }}>
+        <div key={it.rank} style={{ display: "flex", alignItems: "baseline", gap: port ? 20 : 14 }}>
+          <span style={{ fontSize: port ? 56 : 38, fontWeight: 700, opacity: 0.5, width: port ? 52 : 34, flexShrink: 0 }}>{it.rank}</span>
+          <span className="sig-live" style={{ flex: 1, minWidth: 0, fontSize: port ? 54 : 34, fontWeight: 700, letterSpacing: 1, textTransform: "uppercase", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "clip" }}>{it.item_name}</span>
+          <span style={{ fontSize: port ? 44 : 28, fontWeight: 700, flexShrink: 0 }}>
             <span className="sig-live" style={{ fontSize: "inherit" }}>{it.sales_count}</span>
-            <span style={{ fontSize: port ? 22 : 20, opacity: 0.6, marginLeft: 6 }}>SOLD</span>
+            <span style={{ fontSize: port ? 26 : 20, opacity: 0.6, marginLeft: 8 }}>SOLD</span>
           </span>
         </div>
       ))}
@@ -1131,7 +1147,7 @@ function SmartChampion({
   if (port) {
     return (
       <SmartFrame header={header}>
-        <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", alignItems: "center", gap: 18 }}>
+        <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 18 }}>
           {countBlock}
           {imageEl}
           {nameEl}
