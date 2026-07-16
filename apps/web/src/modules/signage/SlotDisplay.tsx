@@ -6,11 +6,12 @@ import { LeaderboardBoard } from "@/modules/trivia/Leaderboard";
 import { GameDisplayBoard } from "@/modules/trivia/GameDisplay";
 import {
   useSlot, useLiveEvents, resolveRotation, resolveSlotMode, activeMoment, teaseMoment,
-  type SignageItem, type Slot, type SlotMode, type Takeover, type ToastCacheRow, type LiveEvent,
+  type SignageItem, type Slot, type SlotMode, type Takeover, type ToastCacheRow, type LiveEvent, type Orientation,
 } from "./useSignage";
 import { useTicker, type TickerLine } from "./useTicker";
 import { TemplateView } from "./SignageTemplates";
 import { EventStageView, EventTeaseCard } from "./EventStages";
+import { SUPPORT_TEXT } from "./supportText";
 import "./signage.css";
 
 type ToastMap = Map<string, ToastCacheRow>;
@@ -153,7 +154,7 @@ function SlotScreen({
         </>
       )}
 
-      {mode === "takeover" && activeTakeover && <TakeoverOverlay takeover={activeTakeover} />}
+      {mode === "takeover" && activeTakeover && <TakeoverOverlay takeover={activeTakeover} orientation={slot.orientation} />}
 
       {/* Static scanline + vignette (docs/09) come from the shared `.terminal-theme`
           overlays that DisplayCanvas already renders over the whole surface — no extra
@@ -317,10 +318,12 @@ function TickerReprint({ line, base }: { line: TickerLine; base: number }) {
 // the frame mockup renders them as a dark panel with a 6px double-ink border + ink
 // glow (its actual design language). Followed the MOCKUP (dark panel + double border),
 // which reads unambiguously as priority; literal ink-filled inverse was the alternative.
-function TakeoverOverlay({ takeover }: { takeover: Takeover }) {
+function TakeoverOverlay({ takeover, orientation }: { takeover: Takeover; orientation: Orientation }) {
   return (
     <div className="sig-enter" style={{ position: "absolute", inset: 0, zIndex: 50, background: "#04070a", border: "6px double var(--terminal-green)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", padding: 48, gap: 28, boxShadow: "inset 0 0 120px var(--terminal-glow)" }}>
-      <div style={{ fontSize: 30, letterSpacing: 8, opacity: 0.8 }}>■ PRIORITY BROADCAST — ALL TERMINALS ■</div>
+      {/* Priority-broadcast eyebrow rides the shared SUPPORT_TEXT floor (2026-07-15 label-floor
+          pass) so it matches the AlertStage's identical "ALL TERMINALS — PRIORITY BROADCAST" cap. */}
+      <div style={{ fontSize: SUPPORT_TEXT[orientation], letterSpacing: 8, opacity: 0.8 }}>■ PRIORITY BROADCAST — ALL TERMINALS ■</div>
       <div style={{ fontSize: 140, fontWeight: 700, lineHeight: 0.95, textTransform: "uppercase", textShadow: "0 0 24px var(--terminal-glow)" }}>{takeover.message}</div>
       {takeover.sub_message && <div style={{ fontSize: 40, opacity: 0.85, lineHeight: 1.4, maxWidth: "80%" }}>{takeover.sub_message}</div>}
     </div>

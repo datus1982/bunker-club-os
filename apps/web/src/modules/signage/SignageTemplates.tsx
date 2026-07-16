@@ -3,6 +3,7 @@ import type { Orientation, SignageItem, ToastCacheRow } from "./useSignage";
 import { EventWindowCard, EventMessageCard, EventTeaseCard } from "./EventStages";
 import { balanceHeadline } from "./eventStage";
 import { parseInline, RichText, alignOf } from "./richText";
+import { SUPPORT_TEXT } from "./supportText";
 import { useDrinksBoard, useSalesCache, useSalesHistory, useMenuGroups, overallTopSellers, groupGuidByName, groupTopSellers, OVERALL_GROUP, type DrinkItem, type HistorySum } from "@/modules/leaderboard/useDrinks";
 import { QRCodeSVG } from "qrcode.react";
 import { useInstagramFeed } from "./useInstagram";
@@ -17,28 +18,19 @@ import { useInstagramFeed } from "./useInstagram";
  * render in GREEN ink even in amber mode — docs/09 color-state: green = live feed.
  */
 
+// `eyebrow`/`stamp` retired 2026-07-15 (label-floor pass): the event eyebrow + the corner stamp
+// badge now render at the shared SUPPORT_TEXT floor, so their per-size fields are gone.
+// SUPPORT_TEXT itself now lives in ./supportText so SignageTemplates, EventStages and signagePhoto
+// all read ONE floor (no split-brain seam between adjacent rotation cards).
 type Sz = {
-  eyebrow: number; stamp: number; big: number; mid: number; body: number;
+  big: number; mid: number; body: number;
   price: number; priceSmall: number; photoH: number; pad: number; gap: number;
 };
 
 const SIZES: Record<Orientation, Sz> = {
-  portrait: { eyebrow: 28, stamp: 26, big: 150, mid: 84, body: 44, price: 210, priceSmall: 78, photoH: 620, pad: 64, gap: 28 },
-  landscape: { eyebrow: 24, stamp: 24, big: 116, mid: 68, body: 38, price: 168, priceSmall: 62, photoH: 440, pad: 56, gap: 22 },
+  portrait: { big: 150, mid: 84, body: 44, price: 210, priceSmall: 78, photoH: 620, pad: 64, gap: 28 },
+  landscape: { big: 116, mid: 68, body: 38, price: 168, priceSmall: 62, photoH: 440, pad: 56, gap: 22 },
 };
-
-/**
- * SUPPORTING-TEXT size (owner beat 2026-07-15 late: "transmission log / ration watch — all that
- * supporting text is too small … you can't read it in this setting"). The single default size for
- * the in-world eyebrow/caption/section-cap class across EVERY template — the small flavor labels
- * (SOCIAL FEED — TRANSMISSION LOG, CIVIL DEFENSE — RATION WATCH, LIVE FROM THE POS, OPTICAL FEED —
- * LIVE, STORY badge, SCAN TO OPEN, the champion window line …). These were ~18–30px and read as
- * mush at bar distance; bumped to a distance-readable size that stays clearly SUBORDINATE to the
- * names/prices/headers (150–210px). The vibe treatment (dim opacity + wide letter-spacing) is
- * ratified — only the SIZE was wrong, so callers keep their own opacity/letterSpacing and swap
- * just the font-size to this. Not for big headers/titles, the ticker (own sizing), or list
- * count-labels (already proportional to their big green figures). */
-const SUPPORT_TEXT: Record<Orientation, number> = { portrait: 40, landscape: 32 };
 
 /** Champion count-box green accent (owner beat 2026-07-15 late: green on the BORDER *or* the
  *  NUMBER, never both). One-line toggle so both variants can be screenshot and the owner shown
@@ -307,7 +299,7 @@ export function EventItem({ item, orientation }: TemplateProps) {
 
   return (
     <div style={{ height: "100%", display: "flex", flexDirection: "column", position: "relative", gap: z.gap }}>
-      <Stamp text="MANDATORY FUN" size={z.stamp} />
+      <Stamp text="MANDATORY FUN" size={SUPPORT_TEXT[orientation]} />
       <Eyebrow text="UPCOMING PROTOCOL" orientation={orientation} />
       <div style={{ fontSize: headlineFont(title, orientation), fontWeight: 700, lineHeight: 0.92, textTransform: "uppercase", textShadow: "0 0 16px var(--terminal-glow)", textAlign: alignOf(item.fields, "left") }}>
         {title.split("\n").map((l, i) => <span key={i} style={{ display: "block", fontSize: "inherit" }}>{parseInline(l)}</span>)}
@@ -315,7 +307,7 @@ export function EventItem({ item, orientation }: TemplateProps) {
       <div style={{ display: "flex", gap: 24, alignItems: "center" }}>
         {when.day && (
           <div style={{ border: "2px solid var(--terminal-green)", padding: "14px 22px", textAlign: "center", flexShrink: 0 }}>
-            <div style={{ fontSize: z.eyebrow, letterSpacing: 3, opacity: 0.7 }}>{when.dow}</div>
+            <div style={{ fontSize: SUPPORT_TEXT[orientation], letterSpacing: 3, opacity: 0.7 }}>{when.dow}</div>
             <div style={{ fontSize: z.mid * 1.2, fontWeight: 700, lineHeight: 1 }}>{when.day}</div>
           </div>
         )}
@@ -359,7 +351,8 @@ export function ImageOnly({ item, orientation }: TemplateProps) {
   const caption = s(item.fields, "caption");
   // Owner design-beat "images bigger": the viewport is already flex:1 + object-fit:contain,
   // so it fills all leftover space — give it MORE by tightening the surrounding chrome
-  // (smaller eyebrow, half the gap) so the letterboxed image region grows.
+  // (half the vertical gap; the eyebrow rides the shared SUPPORT_TEXT floor) so the letterboxed
+  // image region grows.
   return (
     <div style={{ height: "100%", display: "flex", flexDirection: "column", gap: Math.round(z.gap * 0.5) }}>
       <Eyebrow text="ARCHIVE FEED" orientation={orientation} />
@@ -619,7 +612,7 @@ export function TopSellers({ item, orientation }: TemplateProps) {
           <div style={{ fontSize: orientation === "portrait" ? 96 : 76, fontWeight: 700, letterSpacing: 3, lineHeight: 0.98, opacity: 0.75, textShadow: "0 0 16px var(--terminal-glow)" }}>
             FIRST POUR PENDING
           </div>
-          <div style={{ fontSize: orientation === "portrait" ? 40 : 32, letterSpacing: 5, opacity: 0.5 }}>
+          <div style={{ fontSize: SUPPORT_TEXT[orientation], letterSpacing: 5, opacity: 0.5 }}>
             ◊ SALES TELEMETRY ARMED
           </div>
         </div>
@@ -755,7 +748,7 @@ export function InstagramCard({ item, orientation }: TemplateProps) {
         {header}
         <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", gap: 18 }}>
           <div style={{ fontSize: port ? 84 : 68, fontWeight: 700, letterSpacing: 3, opacity: 0.75, textShadow: "0 0 16px var(--terminal-glow)" }}>NO SIGNAL YET</div>
-          <div className="sig-live" style={{ fontSize: port ? 40 : 32, letterSpacing: 4, opacity: 0.85 }}>◊ AWAITING NEXT POST</div>
+          <div className="sig-live" style={{ fontSize: SUPPORT_TEXT[orientation], letterSpacing: 4, opacity: 0.85 }}>◊ AWAITING NEXT POST</div>
         </div>
       </div>
     );
@@ -925,7 +918,7 @@ export function SmartToast({ item, toast, orientation }: TemplateProps) {
       <SmartFrame header={header}>
         <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", gap: 16 }}>
           <div style={{ fontSize: port ? 76 : 60, fontWeight: 700, letterSpacing: 3, opacity: 0.75, textShadow: "0 0 16px var(--terminal-glow)" }}>NO SLOW MOVERS</div>
-          <div style={{ fontSize: port ? 34 : 28, letterSpacing: 4, opacity: 0.5 }}>◊ EVERYTHING'S POURING — PICK A GROUP</div>
+          <div style={{ fontSize: SUPPORT_TEXT[orientation], letterSpacing: 4, opacity: 0.5 }}>◊ EVERYTHING'S POURING — PICK A GROUP</div>
         </div>
       </SmartFrame>
     );
@@ -1099,7 +1092,7 @@ function SmartChampion({
       <SmartFrame header={header}>
         <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", gap: 16 }}>
           <div style={{ fontSize: port ? 84 : 66, fontWeight: 700, letterSpacing: 3, opacity: 0.75, textShadow: "0 0 16px var(--terminal-glow)" }}>NO CHAMPION YET</div>
-          <div className="sig-live" style={{ fontSize: port ? 36 : 30, letterSpacing: 4, opacity: 0.85 }}>◊ TALLYING THE POURS</div>
+          <div className="sig-live" style={{ fontSize: SUPPORT_TEXT[orientation], letterSpacing: 4, opacity: 0.85 }}>◊ TALLYING THE POURS</div>
         </div>
       </SmartFrame>
     );

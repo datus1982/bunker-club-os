@@ -5,6 +5,7 @@ import {
 } from "./eventStage";
 import { parseInline, alignOf, alignStyle } from "./richText";
 import { SquarePhoto } from "./signagePhoto";
+import { SUPPORT_TEXT } from "./supportText";
 
 /**
  * Event-stage renderers for the Phase 7 events DISPLAY engine (docs/13). Visual language
@@ -96,10 +97,12 @@ function skinOf(name: string): Skin {
 
 /* ── sizes (docs/signage-redesign view 2 — "20-foot test": titles/times/counters hero-sized,
  *   chrome demoted to secondary) ───────────────────────────────────────────────── */
-type Sz = { eyebrow: number; big: number; time: number; tminus: number; counter: number; price: number; body: number; icon: number; pad: number; gap: number };
+// `eyebrow` retired 2026-07-15 (label-floor pass): every eyebrow/window/counter label now renders
+// at the shared SUPPORT_TEXT floor, so the per-size eyebrow field is gone.
+type Sz = { big: number; time: number; tminus: number; counter: number; price: number; body: number; icon: number; pad: number; gap: number };
 const SIZES: Record<Orientation, Sz> = {
-  portrait: { eyebrow: 32, big: 150, time: 280, tminus: 340, counter: 230, price: 150, body: 46, icon: 190, pad: 60, gap: 24 },
-  landscape: { eyebrow: 27, big: 116, time: 210, tminus: 250, counter: 180, price: 120, body: 40, icon: 150, pad: 52, gap: 20 },
+  portrait: { big: 150, time: 280, tminus: 340, counter: 230, price: 150, body: 46, icon: 190, pad: 60, gap: 24 },
+  landscape: { big: 116, time: 210, tminus: 250, counter: 180, price: 120, body: 40, icon: 150, pad: 52, gap: 20 },
 };
 
 /**
@@ -197,7 +200,7 @@ function AlertStage({ event, orientation }: { event: LiveEvent; orientation: Ori
       style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", padding: z.pad, gap: z.gap }}
     >
       {sk.hazard && <div className="evt-hazard-frame" />}
-      <div style={{ fontSize: z.eyebrow, letterSpacing: 6, opacity: 0.8 }}>■ ALL TERMINALS — PRIORITY BROADCAST ■</div>
+      <div style={{ fontSize: SUPPORT_TEXT[orientation], letterSpacing: 6, opacity: 0.8 }}>■ ALL TERMINALS — PRIORITY BROADCAST ■</div>
       <div style={{ fontSize: headlineFont(hero, orientation), fontWeight: 700, lineHeight: 0.9, textTransform: "uppercase", textShadow: "0 0 22px var(--terminal-glow)" }}>
         <Lines text={hero} />
       </div>
@@ -265,8 +268,8 @@ function EventWindowStage({ event, orientation, toast }: { event: LiveEvent; ori
 
   return (
     <div className="evt-stage" style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", justifyContent: "center", padding: z.pad, gap: z.gap, ...alignStyle(align) }}>
-      <div style={{ fontSize: z.eyebrow, letterSpacing: 4, opacity: 0.8 }}>{sk.windowLabel} — {remainClock} REMAINING</div>
-      {customImg && <SquarePhoto src={customImg} size={EVT_IMG[orientation]} feed="OPTICAL FEED" fit="contain" />}
+      <div style={{ fontSize: SUPPORT_TEXT[orientation], letterSpacing: 4, opacity: 0.8 }}>{sk.windowLabel} — {remainClock} REMAINING</div>
+      {customImg && <SquarePhoto src={customImg} size={EVT_IMG[orientation]} orientation={orientation} feed="OPTICAL FEED" fit="contain" />}
       <div style={{ fontSize: headlineFont(name, orientation), fontWeight: 700, lineHeight: 0.9, textTransform: "uppercase", textShadow: "0 0 20px var(--terminal-glow)" }}>
         {nameLive ? <span className="sig-live" style={{ fontSize: "inherit" }}><Lines text={name} /></span> : <Lines text={name} />}
       </div>
@@ -278,11 +281,11 @@ function EventWindowStage({ event, orientation, toast }: { event: LiveEvent; ori
       {count != null && (
         <>
           <div style={{ borderTop: "1px solid var(--sig-rule)", width: "60%", margin: `${z.gap}px 0` }} />
-          <div style={{ fontSize: z.eyebrow, letterSpacing: 4, opacity: 0.8 }}>{counterLabel}</div>
+          <div style={{ fontSize: SUPPORT_TEXT[orientation], letterSpacing: 4, opacity: 0.8 }}>{counterLabel}</div>
           <div key={count} className="sig-live sig-enter" style={{ fontSize: z.counter, fontWeight: 700, lineHeight: 1, fontVariantNumeric: "tabular-nums", textShadow: "0 0 26px var(--terminal-glow)" }}>
             {count}
           </div>
-          <div style={{ fontSize: z.body * 0.7, opacity: 0.7, letterSpacing: 2 }}>{sk.counterUnit}</div>
+          <div style={{ fontSize: SUPPORT_TEXT[orientation], opacity: 0.7, letterSpacing: 2 }}>{sk.counterUnit}</div>
         </>
       )}
     </div>
@@ -307,7 +310,7 @@ function AllClearStage({ event, orientation }: { event: LiveEvent; orientation: 
 
   return (
     <div className="evt-stage" style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", padding: z.pad, gap: z.gap }}>
-      <div style={{ fontSize: z.eyebrow, letterSpacing: 4, opacity: 0.8 }}>{headline}</div>
+      <div style={{ fontSize: SUPPORT_TEXT[orientation], letterSpacing: 4, opacity: 0.8 }}>{headline}</div>
       <div style={{ fontSize: headlineFont(balTally ?? balanceHero(headline, orientation), orientation) * 0.9, fontWeight: 700, lineHeight: 0.95, textTransform: "uppercase", textShadow: "0 0 22px var(--terminal-glow)" }}>{tallyEl}</div>
       <div style={{ fontSize: z.body, opacity: 0.85, lineHeight: 1.35, maxWidth: "82%" }}><Lines text={body} /></div>
     </div>
@@ -353,8 +356,8 @@ export function EventWindowCard({ item, toast, orientation }: { item: SignageIte
 
   return (
     <div style={{ height: "100%", display: "flex", flexDirection: "column", justifyContent: "center", position: "relative", gap: z.gap, ...alignStyle(align) }}>
-      <div style={{ fontSize: z.eyebrow, letterSpacing: 6, opacity: 0.7 }}>{eyebrow}</div>
-      {customImg && <SquarePhoto src={customImg} size={imgSize} feed="OPTICAL FEED" fit="contain" />}
+      <div style={{ fontSize: SUPPORT_TEXT[orientation], letterSpacing: 6, opacity: 0.7 }}>{eyebrow}</div>
+      {customImg && <SquarePhoto src={customImg} size={imgSize} orientation={orientation} feed="OPTICAL FEED" fit="contain" />}
       <div style={{ fontSize: headlineFont(title, orientation), fontWeight: 700, lineHeight: 0.9, textTransform: "uppercase", textShadow: "0 0 16px var(--terminal-glow)" }}><Lines text={title} /></div>
       {time && <div style={{ fontSize: z.time, fontWeight: 700, lineHeight: 0.85, textShadow: "0 0 24px var(--terminal-glow)" }}>{time}</div>}
       {body && <div style={{ fontSize: Math.round(z.body * 1.25), opacity: 0.9, lineHeight: 1.35, maxWidth: "84%" }}><Lines text={body} /></div>}
@@ -393,8 +396,8 @@ export function EventMessageCard({ item, toast, orientation }: { item: SignageIt
 
   return (
     <div style={{ height: "100%", display: "flex", flexDirection: "column", justifyContent: "center", gap: z.gap, ...alignStyle(align) }}>
-      <div style={{ fontSize: z.eyebrow, letterSpacing: 6, opacity: 0.7 }}>{eyebrow}</div>
-      {customImg && <SquarePhoto src={customImg} size={EVT_IMG[orientation]} feed="OPTICAL FEED" fit="contain" />}
+      <div style={{ fontSize: SUPPORT_TEXT[orientation], letterSpacing: 6, opacity: 0.7 }}>{eyebrow}</div>
+      {customImg && <SquarePhoto src={customImg} size={EVT_IMG[orientation]} orientation={orientation} feed="OPTICAL FEED" fit="contain" />}
       <div style={{ fontSize: headlineFont(title, orientation), fontWeight: 700, lineHeight: 0.92, textTransform: "uppercase", textShadow: "0 0 16px var(--terminal-glow)" }}>{parseInline(title)}</div>
       {body && <div style={{ fontSize: Math.round(z.body * 1.3), opacity: 0.9, lineHeight: 1.45, maxWidth: "84%" }}><Lines text={body} /></div>}
       {price != null && src?.name && (
@@ -416,10 +419,10 @@ export function EventTeaseCard({ event, orientation }: { event: LiveEvent; orien
   return (
     <div style={{ height: "100%", display: "flex", flexDirection: "column", justifyContent: "center", gap: z.gap }}>
       <div style={{ border: "1px dashed var(--terminal-green)", padding: z.pad * 0.6, display: "flex", flexDirection: "column", gap: z.gap }}>
-        <div style={{ fontSize: z.eyebrow, letterSpacing: 4, opacity: 0.85 }}>{eyebrow}</div>
+        <div style={{ fontSize: SUPPORT_TEXT[orientation], letterSpacing: 4, opacity: 0.85 }}>{eyebrow}</div>
         <div style={{ fontSize: z.body * 1.2, lineHeight: 1.5, opacity: 0.95 }}>{body}</div>
       </div>
-      <div style={{ fontSize: z.body * 0.72, opacity: 0.55, letterSpacing: 1 }}>◊ STANDING BY — {event.name.toUpperCase()}</div>
+      <div style={{ fontSize: SUPPORT_TEXT[orientation], opacity: 0.55, letterSpacing: 1 }}>◊ STANDING BY — {event.name.toUpperCase()}</div>
     </div>
   );
 }
