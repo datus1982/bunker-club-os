@@ -99,6 +99,10 @@ function PlaylistVideo({
 
   const [index, setIndex] = useState(0);
   const [retry, setRetry] = useState(0);
+  // Monotonic play counter — bumped on every advance so the <video> key ALWAYS changes and the
+  // element remounts to replay. Without it a SINGLE-item playlist can't loop (index stays 0 →
+  // same key → the ended element just sits on its last frame) — the loop needs a fresh element.
+  const [plays, setPlays] = useState(0);
   const [phase, setPhase] = useState<"ok" | "interrupted" | "offline">("ok");
   const videoRef = useRef<HTMLVideoElement>(null);
   const everPlayed = useRef(false);
@@ -113,6 +117,7 @@ function PlaylistVideo({
 
   const advance = useCallback(() => {
     setPhase("ok");
+    setPlays((p) => p + 1);
     setIndex((i) => (order.length ? (i + 1) % order.length : 0));
   }, [order.length]);
 
@@ -148,7 +153,7 @@ function PlaylistVideo({
       }
     }, 6000);
     return () => { if (loadTimer.current) window.clearTimeout(loadTimer.current); };
-  }, [phase, index, retry, current]);
+  }, [phase, index, retry, plays, current]);
 
   // Audio: boot unmuted only if a probe already proved sound works this session (the Electron
   // shell allows unmuted autoplay so it just works there); else boot muted and probe once the
@@ -196,7 +201,7 @@ function PlaylistVideo({
       {phase !== "offline" && current && (
         <video
           ref={videoRef}
-          key={`${index}-${retry}`}
+          key={`${index}-${retry}-${plays}`}
           src={mediaFileUrl(base, current.hash)}
           poster={current.thumb ?? undefined}
           autoPlay
