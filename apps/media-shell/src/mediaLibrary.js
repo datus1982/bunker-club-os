@@ -147,8 +147,21 @@ class MediaLibrary {
       a.filename.localeCompare(b.filename)
     );
 
+    // WARN-3: dedupe files by content hash. Two identical files at different paths share a hash;
+    // emitting both makes the edge fn's onConflict upsert hit "ON CONFLICT cannot affect row a
+    // second time" and 500 the whole POST. `entries` is sorted by filename ascending, so the FIRST
+    // occurrence per hash is the lexicographically-first path — keep it, drop the rest (logged).
+    // Folder `hashes` arrays still list the hash from every path, which is correct: the file row
+    // exists once, and both folders legitimately reference it.
     const thumbHashesIncluded = [];
-    const files = entries.map((e) => {
+    const seenHash = new Set();
+    const files = [];
+    for (const e of entries) {
+      if (seenHash.has(e.hash)) {
+        log.warn('duplicate content — dropping extra path from files', e.filename, e.hash.slice(0, 10));
+        continue;
+      }
+      seenHash.add(e.hash);
       const file = {
         filename: e.filename,
         hash: e.hash,
@@ -162,8 +175,8 @@ class MediaLibrary {
         file.thumb_b64 = e.thumb.toString('base64');
         thumbHashesIncluded.push(e.hash);
       }
-      return file;
-    });
+      files.push(file);
+    }
 
     // DECISION: only FIRST-level subfolders become playlists (owner: "playlists
     // are preconfigured by folder structure"). Nested deeper folders collapse

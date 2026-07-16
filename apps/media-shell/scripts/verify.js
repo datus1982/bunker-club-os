@@ -203,6 +203,35 @@ async function main() {
   ok(p2.files[0] && p2.files[0].thumb_b64 === undefined,
     'acknowledged hash omits thumb_b64 on next build');
 
+  // --- WARN-3: duplicate-content dedupe ---------------------------------------
+  // Two byte-identical clips in DIFFERENT folders share one content hash. The payload must carry
+  // exactly ONE file row (lexicographically-first path kept), and BOTH folders must list the hash.
+  console.log('\n  --- duplicate-content dedupe (WARN-3) ---');
+  const dupRoot = path.join(tmp, 'dupmedia');
+  const folderA = path.join(dupRoot, 'Folder A');
+  const folderB = path.join(dupRoot, 'Folder B');
+  fs.mkdirSync(folderA, { recursive: true });
+  fs.mkdirSync(folderB, { recursive: true });
+  const clipBytes = fs.readFileSync(clip);
+  fs.writeFileSync(path.join(folderA, 'same.mp4'), clipBytes);
+  fs.writeFileSync(path.join(folderB, 'same.mp4'), clipBytes);
+  const dupLib = new MediaLibrary(dupRoot);
+  await dupLib.scanAll();
+  ok(dupLib.fileCount() === 2, 'dupe library has 2 files on disk', `got ${dupLib.fileCount()}`);
+  const { payload: dupPayload } = dupLib.buildCatalog(() => false);
+  const dupUnique = new Set(dupPayload.files.map((f) => f.hash));
+  ok(dupPayload.files.length === 1, 'duplicate content -> ONE file row in payload',
+    `got ${dupPayload.files.length}`);
+  ok(dupUnique.size === 1, 'exactly one unique hash across the two identical files');
+  const dupHash = dupPayload.files[0] && dupPayload.files[0].hash;
+  ok(dupPayload.files[0] && dupPayload.files[0].filename === 'Folder A/same.mp4',
+    'kept lexicographically-first path', dupPayload.files[0] && dupPayload.files[0].filename);
+  ok(dupPayload.folders.length === 2, 'two folders present', `got ${dupPayload.folders.length}`);
+  const foA = dupPayload.folders.find((f) => f.path === 'Folder A');
+  const foB = dupPayload.folders.find((f) => f.path === 'Folder B');
+  ok(foA && foA.hashes.includes(dupHash), 'Folder A lists the shared hash');
+  ok(foB && foB.hashes.includes(dupHash), 'Folder B lists the shared hash');
+
   await srv.close();
 
   // cleanup

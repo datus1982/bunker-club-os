@@ -54,6 +54,34 @@ interface InFolder {
 
 const VALID_STATUS = new Set(["present", "missing", "unsupported"]);
 
+// PostgREST caps an unranged select at 1000 rows (max-rows) even for the service role. Past 1000
+// media files a single select silently truncates → the `existing`/`idByHash` maps go incomplete
+// (hub-edited titles get clobbered, folder membership silently dropped, the missing diff runs over
+// a truncated set). Page every catalog read in fixed windows until a short page. Keep at 1000 in
+// committed code (the loop is testable at a smaller size; see the branch's pagination proof).
+const PAGE_SIZE = 1000;
+// A thousands-long `.in("hash", [...])` blows the URL length limit; update vanished rows in chunks.
+const MISSING_CHUNK = 200;
+
+/**
+ * Aggregate every row of a paginated select. `run(from, to)` must issue a `.range(from, to)` query
+ * (inclusive window). Terminates on the first short page — including the empty page after an
+ * exact-multiple total — so it always halts. Throws on any page error.
+ */
+async function selectAllPaged<T>(
+  run: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>,
+): Promise<T[]> {
+  const rows: T[] = [];
+  for (let from = 0; ; from += PAGE_SIZE) {
+    const { data, error } = await run(from, from + PAGE_SIZE - 1);
+    if (error) throw new Error(error.message);
+    const page = data ?? [];
+    rows.push(...page);
+    if (page.length < PAGE_SIZE) break;
+  }
+  return rows;
+}
+
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json", ...cors } });
 }
@@ -94,7 +122,18 @@ Deno.serve(async (req) => {
   } catch {
     return json({ error: "invalid json" }, 400);
   }
-  const files = Array.isArray(payload.files) ? payload.files.filter((f) => f && typeof f.hash === "string" && f.hash.length > 0) : [];
+  const rawFiles = Array.isArray(payload.files) ? payload.files.filter((f) => f && typeof f.hash === "string" && f.hash.length > 0) : [];
+  // Defensive dedupe by hash (first wins). Two identical files at different paths arrive as two
+  // rows with the same hash; a single upsert with onConflict then hits Postgres "ON CONFLICT
+  // cannot affect row a second time" → the whole POST 500s forever. The shell dedupes too, but the
+  // fn must not trust that. Folder `hashes` arrays may still reference the hash — the row exists.
+  const files: InFile[] = [];
+  const seenFileHash = new Set<string>();
+  for (const f of rawFiles) {
+    if (seenFileHash.has(f.hash)) continue;
+    seenFileHash.add(f.hash);
+    files.push(f);
+  }
   const folders = Array.isArray(payload.folders) ? payload.folders.filter((f) => f && typeof f.path === "string") : [];
 
   const admin: Admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
@@ -111,16 +150,25 @@ Deno.serve(async (req) => {
     folders_seen: folders.length,
     playlists_synced: 0,
     items_written: 0,
+    // WARN-2: hashes whose thumbnail is ACTUALLY stored after this request (uploaded this pass OR
+    // the row already had a thumb_path). The shell suppresses re-sends ONLY from this array — a
+    // 2xx alone doesn't mean each thumbnail landed, since an individual upload can fail and the
+    // request still 200s.
+    acknowledged: [] as string[],
   };
 
   // ── Existing rows (to preserve hub-edited titles + prior thumb_path, and to diff missing) ──
-  const { data: existingRows, error: exErr } = await admin
-    .from("media_files")
-    .select("hash, title, thumb_path")
-    .eq("venue_id", VENUE_ID);
-  if (exErr) return json({ error: "read existing failed", detail: exErr.message }, 500);
+  type ExistingRow = { hash: string; title: string | null; thumb_path: string | null };
+  let existingRows: ExistingRow[];
+  try {
+    existingRows = await selectAllPaged<ExistingRow>((from, to) =>
+      admin.from("media_files").select("hash, title, thumb_path").eq("venue_id", VENUE_ID).order("hash").range(from, to)
+    );
+  } catch (e) {
+    return json({ error: "read existing failed", detail: String((e as Error).message ?? e) }, 500);
+  }
   const existing = new Map<string, { title: string | null; thumb_path: string | null }>();
-  for (const r of existingRows ?? []) existing.set(r.hash as string, { title: r.title as string | null, thumb_path: r.thumb_path as string | null });
+  for (const r of existingRows) existing.set(r.hash, { title: r.title, thumb_path: r.thumb_path });
 
   // ── Thumbnails: upload first so thumb_path can go into the upsert ────────────
   // thumb_path is deterministic (media-thumbs/{venue}/{hash}.jpg); we only (re)upload when a
@@ -146,6 +194,13 @@ Deno.serve(async (req) => {
       thumbPathByHash.set(f.hash, path);
       summary.thumbs_uploaded++;
     }
+  }
+
+  // WARN-2: a hash is acknowledged iff its thumbnail is actually stored now (resolved thumb_path is
+  // non-null — either uploaded this pass or preserved from a prior pass). Files whose upload failed
+  // this pass keep a null path and are NOT acknowledged, so the shell re-sends their thumb_b64.
+  for (const f of files) {
+    if (thumbPathByHash.get(f.hash)) summary.acknowledged.push(f.hash);
   }
 
   // ── Upsert media_files (uniform columns; title handled separately to preserve hub edits) ──
@@ -185,20 +240,32 @@ Deno.serve(async (req) => {
   const payloadHashes = new Set(files.map((f) => f.hash));
   const missingHashes = [...existing.keys()].filter((h) => !payloadHashes.has(h));
   if (missingHashes.length > 0) {
-    const { error: mErr } = await admin
-      .from("media_files")
-      .update({ status: "missing", updated_at: new Date().toISOString() })
-      .eq("venue_id", VENUE_ID)
-      .in("hash", missingHashes);
-    if (mErr) return json({ error: "mark-missing failed", detail: mErr.message }, 500);
+    const nowIso = new Date().toISOString();
+    // Chunk the `.in(...)` update — thousands of 40-char hashes in one query blow the URL limit.
+    for (let i = 0; i < missingHashes.length; i += MISSING_CHUNK) {
+      const chunk = missingHashes.slice(i, i + MISSING_CHUNK);
+      const { error: mErr } = await admin
+        .from("media_files")
+        .update({ status: "missing", updated_at: nowIso })
+        .eq("venue_id", VENUE_ID)
+        .in("hash", chunk);
+      if (mErr) return json({ error: "mark-missing failed", detail: mErr.message }, 500);
+    }
     summary.marked_missing = missingHashes.length;
   }
 
   // ── Resolve hash → file id for playlist membership (post-upsert authoritative map) ──
-  const { data: idRows, error: idErr } = await admin.from("media_files").select("id, hash").eq("venue_id", VENUE_ID);
-  if (idErr) return json({ error: "id map read failed", detail: idErr.message }, 500);
+  type IdRow = { id: string; hash: string };
+  let idRows: IdRow[];
+  try {
+    idRows = await selectAllPaged<IdRow>((from, to) =>
+      admin.from("media_files").select("id, hash").eq("venue_id", VENUE_ID).order("hash").range(from, to)
+    );
+  } catch (e) {
+    return json({ error: "id map read failed", detail: String((e as Error).message ?? e) }, 500);
+  }
   const idByHash = new Map<string, string>();
-  for (const r of idRows ?? []) idByHash.set(r.hash as string, r.id as string);
+  for (const r of idRows) idByHash.set(r.hash, r.id);
 
   // ── Folder auto-playlists (source='folder'; custom playlists are NEVER touched) ──
   for (const folder of folders) {

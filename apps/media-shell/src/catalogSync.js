@@ -39,12 +39,13 @@ class CatalogSync {
     this.sentThumbsPath = cfg.sentThumbsPath || null;
     this.devMode = !this.catalogUrl || !this.deviceToken;
 
-    // DECISION: "acknowledged" is interpreted as "we successfully POSTed a thumb
-    // for this hash" (2xx), persisted locally. We ALSO merge any
-    // `acknowledged`/`known_hashes` array the edge fn returns, so the server can
-    // authoritatively suppress re-sends. If the edge fn expects a different
-    // handshake, adjust _postWithBackoff's response parsing.
-    /** @type {Set<string>} hashes whose thumbnail the server has. */
+    // WARN-2: the server is authoritative about which thumbnails it actually
+    // stored. A 2xx alone does NOT mean each thumb landed — the fn can fail an
+    // individual storage upload and still 200. So we mark a hash sent ONLY when
+    // the response's `acknowledged` array lists it (fn contract). On a legacy
+    // 2xx WITHOUT that array we fall back to "everything we included this POST"
+    // (backward compat for an older fn).
+    /** @type {Set<string>} hashes whose thumbnail the server has confirmed stored. */
     this.sentThumbs = new Set();
     this._loadSentThumbs();
 
@@ -99,15 +100,20 @@ class CatalogSync {
         return;
       }
 
-      await this._postWithBackoff(payload);
+      const res = await this._postWithBackoff(payload);
 
-      // Success: record thumbs we just delivered.
-      for (const h of thumbHashesIncluded) this.sentThumbs.add(h);
+      // Success: record ONLY the thumbs the server confirms it stored (WARN-2).
+      // If the response omits an `acknowledged` array (older fn), fall back to
+      // "everything we included this POST".
+      const acked = this._extractAcknowledged(res);
+      const recorded = acked ?? thumbHashesIncluded;
+      for (const h of recorded) this.sentThumbs.add(h);
       this._persistSentThumbs();
       this._backoffMs = 1000;
       log.info(
         `catalog synced: ${payload.files.length} files, ${payload.folders.length} folders,` +
-          ` ${thumbHashesIncluded.length} new thumbs`
+          ` ${thumbHashesIncluded.length} thumbs sent, ${recorded.length} acknowledged` +
+          `${acked ? '' : ' (no ack array — legacy fallback)'}`
       );
     } catch (e) {
       log.error('catalog sync failed (will retry on next change)', String(e));
@@ -132,20 +138,29 @@ class CatalogSync {
     return JSON.stringify(clone, null, 2);
   }
 
+  /**
+   * Pull the server's authoritative acknowledged-thumb list from a response.
+   * Returns a string[] of hashes whose thumbnail the fn confirms it stored, or
+   * null when the body carries no such array (legacy fn → caller falls back).
+   * Accepts `acknowledged` (current contract) plus `known_hashes`/`knownHashes`
+   * aliases for forward/backward compat.
+   * @param {{status:number, body:string}|undefined} res
+   * @returns {string[]|null}
+   */
+  _extractAcknowledged(res) {
+    if (!res || !res.body) return null;
+    try {
+      const j = JSON.parse(res.body);
+      const acked = j.acknowledged || j.known_hashes || j.knownHashes;
+      return Array.isArray(acked) ? acked.filter((h) => typeof h === 'string') : null;
+    } catch {
+      return null; // body need not be JSON
+    }
+  }
+
   async _postWithBackoff(payload, attempt = 0) {
     try {
-      const res = await this._post(payload);
-      // Merge any server-declared acknowledged hashes (forward compatible).
-      if (res && res.body) {
-        try {
-          const j = JSON.parse(res.body);
-          const acked = j.acknowledged || j.known_hashes || j.knownHashes;
-          if (Array.isArray(acked)) for (const h of acked) this.sentThumbs.add(h);
-        } catch {
-          /* body need not be JSON */
-        }
-      }
-      return res;
+      return await this._post(payload);
     } catch (e) {
       if (attempt >= 5) throw e;
       const wait = Math.min(this._backoffMs * 2 ** attempt, 60000);
