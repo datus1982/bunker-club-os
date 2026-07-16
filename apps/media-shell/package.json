@@ -8,7 +8,8 @@
   "scripts": {
     "start": "electron .",
     "verify": "node scripts/verify.js",
-    "dist:win": "electron-builder --win --x64",
+    "fetch:win-ff": "node scripts/fetch-win-ffmpeg.js",
+    "dist:win": "node scripts/fetch-win-ffmpeg.js && electron-builder --win nsis --x64",
     "pack": "electron-builder --dir"
   },
   "dependencies": {
@@ -25,13 +26,12 @@
     "productName": "Bunker Media Shell",
     "files": [
       "src/**/*",
-      "package.json"
+      "package.json",
+      "!node_modules/ffmpeg-static/ffmpeg",
+      "!node_modules/ffmpeg-static/ffmpeg.exe",
+      "!node_modules/ffprobe-static/bin/**"
     ],
     "asar": true,
-    "asarUnpack": [
-      "node_modules/ffmpeg-static/**",
-      "node_modules/ffprobe-static/**"
-    ],
     "win": {
       "target": [
         {
@@ -39,7 +39,13 @@
           "arch": ["x64"]
         }
       ],
-      "artifactName": "BunkerMediaShell-Setup-${version}.${ext}"
+      "artifactName": "BunkerMediaShell-Setup-${version}.${ext}",
+      "extraResources": [
+        {
+          "from": "vendor/win32-x64",
+          "to": "vendor/win32-x64"
+        }
+      ]
     },
     "nsis": {
       "oneClick": true,
