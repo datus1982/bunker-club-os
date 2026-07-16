@@ -917,14 +917,14 @@ export function SmartToast({ item, toast, orientation }: TemplateProps) {
     <SmartFrame header={header}>
       <div ref={udRef} style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", gap: udSz.gap, overflow: "hidden" }}>
         {ranked.map(({ row, qty }) => (
-          <UnderdogRow key={row.guid} name={(row.name ?? "SPECIAL").toUpperCase()} photo={row.image ?? undefined} qty={qty} days={days} orientation={orientation} sz={udSz} />
+          <UnderdogRow key={row.guid} name={(row.name ?? "SPECIAL").toUpperCase()} photo={row.image ?? undefined} blurb={row.public_blurb ?? undefined} qty={qty} days={days} orientation={orientation} sz={udSz} />
         ))}
       </div>
     </SmartFrame>
   );
 }
 
-interface UDRow { thumb: number; name: number; qty: number; label: number; gap: number }
+interface UDRow { thumb: number; name: number; qty: number; label: number; blurb: number; gap: number }
 /** Adaptive UNDERDOGS row sizing: divides the measured list height among `count` rows, so a
  *  small N yields big rows/photos and a larger N compacts. Caps keep it from getting cartoonish. */
 function underdogRowSizes(availH: number, count: number, o: Orientation): UDRow {
@@ -938,6 +938,9 @@ function underdogRowSizes(availH: number, count: number, o: Orientation): UDRow 
     name: Math.round(clampN(rowH * 0.34, 40, port ? 116 : 84)),
     qty: Math.round(clampN(rowH * 0.24, 30, port ? 88 : 60)),
     label: Math.round(clampN(rowH * 0.24 * 0.55, 20, port ? 40 : 30)),
+    // Customer-safe blurb (owner round-1 add): distance-readable descriptive line, sized off
+    // the generous 3-row layout. Clamps small/away at higher N; omitted entirely when absent.
+    blurb: Math.round(clampN(rowH * 0.11, 24, port ? 46 : 34)),
     gap,
   };
 }
@@ -965,7 +968,7 @@ function periodLabel(days: number): string {
   return `LAST ${days}D`;
 }
 
-function UnderdogRow({ name, photo, qty, days, orientation, sz }: { name: string; photo: string | undefined; qty: number; days: number; orientation: Orientation; sz: UDRow }) {
+function UnderdogRow({ name, photo, blurb, qty, days, orientation, sz }: { name: string; photo: string | undefined; blurb: string | undefined; qty: number; days: number; orientation: Orientation; sz: UDRow }) {
   const port = orientation === "portrait";
   const soldLabel = days === 7 ? "SOLD THIS WEEK" : `SOLD · ${periodLabel(days)}`;
   return (
@@ -981,7 +984,18 @@ function UnderdogRow({ name, photo, qty, days, orientation, sz }: { name: string
         {/* Name shrinks to fit its column (never truncates), so a long underdog name stays on
             one line while the row grid keeps its alignment (FitText). */}
         <FitText text={name} size={sz.name} align="left" glow="0 0 12px var(--terminal-glow)" style={{ width: "100%" }} />
-        <div style={{ fontSize: sz.qty, fontWeight: 700, marginTop: 6 }}>
+        {/* Customer-safe blurb (owner round-1 add): the POS-gated public_menu public_blurb (text
+            before `---`) threaded via the toast map — NEVER the raw toast description. Omitted
+            cleanly when absent (no placeholder). Ambient amber copy, 2-line clamp for distance. */}
+        {blurb && (
+          <div style={{
+            fontSize: sz.blurb, lineHeight: 1.3, opacity: 0.82, marginTop: port ? 12 : 8,
+            display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden",
+          }}>
+            {blurb}
+          </div>
+        )}
+        <div style={{ fontSize: sz.qty, fontWeight: 700, marginTop: port ? 12 : 8 }}>
           <span className="sig-live" style={{ fontSize: "inherit" }}>{qty}</span>
           <span style={{ fontSize: sz.label, opacity: 0.6, marginLeft: 10, letterSpacing: 2 }}>{soldLabel}</span>
         </div>
@@ -1026,26 +1040,27 @@ function SmartChampion({
   // overall top-3 would mislead). An unconfigured group (no bucket) simply shows no sub-list.
   const top3 = menuGroup ? groupTopSellers(byGroup, groupGuid, 3) : overallTopSellers(byGroup, 3);
 
-  // Owner design-beat 2026-07-15: the CHAMPION slide needs a LARGER header that explains what
-  // it is — before, whole-menu mode showed only the eyebrow, so the slide read as a bare drink
-  // name + big number. Now it carries a distance-first headline ("REIGNING CHAMPION") + a window
-  // sub-line ("MOST POURED — LAST N DAYS", or "{GROUP} — LAST N DAYS" when filtered), parallel
-  // to the UNDERDOGS header idiom above. trueDays keeps the window honest on shallow history; the
-  // sub-line is suppressed until there's at least one day of data so it never flashes "LAST 0 DAYS".
+  // Owner round-2 (2026-07-15): the CHAMPION slide read too much like a drink_special PROMO —
+  // both share the photo→name→big-green-number silhouette, so a glance mis-scanned "CHEWIE 36
+  // SOLD" as a $38 price. Restructure per the owner's sketch so the two slides are unmistakably
+  // different at a corner-of-the-eye glance:
+  //   REIGNING CHAMPION header · giant COUNT+SOLD odometer ABOVE the image · image · NAME ·
+  //   "CALCULATED OVER THE LAST N DAYS" · live top-3.
+  // The count is a BOXED, ambient-AMBER two-compartment counter (number | SOLD) — deliberately
+  // NOT the promo's signature huge GREEN price, and it carries NO "$" anywhere. The boxed unit
+  // makes it unmissable as a tally, not a price.
+  // The window line is reframed from "MOST POURED — LAST N DAYS" to "CALCULATED OVER THE LAST N
+  // DAYS" and moved below the name; trueDays keeps it honest on shallow history (suppressed at 0),
+  // and the group-filter variant is preserved.
   // DECISION: kept the literal Toast group name rather than singularizing ("Signature Cocktail") —
   // the owner's Toast group names are the source of truth and read fine as a banner.
-  const windowLine = `◊ ${menuGroup ? `${menuGroup.toUpperCase()} — ` : "MOST POURED — "}LAST ${trueDays} DAY${trueDays === 1 ? "" : "S"}`;
+  const windowLine = `◊ ${menuGroup ? `${menuGroup.toUpperCase()} · ` : ""}CALCULATED OVER THE LAST ${trueDays} DAY${trueDays === 1 ? "" : "S"}`;
   const header = (
     <div style={{ flexShrink: 0 }}>
       <Eyebrow text="SHELTER RECORDS — TOP OF THE CHARTS" size={z.eyebrow} />
       <div style={{ fontSize: port ? 88 : 66, fontWeight: 700, letterSpacing: 2, lineHeight: 0.98, textTransform: "uppercase", textShadow: "0 0 16px var(--terminal-glow)", marginTop: 8 }}>
         REIGNING CHAMPION
       </div>
-      {trueDays > 0 && (
-        <div style={{ fontSize: port ? 30 : 26, letterSpacing: 4, opacity: 0.7, marginTop: 6 }}>
-          {windowLine}
-        </div>
-      )}
     </div>
   );
 
@@ -1064,47 +1079,80 @@ function SmartChampion({
   }
 
   const balName = balanceHeadline(champ.name);
-  const nameSize = headlineFont(balName, orientation);
+  // Name is now SECONDARY to the count (which is the hero) — cap it below the promo-hero scale
+  // so the slide doesn't re-acquire the promo silhouette (big name over a photo).
+  const nameSize = Math.min(headlineFont(balName, orientation), port ? 116 : 84);
 
+  // ODOMETER count block: boxed two-compartment counter (number | SOLD), ambient AMBER — the
+  // deliberate anti-price treatment (the promo's price is huge GREEN with a "$"; this has neither).
+  const countBlock = (
+    <div style={{ display: "inline-flex", alignItems: "stretch", border: "4px solid var(--terminal-green)", boxShadow: "0 0 26px var(--terminal-glow)", alignSelf: port ? "center" : "flex-start", flexShrink: 0 }}>
+      <span style={{ fontSize: port ? 176 : 128, fontWeight: 700, lineHeight: 0.9, padding: port ? "10px 30px" : "6px 22px", letterSpacing: 2, fontVariantNumeric: "tabular-nums", textShadow: "0 0 22px var(--terminal-glow)" }}>{champ.qty}</span>
+      <span style={{ display: "flex", alignItems: "center", fontSize: port ? 56 : 42, fontWeight: 700, letterSpacing: 6, padding: port ? "0 26px" : "0 18px", borderLeft: "4px solid var(--terminal-green)", opacity: 0.9 }}>SOLD</span>
+    </div>
+  );
+
+  const imageEl = champ.photo && (
+    <div className="sig-viewport sig-sq" style={{ width: port ? "min(500px, 100%)" : undefined, height: port ? undefined : Math.round(z.photoH * 0.9), aspectRatio: port ? undefined : "1 / 1", flexShrink: 0 }}>
+      <span className="sig-feedcap sig-live" style={{ fontSize: 20 }}>◉ CHART LEADER</span>
+      <img src={champ.photo} alt="" />
+    </div>
+  );
+
+  const nameEl = (
+    <div style={{ fontSize: nameSize, fontWeight: 700, lineHeight: 0.92, letterSpacing: 1, textTransform: "uppercase", textAlign: port ? "center" : "left", textShadow: "0 0 16px var(--terminal-glow)" }}>
+      {balName.split("\n").map((l, i) => <span key={i} style={{ display: "block", fontSize: "inherit" }}>{l}</span>)}
+    </div>
+  );
+
+  const windowEl = trueDays > 0 && (
+    <div style={{ fontSize: port ? 30 : 26, letterSpacing: 4, opacity: 0.7, textAlign: port ? "center" : "left" }}>{windowLine}</div>
+  );
+
+  const top3El = top3.length > 0 && (
+    <div style={{ minWidth: 0, minHeight: 0, display: "flex", flexDirection: "column", justifyContent: "center", gap: port ? 10 : 12, borderTop: port ? "1px solid var(--sig-rule)" : "none", borderLeft: port ? "none" : "1px solid var(--sig-rule)", paddingTop: port ? 14 : 0, paddingLeft: port ? 0 : 36 }}>
+      <div style={{ fontSize: port ? 32 : 30, letterSpacing: 4, opacity: 0.7 }}>◉ RIGHT NOW — TONIGHT'S TOP 3</div>
+      {top3.map((it) => (
+        <div key={it.rank} style={{ display: "flex", alignItems: "baseline", gap: 14 }}>
+          <span style={{ fontSize: port ? 40 : 38, fontWeight: 700, opacity: 0.5, width: port ? 38 : 34, flexShrink: 0 }}>{it.rank}</span>
+          <span className="sig-live" style={{ flex: 1, minWidth: 0, fontSize: port ? 40 : 34, fontWeight: 700, letterSpacing: 1, textTransform: "uppercase", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "clip" }}>{it.item_name}</span>
+          <span style={{ fontSize: port ? 32 : 28, fontWeight: 700, flexShrink: 0 }}>
+            <span className="sig-live" style={{ fontSize: "inherit" }}>{it.sales_count}</span>
+            <span style={{ fontSize: port ? 22 : 20, opacity: 0.6, marginLeft: 6 }}>SOLD</span>
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+
+  // Portrait: the owner's exact vertical order — count · image · name · window · top-3.
+  // Landscape (deferred by the owner): a row that keeps the same element identity — left column
+  // count+image, right column name+window+top-3.
+  if (port) {
+    return (
+      <SmartFrame header={header}>
+        <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", alignItems: "center", gap: 18 }}>
+          {countBlock}
+          {imageEl}
+          {nameEl}
+          {windowEl}
+          {top3El}
+        </div>
+      </SmartFrame>
+    );
+  }
   return (
     <SmartFrame header={header}>
-      <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: port ? "column" : "row", gap: port ? 20 : 40, alignItems: port ? "stretch" : "center" }}>
-        {/* Champion hero */}
-        <div style={{ flex: port ? "0 0 auto" : 1, minWidth: 0, display: "flex", flexDirection: "column", alignItems: port ? "center" : "flex-start", gap: 12 }}>
-          {champ.photo && (
-            <div className="sig-viewport sig-sq" style={{ width: port ? "min(720px, 100%)" : undefined, height: port ? undefined : Math.round(z.photoH * 0.95), aspectRatio: port ? undefined : "1 / 1" }}>
-              <span className="sig-feedcap sig-live" style={{ fontSize: 20 }}>◉ CHART LEADER</span>
-              <img src={champ.photo} alt="" />
-            </div>
-          )}
-          <div style={{ fontSize: nameSize, fontWeight: 700, lineHeight: 0.9, letterSpacing: 1, textTransform: "uppercase", textAlign: port ? "center" : "left", textShadow: "0 0 16px var(--terminal-glow)" }}>
-            {balName.split("\n").map((l, i) => <span key={i} style={{ display: "block", fontSize: "inherit" }}>{l}</span>)}
-          </div>
-          {/* Owner design-beat 2026-07-15: the SOLD · LAST N DAYS line must break to its own
-              line BELOW the big count, not ride beside it (it read as "name + price"). Column
-              stack, count then label. */}
-          <div style={{ display: "flex", flexDirection: "column", alignItems: port ? "center" : "flex-start", gap: 4 }}>
-            <span className="sig-live" style={{ fontSize: port ? 150 : 120, fontWeight: 700, lineHeight: 0.8, textShadow: "0 0 26px var(--terminal-glow)" }}>{champ.qty}</span>
-            <span style={{ fontSize: port ? 40 : 34, letterSpacing: 2, opacity: 0.75 }}>SOLD · LAST {trueDays} DAY{trueDays === 1 ? "" : "S"}</span>
-          </div>
+      <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "row", gap: 40, alignItems: "center" }}>
+        <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 16 }}>
+          {countBlock}
+          {imageEl}
         </div>
-
-        {/* RIGHT NOW top 3 */}
-        {top3.length > 0 && (
-          <div style={{ flex: port ? "1 1 auto" : "0 0 40%", minWidth: 0, minHeight: 0, display: "flex", flexDirection: "column", justifyContent: "center", borderTop: port ? "1px solid var(--sig-rule)" : "none", borderLeft: port ? "none" : "1px solid var(--sig-rule)", paddingTop: port ? 16 : 0, paddingLeft: port ? 0 : 36, gap: port ? 12 : 14 }}>
-            <div style={{ fontSize: port ? 34 : 30, letterSpacing: 4, opacity: 0.7 }}>◉ RIGHT NOW — TONIGHT'S TOP 3</div>
-            {top3.map((it) => (
-              <div key={it.rank} style={{ display: "flex", alignItems: "baseline", gap: 14 }}>
-                <span style={{ fontSize: port ? 44 : 38, fontWeight: 700, opacity: 0.5, width: port ? 40 : 34, flexShrink: 0 }}>{it.rank}</span>
-                <span className="sig-live" style={{ flex: 1, minWidth: 0, fontSize: port ? 42 : 34, fontWeight: 700, letterSpacing: 1, textTransform: "uppercase", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "clip" }}>{it.item_name}</span>
-                <span style={{ fontSize: port ? 34 : 28, fontWeight: 700, flexShrink: 0 }}>
-                  <span className="sig-live" style={{ fontSize: "inherit" }}>{it.sales_count}</span>
-                  <span style={{ fontSize: port ? 22 : 20, opacity: 0.6, marginLeft: 6 }}>SOLD</span>
-                </span>
-              </div>
-            ))}
-          </div>
-        )}
+        <div style={{ flex: "0 0 44%", minWidth: 0, display: "flex", flexDirection: "column", justifyContent: "center", gap: 16 }}>
+          {nameEl}
+          {windowEl}
+          {top3El}
+        </div>
       </div>
     </SmartFrame>
   );
