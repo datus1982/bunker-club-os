@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase, VENUE_ID } from "@/shared/supabaseClient";
 import { fetchSlotQueueAdmin, fetchAssetsWithPlacements, swapQueuePositions, setQueueDuration, type AssetWithPlacements } from "./slotQueue";
 import type { Orientation, SignageItem, Template, ToastCacheRow } from "./useSignage";
+import type { SlotProgram } from "./mediaProgram";
 
 /**
  * Data layer for the STAFF signage templater (/signage — docs/09 "Admin").
@@ -22,6 +23,8 @@ export interface AdminSlot {
   terminal_number: number | null;
   location_label: string | null;
   last_seen: string | null;
+  /** The screen's PROGRAM (docs/15). null = ROTATION; else a playlist/capture/multiview program. */
+  program: SlotProgram | null;
 }
 
 export interface AdminItem extends SignageItem {
@@ -73,13 +76,27 @@ export function useAdminSlots() {
     queryFn: async (): Promise<AdminSlot[]> => {
       const { data, error } = await supabase
         .from("signage_slots")
-        .select("id, name, orientation, slug, terminal_number, location_label, last_seen")
+        .select("id, name, orientation, slug, terminal_number, location_label, last_seen, program")
         .eq("venue_id", VENUE_ID)
         .order("terminal_number", { nullsFirst: false });
       if (error) throw error;
       return (data ?? []) as AdminSlot[];
     },
   });
+}
+
+/** Realtime on signage_slots so a PROGRAM switch (docs/15) reflects on the hub cards without
+ *  waiting for the 60s health poll — the mode/program chip must mirror what the TV shows. */
+export function useSlotsRealtime() {
+  const qc = useQueryClient();
+  useEffect(() => {
+    const ch = supabase
+      .channel("signage-admin:slots")
+      .on("postgres_changes", { event: "*", schema: "public", table: "signage_slots", filter: `venue_id=eq.${VENUE_ID}` },
+        () => qc.invalidateQueries({ queryKey: ["signage-admin", "slots"] }))
+      .subscribe();
+    return () => { supabase.removeChannel(ch); };
+  }, [qc]);
 }
 
 export interface LiveGameRow {

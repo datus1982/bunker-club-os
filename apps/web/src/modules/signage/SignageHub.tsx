@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import {
   useAdminSlots, useAllItems, useSignageAssets, useTakeovers, useToastCache, useLiveGame,
+  useSlotsRealtime,
   screenHealth, activeTakeoverForSlot, featuredItems, toastMap,
   type AdminItem, type AdminSlot, type AssetWithPlacements,
 } from "./useSignageAdmin";
@@ -24,6 +25,9 @@ import { QueuePanel } from "./QueuePanel";
 import { AddAssetPicker } from "./AddAssetPicker";
 import { TakeoverPanel } from "./TakeoverPanel";
 import { SlideOver } from "./SlideOver";
+import { MediaSection } from "./MediaSection";
+import { ProgramPanel } from "./ProgramPanel";
+import { useMediaPlaylists } from "./useMediaAdmin";
 import { useRole } from "@/shared/useRole";
 import "./signage.css";
 
@@ -55,14 +59,17 @@ type Overlay =
   | { kind: "queue"; slot: AdminSlot }
   | { kind: "takeover"; slot: AdminSlot }
   | { kind: "event"; editing: EventRow | null; seed?: EventSeed | null }
-  | { kind: "asset"; editing: AdminItem | null; preset: Template | null; queueOnSlotId: string | null };
+  | { kind: "asset"; editing: AdminItem | null; preset: Template | null; queueOnSlotId: string | null }
+  | { kind: "program"; slot: AdminSlot };
 
 export function SignageHub({ openQueueSlug }: { openQueueSlug?: string }) {
   const qc = useQueryClient();
   const { can } = useRole();
   const canEvents = can("events");
 
+  useSlotsRealtime();
   const slotsQ = useAdminSlots();
+  const playlistsQ = useMediaPlaylists();
   const itemsQ = useAllItems();
   const assetsQ = useSignageAssets();
   const takeoversQ = useTakeovers();
@@ -98,6 +105,20 @@ export function SignageHub({ openQueueSlug }: { openQueueSlug?: string }) {
     [allEvents],
   );
   const tmap = useMemo(() => toastMap(toastRows), [toastRows]);
+
+  // Playlist names for the screen-card PROGRAM chip (hub/TV parity: a landscape card must read
+  // what the TV shows — PLAYLIST '{name}', not the underlying ROTATION mode).
+  const playlistNameById = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const p of playlistsQ.data ?? []) m.set(p.playlist.id, p.playlist.name);
+    return m;
+  }, [playlistsQ.data]);
+  const programLabelFor = (slot: AdminSlot): string | null => {
+    if (slot.program?.kind === "playlist") return `PLAYLIST '${playlistNameById.get(slot.program.playlist_id) ?? "…"}'`;
+    if (slot.program?.kind === "capture") return "LIVE INPUT";
+    if (slot.program?.kind === "multiview") return "MULTIVIEW";
+    return null;
+  };
 
   // Venue-wide mode inputs (a live game + a moment each hold EVERY screen); the takeover is now
   // per-screen (0045), resolved per card. Same ladder the public SlotDisplay renders.
@@ -208,9 +229,12 @@ export function SignageHub({ openQueueSlug }: { openQueueSlug?: string }) {
                   tmap={tmap}
                   overflowOpen={overflowSlot === s.id}
                   onToggleOverflow={() => setOverflowSlot((cur) => (cur === s.id ? null : s.id))}
+                  programLabel={programLabelFor(s)}
                   onAdd={() => setOverlay({ kind: "add", slot: s })}
                   onQueue={() => setOverlay({ kind: "queue", slot: s })}
                   onTakeover={() => setOverlay({ kind: "takeover", slot: s })}
+                  // Media programs are landscape-only in M1 (portrait slots stay pure rotation).
+                  onProgram={s.orientation === "landscape" ? () => setOverlay({ kind: "program", slot: s }) : undefined}
                 />
               );
             })}
@@ -241,6 +265,9 @@ export function SignageHub({ openQueueSlug }: { openQueueSlug?: string }) {
             <div style={{ opacity: 0.6, fontSize: 16, marginTop: 8 }}>No assets yet — + NEW ASSET to build one.</div>
           )}
         </div>
+
+        {/* ── B2 · MEDIA LIBRARY (docs/15 M1) ────────────────────────────── */}
+        <MediaSection />
 
         {/* ── C · RUNNING & UPCOMING (events, D8) ────────────────────────── */}
         <div style={{ marginTop: 32 }}>
@@ -343,6 +370,14 @@ export function SignageHub({ openQueueSlug }: { openQueueSlug?: string }) {
         </SlideOver>
       )}
 
+      {overlay?.kind === "program" && (
+        <ProgramPanel
+          slot={overlay.slot}
+          onClose={() => setOverlay(null)}
+          onChanged={() => qc.invalidateQueries({ queryKey: ["signage-admin", "slots"] })}
+        />
+      )}
+
       {overlay?.kind === "asset" && (
         <ItemEditor
           slots={slots}
@@ -370,7 +405,7 @@ function placementsFor(assets: AssetWithPlacements[], itemId: string): string[] 
 /* ── A · screen card (D1: three buttons + ⋯ overflow) ───────────────────────── */
 function ScreenCard({
   slot, mode, takeoverMessage, staleGameDate, eventLabel, slotItems, tmap,
-  overflowOpen, onToggleOverflow, onAdd, onQueue, onTakeover,
+  overflowOpen, onToggleOverflow, onAdd, onQueue, onTakeover, programLabel, onProgram,
 }: {
   slot: AdminSlot;
   mode: SlotMode;
@@ -384,9 +419,15 @@ function ScreenCard({
   onAdd: () => void;
   onQueue: () => void;
   onTakeover: () => void;
+  /** PLAYLIST '{name}' when a program is set (docs/15); null = ROTATION. */
+  programLabel: string | null;
+  /** Landscape-only: open the SWITCH PROGRAM slide-over. undefined = portrait (no control). */
+  onProgram?: () => void;
 }) {
   const health = screenHealth(slot.last_seen);
   const summary = useMemo(() => rotationSummary(slotItems, tmap), [slotItems, tmap]);
+  // In rotation mode a set program is what the TV actually plays — surface it (parity).
+  const programActive = mode === "rotation" && !!programLabel;
 
   return (
     <div className="terminal-border" style={{ padding: "13px 14px", display: "flex", flexDirection: "column", gap: 8, minWidth: 0 }}>
@@ -398,9 +439,13 @@ function ScreenCard({
         {slot.orientation.toUpperCase()} · TERMINAL {String(slot.terminal_number ?? 0).padStart(2, "0")}{slot.location_label ? ` — ${slot.location_label}` : ""}
       </div>
 
-      <ModeChip mode={mode} eventLabel={eventLabel} />
+      <ModeChip mode={mode} eventLabel={eventLabel} programLabel={programActive ? programLabel : null} />
 
-      {mode === "rotation" ? (
+      {mode === "rotation" && programActive ? (
+        <div style={{ fontSize: 14, opacity: 0.75, lineHeight: 1.5, minHeight: 40 }}>
+          <span className="u-amber">Playing {programLabel}.</span> Rotation resumes when the program is set back to ROTATION (a game/takeover still preempts it).
+        </div>
+      ) : mode === "rotation" ? (
         <div style={{ fontSize: 14, opacity: 0.75, lineHeight: 1.5, minHeight: 40 }}>{summary}</div>
       ) : mode === "event" ? (
         <div style={{ fontSize: 14, opacity: 0.75, lineHeight: 1.5, minHeight: 40 }}>
@@ -425,6 +470,15 @@ function ScreenCard({
         <button type="button" onClick={onToggleOverflow} aria-label="More" title="KIOSK URL · PREVIEW · health" style={{ ...cardBtn, padding: "9px 10px", fontSize: 20, opacity: 0.75 }}>⋯</button>
       </div>
 
+      {/* PROGRAM control — landscape (media-capable) screens only (docs/15). Shows the current
+          program + opens SWITCH PROGRAM. Portrait slots stay pure rotation (no control). */}
+      {onProgram && (
+        <button type="button" onClick={onProgram} className={programActive ? "u-amber" : ""} style={{ ...cardBtn, gridColumn: "1 / -1", justifyContent: "space-between", padding: "9px 12px", ...(programActive ? { color: "var(--terminal-amber, #ffb000)", borderColor: "var(--terminal-amber, #ffb000)" } : null) }}>
+          <span style={{ letterSpacing: 1 }}>▶ PROGRAM: {programActive ? programLabel : "ROTATION"}</span>
+          <span style={{ opacity: 0.7 }}>SWITCH ▸</span>
+        </button>
+      )}
+
       {overflowOpen && (
         <div className="terminal-border" style={{ padding: "10px 12px", display: "flex", flexDirection: "column", gap: 8, marginTop: 2 }}>
           <div style={{ fontSize: 13, opacity: 0.6 }}>
@@ -446,15 +500,16 @@ function ScreenCard({
   );
 }
 
-function ModeChip({ mode, eventLabel }: { mode: SlotMode; eventLabel?: string | null }) {
+function ModeChip({ mode, eventLabel, programLabel }: { mode: SlotMode; eventLabel?: string | null; programLabel?: string | null }) {
   const label =
-    mode === "rotation" ? "MODE: ROTATION"
+    mode === "rotation" && programLabel ? `PROGRAM: ${programLabel}`
+    : mode === "rotation" ? "MODE: ROTATION"
     : mode === "game" ? "MODE: LIVE GAME"
     : mode === "event" ? `EVENT: ${eventLabel ?? "SCHEDULED"}`
     : "MODE: TAKEOVER";
-  const cls = mode === "game" || mode === "event" ? "u-amber" : mode === "takeover" ? "u-red" : "";
+  const cls = mode === "game" || mode === "event" || (mode === "rotation" && programLabel) ? "u-amber" : mode === "takeover" ? "u-red" : "";
   return (
-    <span className={cls} style={{ display: "inline-block", alignSelf: "flex-start", fontSize: 12, letterSpacing: 2, border: "1px solid currentColor", padding: "2px 8px", opacity: mode === "rotation" ? 0.7 : 1 }}>
+    <span className={cls} style={{ display: "inline-block", alignSelf: "flex-start", fontSize: 12, letterSpacing: 2, border: "1px solid currentColor", padding: "2px 8px", opacity: mode === "rotation" && !programLabel ? 0.7 : 1 }}>
       {label}
     </span>
   );
