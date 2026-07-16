@@ -206,7 +206,9 @@ function PlaylistVideo({
           poster={current.thumb ?? undefined}
           autoPlay
           playsInline
-          muted={bootMuted.current}
+          // NOTE-6: init muted per-CLIP from the live unlock state, not a mount-captured ref — so a
+          // clip that mounts AFTER audio was unlocked this session starts unmuted (no muted pop-in).
+          muted={!isAudioUnlocked()}
           onEnded={advance}
           onError={onError}
           onPlaying={onPlaying}

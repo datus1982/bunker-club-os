@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/shared/supabaseClient";
+import { collectPaged } from "./mediaPagination";
 
 /**
  * Media module M1 — the PROGRAM tier data layer (docs/15).
@@ -103,23 +104,27 @@ export function usePlaylistProgram(playlistId: string | null) {
     enabled: !!playlistId,
     queryFn: async (): Promise<{ playlist: MediaPlaylist | null; files: MediaFile[] }> => {
       const pid = playlistId as string;
-      const [playlistRes, itemsRes] = await Promise.all([
+      const [playlistRes, itemRows] = await Promise.all([
         supabase
           .from("media_playlists")
           .select("id, name, source, folder_path, presentation, shuffle")
           .eq("id", pid)
           .maybeSingle(),
-        supabase
-          .from("media_playlist_items")
-          .select(`position, file:media_files!inner(${FILE_COLS})`)
-          .eq("playlist_id", pid)
-          .eq("file.status", "present")
-          .order("position"),
+        collectPaged<{ file: Omit<MediaFile, "thumb"> | null }>(async (from, to) => {
+          const { data, error } = await supabase
+            .from("media_playlist_items")
+            .select(`position, file:media_files!inner(${FILE_COLS})`)
+            .eq("playlist_id", pid)
+            .eq("file.status", "present")
+            .order("position") // unique per playlist → a stable window order
+            .range(from, to);
+          if (error) throw error;
+          return (data ?? []) as unknown as Array<{ file: Omit<MediaFile, "thumb"> | null }>;
+        }),
       ]);
       if (playlistRes.error) throw playlistRes.error;
-      if (itemsRes.error) throw itemsRes.error;
       const playlist = (playlistRes.data as MediaPlaylist | null) ?? null;
-      const files = ((itemsRes.data ?? []) as unknown as Array<{ file: Omit<MediaFile, "thumb"> | null }>)
+      const files = itemRows
         .map((r) => r.file)
         .filter((f): f is Omit<MediaFile, "thumb"> => f !== null)
         .map((f) => ({ ...f, thumb: thumbUrl(f.thumb_path) }));

@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase, VENUE_ID } from "@/shared/supabaseClient";
 import { thumbUrl } from "./mediaProgram";
 import type { MediaFile, MediaPlaylist, Presentation } from "./mediaProgram";
+import { collectPaged } from "./mediaPagination";
 
 /**
  * Data layer for the hub MEDIA section (docs/15 M1). Writer/reader counterpart to
@@ -25,16 +26,18 @@ export function useMediaFiles() {
   const q = useQuery({
     queryKey: ["media-admin", "files"],
     queryFn: async (): Promise<MediaFile[]> => {
-      const { data, error } = await supabase
-        .from("media_files")
-        .select(FILE_COLS)
-        .eq("venue_id", VENUE_ID)
-        .order("filename");
-      if (error) throw error;
-      return ((data ?? []) as unknown as Omit<MediaFile, "thumb">[]).map((f) => ({
-        ...f,
-        thumb: thumbUrl(f.thumb_path),
-      }));
+      const data = await collectPaged<Omit<MediaFile, "thumb">>(async (from, to) => {
+        const { data, error } = await supabase
+          .from("media_files")
+          .select(FILE_COLS)
+          .eq("venue_id", VENUE_ID)
+          .order("filename")
+          .order("id") // stable tiebreak so range windows never overlap or skip a row
+          .range(from, to);
+        if (error) throw error;
+        return (data ?? []) as unknown as Omit<MediaFile, "thumb">[];
+      });
+      return data.map((f) => ({ ...f, thumb: thumbUrl(f.thumb_path) }));
     },
   });
 
@@ -67,22 +70,33 @@ export function useMediaPlaylists() {
   const q = useQuery({
     queryKey: ["media-admin", "playlists"],
     queryFn: async (): Promise<PlaylistWithStats[]> => {
-      const [playlistsRes, itemsRes] = await Promise.all([
-        supabase
-          .from("media_playlists")
-          .select("id, name, source, folder_path, presentation, shuffle")
-          .eq("venue_id", VENUE_ID)
-          .order("source") // folder first? order name below
-          .order("name"),
-        supabase
-          .from("media_playlist_items")
-          .select("playlist_id, file:media_files!inner(duration_seconds, status)"),
+      type ItemStatRow = { playlist_id: string; file: { duration_seconds: number | null; status: string } | null };
+      const [playlists, items] = await Promise.all([
+        collectPaged<MediaPlaylist>(async (from, to) => {
+          const { data, error } = await supabase
+            .from("media_playlists")
+            .select("id, name, source, folder_path, presentation, shuffle")
+            .eq("venue_id", VENUE_ID)
+            .order("source") // folder first? order name below
+            .order("name")
+            .order("id") // stable tiebreak for range paging
+            .range(from, to);
+          if (error) throw error;
+          return (data ?? []) as unknown as MediaPlaylist[];
+        }),
+        collectPaged<ItemStatRow>(async (from, to) => {
+          const { data, error } = await supabase
+            .from("media_playlist_items")
+            .select("playlist_id, file:media_files!inner(duration_seconds, status)")
+            .order("playlist_id")
+            .order("file_id") // stable tiebreak for range paging
+            .range(from, to);
+          if (error) throw error;
+          return (data ?? []) as unknown as ItemStatRow[];
+        }),
       ]);
-      if (playlistsRes.error) throw playlistsRes.error;
-      if (itemsRes.error) throw itemsRes.error;
-      const playlists = (playlistsRes.data ?? []) as MediaPlaylist[];
       const statsById = new Map<string, { itemCount: number; presentCount: number; runtimeSeconds: number }>();
-      for (const r of (itemsRes.data ?? []) as unknown as Array<{ playlist_id: string; file: { duration_seconds: number | null; status: string } | null }>) {
+      for (const r of items) {
         const s = statsById.get(r.playlist_id) ?? { itemCount: 0, presentCount: 0, runtimeSeconds: 0 };
         s.itemCount += 1;
         if (r.file?.status === "present") {
@@ -125,13 +139,17 @@ export function usePlaylistDetail(playlistId: string | null) {
     queryKey: ["media-admin", "playlist-detail", playlistId],
     enabled: !!playlistId,
     queryFn: async (): Promise<PlaylistItemDetail[]> => {
-      const { data, error } = await supabase
-        .from("media_playlist_items")
-        .select(`position, file:media_files!inner(${FILE_COLS})`)
-        .eq("playlist_id", playlistId as string)
-        .order("position");
-      if (error) throw error;
-      return ((data ?? []) as unknown as Array<{ position: number; file: Omit<MediaFile, "thumb"> }>).map((r) => ({
+      const rows = await collectPaged<{ position: number; file: Omit<MediaFile, "thumb"> }>(async (from, to) => {
+        const { data, error } = await supabase
+          .from("media_playlist_items")
+          .select(`position, file:media_files!inner(${FILE_COLS})`)
+          .eq("playlist_id", playlistId as string)
+          .order("position") // unique per playlist → a stable window order
+          .range(from, to);
+        if (error) throw error;
+        return (data ?? []) as unknown as Array<{ position: number; file: Omit<MediaFile, "thumb"> }>;
+      });
+      return rows.map((r) => ({
         position: r.position,
         file: { ...r.file, thumb: thumbUrl(r.file.thumb_path) },
       }));
