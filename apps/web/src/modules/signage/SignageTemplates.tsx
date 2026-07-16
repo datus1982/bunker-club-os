@@ -28,6 +28,28 @@ const SIZES: Record<Orientation, Sz> = {
 };
 
 /**
+ * SUPPORTING-TEXT size (owner beat 2026-07-15 late: "transmission log / ration watch — all that
+ * supporting text is too small … you can't read it in this setting"). The single default size for
+ * the in-world eyebrow/caption/section-cap class across EVERY template — the small flavor labels
+ * (SOCIAL FEED — TRANSMISSION LOG, CIVIL DEFENSE — RATION WATCH, LIVE FROM THE POS, OPTICAL FEED —
+ * LIVE, STORY badge, SCAN TO OPEN, the champion window line …). These were ~18–30px and read as
+ * mush at bar distance; bumped to a distance-readable size that stays clearly SUBORDINATE to the
+ * names/prices/headers (150–210px). The vibe treatment (dim opacity + wide letter-spacing) is
+ * ratified — only the SIZE was wrong, so callers keep their own opacity/letterSpacing and swap
+ * just the font-size to this. Not for big headers/titles, the ticker (own sizing), or list
+ * count-labels (already proportional to their big green figures). */
+const SUPPORT_TEXT: Record<Orientation, number> = { portrait: 40, landscape: 32 };
+
+/** Champion count-box green accent (owner beat 2026-07-15 late: green on the BORDER *or* the
+ *  NUMBER, never both). One-line toggle so both variants can be screenshot and the owner shown
+ *  both. See SmartChampion's countBlock for the rationale behind the "border" default. */
+const CHAMPION_COUNT_GREEN: "border" | "number" = "border";
+/** Absolute live-green (matches `.sig-live`) applied to the count FRAME only in the border variant
+ *  — an inline literal, because `.sig-live` would repoint the ink var and turn the number green too. */
+const CHAMP_GREEN = "#00ff41";
+const CHAMP_GREEN_GLOW = "rgba(0, 255, 65, 0.5)";
+
+/**
  * Headline auto-shrink (docs/signage-redesign view 2 "20-foot test": titles ~9%/line).
  * Sizes off the longest \n-line so a short hero fills the screen and a long one still fits.
  */
@@ -81,20 +103,20 @@ function n(fields: Record<string, unknown>, key: string): number | undefined {
 
 /* ── Photo viewport ─────────────────────────────────────────────────────────── */
 function Photo({
-  src, treatment, height, feed = "OPTICAL FEED — LIVE",
-}: { src: string | undefined; treatment: string; height: number; feed?: string }) {
+  src, treatment, height, orientation, feed = "OPTICAL FEED — LIVE",
+}: { src: string | undefined; treatment: string; height: number; orientation: Orientation; feed?: string }) {
   if (!src) return null;
   const cls = treatment === "phosphor" ? "sig-viewport sig-phosphor" : "sig-viewport";
   return (
     <div className={cls} style={{ height, width: "100%", flexShrink: 0 }}>
-      <span className="sig-feedcap" style={{ fontSize: 20 }}>{feed}</span>
+      <span className="sig-feedcap" style={{ fontSize: SUPPORT_TEXT[orientation] }}>{feed}</span>
       <img src={src} alt="" />
     </div>
   );
 }
 
-function Eyebrow({ text, size }: { text: string; size: number }) {
-  return <div style={{ fontSize: size, letterSpacing: 6, opacity: 0.7 }}>{text}</div>;
+function Eyebrow({ text, orientation }: { text: string; orientation: Orientation }) {
+  return <div style={{ fontSize: SUPPORT_TEXT[orientation], letterSpacing: 6, opacity: 0.7 }}>{text}</div>;
 }
 
 function Stamp({ text, size }: { text: string; size: number }) {
@@ -268,7 +290,7 @@ function DrinkSquare({ src, orientation }: { src: string | undefined; orientatio
   }
   return (
     <div className="sig-viewport sig-sq" style={sizing}>
-      <span className="sig-feedcap sig-live" style={{ fontSize: 22 }}>◉ OPTICAL FEED — LIVE</span>
+      <span className="sig-feedcap sig-live" style={{ fontSize: SUPPORT_TEXT[orientation] }}>◉ OPTICAL FEED — LIVE</span>
       <img src={src} alt="" />
     </div>
   );
@@ -286,7 +308,7 @@ export function EventItem({ item, orientation }: TemplateProps) {
   return (
     <div style={{ height: "100%", display: "flex", flexDirection: "column", position: "relative", gap: z.gap }}>
       <Stamp text="MANDATORY FUN" size={z.stamp} />
-      <Eyebrow text="UPCOMING PROTOCOL" size={z.eyebrow} />
+      <Eyebrow text="UPCOMING PROTOCOL" orientation={orientation} />
       <div style={{ fontSize: headlineFont(title, orientation), fontWeight: 700, lineHeight: 0.92, textTransform: "uppercase", textShadow: "0 0 16px var(--terminal-glow)", textAlign: alignOf(item.fields, "left") }}>
         {title.split("\n").map((l, i) => <span key={i} style={{ display: "block", fontSize: "inherit" }}>{parseInline(l)}</span>)}
       </div>
@@ -303,7 +325,7 @@ export function EventItem({ item, orientation }: TemplateProps) {
         </div>
       </div>
       {/* Owner design-beat: event photo ~30% larger (0.7 → 0.9). */}
-      {photo && <Photo src={photo} treatment={treatment} height={z.photoH * 0.9} feed="ARCHIVE FEED" />}
+      {photo && <Photo src={photo} treatment={treatment} height={z.photoH * 0.9} orientation={orientation} feed="ARCHIVE FEED" />}
     </div>
   );
 }
@@ -319,12 +341,12 @@ export function Announcement({ item, orientation }: TemplateProps) {
 
   return (
     <div style={{ height: "100%", display: "flex", flexDirection: "column", gap: z.gap }}>
-      <Eyebrow text={`SYSTEM BULLETIN — PRIORITY ${priority}`} size={z.eyebrow} />
+      <Eyebrow text={`SYSTEM BULLETIN — PRIORITY ${priority}`} orientation={orientation} />
       <div className="sig-cursor" style={{ fontSize: Math.min(z.mid + 14, headlineFont(msg, orientation)), fontWeight: 700, lineHeight: 1.25, whiteSpace: "pre-wrap", textShadow: "0 0 14px var(--terminal-glow)", textAlign: alignOf(item.fields, "left") }}>
         {parseInline(typed)}
       </div>
       {/* Owner design-beat: announcement photo ~30% larger (0.55 → 0.72). */}
-      {photo && <Photo src={photo} treatment={treatment} height={z.photoH * 0.72} feed="ARCHIVE FEED" />}
+      {photo && <Photo src={photo} treatment={treatment} height={z.photoH * 0.72} orientation={orientation} feed="ARCHIVE FEED" />}
     </div>
   );
 }
@@ -340,9 +362,9 @@ export function ImageOnly({ item, orientation }: TemplateProps) {
   // (smaller eyebrow, half the gap) so the letterboxed image region grows.
   return (
     <div style={{ height: "100%", display: "flex", flexDirection: "column", gap: Math.round(z.gap * 0.5) }}>
-      <Eyebrow text="ARCHIVE FEED" size={Math.round(z.eyebrow * 0.85)} />
+      <Eyebrow text="ARCHIVE FEED" orientation={orientation} />
       <div className={treatment === "phosphor" ? "sig-viewport sig-phosphor" : "sig-viewport"} style={{ flex: 1, minHeight: 0, width: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}>
-        <span className="sig-feedcap" style={{ fontSize: 20 }}>OPTICAL FEED 02 — ARCHIVE</span>
+        <span className="sig-feedcap" style={{ fontSize: SUPPORT_TEXT[orientation] }}>OPTICAL FEED 02 — ARCHIVE</span>
         {photo && <img src={photo} alt="" style={{ maxWidth: "100%", maxHeight: "100%", width: "auto", height: "auto", objectFit: "contain" }} />}
       </div>
       {caption && <div style={{ fontSize: z.body, opacity: 0.8, lineHeight: 1.4 }}>{caption}</div>}
@@ -370,12 +392,12 @@ export function Celebration({ item, orientation }: TemplateProps) {
 
   return (
     <div style={{ height: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", gap: z.gap }}>
-      <Eyebrow text="DWELLER RECOGNITION PROTOCOL" size={z.eyebrow} />
+      <Eyebrow text="DWELLER RECOGNITION PROTOCOL" orientation={orientation} />
       <div style={{ fontSize: z.mid, letterSpacing: 3 }}>{c.icon} {c.occasion} {c.icon}</div>
       {photo && (
         /* Owner design-beat: DWELLER ID square ~30% larger (0.9 → 1.17). */
         <div className="sig-viewport" style={{ width: z.photoH * 1.17, height: z.photoH * 1.17, borderRadius: 0 }}>
-          <span className="sig-feedcap" style={{ fontSize: 18 }}>DWELLER ID</span>
+          <span className="sig-feedcap" style={{ fontSize: SUPPORT_TEXT[orientation] }}>DWELLER ID</span>
           <img src={photo} alt="" />
         </div>
       )}
@@ -476,10 +498,11 @@ const clampN = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, 
  *  • MORE GREEN — drink names + counts render in live green (sig-live: docs/09 green = live
  *    feed); ranks, bars, the group title and the SOLD label stay ambient amber. Not a wall.
  */
-/** Fixed header chrome for the slide (owner re-ratified — NOT resized by this beat). */
-const TS_HEADER: Record<Orientation, { header: number; sub: number }> = {
-  portrait: { header: 92, sub: 30 },
-  landscape: { header: 70, sub: 24 },
+/** Fixed header title size for the slide (owner re-ratified — NOT resized by this beat). The
+ *  "◉ LIVE FROM THE POS" sub-line now uses the shared SUPPORT_TEXT size (2026-07-15 late beat). */
+const TS_HEADER: Record<Orientation, { header: number }> = {
+  portrait: { header: 92 },
+  landscape: { header: 70 },
 };
 
 /** The tallest a list can be: portrait stacks 10 rows in one column; landscape lays 10 rows as
@@ -573,7 +596,7 @@ export function TopSellers({ item, orientation }: TemplateProps) {
       <div style={{ fontSize: TS_HEADER[orientation].header, fontWeight: 700, letterSpacing: 3, lineHeight: 0.98, textTransform: "uppercase", textShadow: "0 0 16px var(--terminal-glow)" }}>
         {title}
       </div>
-      <div className="sig-live" style={{ fontSize: TS_HEADER[orientation].sub, letterSpacing: 4, marginTop: 10, opacity: 0.95 }}>◉ LIVE FROM THE POS</div>
+      <div className="sig-live" style={{ fontSize: SUPPORT_TEXT[orientation], letterSpacing: 4, marginTop: 10, opacity: 0.95 }}>◉ LIVE FROM THE POS</div>
     </div>
   );
 
@@ -714,7 +737,7 @@ export function InstagramCard({ item, orientation }: TemplateProps) {
 
   const header = (
     <div style={{ flexShrink: 0 }}>
-      <Eyebrow text="SOCIAL FEED — TRANSMISSION LOG" size={z.eyebrow} />
+      <Eyebrow text="SOCIAL FEED — TRANSMISSION LOG" orientation={orientation} />
     </div>
   );
 
@@ -752,7 +775,7 @@ export function InstagramCard({ item, orientation }: TemplateProps) {
     // sig-contain (owner note 2026-07-14): IG posts are 4:5 / 1.91:1 — letterbox inside the
     // square frame, never crop heads/text (unlike drink_special, which keeps Toast's own square crop).
     <div className="sig-viewport sig-sq sig-contain" style={port ? { width: "100%" } : { height: "100%", width: "auto" }}>
-      <span className="sig-feedcap sig-live" style={{ fontSize: 22 }}>◉ OPTICAL FEED — LIVE</span>
+      <span className="sig-feedcap sig-live" style={{ fontSize: SUPPORT_TEXT[orientation] }}>◉ OPTICAL FEED — LIVE</span>
       {post.image
         ? <img src={post.image} alt="" />
         : <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", fontSize: port ? 44 : 36, opacity: 0.45, letterSpacing: 3 }}>NO IMAGE</div>}
@@ -764,7 +787,7 @@ export function InstagramCard({ item, orientation }: TemplateProps) {
       <div style={{ background: "#000", padding: 8, border: "2px solid var(--terminal-green)", lineHeight: 0, flexShrink: 0 }}>
         <QRCodeSVG value={post.permalink} size={port ? 150 : 128} bgColor="#000000" fgColor="#00ff41" level="M" />
       </div>
-      <div style={{ fontSize: port ? 26 : 22, letterSpacing: 3, opacity: 0.8, lineHeight: 1.25 }}>
+      <div style={{ fontSize: SUPPORT_TEXT[orientation], letterSpacing: 3, opacity: 0.8, lineHeight: 1.25 }}>
         SCAN TO<br />OPEN THE<br />POST
       </div>
     </div>
@@ -775,8 +798,8 @@ export function InstagramCard({ item, orientation }: TemplateProps) {
       <div style={{ display: "flex", alignItems: "baseline", gap: 16, flexWrap: "wrap" }}>
         <span className="sig-live" style={{ fontSize: port ? 48 : 40, fontWeight: 700, letterSpacing: 1, textShadow: "0 0 12px var(--terminal-glow)" }}>{handle}</span>
         {post.is_story
-          ? <span style={{ fontSize: port ? 22 : 20, letterSpacing: 2, border: "2px solid var(--terminal-green)", padding: "3px 10px", opacity: 0.9 }}>STORY — TODAY ONLY</span>
-          : <span className="sig-live" style={{ fontSize: port ? 26 : 22, letterSpacing: 2, opacity: 0.85 }}>{rel}</span>}
+          ? <span style={{ fontSize: SUPPORT_TEXT[orientation], letterSpacing: 2, border: "2px solid var(--terminal-green)", padding: "3px 10px", opacity: 0.9 }}>STORY — TODAY ONLY</span>
+          : <span className="sig-live" style={{ fontSize: SUPPORT_TEXT[orientation], letterSpacing: 2, opacity: 0.85 }}>{rel}</span>}
       </div>
       {caption && (
         <div style={{
@@ -884,11 +907,11 @@ export function SmartToast({ item, toast, orientation }: TemplateProps) {
 
   const header = (
     <div style={{ flexShrink: 0 }}>
-      <Eyebrow text="CIVIL DEFENSE — RATION WATCH" size={z.eyebrow} />
+      <Eyebrow text="CIVIL DEFENSE — RATION WATCH" orientation={orientation} />
       <div style={{ fontSize: port ? 88 : 66, fontWeight: 700, letterSpacing: 2, lineHeight: 0.98, textTransform: "uppercase", textShadow: "0 0 16px var(--terminal-glow)", marginTop: 8 }}>
         SHOW THESE SOME LOVE
       </div>
-      <div style={{ fontSize: port ? 30 : 26, letterSpacing: 4, opacity: 0.7, marginTop: 6 }}>
+      <div style={{ fontSize: SUPPORT_TEXT[orientation], letterSpacing: 4, opacity: 0.7, marginTop: 6 }}>
         ◊ {(menuGroup ?? "MENU").toUpperCase()} — SLOWEST {ranked.length} {periodLabel(days)}
       </div>
     </div>
@@ -1061,7 +1084,7 @@ function SmartChampion({
   // header alignment is touched.
   const header = (
     <div style={{ flexShrink: 0, textAlign: "center" }}>
-      <Eyebrow text="SHELTER RECORDS — TOP OF THE CHARTS" size={z.eyebrow} />
+      <Eyebrow text="SHELTER RECORDS — TOP OF THE CHARTS" orientation={orientation} />
       <div style={{ fontSize: port ? 92 : 66, fontWeight: 700, letterSpacing: 2, lineHeight: 0.98, textTransform: "uppercase", textShadow: "0 0 16px var(--terminal-glow)", marginTop: 8 }}>
         REIGNING CHAMPION
       </div>
@@ -1090,12 +1113,22 @@ function SmartChampion({
   // ODOMETER count block: boxed STACKED counter — big number over a "SOLD" caption, split by a
   // rule. Owner round-3 2026-07-15: "i dont like the sold in a box next to the number, maybe make
   // the sold below it, i dont hate the box for making the distinction obvious i just dont like the
-  // current side by side." Ambient AMBER, NO "$" — the deliberate anti-price treatment (the promo's
-  // price is huge GREEN with a "$"; this has neither), kept so a glance can't mis-read it as a price.
+  // current side by side." NO "$" — the deliberate anti-price treatment (the promo's price is huge
+  // GREEN with a "$"; this has neither), kept so a glance can't mis-read it as a price.
+  //
+  // Owner beat 2026-07-15 late: "introduce green to the border OR the number one but not both."
+  // CHAMPION_COUNT_GREEN toggles which element carries the green accent — one line to flip, so the
+  // orchestrator can show the owner both shots. Default = "border" (a green FRAME, number/SOLD stay
+  // amber): a green NUMBER sits closest to the promo's signature huge-GREEN $price silhouette — the
+  // exact confusion the round-2 restructure fixed — so the border keeps the anti-price separation
+  // while still adding the accent the owner asked for. Border variant uses the absolute live-green
+  // literal on the frame ONLY (not `.sig-live`, which would flip the number+SOLD text green too);
+  // number variant puts `.sig-live` on the number span alone (green ink + green glow), frame amber.
+  const greenBorder = CHAMPION_COUNT_GREEN === "border";
   const countBlock = (
-    <div style={{ display: "inline-flex", flexDirection: "column", alignItems: "stretch", border: "4px solid var(--terminal-green)", boxShadow: "0 0 26px var(--terminal-glow)", alignSelf: port ? "center" : "flex-start", flexShrink: 0 }}>
-      <span style={{ textAlign: "center", fontSize: port ? 210 : 150, fontWeight: 700, lineHeight: 0.84, padding: port ? "18px 56px 12px" : "10px 40px 6px", letterSpacing: 2, fontVariantNumeric: "tabular-nums", textShadow: "0 0 22px var(--terminal-glow)" }}>{champ.qty}</span>
-      <span style={{ textAlign: "center", fontSize: port ? 52 : 40, fontWeight: 700, letterSpacing: 14, padding: port ? "12px 56px 14px" : "8px 40px", borderTop: "4px solid var(--terminal-green)", opacity: 0.9, textIndent: 14 }}>SOLD</span>
+    <div style={{ display: "inline-flex", flexDirection: "column", alignItems: "stretch", border: `4px solid ${greenBorder ? CHAMP_GREEN : "var(--terminal-green)"}`, boxShadow: `0 0 26px ${greenBorder ? CHAMP_GREEN_GLOW : "var(--terminal-glow)"}`, alignSelf: port ? "center" : "flex-start", flexShrink: 0 }}>
+      <span className={greenBorder ? undefined : "sig-live"} style={{ textAlign: "center", fontSize: port ? 210 : 150, fontWeight: 700, lineHeight: 0.84, padding: port ? "18px 56px 12px" : "10px 40px 6px", letterSpacing: 2, fontVariantNumeric: "tabular-nums", textShadow: "0 0 22px var(--terminal-glow)" }}>{champ.qty}</span>
+      <span style={{ textAlign: "center", fontSize: port ? 52 : 40, fontWeight: 700, letterSpacing: 14, padding: port ? "12px 56px 14px" : "8px 40px", borderTop: `4px solid ${greenBorder ? CHAMP_GREEN : "var(--terminal-green)"}`, opacity: 0.9, textIndent: 14 }}>SOLD</span>
     </div>
   );
 
@@ -1106,7 +1139,7 @@ function SmartChampion({
   const hasTop3 = top3.length > 0;
   const imageEl = champ.photo && (
     <div className="sig-viewport sig-sq" style={{ width: port ? (hasTop3 ? "min(540px, 100%)" : "min(760px, 100%)") : undefined, height: port ? undefined : Math.round(z.photoH * 0.9), aspectRatio: port ? undefined : "1 / 1", flexShrink: 0 }}>
-      <span className="sig-feedcap sig-live" style={{ fontSize: 20 }}>◉ CHART LEADER</span>
+      <span className="sig-feedcap sig-live" style={{ fontSize: SUPPORT_TEXT[orientation] }}>◉ CHART LEADER</span>
       <img src={champ.photo} alt="" />
     </div>
   );
@@ -1118,7 +1151,7 @@ function SmartChampion({
   );
 
   const windowEl = trueDays > 0 && (
-    <div style={{ fontSize: port ? 30 : 26, letterSpacing: 4, opacity: 0.7, textAlign: port ? "center" : "left" }}>{windowLine}</div>
+    <div style={{ fontSize: SUPPORT_TEXT[orientation], letterSpacing: 4, opacity: 0.7, textAlign: port ? "center" : "left" }}>{windowLine}</div>
   );
 
   // Owner round-3: grow image AND ranking to fill the canvas. In portrait the strip takes
@@ -1127,7 +1160,7 @@ function SmartChampion({
   // pathological long-name reign from ever pushing the strip off-canvas (graceful clip, WARN-2).
   const top3El = top3.length > 0 && (
     <div style={{ minWidth: 0, minHeight: 0, flex: port ? "1 1 0" : undefined, alignSelf: port ? "stretch" : undefined, overflow: "hidden", display: "flex", flexDirection: "column", justifyContent: port ? "space-around" : "center", gap: port ? 6 : 12, borderTop: port ? "1px solid var(--sig-rule)" : "none", borderLeft: port ? "none" : "1px solid var(--sig-rule)", paddingTop: port ? 16 : 0, paddingLeft: port ? 0 : 36 }}>
-      <div style={{ fontSize: port ? 36 : 30, letterSpacing: 4, opacity: 0.7 }}>◉ RIGHT NOW — TONIGHT'S TOP 3</div>
+      <div style={{ fontSize: SUPPORT_TEXT[orientation], letterSpacing: 4, opacity: 0.7 }}>◉ RIGHT NOW — TONIGHT'S TOP 3</div>
       {top3.map((it) => (
         <div key={it.rank} style={{ display: "flex", alignItems: "baseline", gap: port ? 20 : 14 }}>
           <span style={{ fontSize: port ? 56 : 38, fontWeight: 700, opacity: 0.5, width: port ? 52 : 34, flexShrink: 0 }}>{it.rank}</span>
@@ -1145,9 +1178,13 @@ function SmartChampion({
   // Landscape (deferred by the owner): a row that keeps the same element identity — left column
   // count+image, right column name+window+top-3.
   if (port) {
+    // Owner beat 2026-07-15 late: "move the count box up." The column now packs from the TOP
+    // (justify-content flex-start, tighter gap) so the count sits directly beneath the centered
+    // REIGNING CHAMPION header instead of floating in the vertical middle; top3El (flex:1) still
+    // absorbs the slack at the bottom so the canvas stays full when a live ranking is present.
     return (
       <SmartFrame header={header}>
-        <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 18 }}>
+        <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "flex-start", gap: 14 }}>
           {countBlock}
           {imageEl}
           {nameEl}
@@ -1159,7 +1196,9 @@ function SmartChampion({
   }
   return (
     <SmartFrame header={header}>
-      <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "row", gap: 40, alignItems: "center" }}>
+      {/* Count up in landscape too — align the row to the top so the left column's count hugs
+          the header rather than centering vertically. */}
+      <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "row", gap: 40, alignItems: "flex-start" }}>
         <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 16 }}>
           {countBlock}
           {imageEl}
