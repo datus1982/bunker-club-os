@@ -507,8 +507,8 @@ function JoinScreen({ game }: { game: Game }) {
         <div style={{ fontSize: 54, fontWeight: 700, letterSpacing: 2, lineHeight: 1 }}>PLAYED BEFORE?</div>
         <div style={{ fontSize: 40, marginTop: 12, lineHeight: 1.2 }}>
           Your team is already on file. Sign in and it may be waiting for you — otherwise search for it
-          and <b>REQUEST TO JOIN</b>. A teammate waves you in from their portal, or just ask the host to
-          add you at the stand.
+          and <b>ASK TO JOIN</b>. A teammate waves you in from their portal — or the host can check your
+          team in at the stand.
         </div>
       </div>
 
