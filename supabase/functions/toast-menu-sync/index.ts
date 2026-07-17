@@ -33,7 +33,7 @@ const TOAST_RESTAURANT_GUID = Deno.env.get("TOAST_RESTAURANT_GUID") ?? "";
 const TOAST_BASE = "https://ws-api.toasttab.com";
 const VENUE_ID = Deno.env.get("VENUE_ID") ?? "11111111-1111-1111-1111-111111111111";
 const BUCKET = "signage";
-const SYNC_VERSION = "v8-price-options"; // deployed==source marker
+const SYNC_VERSION = "v9-warn1-guard"; // deployed==source marker
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -203,12 +203,20 @@ Deno.serve(async (req) => {
         deduped.map((r) => (r._groupRefs as Array<number | string>) ?? []),
       );
       for (const r of deduped) {
-        const opts = extractPriceOptions({
-          groupRefIds: r._groupRefs as Array<number | string>,
-          groupRefs,
-          optionRefs,
-          usage,
-        });
+        // Reviewer WARN-1: a malformed modifier shape must degrade THIS item's
+        // options to null, never abort the whole sync pass (stale-cache risk).
+        let opts: ReturnType<typeof extractPriceOptions> = null;
+        try {
+          opts = extractPriceOptions({
+            groupRefIds: r._groupRefs as Array<number | string>,
+            groupRefs,
+            optionRefs,
+            usage,
+          });
+        } catch (e) {
+          console.error(`price-options extract failed for ${r.guid}: ${e instanceof Error ? e.message : e}`);
+          opts = null;
+        }
         r.price_options = opts;
         if (opts) priceOptionRows++;
         delete r._groupRefs; // never persisted — an internal carry only
