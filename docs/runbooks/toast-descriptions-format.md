@@ -97,8 +97,16 @@ That opens a spreadsheet-style grid with a **Description** column you can type s
 2. **Save** (top of the grid).
 3. **Publish** (Toast changes are inert until published).
 
+⚠️ **Known trap (learned the hard way, 2026-07-16): the grid SILENTLY DROPS bulk
+multi-row saves.** Single-row edits save fine, and the Save button greys out as if it
+worked — but reload the grid after any multi-row save and CHECK the values actually
+stuck. If they didn't, the working bulk path is the grid's own API endpoint
+(`POST /advancedproperties/updatechildren`, chunked ~40 rows — a dev/cowork session
+can drive it), followed by the **global Publish Config page** (the page-level Publish
+button stays greyed for API saves).
+
 Do **NOT** use the CSV "Item Update Template" import path — it's irreversible and
-plan-gated. The Advanced-properties grid is the safe way.
+plan-gated. The Advanced-properties grid is the safe way for small edits.
 
 ## Verifying it worked
 
