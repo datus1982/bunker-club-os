@@ -844,6 +844,17 @@
   margin: 0.15rem 0 0;
   max-width: 60ch;
 }
+/* Owner-authored long-form (0048) — a softer editorial paragraph beneath the
+   ingredient line. Subordinate to the short blurb (smaller, fainter, italic voice)
+   but with room to breathe for the prose. Only renders when non-empty. */
+.site-menu-item__longform {
+  color: color-mix(in srgb, var(--site-ink-dim) 78%, var(--site-bg));
+  font-size: 0.86rem;
+  font-style: italic;
+  line-height: 1.5;
+  margin: 0.4rem 0 0;
+  max-width: 62ch;
+}
 
 /* ── Events (/events) ────────────────────────────────────────────────────── */
 .site-events-grid {

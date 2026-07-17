@@ -18,6 +18,9 @@ export interface MenuItem {
   guid: string;
   name: string;
   blurb: string | null;
+  /** Owner-authored long-form (0048) — text after `--- recipe |`. Recipe never reaches us.
+   *  Purely additive: rendered as a softer paragraph under the short blurb when present. */
+  longBlurb: string | null;
   price: number | null;
   image: string | null;
 }
@@ -37,7 +40,8 @@ export interface MenuGroup {
 // same three-way invariant useSiteCopy holds for its keys. Owner reorder
 // (2026-07-13); names are the exact `menu_group` strings in the live
 // toast_menu_cache. "Winter Cocktails" is deliberately unlisted — it is POS-hidden
-// in Toast, so the pos_visible gate (0034) keeps it off /menu regardless of order.
+// in Toast, so the pos_visible gate on public_menu keeps it off /menu regardless of
+// order (gate added in 0034, accidentally dropped by 0040/0048, restored by 0049).
 // Update all three together.
 const MENU_GROUP_ORDER_FALLBACK = [
   "Signature Cocktails",
@@ -92,7 +96,7 @@ export function useMenu() {
       const [menuRes, orderRes, hiddenRes] = await Promise.all([
         supabase
           .from("public_menu")
-          .select('guid, "group", name, public_blurb, price, image, in_stock')
+          .select('guid, "group", name, public_blurb, long_blurb, price, image, in_stock')
           .eq("venue_id", VENUE_ID),
         supabase
           .from("venue_settings")
@@ -136,6 +140,7 @@ export function useMenu() {
         group: string | null;
         name: string | null;
         public_blurb: string | null;
+        long_blurb: string | null;
         price: number | null;
         image: string | null;
         in_stock: boolean;
@@ -152,6 +157,7 @@ export function useMenu() {
           guid: r.guid,
           name: r.name,
           blurb: r.public_blurb,
+          longBlurb: r.long_blurb,
           price: r.price,
           image: r.image,
         });

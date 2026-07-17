@@ -288,7 +288,7 @@ export function useToastCache() {
       const [{ data: cache }, { data: menu }] = await Promise.all([
         supabase
           .from("toast_menu_cache")
-          .select("guid, name, price, image_storage_path, image_url, menu_group, out_of_stock, pos_visible")
+          .select("guid, name, price, image_storage_path, image_url, menu_group, out_of_stock, pos_visible, long_blurb")
           .eq("venue_id", VENUE_ID)
           .order("menu_group"),
         supabase.from("public_menu").select("guid, public_blurb"),
@@ -300,6 +300,7 @@ export function useToastCache() {
         guid: string; name: string | null; price: number | null;
         image_storage_path: string | null; image_url: string | null;
         menu_group: string | null; out_of_stock: boolean; pos_visible: boolean | null;
+        long_blurb: string | null;
       }>).map((r) => ({
         guid: r.guid,
         name: r.name,
@@ -309,6 +310,7 @@ export function useToastCache() {
         out_of_stock: r.out_of_stock,
         pos_visible: r.pos_visible ?? true, // default-visible if unsynced (mirrors 0034)
         public_blurb: blurbs.get(r.guid) ?? null,
+        long_blurb: r.long_blurb, // 0048 — available to templates later; nothing renders it yet
       }));
     },
   });
