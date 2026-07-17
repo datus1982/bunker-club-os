@@ -1,4 +1,4 @@
-import { lazy, type ComponentType, type LazyExoticComponent } from "react";
+import { lazy, useEffect, type ComponentType, type LazyExoticComponent } from "react";
 
 /**
  * React.lazy that survives a stale-chunk import() failure (PR #42 incident residue).
@@ -20,19 +20,26 @@ import { lazy, type ComponentType, type LazyExoticComponent } from "react";
 const RELOAD_KEY = "bunker:chunk-reload-at";
 const RELOAD_WINDOW_MS = 2 * 60_000; // at most one auto-reload per 2 minutes (loop guard)
 
+// Reviewer NOTE-1: if sessionStorage is fully unavailable the persistent guard is lost, so a
+// module-scope variable backstops it. It doesn't survive the reload (that's what storage is
+// for) but it dedupes multiple chunks failing in the same pageview, and combined with the
+// timed retry below the worst storage-broken case is one reload per RELOAD_WINDOW, not a storm.
+let inMemoryLastReload = 0;
+
 function readLastReload(): number {
   try {
-    return Number(sessionStorage.getItem(RELOAD_KEY)) || 0;
+    return Number(sessionStorage.getItem(RELOAD_KEY)) || inMemoryLastReload;
   } catch {
-    return 0; // sessionStorage blocked (private mode) — treat as never reloaded
+    return inMemoryLastReload; // sessionStorage blocked — fall back to the in-memory guard
   }
 }
 
 function markReload(now: number): void {
+  inMemoryLastReload = now;
   try {
     sessionStorage.setItem(RELOAD_KEY, String(now));
   } catch {
-    /* ignore — best-effort; on failure we simply lose the loop guard for this pageview */
+    /* ignore — the in-memory backstop above still guards this pageview */
   }
 }
 
@@ -42,6 +49,24 @@ function markReload(now: number): void {
  * live in a chunk that just failed to load. Pure inline styles, always in the main bundle.
  */
 function ChunkLoadFailed() {
+  // Reviewer NOTE-2: React.lazy caches the resolution, so this element is otherwise terminal —
+  // an unattended TV would sit here until the 04:00 nightly reload. Auto-retry once the loop
+  // guard's window has expired (clamped 5s..window so a skewed clock can't fire instantly or
+  // never): reload re-runs the whole lazy flow, and if the deploy healed, the TV self-recovers.
+  useEffect(() => {
+    const remaining = RELOAD_WINDOW_MS - (Date.now() - readLastReload());
+    const delay = Math.min(Math.max(remaining, 5_000), RELOAD_WINDOW_MS);
+    const t = setTimeout(() => {
+      try {
+        sessionStorage.removeItem(RELOAD_KEY);
+      } catch {
+        /* ignore */
+      }
+      inMemoryLastReload = 0;
+      window.location.reload();
+    }, delay);
+    return () => clearTimeout(t);
+  }, []);
   return (
     <div
       style={{
