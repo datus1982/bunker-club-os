@@ -809,6 +809,21 @@ function ImageField({ fields, setField }: FieldProps) {
         {busy ? "UPLOADING…" : url ? "REPLACE PHOTO" : "UPLOAD PHOTO"}
       </button>
       {url && <button type="button" onClick={() => setField("image_url", "")} style={btnGhost}>REMOVE</button>}
+      {url && (
+        // photo_fit: CROP fills the frame (default, Toast-photo parity); FIT letterboxes the
+        // whole image — QR codes, posters, anything whose edges must survive.
+        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 15 }}>
+          FIT
+          <select
+            value={str(fields.photo_fit) ?? "cover"}
+            onChange={(e) => setField("photo_fit", e.target.value === "cover" ? "" : e.target.value)}
+            style={sel}
+          >
+            <option style={opt} value="cover">CROP TO FILL</option>
+            <option style={opt} value="contain">WHOLE IMAGE</option>
+          </select>
+        </label>
+      )}
       {err && <span className="u-red" style={{ fontSize: 15 }}>⚠ {err}</span>}
     </div>
   );

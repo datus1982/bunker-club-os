@@ -95,10 +95,12 @@ function n(fields: Record<string, unknown>, key: string): number | undefined {
 
 /* ── Photo viewport ─────────────────────────────────────────────────────────── */
 function Photo({
-  src, treatment, height, orientation, feed = "OPTICAL FEED — LIVE",
-}: { src: string | undefined; treatment: string; height: number; orientation: Orientation; feed?: string }) {
+  src, treatment, height, orientation, feed = "OPTICAL FEED — LIVE", fit = "cover",
+}: { src: string | undefined; treatment: string; height: number; orientation: Orientation; feed?: string; fit?: "cover" | "contain" }) {
   if (!src) return null;
-  const cls = treatment === "phosphor" ? "sig-viewport sig-phosphor" : "sig-viewport";
+  // fit="contain" letterboxes instead of cropping (fields.photo_fit — QR codes, posters,
+  // any upload whose aspect must survive intact). Same .sig-contain rule signagePhoto uses.
+  const cls = `sig-viewport${treatment === "phosphor" ? " sig-phosphor" : ""}${fit === "contain" ? " sig-contain" : ""}`;
   return (
     <div className={cls} style={{ height, width: "100%", flexShrink: 0 }}>
       <span className="sig-feedcap" style={{ fontSize: SUPPORT_TEXT[orientation] }}>{feed}</span>
@@ -317,7 +319,7 @@ export function EventItem({ item, orientation }: TemplateProps) {
         </div>
       </div>
       {/* Owner design-beat: event photo ~30% larger (0.7 → 0.9). */}
-      {photo && <Photo src={photo} treatment={treatment} height={z.photoH * 0.9} orientation={orientation} feed="ARCHIVE FEED" />}
+      {photo && <Photo src={photo} treatment={treatment} height={z.photoH * 0.9} orientation={orientation} feed="ARCHIVE FEED" fit={s(item.fields, "photo_fit") === "contain" ? "contain" : "cover"} />}
     </div>
   );
 }
@@ -338,7 +340,7 @@ export function Announcement({ item, orientation }: TemplateProps) {
         {parseInline(typed)}
       </div>
       {/* Owner design-beat: announcement photo ~30% larger (0.55 → 0.72). */}
-      {photo && <Photo src={photo} treatment={treatment} height={z.photoH * 0.72} orientation={orientation} feed="ARCHIVE FEED" />}
+      {photo && <Photo src={photo} treatment={treatment} height={z.photoH * 0.72} orientation={orientation} feed="ARCHIVE FEED" fit={s(item.fields, "photo_fit") === "contain" ? "contain" : "cover"} />}
     </div>
   );
 }
