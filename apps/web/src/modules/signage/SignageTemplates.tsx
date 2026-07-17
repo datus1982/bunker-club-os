@@ -147,6 +147,21 @@ export function DrinkSpecial({ item, toast, orientation }: TemplateProps) {
   const price = manualPrice ?? src?.price ?? undefined;
   const priceLive = manualPrice === undefined && src?.price != null;
 
+  // NOTE-6 (PR #51): the pour-priced bottles now carry a $0 BASE price (the whole liquor shelf,
+  // 141 items) with their real prices in `price_options`. A resolved price of 0 (or negative)
+  // must NEVER render as a giant "$0". A real, advertisable base price is > 0; when it isn't, fall
+  // back to the CHEAPEST pour-size option from the Toast cache (e.g. "SHOT $6"). No option → no
+  // price block at all. A manual `price` still wins as before, and an explicit manual "$0" is
+  // treated the same as any other 0 — it routes through this options/hide path, never a "$0".
+  // price_options is pre-sorted ascending with all prices > 0 (the sync-side extractor guarantees
+  // both), so [0] is the cheapest.
+  const hasBasePrice = price != null && price > 0;
+  const cheapestOption = !hasBasePrice ? (src?.price_options?.[0] ?? undefined) : undefined;
+  const showingOption = !hasBasePrice && !!cheapestOption;
+  const shownPrice = hasBasePrice ? price : cheapestOption?.price;
+  // An option value is always Toast-sourced (live feed) → green, same as the live base-price path.
+  const priceIsLive = priceLive || showingOption;
+
   const photo = s(item.fields, "image_url") ?? src?.image ?? undefined;
   // Ingredients / blurb strip: manual override, else the description-safe public blurb.
   const ingredients = s(item.fields, "ingredients") ?? s(item.fields, "tagline") ?? s(item.fields, "blurb") ?? src?.public_blurb ?? undefined;
@@ -176,7 +191,7 @@ export function DrinkSpecial({ item, toast, orientation }: TemplateProps) {
     : effective(name) >= effective(balanced) ? name : balanced;
   const nameLines = balName.split("\n").length;
   const nameSize = effective(balName);
-  const priceSize = drinkPriceFont(price ?? 0, orientation);
+  const priceSize = drinkPriceFont(shownPrice ?? 0, orientation);
 
   // NB: the live-green class goes on the SAME element that carries the font-size — the
   // global `.terminal-theme span{font-size:1.5rem}` rule clamps any nested wrapper that
@@ -187,9 +202,15 @@ export function DrinkSpecial({ item, toast, orientation }: TemplateProps) {
     </div>
   );
 
-  const priceEl = price != null && (
-    <div className={priceLive ? "sig-live" : undefined} style={{ fontSize: priceSize, fontWeight: 700, lineHeight: 0.78, textShadow: "0 0 26px var(--terminal-glow)" }}>
-      <small style={{ fontSize: priceSize * 0.5, verticalAlign: "top" }}>$</small>{formatPrice(price)}
+  // Real base price → the classic hero "$N" (byte-identical to before). $0-base with options →
+  // "LABEL $N" (label smaller in the accent style — same treatment as the "$", so the number stays
+  // the hero). $0-base with no options → nothing (never a "$0").
+  const priceEl = shownPrice != null && (
+    <div className={priceIsLive ? "sig-live" : undefined} style={{ fontSize: priceSize, fontWeight: 700, lineHeight: 0.78, textShadow: "0 0 26px var(--terminal-glow)" }}>
+      {showingOption && cheapestOption && (
+        <span style={{ fontSize: priceSize * 0.34, letterSpacing: 3, opacity: 0.7, marginRight: 16, verticalAlign: "middle", textTransform: "uppercase" }}>{cheapestOption.label}</span>
+      )}
+      <small style={{ fontSize: priceSize * 0.5, verticalAlign: "top" }}>$</small>{formatPrice(shownPrice)}
     </div>
   );
 
