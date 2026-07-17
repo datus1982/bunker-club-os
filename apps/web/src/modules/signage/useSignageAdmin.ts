@@ -4,6 +4,7 @@ import { supabase, VENUE_ID } from "@/shared/supabaseClient";
 import { fetchSlotQueueAdmin, fetchAssetsWithPlacements, swapQueuePositions, setQueueDuration, type AssetWithPlacements } from "./slotQueue";
 import type { Orientation, PriceOption, SignageItem, Template, ToastCacheRow } from "./useSignage";
 import type { SlotProgram } from "./mediaProgram";
+import { slotRenderFieldsUnchanged, HUB_SLOT_RENDER_FIELDS } from "./slotRealtime";
 
 /**
  * Data layer for the STAFF signage templater (/signage — docs/09 "Admin").
@@ -86,14 +87,24 @@ export function useAdminSlots() {
 }
 
 /** Realtime on signage_slots so a PROGRAM switch (docs/15) reflects on the hub cards without
- *  waiting for the 60s health poll — the mode/program chip must mirror what the TV shows. */
+ *  waiting for the 60s health poll — the mode/program chip must mirror what the TV shows.
+ *  Skips last_seen-only UPDATEs (every screen's 60s heartbeat, 60s × N screens of churn, M1
+ *  NOTE-2): the health chip stays fresh via useAdminSlots' 60s refetch poll, so those need not
+ *  invalidate. A real change (name/orientation/slug/terminal/label/program) still refetches
+ *  immediately, preserving the hub↔TV parity invariant. */
 export function useSlotsRealtime() {
   const qc = useQueryClient();
   useEffect(() => {
     const ch = supabase
       .channel("signage-admin:slots")
       .on("postgres_changes", { event: "*", schema: "public", table: "signage_slots", filter: `venue_id=eq.${VENUE_ID}` },
-        () => qc.invalidateQueries({ queryKey: ["signage-admin", "slots"] }))
+        (payload) => {
+          const row = payload.new as Record<string, unknown>;
+          const cached = qc.getQueryData<AdminSlot[]>(["signage-admin", "slots"]);
+          const prev = cached?.find((s) => s.id === row.id) as Record<string, unknown> | undefined;
+          if (slotRenderFieldsUnchanged(HUB_SLOT_RENDER_FIELDS, prev, row)) return;
+          qc.invalidateQueries({ queryKey: ["signage-admin", "slots"] });
+        })
       .subscribe();
     return () => { supabase.removeChannel(ch); };
   }, [qc]);
