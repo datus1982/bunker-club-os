@@ -18,6 +18,9 @@ export interface MenuItem {
   guid: string;
   name: string;
   blurb: string | null;
+  /** Owner-authored long-form (0048) — text after `--- recipe |`. Recipe never reaches us.
+   *  Purely additive: rendered as a softer paragraph under the short blurb when present. */
+  longBlurb: string | null;
   price: number | null;
   image: string | null;
 }
@@ -92,7 +95,7 @@ export function useMenu() {
       const [menuRes, orderRes, hiddenRes] = await Promise.all([
         supabase
           .from("public_menu")
-          .select('guid, "group", name, public_blurb, price, image, in_stock')
+          .select('guid, "group", name, public_blurb, long_blurb, price, image, in_stock')
           .eq("venue_id", VENUE_ID),
         supabase
           .from("venue_settings")
@@ -136,6 +139,7 @@ export function useMenu() {
         group: string | null;
         name: string | null;
         public_blurb: string | null;
+        long_blurb: string | null;
         price: number | null;
         image: string | null;
         in_stock: boolean;
@@ -152,6 +156,7 @@ export function useMenu() {
           guid: r.guid,
           name: r.name,
           blurb: r.public_blurb,
+          longBlurb: r.long_blurb,
           price: r.price,
           image: r.image,
         });

@@ -68,6 +68,9 @@ export function Menu() {
                             )}
                           </div>
                           {it.blurb && <p className="site-menu-item__blurb">{it.blurb}</p>}
+                          {it.longBlurb && (
+                            <p className="site-menu-item__longform">{it.longBlurb}</p>
+                          )}
                         </div>
                       </li>
                     ))}
