@@ -47,8 +47,8 @@ interface InFile {
   thumb_b64?: string; // jpeg, optionally data-URI prefixed; ≤200KB decoded
 }
 interface InFolder {
-  path: string; // subfolder path (relative) — the media_playlists.folder_path key
-  name: string; // display name (folder name)
+  path: string; // subfolder path (relative) — the media_playlists.folder_path key (stable, raw)
+  name: string; // raw folder name; prettyFolderName() derives media_playlists.name from it
   hashes: string[]; // ordered file hashes belonging to this folder
 }
 
@@ -84,6 +84,23 @@ async function selectAllPaged<T>(
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json", ...cors } });
+}
+
+// Pretty display name for a folder auto-playlist. The owner's curated library folders carry a
+// numeric ordering prefix + underscores (`01_Atomic_Age`, `02B_Bond_Vol2`, `22_90s_Indie_Explosion`)
+// so the sort order lives in the folder name; folder_path keeps the raw name as the stable key.
+// Strip a leading order prefix (`^[0-9]+[A-Za-z]?_`), underscores → spaces, collapse runs. NO
+// title-casing — the owner's capitalization is deliberate. Examples:
+//   `01_Atomic_Age`         → `Atomic Age`
+//   `02B_Bond_Vol2`         → `Bond Vol2`
+//   `22_90s_Indie_Explosion`→ `90s Indie Explosion`   (only the leading `22_` strips, not `90s`)
+//   `NoPrefix_Folder`       → `NoPrefix Folder`
+//   `Specials`              → `Specials`
+// If stripping the prefix leaves nothing (`01_` → ``), fall back to the raw folder name.
+function prettyFolderName(raw: string): string {
+  const stripped = raw.replace(/^[0-9]+[A-Za-z]?_/, "");
+  const pretty = stripped.replace(/_/g, " ").replace(/\s+/g, " ").trim();
+  return pretty.length > 0 ? pretty : raw;
 }
 
 // Default title from a relative filename: basename without extension. "Ambience/clip1.mp4" → "clip1".
@@ -274,7 +291,7 @@ Deno.serve(async (req) => {
     const { data: plRows, error: plErr } = await admin
       .from("media_playlists")
       .upsert(
-        { venue_id: VENUE_ID, name: folder.name ?? folder.path, source: "folder", folder_path: folder.path },
+        { venue_id: VENUE_ID, name: prettyFolderName(folder.name ?? folder.path), source: "folder", folder_path: folder.path },
         { onConflict: "venue_id,folder_path" },
       )
       .select("id");

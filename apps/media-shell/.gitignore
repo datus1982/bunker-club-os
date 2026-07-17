@@ -1,6 +1,7 @@
 node_modules/
 dist/
 out/
+vendor/
 config.json
 sent-thumbs.json
 *.log
