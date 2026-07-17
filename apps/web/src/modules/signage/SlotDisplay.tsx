@@ -127,6 +127,19 @@ function SlotScreen({
 
   const ticker = useTicker({ events: liveEvents, timezone });
 
+  // PiP ad feed for the trivia HIDE-SCORES hold (owner beat 2026-07-16): a mini copy of the
+  // NORMAL rotation surface (chrome + rotation + ticker) at the real portrait canvas size, so
+  // the leaderboard board can inset it while the host holds and ads keep running. It is only
+  // MOUNTED when portrait game mode is live AND board_stage === 'scoring' (LeaderboardBoard
+  // decides), so the Rotation timers below don't run outside the hold. Built portrait-only —
+  // landscape game mode uses GameDisplayBoard, which has no board stages. It reuses the exact
+  // `rotation`/`tease`/`ticker` the normal screen would show, so every gate (POS/86, windows,
+  // dwell) already applies.
+  const pipSurface =
+    slot.orientation === "portrait" ? (
+      <RotationSurface slot={slot} venueName={venueName} timezone={timezone} rotation={rotation} toast={toast} tease={tease} ticker={ticker} />
+    ) : null;
+
   // PROGRAM tier (docs/15): a `playlist` program renders INSIDE rotation mode (the bottom of the
   // ladder) — so takeover/moment/game already preempt it (mode !== 'rotation' unmounts it, and
   // the <video> stops with it). Only 'playlist' renders in M1; capture/multiview are reserved.
@@ -140,7 +153,7 @@ function SlotScreen({
       {mode === "game" ? (
         <div style={{ position: "absolute", inset: 0 }}>
           {slot.orientation === "portrait" ? (
-            <LeaderboardBoard overrideGameId={liveGameId} />
+            <LeaderboardBoard overrideGameId={liveGameId} holdInset={pipSurface} />
           ) : (
             <GameDisplayBoard overrideGameId={liveGameId} />
           )}
@@ -178,6 +191,40 @@ function SlotScreen({
       {/* Static scanline + vignette (docs/09) come from the shared `.terminal-theme`
           overlays that DisplayCanvas already renders over the whole surface — no extra
           panel-level pass (stacking two dims the ink to brown). */}
+    </div>
+  );
+}
+
+/* ── Rotation surface (normal screen: chrome + rotation + ticker) ─────────────── */
+/**
+ * The NORMAL non-game rotation surface as a self-contained node — chrome header, the
+ * live rotation content zone, and the ticker footer, filling its parent. Mirrors the layout
+ * of SlotScreen's own rotation branch, packaged so it can be handed to the trivia leaderboard
+ * board as the HIDE-SCORES PiP inset (BEAT 2, owner 2026-07-16): the board scales this down
+ * into an ad panel while the host holds, so promos keep cycling. Because it reuses the exact
+ * resolved `rotation`/`tease`/`ticker`, every gate (POS/86, time windows, dwell) already
+ * applies. Always amber ink (rotation ink), independent of the green game board it embeds
+ * beside. (The live rotation branch stays inline in SlotScreen since it also handles the
+ * MOMENT-stage surface, which this rotation-only node deliberately does not.)
+ */
+export function RotationSurface({
+  slot, venueName, timezone, rotation, toast, tease, ticker,
+}: {
+  slot: Slot;
+  venueName: string;
+  timezone: string;
+  rotation: SignageItem[];
+  toast: ToastMap;
+  tease: LiveEvent | null;
+  ticker: TickerLine[];
+}) {
+  return (
+    <div className="signage-slot signage-amber" style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", color: "var(--terminal-green)", background: "#000" }}>
+      <ChromeHeader slot={slot} venueName={venueName} timezone={timezone} />
+      <div style={{ flex: 1, position: "relative", overflow: "hidden" }}>
+        <Rotation slot={slot} rotation={rotation} toast={toast} teaseEvent={tease} venueName={venueName} />
+      </div>
+      <ChromeFooter ticker={ticker} live={false} orientation={slot.orientation} />
     </div>
   );
 }

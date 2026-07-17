@@ -13,6 +13,7 @@ import {
 } from "./useLeaderboard";
 import { CheckinQR } from "@/modules/registration/CheckinQR";
 import { useSeasonPanel, type SeasonStanding } from "./useSeasonPanel";
+import { SUPPORT_TEXT } from "@/modules/signage/supportText";
 
 /**
  * Trivia leaderboard — public display route (docs/04 port, docs/01 DisplayCanvas).
@@ -51,7 +52,21 @@ export function Leaderboard() {
  * signage slot page also embeds it in game mode so the two boards share one code
  * path (docs/09 — reuse, don't fork).
  */
-export function LeaderboardBoard({ overrideGameId }: { overrideGameId: string | null }) {
+export function LeaderboardBoard({
+  overrideGameId,
+  holdInset,
+}: {
+  overrideGameId: string | null;
+  /**
+   * Signage PiP (owner beat 2026-07-16): a node the signage portrait game-mode board
+   * passes down so the HIDE-SCORES hold stage can split the canvas — the "scores sealed"
+   * messaging up top, this inset (the slot's NORMAL rotation, a mini portrait screen)
+   * framed as an ad panel below — so ads keep running while the host holds. Only the
+   * signage SlotDisplay passes it; the legacy /leaderboard route leaves it undefined and
+   * the hold stage renders full-screen ScoringInProgress exactly as before.
+   */
+  holdInset?: React.ReactNode;
+}) {
   const gameQuery = useCurrentGame(overrideGameId);
   const game = gameQuery.data ?? null;
   const { scoreboard, rounds, displayState } = useLeaderboardData(game?.id ?? null);
@@ -109,7 +124,9 @@ export function LeaderboardBoard({ overrideGameId }: { overrideGameId: string | 
       ) : stage === "qr" ? (
         <JoinScreen game={game} />
       ) : stage === "scoring" ? (
-        <ScoringInProgress />
+        // HIDE SCORES hold: signage passes a PiP inset → split the canvas so ads keep
+        // running (BEAT 2); the legacy /leaderboard route (no inset) keeps the full screen.
+        holdInset ? <ScoringHold inset={holdInset} /> : <ScoringInProgress />
       ) : game.status === "setup" || game.status === "stopped" ? (
         // Default STANDINGS stage before the host starts → the pre-game waiting screen
         // (countdown + registered teams + join QR), unchanged from pre-0038.
@@ -437,19 +454,97 @@ function HoldingScreen({ game, teams }: { game: Game; teams: ScoreboardRow[] }) 
 
 /* ── Stage: JOIN QR (manual 'qr' stage — no scores visible) ───────────────────── */
 
+// Small supporting-label floor, single-sourced from the signage cards (owner beat
+// 2026-07-15) so the step/caption micro-copy reads at 20 feet. This board is always
+// portrait (the /leaderboard route + the signage portrait game-mode board — landscape
+// game mode uses GameDisplayBoard, which has no board stages), so the portrait floor
+// is the right constant.
+const QR_SUPPORT = SUPPORT_TEXT.portrait; // 40
+
+/**
+ * JOIN QR stage — rebuilt to actually onboard the room (owner trivia-cutover beat
+ * 2026-07-16). Beyond the big QR + SCAN TO JOIN, it now spells out the three steps a
+ * phone-scanner walks through and calls out returning/legacy teams (imported from the
+ * old system, with NO join PIN) so their members know their team already exists and how
+ * to get onto it.
+ *
+ * Copy is TRUE to the live /checkin flow (modules/registration/Checkin.tsx + useCheckin.ts):
+ *   1. SCAN        → opens /checkin (the patron terminal landing).
+ *   2. SIGN IN     → email → a 6-digit code, no password (signInWithOtp, mailer_otp_length=6).
+ *   3. PICK / JOIN → RETURNING lists teams you're a member of (legacy captains claim their
+ *      imported team by email on first sign-in); NEW_PLAYER → start a team or JOIN an existing
+ *      one by PIN or "Ask to join". Legacy teams have NO PIN, so their path is request-to-join
+ *      (any teammate approves from their portal) OR the host's walk-up check-in at the stand
+ *      (Scoring search-any-team box). The callout below promises exactly those two routes.
+ */
 function JoinScreen({ game }: { game: Game }) {
   const url = typeof window !== "undefined" ? `${window.location.origin}/checkin` : "";
   return (
-    <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", gap: 28 }}>
-      <div style={{ fontSize: 34, opacity: 0.7, letterSpacing: 4 }}>BUNKER UNIFIED OS · ATOMIC PUB TRIVIA</div>
-      <div style={{ fontSize: 116, fontWeight: 700, letterSpacing: 3, lineHeight: 0.95, textShadow: "0 0 18px var(--terminal-glow)" }}>
-        SCAN TO JOIN<br />TONIGHT'S GAME
+    <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "space-between", textAlign: "center", gap: 20, paddingTop: 8 }}>
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 14 }}>
+        <div style={{ fontSize: QR_SUPPORT, opacity: 0.7, letterSpacing: 6 }}>SHELTER REGISTRATION · ATOMIC PUB TRIVIA</div>
+        <div style={{ fontSize: 128, fontWeight: 700, letterSpacing: 3, lineHeight: 0.92, textShadow: "0 0 18px var(--terminal-glow)" }}>
+          SCAN TO JOIN
+        </div>
+        <div style={{ background: "#000", padding: 26, border: "4px solid var(--terminal-green)", boxShadow: "0 0 28px var(--terminal-glow)", marginTop: 6 }}>
+          <CheckinQR size={440} />
+        </div>
+        <div style={{ fontSize: QR_SUPPORT, opacity: 0.75, letterSpacing: 3 }}>◊ POINT YOUR PHONE CAMERA AT THE CODE</div>
       </div>
-      <div style={{ background: "#000", padding: 28, border: "4px solid var(--terminal-green)", boxShadow: "0 0 28px var(--terminal-glow)" }}>
-        <CheckinQR size={560} />
+
+      {/* Three-step strip — the exact /checkin walk-through. */}
+      <div style={{ width: "100%", display: "flex", flexDirection: "column", gap: 16 }}>
+        <JoinStep n={1} title="SCAN" body="Open your phone camera and tap the link." />
+        <JoinStep n={2} title="SIGN IN" body="Enter your email — we send back a 6-digit code. No password, ever." />
+        <JoinStep n={3} title="PICK YOUR TEAM" body="Choose your crew, or start a new team in one screen." />
       </div>
-      <div style={{ fontSize: 40, opacity: 0.85 }}>{url}</div>
-      <div style={{ fontSize: 34, opacity: 0.7, letterSpacing: 2 }}>ATOMIC PUB TRIVIA · {game.game_date}</div>
+
+      {/* Returning / legacy-team callout — no PIN on imported teams, so request or host. */}
+      <div
+        className="terminal-border"
+        style={{ width: "100%", padding: "22px 30px", textAlign: "left", boxShadow: "0 0 16px var(--terminal-glow)" }}
+      >
+        <div style={{ fontSize: 54, fontWeight: 700, letterSpacing: 2, lineHeight: 1 }}>PLAYED BEFORE?</div>
+        <div style={{ fontSize: 40, marginTop: 12, lineHeight: 1.2 }}>
+          Your team is already on file. Sign in and it may be waiting for you — otherwise search for it
+          and <b>REQUEST TO JOIN</b>. A teammate waves you in from their portal, or just ask the host to
+          add you at the stand.
+        </div>
+      </div>
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+        <div style={{ fontSize: 40, opacity: 0.85, letterSpacing: 1 }}>{url}</div>
+        <div style={{ fontSize: QR_SUPPORT, opacity: 0.6, letterSpacing: 2 }}>ATOMIC PUB TRIVIA · {game.game_date}</div>
+      </div>
+    </div>
+  );
+}
+
+/** One numbered step in the JOIN QR walk-through strip. */
+function JoinStep({ n, title, body }: { n: number; title: string; body: string }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 22, textAlign: "left" }}>
+      <div
+        style={{
+          flexShrink: 0,
+          width: 78,
+          height: 78,
+          border: "3px solid var(--terminal-green)",
+          borderRadius: "50%",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          fontSize: 46,
+          fontWeight: 700,
+          boxShadow: "0 0 12px var(--terminal-glow)",
+        }}
+      >
+        {n}
+      </div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 46, fontWeight: 700, letterSpacing: 2, lineHeight: 1 }}>{title}</div>
+        <div style={{ fontSize: QR_SUPPORT, opacity: 0.8, lineHeight: 1.15, marginTop: 4 }}>{body}</div>
+      </div>
     </div>
   );
 }
@@ -475,6 +570,78 @@ function ScoringInProgress() {
         SCORES SEALED BY THE SHELTER AUTHORITY
       </div>
       <div style={{ fontSize: 40, opacity: 0.7, letterSpacing: 3 }}>STAND BY — STANDINGS RESUME SHORTLY</div>
+    </div>
+  );
+}
+
+/* ── Stage: SCORING HOLD with ad PiP (signage game mode only — BEAT 2) ─────────── */
+
+// The PiP inset is the slot's NORMAL rotation surface, authored at the real portrait
+// canvas size (1080×1920) so every template renders identically to a live screen, then
+// scaled down to a mini portrait feed — the "multiview-panel trick" (nested fixed-px
+// scale). The panel is capped near 45% of canvas height (owner spec).
+const PIP_CANVAS_W = CANVAS_W;   // 1080 — the inset renders a full portrait surface…
+const PIP_CANVAS_H = CANVAS_H;   // 1920 …then transform-scales to fit the panel below.
+const PIP_MAX_H = Math.round(CANVAS_H * 0.45); // ≈ 864 — the ~45% budget (owner spec)
+const PIP_MAX_W = CANVAS_W - 120;              // leave side margins inside the padded frame
+const PIP_SCALE = Math.min(PIP_MAX_W / PIP_CANVAS_W, PIP_MAX_H / PIP_CANVAS_H);
+const PIP_W = Math.round(PIP_CANVAS_W * PIP_SCALE);
+const PIP_H = Math.round(PIP_CANVAS_H * PIP_SCALE);
+
+/**
+ * HIDE-SCORES hold split: the "scores sealed" messaging up top, a framed ad panel below
+ * that runs the slot's live rotation (the `inset` node — a 1080×1920 portrait surface).
+ * The rotation inside advances on its own timers and obeys every gate (it IS the normal
+ * rotation), so promos keep cycling mid-game while the host holds the room.
+ */
+function ScoringHold({ inset }: { inset: React.ReactNode }) {
+  const [blink, setBlink] = useState(true);
+  useEffect(() => {
+    const id = window.setInterval(() => setBlink((b) => !b), 1000);
+    return () => window.clearInterval(id);
+  }, []);
+  return (
+    <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
+      {/* Upper: compact "scores sealed" hold messaging. */}
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", gap: 22, minHeight: 0 }}>
+        <div style={{ fontSize: QR_SUPPORT, opacity: 0.7, letterSpacing: 6 }}>◊ SHELTER AUTHORITY · SCORING TERMINAL</div>
+        <div style={{ fontSize: 128, fontWeight: 700, letterSpacing: 4, lineHeight: 0.95, textShadow: "0 0 22px var(--terminal-glow)" }}>
+          TABULATING
+          <span style={{ opacity: blink ? 1 : 0.15 }}>▊</span>
+        </div>
+        <div style={{ fontSize: 52, fontWeight: 700, letterSpacing: 2 }}>SCORES SEALED — STAND BY</div>
+      </div>
+
+      {/* Lower: framed ad panel with the mini rotation feed (~45% of canvas height). */}
+      <div style={{ flexShrink: 0, display: "flex", flexDirection: "column", alignItems: "center", gap: 12 }}>
+        <div style={{ fontSize: QR_SUPPORT, opacity: 0.65, letterSpacing: 4 }}>◆ MEANWHILE, ON THE SHELTER FEED ◆</div>
+        <div
+          style={{
+            width: PIP_W,
+            height: PIP_H,
+            overflow: "hidden",
+            border: "4px solid var(--terminal-green)",
+            boxShadow: "0 0 22px var(--terminal-glow)",
+            background: "#000",
+            position: "relative",
+          }}
+        >
+          {/* Nested fixed-px canvas: render the surface at 1080×1920, scale to the panel. */}
+          <div
+            style={{
+              position: "absolute",
+              top: 0,
+              left: 0,
+              width: PIP_CANVAS_W,
+              height: PIP_CANVAS_H,
+              transform: `scale(${PIP_SCALE})`,
+              transformOrigin: "top left",
+            }}
+          >
+            {inset}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
