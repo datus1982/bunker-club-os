@@ -17,7 +17,7 @@
 //      list POS on their own, so item-level visibility alone would miss it.
 // Description safety (docs/09): only text before `---` is shown; see menuText.publicBlurb.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { publicBlurb } from "./menuText.ts";
+import { publicBlurb, publicLongform } from "./menuText.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -155,7 +155,8 @@ Deno.serve(async (req) => {
             guid: item.guid,
             venue_id: VENUE_ID,
             name: item.name ?? "",
-            description: publicBlurb(item.description), // PUBLIC blurb only (docs/09 safety)
+            description: publicBlurb(item.description), // PUBLIC short blurb only (docs/09 safety)
+            long_blurb: publicLongform(item.description), // authored long-form after `--- recipe |` (recipe discarded, 0048)
             price: typeof item.price === "number" ? item.price : 0,
             image_url: imageUrl,
             image_storage_path: mirrored,
