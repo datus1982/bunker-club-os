@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase, VENUE_ID } from "@/shared/supabaseClient";
 import { fetchSlotQueueAdmin, fetchAssetsWithPlacements, swapQueuePositions, setQueueDuration, type AssetWithPlacements } from "./slotQueue";
-import type { Orientation, SignageItem, Template, ToastCacheRow } from "./useSignage";
+import type { Orientation, PriceOption, SignageItem, Template, ToastCacheRow } from "./useSignage";
 import type { SlotProgram } from "./mediaProgram";
 
 /**
@@ -288,7 +288,7 @@ export function useToastCache() {
       const [{ data: cache }, { data: menu }] = await Promise.all([
         supabase
           .from("toast_menu_cache")
-          .select("guid, name, price, image_storage_path, image_url, menu_group, out_of_stock, pos_visible, long_blurb")
+          .select("guid, name, price, image_storage_path, image_url, menu_group, out_of_stock, pos_visible, long_blurb, price_options")
           .eq("venue_id", VENUE_ID)
           .order("menu_group"),
         supabase.from("public_menu").select("guid, public_blurb"),
@@ -300,7 +300,7 @@ export function useToastCache() {
         guid: string; name: string | null; price: number | null;
         image_storage_path: string | null; image_url: string | null;
         menu_group: string | null; out_of_stock: boolean; pos_visible: boolean | null;
-        long_blurb: string | null;
+        long_blurb: string | null; price_options: PriceOption[] | null;
       }>).map((r) => ({
         guid: r.guid,
         name: r.name,
@@ -311,6 +311,7 @@ export function useToastCache() {
         pos_visible: r.pos_visible ?? true, // default-visible if unsynced (mirrors 0034)
         public_blurb: blurbs.get(r.guid) ?? null,
         long_blurb: r.long_blurb, // 0048 — available to templates later; nothing renders it yet
+        price_options: r.price_options ?? null, // 0050 — available to templates later; nothing renders it yet
       }));
     },
   });

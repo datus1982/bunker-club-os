@@ -815,6 +815,10 @@
   align-items: baseline;
   gap: 0.5rem;
   width: 100%;
+  /* Allow a wide pour-options row to drop to its own line under the name on narrow
+     screens; a single price never triggers this (name + dots + price always fit). */
+  flex-wrap: wrap;
+  row-gap: 0.25rem;
 }
 .site-menu-item__name {
   color: var(--site-ink);
@@ -838,6 +842,46 @@
   white-space: nowrap;
   flex-shrink: 0;
 }
+/* Pour-size options (0050) rendered where the single price would be — SHOT $9 ·
+   COCKTAIL $11 · DOUBLE $12 (PINT/PITCHER for drafts). Compact chips: label small-caps
+   muted, price emphasized (amber mono). `margin-left:auto` right-aligns the block; it
+   wraps its own chips, and the whole block wraps under the name on very narrow screens. */
+.site-menu-item__options {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: flex-end;
+  margin-left: auto;
+  gap: 0.15rem 0.5rem;
+  min-width: 0;
+}
+.site-menu-opt {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.3rem;
+  white-space: nowrap;
+}
+/* Middot separator between chips (not after the last). Sits at the chip's trailing
+   edge so a wrap never orphans a leading dot on a new line. */
+.site-menu-opt:not(:last-child)::after {
+  content: "·";
+  color: var(--site-line-strong);
+  margin-left: 0.5rem;
+}
+.site-menu-opt__label {
+  color: var(--site-ink-dim);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.site-menu-opt__price {
+  color: var(--site-amber);
+  font-family: var(--site-font-mono);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
 .site-menu-item__blurb {
   color: var(--site-ink-dim);
   font-size: 0.9rem;
