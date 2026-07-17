@@ -73,8 +73,8 @@ SIZE_FLOOR=1048576   # 1 MiB — a verified output must exceed this
 # =============================================================================
 # ffprobe helpers  (first stream only; empty output == absent)
 # =============================================================================
-probe_vcodec() { ffprobe -v error -select_streams v:0 -show_entries stream=codec_name -of csv=p=0 "$1" 2>/dev/null | head -1; }
-probe_acodec() { ffprobe -v error -select_streams a:0 -show_entries stream=codec_name -of csv=p=0 "$1" 2>/dev/null | head -1; }
+probe_vcodec() { ffprobe -v error -select_streams v:0 -show_entries stream=codec_name -of csv=p=0 "$1" 2>/dev/null | head -1 | sed "s/,*$//"; }
+probe_acodec() { ffprobe -v error -select_streams a:0 -show_entries stream=codec_name -of csv=p=0 "$1" 2>/dev/null | head -1 | sed "s/,*$//"; }
 probe_duration() { ffprobe -v error -show_entries format=duration -of csv=p=0 "$1" 2>/dev/null | head -1; }
 probe_height() { ffprobe -v error -select_streams v:0 -show_entries stream=height -of csv=p=0 "$1" 2>/dev/null | head -1; }
 probe_width() { ffprobe -v error -select_streams v:0 -show_entries stream=width -of csv=p=0 "$1" 2>/dev/null | head -1; }
