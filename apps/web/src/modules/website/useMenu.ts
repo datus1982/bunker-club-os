@@ -14,6 +14,13 @@ import { supabase, VENUE_ID } from "@/shared/supabaseClient";
  * group the group simply drops out (the page is empty-state tolerant).
  */
 
+/** One pour-size option (0050) — a display label + dollar price, ascending by price.
+ *  Public by construction (the sync drops internal fractional builds). */
+export interface PriceOption {
+  label: string;
+  price: number;
+}
+
 export interface MenuItem {
   guid: string;
   name: string;
@@ -22,6 +29,9 @@ export interface MenuItem {
    *  Purely additive: rendered as a softer paragraph under the short blurb when present. */
   longBlurb: string | null;
   price: number | null;
+  /** Pour-size options (0050) for $0-base liquor/draft items — SHOT/COCKTAIL/DOUBLE,
+   *  PINT/PITCHER, etc. When present, rendered IN PLACE of the single price. null = none. */
+  priceOptions: PriceOption[] | null;
   image: string | null;
 }
 
@@ -96,7 +106,7 @@ export function useMenu() {
       const [menuRes, orderRes, hiddenRes] = await Promise.all([
         supabase
           .from("public_menu")
-          .select('guid, "group", name, public_blurb, long_blurb, price, image, in_stock')
+          .select('guid, "group", name, public_blurb, long_blurb, price, price_options, image, in_stock')
           .eq("venue_id", VENUE_ID),
         supabase
           .from("venue_settings")
@@ -142,8 +152,20 @@ export function useMenu() {
         public_blurb: string | null;
         long_blurb: string | null;
         price: number | null;
+        price_options: PriceOption[] | null;
         image: string | null;
         in_stock: boolean;
+      };
+
+      // Defensive: only accept well-formed {label:string, price:number} entries; a malformed
+      // price_options never crashes the row (falls back to the single price / hide-$0 path).
+      const cleanOptions = (raw: PriceOption[] | null): PriceOption[] | null => {
+        if (!Array.isArray(raw)) return null;
+        const ok = raw.filter(
+          (o): o is PriceOption =>
+            !!o && typeof o.label === "string" && o.label.length > 0 && typeof o.price === "number",
+        );
+        return ok.length > 0 ? ok : null;
       };
 
       const byGroup = new Map<string, MenuItem[]>();
@@ -159,6 +181,7 @@ export function useMenu() {
           blurb: r.public_blurb,
           longBlurb: r.long_blurb,
           price: r.price,
+          priceOptions: cleanOptions(r.price_options),
           image: r.image,
         });
       }

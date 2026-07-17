@@ -111,6 +111,14 @@ export interface ToastCacheRow {
   public_blurb: string | null; // description-safe SHORT blurb (text before `---`), from public_menu
   long_blurb: string | null; // owner-authored long-form (after `--- recipe |`, recipe discarded) — 0048.
                              // Available for templates to read later; NO template renders it yet.
+  price_options: PriceOption[] | null; // pour-size options (0050) — anon-readable cache column,
+                             // public by construction. Available to templates later; NO template renders it yet.
+}
+
+/** One pour-size option (0050): display label + dollar price. See priceOptions.ts (write side). */
+export interface PriceOption {
+  label: string;
+  price: number;
 }
 
 export interface LiveGame {
@@ -279,7 +287,7 @@ export function useSlot(slug: string) {
       const [{ data: cache }, { data: menu }] = await Promise.all([
         supabase
           .from("toast_menu_cache")
-          .select("guid, name, price, image_storage_path, image_url, menu_group, out_of_stock, pos_visible, long_blurb")
+          .select("guid, name, price, image_storage_path, image_url, menu_group, out_of_stock, pos_visible, long_blurb, price_options")
           .eq("venue_id", VENUE_ID),
         supabase.from("public_menu").select("guid, public_blurb"),
       ]);
@@ -291,7 +299,7 @@ export function useSlot(slug: string) {
         guid: string; name: string | null; price: number | null;
         image_storage_path: string | null; image_url: string | null;
         menu_group: string | null; out_of_stock: boolean; pos_visible: boolean | null;
-        long_blurb: string | null;
+        long_blurb: string | null; price_options: PriceOption[] | null;
       }>) {
         map.set(r.guid, {
           guid: r.guid,
@@ -303,6 +311,7 @@ export function useSlot(slug: string) {
           pos_visible: r.pos_visible ?? true, // default-visible if unsynced (mirrors 0034)
           public_blurb: blurbs.get(r.guid) ?? null,
           long_blurb: r.long_blurb, // anon-readable cache column (0048); no template renders it yet
+          price_options: r.price_options ?? null, // anon-readable cache column (0050); no template renders it yet
         });
       }
       return map;

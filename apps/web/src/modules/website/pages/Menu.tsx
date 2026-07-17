@@ -60,11 +60,26 @@ export function Menu() {
                           <div className="site-menu-item__head">
                             <span className="site-menu-item__name">{it.name}</span>
                             <span className="site-menu-item__dots" aria-hidden />
-                            {/* DECISION: hide the price when it's 0 or null. Some Toast
-                                items (e.g. "Bunker Beer", a variable/ask-the-bar item)
-                                carry a $0 base price that shouldn't render as "$0". */}
-                            {it.price != null && it.price > 0 && (
-                              <span className="site-menu-item__price">${fmtPrice(it.price)}</span>
+                            {/* Pour-size options (0050) render IN PLACE of the single price —
+                                a $0-base liquor/draft item's real prices live here (SHOT/
+                                COCKTAIL/DOUBLE, PINT/PITCHER). When there are options the base
+                                price is meaningless, so it's never shown alongside. Falls back
+                                to the single price otherwise; DECISION: hide a 0/null price
+                                (variable/ask-the-bar items shouldn't render "$0"). */}
+                            {it.priceOptions ? (
+                              <span className="site-menu-item__options">
+                                {it.priceOptions.map((o, i) => (
+                                  <span key={`${o.label}-${i}`} className="site-menu-opt">
+                                    <span className="site-menu-opt__label">{o.label}</span>
+                                    <span className="site-menu-opt__price">${fmtPrice(o.price)}</span>
+                                  </span>
+                                ))}
+                              </span>
+                            ) : (
+                              it.price != null &&
+                              it.price > 0 && (
+                                <span className="site-menu-item__price">${fmtPrice(it.price)}</span>
+                              )
                             )}
                           </div>
                           {it.blurb && <p className="site-menu-item__blurb">{it.blurb}</p>}
