@@ -130,11 +130,16 @@ function CaptureVideo({
     async function acquire() {
       const md = navigator.mediaDevices;
       if (!md?.getUserMedia) { if (!cancelled) setPhase("nosignal"); return; }
+      // The stream this attempt is holding right now. Tracked so EVERY exit path (throw, cancel)
+      // stops the freshly-grabbed stream — stopStream() only stops streamRef.current (the PREVIOUS
+      // live stream), so a device-match miss or a cancel mid-acquire would otherwise leak this one
+      // (a typo'd device match re-probing every 8s = hundreds of held streams over a bar night).
+      let pending: MediaStream | null = null;
       try {
         // A permissive first grab both unlocks labels (blank until permission) and, when no
         // device_match is given, IS the feed. On the kiosk shell permission is pre-granted so
         // this resolves instantly; in a plain browser it prompts once.
-        let stream = await grab(true);
+        pending = await grab(true);
         const cams = (await md.enumerateDevices()).filter((d) => d.kind === "videoinput");
         if (cams.length === 0) throw new Error("no videoinput");
 
@@ -146,14 +151,16 @@ function CaptureVideo({
         if (!target) throw new Error("no device matches");
 
         // Re-acquire the exact device unless the generic grab already landed on it.
-        const activeId = stream.getVideoTracks()[0]?.getSettings().deviceId;
+        const activeId = pending.getVideoTracks()[0]?.getSettings().deviceId;
         if (target.deviceId && target.deviceId !== activeId) {
-          for (const t of stream.getTracks()) t.stop();
-          stream = await grab({ deviceId: { exact: target.deviceId } });
+          for (const t of pending.getTracks()) t.stop();
+          pending = await grab({ deviceId: { exact: target.deviceId } });
         }
 
-        if (cancelled) { for (const t of stream.getTracks()) t.stop(); return; }
+        if (cancelled) { for (const t of pending.getTracks()) t.stop(); return; }
 
+        const stream = pending;
+        pending = null; // ownership transfers to streamRef/state; the catch must not stop it now
         stopStream();
         streamRef.current = stream;
         // Publish the stream to state so the <video> mounts; the srcObject is attached by the
@@ -165,6 +172,9 @@ function CaptureVideo({
         setStream(stream);
         setPhase("live");
       } catch {
+        // Stop the stream this attempt grabbed (device-match miss, exact re-grab throw, etc.) so it
+        // never leaks; stopStream() below clears any prior live stream + resets state.
+        if (pending) for (const t of pending.getTracks()) t.stop();
         if (!cancelled) { setPhase("nosignal"); stopStream(); }
       }
     }

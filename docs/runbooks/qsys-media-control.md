@@ -19,11 +19,13 @@ trivia.
 ## Endpoint
 
 ```
-POST https://os.bunkerokc.com/functions/v1/media-control
-     (or https://ysrqvdutayirpoibdlbf.functions.supabase.co/media-control)
+POST https://ysrqvdutayirpoibdlbf.functions.supabase.co/media-control
 Header: x-qsys-token: <QSYS_CONTROL_TOKEN>
 Body:   application/json
 ```
+
+(The Pages domain `os.bunkerokc.com/functions/v1/*` does NOT proxy to Supabase — call the
+functions host directly.)
 
 Auth is the `x-qsys-token` header only (no JWT). The token is the secret **`QSYS_CONTROL_TOKEN`**,
 held by the Q-SYS core. It is **separate** from the media shell's `MEDIA_DEVICE_TOKEN` — a
@@ -51,6 +53,10 @@ curl -sS -X POST "https://api.supabase.com/v1/projects/ysrqvdutayirpoibdlbf/secr
 `slug` (the screen, e.g. `landscape-bar`) is required on every command. The slot must exist and be
 **landscape** (programs are a landscape-only feature). `playlist` accepts a playlist **id** (uuid)
 or a **name** (case-insensitive, exact — ambiguous names return 409).
+
+`cmd:"capture"` writes a bare `{kind:"capture"}` — it uses the fullbleed default with NO device
+match, so a UCI capture press RESETS any DEVICE MATCH or FRAMED that was set on the screen card in
+the hub. Configure those in the hub if they matter, or drive capture only from the hub.
 
 ### JSON shapes
 
