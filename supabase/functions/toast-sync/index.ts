@@ -21,6 +21,31 @@ import {
   type RawOrder,
   type SalesRow,
 } from "./eventCounter.ts";
+import {
+  buildNameMap,
+  creditsForSelection,
+  emptyNameMap,
+  type CountSelection,
+  type NameMap,
+} from "./selectionCounts.ts";
+
+// Version marker — bumped when the counting semantics change so a run's response proves
+// deployed==source. v8 = cross-ring (modifier-aware) counting.
+const TOAST_SYNC_VERSION = "v8-cross-ring";
+
+// Item metadata resolved from toast_menu_cache, used to give a MODIFIER-credited item its
+// canonical name / price / menu group (rung items keep using the selection's own values).
+interface CacheMeta { name: string | null; price: number | null; menu_group: string | null }
+// A group NAME (trimmed) → the set of menu-group GUIDs carrying that name. Lets a modifier
+// credit land in the right per-group sales_cache bucket via the credited item's native group.
+type GroupGuidByName = Map<string, Set<string>>;
+const normGroup = (s: string | null | undefined) => (s ?? "").trim();
+
+// The per-venue counting context: everything the shared counting core needs beyond the orders.
+interface CountCtx { nameMap: NameMap; cacheMeta: Map<string, CacheMeta>; groupGuidByName: GroupGuidByName }
+function emptyCountCtx(): CountCtx {
+  return { nameMap: emptyNameMap(), cacheMeta: new Map(), groupGuidByName: new Map() };
+}
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -107,6 +132,7 @@ interface ToastSelection {
   preDiscountPrice: number;
   quantity: number;
   voided: boolean;
+  modifiers?: CountSelection["modifiers"];
 }
 interface ToastOrder {
   checks?: { selections?: ToastSelection[]; voided?: boolean }[];
@@ -131,20 +157,34 @@ interface TopItem { rank: number; item_guid: string; item_name: string; price: n
 // existing sales_cache math byte-for-byte so a charting item's history reconciles with its
 // sales_cache.sales_count). Additive: feeds sales_history (0043) for the smart_toast slides;
 // existing sales_cache output is untouched.
-interface DayItem { name: string; menu_group: string | null; quantity: number }
-function allItemQuantities(orders: ToastOrder[]): Map<string, DayItem> {
+interface DayItem { name: string; menu_group: string | null; quantity: number; fromRung: boolean }
+// CROSS-RING: credits the rung item AND item-matched modifiers (creditsForSelection). Rung
+// metadata (name/group from the selection) wins over modifier metadata (from cache) so an item
+// ever rung standalone keeps its selection-sourced label — byte-identical to the pre-arc output
+// whenever ctx is empty (no modifiers matched). Void/excessFood gating unchanged.
+function allItemQuantities(orders: ToastOrder[], ctx: CountCtx): Map<string, DayItem> {
   const items = new Map<string, DayItem>();
   for (const order of orders) {
     if (order.excessFood) continue;
     for (const check of order.checks ?? []) {
       for (const sel of check.selections ?? []) {
         if (sel.voided) continue;
-        if (!sel.item) continue;
-        const guid = sel.item.guid;
-        const qty = sel.quantity || 1;
-        const existing = items.get(guid);
-        if (existing) existing.quantity += qty;
-        else items.set(guid, { name: sel.displayName, menu_group: sel.itemGroup?.name ?? null, quantity: qty });
+        for (const credit of creditsForSelection(sel as CountSelection, ctx.nameMap)) {
+          const existing = items.get(credit.guid);
+          if (existing) {
+            existing.quantity += credit.qty;
+            if (credit.source === "item" && !existing.fromRung) {
+              existing.name = sel.displayName;
+              existing.menu_group = sel.itemGroup?.name ?? null;
+              existing.fromRung = true;
+            }
+          } else if (credit.source === "item") {
+            items.set(credit.guid, { name: sel.displayName, menu_group: sel.itemGroup?.name ?? null, quantity: credit.qty, fromRung: true });
+          } else {
+            const cm = ctx.cacheMeta.get(credit.guid);
+            items.set(credit.guid, { name: cm?.name ?? "", menu_group: cm?.menu_group ?? null, quantity: credit.qty, fromRung: false });
+          }
+        }
       }
     }
   }
@@ -179,23 +219,42 @@ async function upsertSalesHistory(admin: Admin, venueId: string, businessDate: s
 // receiptLinePrice; rank by units sold. (Top-customers mode intentionally dropped — PII on
 // a public screen, out of docs/08 scope.) DEPTH (smart-slides arc): MAIN_MENU_ALL keeps the
 // deepest list (top-10) so the Top Sellers slide can auto-deepen; per-group buckets stay top-5.
-function calculateTopItems(orders: ToastOrder[], menuGuid: string): TopItem[] {
+// CROSS-RING: a per-group bucket collects (a) rung items whose SELECTION group == menuGuid
+// (byte-identical to the pre-arc filter, incl. shared items rung under multiple groups) and
+// (b) item-matched MODIFIER credits whose CREDITED item natively lives in this group (resolved
+// from cache: the credited item's menu_group name → this group's guid). MAIN_MENU_ALL takes
+// everything. Rung metadata (name/price) wins over modifier metadata for display.
+function calculateTopItems(orders: ToastOrder[], menuGuid: string, ctx: CountCtx): TopItem[] {
   const overall = menuGuid === "MAIN_MENU_ALL";
-  const items = new Map<string, { name: string; price: number; count: number }>();
+  const items = new Map<string, { name: string; price: number; count: number; fromRung: boolean }>();
 
   for (const order of orders) {
     if (order.excessFood) continue;
     for (const check of order.checks ?? []) {
       for (const sel of check.selections ?? []) {
         if (sel.voided) continue;
-        if (!overall && sel.itemGroup?.guid !== menuGuid) continue;
-        if (!sel.item) continue;
-        const guid = sel.item.guid;
-        const existing = items.get(guid);
-        if (existing) {
-          existing.count += sel.quantity || 1;
-        } else {
-          items.set(guid, { name: sel.displayName, price: sel.receiptLinePrice || 0, count: sel.quantity || 1 });
+        for (const credit of creditsForSelection(sel as CountSelection, ctx.nameMap)) {
+          // Group membership: rung → selection group guid; modifier → credited item's native group.
+          let inGroup: boolean;
+          if (overall) inGroup = true;
+          else if (credit.source === "item") inGroup = sel.itemGroup?.guid === menuGuid;
+          else inGroup = ctx.groupGuidByName.get(normGroup(ctx.cacheMeta.get(credit.guid)?.menu_group))?.has(menuGuid) ?? false;
+          if (!inGroup) continue;
+
+          const existing = items.get(credit.guid);
+          if (existing) {
+            existing.count += credit.qty;
+            if (credit.source === "item" && !existing.fromRung) {
+              existing.name = sel.displayName;
+              existing.price = sel.receiptLinePrice || 0;
+              existing.fromRung = true;
+            }
+          } else if (credit.source === "item") {
+            items.set(credit.guid, { name: sel.displayName, price: sel.receiptLinePrice || 0, count: credit.qty, fromRung: true });
+          } else {
+            const cm = ctx.cacheMeta.get(credit.guid);
+            items.set(credit.guid, { name: cm?.name ?? "", price: cm?.price ?? 0, count: credit.qty, fromRung: false });
+          }
         }
       }
     }
@@ -285,6 +344,7 @@ async function runEventsPass(
   tz: string,
   token: string,
   closeoutHour: number,
+  ctx: CountCtx,
 ): Promise<{ live_updated: number; stats_written: number; running: number; completed: number; skips: string[] }> {
   const now = new Date();
   const nowMs = now.getTime();
@@ -342,7 +402,7 @@ async function runEventsPass(
     const fromMs = Date.parse(ev.fire_at);
     if (Number.isNaN(fromMs)) continue;
     const orders = await ordersCovering(new Date(fromMs), now);
-    const count = countUnitsForGuid(orders, ev.toast_guid, fromMs, nowMs);
+    const count = countUnitsForGuid(orders, ev.toast_guid, fromMs, nowMs, ctx.nameMap);
     const prev = (ev.fields as Record<string, unknown> | null)?.live_count;
     if (prev !== count) {
       const merged = mergeFields(ev.fields, { live_count: count });
@@ -358,7 +418,7 @@ async function runEventsPass(
     if (Number.isNaN(fromMs)) continue;
     const endMs = fromMs + (ev.window_minutes ?? 0) * 60_000;
     const orders = await ordersCovering(new Date(fromMs), new Date(endMs));
-    const units = countUnitsForGuid(orders, ev.toast_guid, fromMs, endMs);
+    const units = countUnitsForGuid(orders, ev.toast_guid, fromMs, endMs, ctx.nameMap);
 
     // Baseline = this item's average units per prior business date from sales_cache history.
     const eventBusinessDate = businessDateFor(new Date(fromMs), tz, closeoutHour);
@@ -423,7 +483,9 @@ async function runBackfill(
     if (seen.has(bd)) continue;
     seen.add(bd);
     const orders = await getOrders(token, bd);
-    const dayItems = allItemQuantities(orders);
+    // Backfill is historical (pre-restructure orders have no cocktail modifiers) — rung-only
+    // counting, byte-identical to the pre-arc pass. Cross-ring applies from deploy forward.
+    const dayItems = allItemQuantities(orders, emptyCountCtx());
     const n = await upsertSalesHistory(admin, venue.id, bd, dayItems);
     datesProcessed++;
     rowsUpserted += n;
@@ -477,11 +539,19 @@ Deno.serve(async (req) => {
         const tz = (venue.timezone as string) || "America/Chicago";
         backfills.push(await runBackfill(admin, { id: venue.id, tz }, token, closeoutHour, backfillDays, backfillOffset));
       }
-      return json({ ok: true, backfill: { days: backfillDays, offset: backfillOffset }, results: backfills }, 200);
+      return json({ ok: true, version: TOAST_SYNC_VERSION, backfill: { days: backfillDays, offset: backfillOffset }, results: backfills }, 200);
     }
 
     const menuGroups = await getMenuGroups(token);
     const groupName = new Map(menuGroups.map((g) => [g.guid, g.name]));
+    // Group NAME (trimmed) → set of group GUIDs, so a modifier-credited item (which knows only
+    // its native group NAME from the cache) can be bucketed into the right sales_cache group.
+    const groupGuidByName: GroupGuidByName = new Map();
+    for (const g of menuGroups) {
+      const key = normGroup(g.name);
+      if (!key) continue;
+      (groupGuidByName.get(key) ?? groupGuidByName.set(key, new Set()).get(key)!).add(g.guid);
+    }
 
     const results: Record<string, unknown>[] = [];
 
@@ -513,9 +583,27 @@ Deno.serve(async (req) => {
       const win = (winRow?.value as { open?: string; close?: string } | null) ?? null;
       const inWindow = force || withinWindow(new Date(), tz, win);
 
+      // CROSS-RING counting context — read the venue's whole menu cache ONCE. Feeds the shared
+      // counting core (name→guid matching for modifiers + canonical name/price/group for modifier
+      // credits) AND the NOW-POURING hidden gate below (pos_visible=false rows). Built before the
+      // events pass so the live counter can credit liquor-first rings too.
+      const { data: cacheRows } = await admin
+        .from("toast_menu_cache")
+        .select("guid, name, price, menu_group, pos_visible")
+        .eq("venue_id", venue.id);
+      const cacheMeta = new Map<string, CacheMeta>();
+      for (const r of (cacheRows ?? []) as { guid: string; name: string | null; price: number | null; menu_group: string | null }[]) {
+        cacheMeta.set(r.guid, { name: r.name, price: r.price, menu_group: r.menu_group });
+      }
+      const nameMap = buildNameMap((cacheRows ?? []) as { guid: string; name: string | null }[]);
+      const ctx: CountCtx = { nameMap, cacheMeta, groupGuidByName };
+      if (nameMap.ambiguous.size > 0) {
+        console.warn(`toast-sync: ${nameMap.ambiguous.size} ambiguous item name(s) excluded from modifier matching (venue ${venue.id}): ${[...nameMap.ambiguous].join(", ")}`);
+      }
+
       // EVENT COUNTER pass — runs on EVERY invocation, independent of the sales window gate.
       // (docs/13: the live counter must keep ticking during an event even outside bar hours.)
-      const events = await runEventsPass(admin, venue.id, tz, token, effectiveCloseout);
+      const events = await runEventsPass(admin, venue.id, tz, token, effectiveCloseout, ctx);
 
       if (!inWindow) {
         // Sales half is skipped outside operating hours — shape preserved for existing readers,
@@ -546,7 +634,7 @@ Deno.serve(async (req) => {
 
       let rowsWritten = 0;
       for (const guid of targetGuids) {
-        const top = calculateTopItems(orders, guid);
+        const top = calculateTopItems(orders, guid, ctx);
         // Replace this group's cached rows atomically-ish: clear then insert fresh.
         await admin.from("sales_cache").delete().eq("venue_id", venue.id).eq("menu_group_guid", guid);
         if (top.length > 0) {
@@ -578,20 +666,19 @@ Deno.serve(async (req) => {
       // HISTORY PASS (additive, smart-slides arc): upsert TODAY's per-item quantities into
       // sales_history so the smart_toast slides can answer "last 7 days" / "last month". Same
       // orders + same counting as sales_cache above (no extra Toast call). Idempotent per day.
-      const historyRows = await upsertSalesHistory(admin, venue.id, businessDate, allItemQuantities(orders));
+      const historyRows = await upsertSalesHistory(admin, venue.id, businessDate, allItemQuantities(orders, ctx));
 
       // LAST ITEM RUNG IN → venue_settings.signage_last_rung (NOW POURING ticker source).
       // Only when orders exist AND a qualifying selection is found — otherwise leave the prior
       // value in place (the display ages it out after 90 min).
+      // NOTE: signage_last_rung KEEPS crediting the rung item only (display semantics — "the last
+      // thing rung in" — not a tally). Cross-ring counting is deliberately NOT applied here.
       let lastRung: LastRung | null = null;
       if (orders.length > 0) {
-        const { data: hiddenRows } = await admin
-          .from("toast_menu_cache")
-          .select("guid, name")
-          .eq("venue_id", venue.id)
-          .eq("pos_visible", false);
-        const hiddenGuids = new Set((hiddenRows ?? []).map((h: { guid: string }) => h.guid));
-        const hiddenNames = new Set((hiddenRows ?? []).map((h: { name: string | null }) => String(h.name ?? "").trim().toLowerCase()));
+        const hidden = ((cacheRows ?? []) as { guid: string; name: string | null; pos_visible?: boolean | null }[])
+          .filter((h) => h.pos_visible === false);
+        const hiddenGuids = new Set(hidden.map((h) => h.guid));
+        const hiddenNames = new Set(hidden.map((h) => String(h.name ?? "").trim().toLowerCase()));
         lastRung = computeLastRung(orders, hiddenGuids, hiddenNames);
         if (lastRung) {
           const { error: rungErr } = await admin
@@ -604,7 +691,7 @@ Deno.serve(async (req) => {
       results.push({ venue: venue.id, businessDate, closeoutHour: effectiveCloseout, orders: orders.length, groups: targetGuids.length, rowsWritten, historyRows, groupNames: targetGuids.map((g) => groupName.get(g) ?? g), last_rung: lastRung?.name ?? null, events });
     }
 
-    return json({ ok: true, results }, 200);
+    return json({ ok: true, version: TOAST_SYNC_VERSION, results }, 200);
   } catch (error) {
     console.error("toast-sync error:", error);
     return json({ error: error instanceof Error ? error.message : String(error) }, 500);

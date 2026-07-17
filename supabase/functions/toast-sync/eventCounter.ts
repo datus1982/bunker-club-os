@@ -9,12 +9,19 @@
 // The counter is display copy only (docs/13 guardrail: never implies per-person tracking). It
 // reuses the same Toast order shape toast-sync already pulls (checks[].selections[]), plus the
 // order-level `openedDate` for the time window and voided flags for exclusion.
+//
+// CROSS-RING (2026-07): the counter now credits a linked item rung EITHER way — as the item OR
+// as an item-matched modifier — by delegating per-selection crediting to selectionCounts.ts. So
+// a Rocket Sauce rung liquor-first still ticks its event counter. Pass a NameMap built from
+// toast_menu_cache to enable modifier matching; omit it and only the rung item is counted.
+import { creditsForSelection, emptyNameMap, type CountSelection, type NameMap } from "./selectionCounts.ts";
 
 // ── Toast order shapes (subset we read) ──────────────────────────────────────
 export interface RawSelection {
   item?: { guid?: string } | null;
   quantity?: number;
   voided?: boolean;
+  modifiers?: CountSelection["modifiers"];
 }
 export interface RawCheck {
   selections?: RawSelection[];
@@ -27,15 +34,18 @@ export interface RawOrder {
 }
 
 /**
- * Sum the quantities of `guid` across orders opened within [fromMs, toMs] (inclusive),
- * excluding voided orders, voided checks, and voided selections. Orders with no parseable
- * openedDate are skipped (can't place them in the window).
+ * Sum the units of `guid` across orders opened within [fromMs, toMs] (inclusive), excluding
+ * voided orders, voided checks, and voided selections. Orders with no parseable openedDate are
+ * skipped (can't place them in the window). CROSS-RING: `guid` is credited whether it was rung
+ * as the item OR as an item-matched modifier — pass the venue's NameMap to enable the modifier
+ * side (default = rung item only, byte-identical to the pre-arc counter).
  */
 export function countUnitsForGuid(
   orders: RawOrder[],
   guid: string,
   fromMs: number,
   toMs: number,
+  nameMap: NameMap = emptyNameMap(),
 ): number {
   let units = 0;
   for (const order of orders) {
@@ -46,8 +56,9 @@ export function countUnitsForGuid(
       if (check.voided) continue;
       for (const sel of check.selections ?? []) {
         if (sel.voided) continue;
-        if (sel.item?.guid !== guid) continue;
-        units += sel.quantity ?? 1;
+        for (const credit of creditsForSelection(sel as CountSelection, nameMap)) {
+          if (credit.guid === guid) units += credit.qty;
+        }
       }
     }
   }
