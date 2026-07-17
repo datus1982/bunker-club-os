@@ -17,6 +17,18 @@ import { Modal, Field, input, btnPrimary, btnGhost, checkRow } from "./ui";
  */
 
 interface RosterMember { profile_id: string; display_name: string | null; email: string | null; role: string; }
+interface JoinRequest { id: string; profile_id: string; created_at: string; }
+
+// Relative "when requested" phrasing for the pending-requests list (no seconds precision needed).
+function relTime(iso: string): string {
+  const secs = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 1000));
+  if (secs < 60) return "just now";
+  const mins = Math.floor(secs / 60);
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  return `${Math.floor(hrs / 24)}d ago`;
+}
 
 export interface EditableTeam {
   id: string;
@@ -52,22 +64,43 @@ export function TeamEditorDialog({
   const [pinBusy, setPinBusy] = useState(false);
   const [pinMsg, setPinMsg] = useState<string | null>(null);
   const [roster, setRoster] = useState<RosterMember[] | null>(null);
+  // Pending join requests for THIS team. RLS (0019 join_requests_select) returns rows only
+  // to team members + venue staff (staff+), so a viewer who can't act sees an empty list and
+  // the section never renders. approve_join_request enforces the same authority server-side.
+  const [requests, setRequests] = useState<JoinRequest[] | null>(null);
+  const [reqBusy, setReqBusy] = useState<string | null>(null);
 
   const teamId = initial?.id;
   useEffect(() => {
     if (mode !== "edit" || !teamId) return;
     let cancelled = false;
     (async () => {
-      const [{ data: pinData }, { data: rosterData }] = await Promise.all([
+      const [{ data: pinData }, { data: rosterData }, { data: reqData }] = await Promise.all([
         supabase.rpc("team_has_pin", { p_team_id: teamId }),
         supabase.rpc("team_roster", { p_team_id: teamId }),
+        supabase.from("team_join_requests").select("id, profile_id, created_at").eq("team_id", teamId).eq("status", "pending"),
       ]);
       if (cancelled) return;
       setHasPin(pinData === true);
       setRoster((rosterData as RosterMember[] | null) ?? []);
+      setRequests((reqData as JoinRequest[] | null) ?? []);
     })();
     return () => { cancelled = true; };
   }, [mode, teamId]);
+
+  const approveRequest = async (requestId: string) => {
+    if (!teamId) return;
+    setReqBusy(requestId);
+    setError(null);
+    const { error: e } = await supabase.rpc("approve_join_request", { p_request_id: requestId });
+    if (e) { setError(e.message); setReqBusy(null); return; }
+    // Optimistic remove; the approved player is now a member, so refresh the roster too.
+    setRequests((cur) => (cur ?? []).filter((r) => r.id !== requestId));
+    const { data: rosterData } = await supabase.rpc("team_roster", { p_team_id: teamId });
+    setRoster((rosterData as RosterMember[] | null) ?? []);
+    setReqBusy(null);
+    log("[TeamEditor] approved join request", requestId);
+  };
 
   const setPin = async (clear: boolean) => {
     if (!teamId) return;
@@ -209,6 +242,29 @@ export function TeamEditorDialog({
                 </div>
               )}
             </Field>
+
+            {requests && requests.length > 0 && (
+              <Field label={`PENDING JOIN REQUESTS  ·  ${requests.length}`}>
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {requests.map((r) => (
+                    <div key={r.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                      {/* The requester isn't a member yet, so profiles RLS blocks their name/email
+                          (same limit the portal hits) — show a short id, never a wider surface. */}
+                      <span style={{ fontSize: 18 }}>
+                        player {r.profile_id.slice(0, 6)}
+                        <span style={{ opacity: 0.6, marginLeft: 8 }}>{relTime(r.created_at)}</span>
+                      </span>
+                      <button type="button" onClick={() => approveRequest(r.id)} disabled={reqBusy === r.id} style={btnPrimary}>
+                        {reqBusy === r.id ? "…" : "APPROVE"}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ fontSize: 16, opacity: 0.6, marginTop: 6 }}>
+                  Approving adds them to this team's roster.
+                </div>
+              </Field>
+            )}
           </>
         )}
 
