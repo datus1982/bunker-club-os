@@ -12,6 +12,7 @@ import { useTicker, type TickerLine } from "./useTicker";
 import { TemplateView } from "./SignageTemplates";
 import { EventStageView, EventTeaseCard } from "./EventStages";
 import { PlaylistProgram } from "./PlaylistProgram";
+import { CaptureProgram } from "./CaptureProgram";
 import { resolveMediaBase } from "./mediaProgram";
 import { SUPPORT_TEXT } from "./supportText";
 import "./signage.css";
@@ -145,6 +146,9 @@ function SlotScreen({
   // the <video> stops with it). Only 'playlist' renders in M1; capture/multiview are reserved.
   const programPlaylistId =
     mode === "rotation" && slot.program?.kind === "playlist" ? slot.program.playlist_id : null;
+  // CAPTURE program (M2): the live UVC input renders in the same rotation-bottom slot as playlist.
+  const programCapture =
+    mode === "rotation" && slot.program?.kind === "capture" ? slot.program : null;
   const mediaBase = useMemo(() => resolveMediaBase(params), [params]);
 
   return (
@@ -166,6 +170,16 @@ function SlotScreen({
           slot={slot}
           playlistId={programPlaylistId}
           base={mediaBase}
+          header={<ChromeHeader slot={slot} venueName={venueName} timezone={timezone} />}
+          footer={<ChromeFooter ticker={ticker} live={false} orientation={slot.orientation} />}
+        />
+      ) : programCapture ? (
+        // Capture program (M2): fullbleed by default (no chrome), framed override keeps it. The
+        // MediaStream tracks stop on unmount the moment a takeover/moment/game flips mode off.
+        <CaptureProgram
+          slot={slot}
+          deviceMatch={programCapture.device_match}
+          presentation={programCapture.presentation}
           header={<ChromeHeader slot={slot} venueName={venueName} timezone={timezone} />}
           footer={<ChromeFooter ticker={ticker} live={false} orientation={slot.orientation} />}
         />
