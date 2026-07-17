@@ -16,8 +16,13 @@
 //      (e.g. "Winter Cocktails", group visibility []) even while its items still
 //      list POS on their own, so item-level visibility alone would miss it.
 // Description safety (docs/09): only text before `---` is shown; see menuText.publicBlurb.
+//
+// v8 (2026-07-17): also extract pour-size price options (priceOptions.ts) into
+// toast_menu_cache.price_options (0050) so $0-base liquor/draft items show SHOT/COCKTAIL/
+// DOUBLE (or PINT/PITCHER) prices on the public menu.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { publicBlurb, publicLongform } from "./menuText.ts";
+import { buildGroupUsage, extractPriceOptions } from "./priceOptions.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -28,6 +33,7 @@ const TOAST_RESTAURANT_GUID = Deno.env.get("TOAST_RESTAURANT_GUID") ?? "";
 const TOAST_BASE = "https://ws-api.toasttab.com";
 const VENUE_ID = Deno.env.get("VENUE_ID") ?? "11111111-1111-1111-1111-111111111111";
 const BUCKET = "signage";
+const SYNC_VERSION = "v8-price-options"; // deployed==source marker
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -132,6 +138,7 @@ Deno.serve(async (req) => {
     const stock = await getStockMap(token);
 
     let itemsUpserted = 0;
+    let priceOptionRows = 0;
     if (menuChanged) {
       const menusRes = await fetch(`${TOAST_BASE}/menus/v2/menus`, { headers: headers(token) });
       if (!menusRes.ok) throw new Error(`menus fetch failed: ${menusRes.status} ${await menusRes.text()}`);
@@ -167,6 +174,10 @@ Deno.serve(async (req) => {
             pos_visible: here && isPosVisible(item.visibility),
             // raw item channel array, for future per-channel granularity.
             visibility: Array.isArray(item.visibility) ? item.visibility : null,
+            // Pour-size price options (0050) are computed AFTER the walk, once every item's
+            // group references are known (the venue-wide usage count drives the shared-tier
+            // vs per-item-group choice). Stash the item's group refs here; stripped before upsert.
+            _groupRefs: Array.isArray(item.modifierGroupReferences) ? item.modifierGroupReferences : [],
             updated_at: new Date().toISOString(),
           });
         }
@@ -180,6 +191,29 @@ Deno.serve(async (req) => {
       // De-dupe by guid (an item can appear in multiple menus) — upsert needs unique keys.
       const byGuid = new Map(rows.map((r) => [r.guid as string, r]));
       const deduped = [...byGuid.values()];
+
+      // Pour-size price options (0050): the root payload carries two ref maps; each item's
+      // modifierGroupReferences point into modifierGroupReferences, whose options point into
+      // modifierOptionReferences. buildGroupUsage counts distinct items per group (over the
+      // DEDUPED set, so an item in two menus isn't double-counted) so the extractor can prefer
+      // the shared tier group over a legacy per-item "Size" during the owner's restructure.
+      const groupRefs = (menusData.modifierGroupReferences ?? {}) as Record<string, any>;
+      const optionRefs = (menusData.modifierOptionReferences ?? {}) as Record<string, any>;
+      const usage = buildGroupUsage(
+        deduped.map((r) => (r._groupRefs as Array<number | string>) ?? []),
+      );
+      for (const r of deduped) {
+        const opts = extractPriceOptions({
+          groupRefIds: r._groupRefs as Array<number | string>,
+          groupRefs,
+          optionRefs,
+          usage,
+        });
+        r.price_options = opts;
+        if (opts) priceOptionRows++;
+        delete r._groupRefs; // never persisted — an internal carry only
+      }
+
       if (deduped.length > 0) {
         const { error } = await admin.from("toast_menu_cache").upsert(deduped, { onConflict: "guid" });
         if (error) throw new Error(`toast_menu_cache upsert: ${error.message ?? JSON.stringify(error)}`);
@@ -196,7 +230,7 @@ Deno.serve(async (req) => {
       }
     }
 
-    return json({ ok: true, menuChanged, itemsUpserted, stockRows: stock.size, lastUpdated }, 200);
+    return json({ ok: true, version: SYNC_VERSION, menuChanged, itemsUpserted, priceOptionRows, stockRows: stock.size, lastUpdated }, 200);
   } catch (error) {
     const msg = error instanceof Error ? error.message : JSON.stringify(error);
     console.error("toast-menu-sync error:", msg);
