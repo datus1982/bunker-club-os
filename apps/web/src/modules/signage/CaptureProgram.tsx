@@ -75,6 +75,7 @@ function CaptureVideo({
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const [stream, setStream] = useState<MediaStream | null>(null);
   const [phase, setPhase] = useState<"acquiring" | "live" | "nosignal">("acquiring");
   const [probe, setProbe] = useState(0);
 
@@ -85,6 +86,7 @@ function CaptureVideo({
       for (const t of s.getTracks()) t.stop();
       streamRef.current = null;
     }
+    setStream(null);
   }, []);
 
   // Audio passthrough: boot muted unless a probe already proved sound this session, then unmute
@@ -146,20 +148,16 @@ function CaptureVideo({
 
         stopStream();
         streamRef.current = stream;
-        const v = videoRef.current;
-        if (v) {
-          v.srcObject = stream;
-          v.muted = !isAudioUnlocked();
-          v.play().catch(() => {});
-        }
-        // A source that ends (Roku powered off, cable pulled) → NO SIGNAL + re-probe.
+        // Publish the stream to state so the <video> mounts; the srcObject is attached by the
+        // effect below (assigning it here would no-op — on a nosignal→live flip the element isn't
+        // mounted yet, so videoRef.current is still null). The `ended` listeners recover the feed.
         for (const t of stream.getVideoTracks()) {
-          t.addEventListener("ended", () => { if (!cancelled) setPhase("nosignal"); });
+          t.addEventListener("ended", () => { if (!cancelled) { setPhase("nosignal"); stopStream(); } });
         }
+        setStream(stream);
         setPhase("live");
-        if (!isAudioUnlocked()) armAudio();
       } catch {
-        if (!cancelled) setPhase("nosignal");
+        if (!cancelled) { setPhase("nosignal"); stopStream(); }
       }
     }
     acquire();
@@ -179,6 +177,17 @@ function CaptureVideo({
     return () => window.clearTimeout(id);
   }, [phase]);
 
+  // Attach the stream once the <video> is mounted (stream state drives the mount). Runs after the
+  // element commits, so videoRef is populated even on a nosignal→live transition.
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v || !stream) return;
+    v.srcObject = stream;
+    v.muted = !isAudioUnlocked();
+    v.play().catch(() => {});
+    if (!isAudioUnlocked()) armAudio();
+  }, [stream, armAudio]);
+
   const onPlaying = useCallback(() => {
     if (!isAudioUnlocked()) armAudio();
   }, [armAudio]);
@@ -187,7 +196,7 @@ function CaptureVideo({
 
   return (
     <div style={{ position: "absolute", inset: 0, background: "#000" }}>
-      {phase !== "nosignal" && (
+      {stream && phase !== "nosignal" && (
         <video
           ref={videoRef}
           autoPlay
