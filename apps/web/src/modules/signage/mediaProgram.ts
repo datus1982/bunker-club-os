@@ -116,7 +116,8 @@ export function usePlaylistProgram(playlistId: string | null) {
             .select(`position, file:media_files!inner(${FILE_COLS})`)
             .eq("playlist_id", pid)
             .eq("file.status", "present")
-            .order("position") // unique per playlist → a stable window order
+            .order("position") // primary order; position has no unique constraint (M1 note)
+            .order("file_id") // stable tiebreak so a tie straddling a page boundary can't dup/skip
             .range(from, to);
           if (error) throw error;
           return (data ?? []) as unknown as Array<{ file: Omit<MediaFile, "thumb"> | null }>;
