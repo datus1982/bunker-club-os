@@ -4,6 +4,7 @@ import { supabase, VENUE_ID } from "@/shared/supabaseClient";
 import { fetchSlotQueuePublic } from "./slotQueue";
 import { eventStage, isTakeoverStage, type LiveEvent } from "./eventStage";
 import type { SlotProgram } from "./mediaProgram";
+import { slotRenderFieldsUnchanged, TV_SLOT_RENDER_FIELDS } from "./slotRealtime";
 
 // Re-export the pure events surface so the app imports it from one place. The pure
 // module (no react/supabase) is what scripts/test-event-stage.ts imports directly.
@@ -339,11 +340,18 @@ export function useSlot(slug: string) {
       // A PROGRAM switch (ROTATION ↔ PLAYLIST, docs/15) writes signage_slots.program — re-fetch
       // the slot row so the TV flips into/out of a playlist program with no reload, same as every
       // other admin action. (This channel didn't watch signage_slots before M1.)
-      .on("postgres_changes", { event: "*", schema: "public", table: "signage_slots", filter: `venue_id=eq.${VENUE_ID}` },
-        () => qc.invalidateQueries({ queryKey: ["signage", "slot"] }))
+      // Filtered to THIS slug so a sibling screen's heartbeat never wakes us (M1 NOTE-2), AND we
+      // skip last_seen-only UPDATEs (our own 60s heartbeat) by diffing payload.new against the
+      // cached row — the TV renders none of last_seen, so those must not refetch.
+      .on("postgres_changes", { event: "*", schema: "public", table: "signage_slots", filter: `slug=eq.${slug}` },
+        (payload) => {
+          const cached = qc.getQueryData<Slot | null>(["signage", "slot", slug]) ?? undefined;
+          if (slotRenderFieldsUnchanged(TV_SLOT_RENDER_FIELDS, cached as Record<string, unknown> | undefined, payload.new as Record<string, unknown>)) return;
+          qc.invalidateQueries({ queryKey: ["signage", "slot", slug] });
+        })
       .subscribe();
     return () => { supabase.removeChannel(ch); };
-  }, [qc]);
+  }, [qc, slug]);
 
   return { venue, slot, items, takeover, liveGame, toast };
 }
