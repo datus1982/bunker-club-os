@@ -20,7 +20,7 @@
 // flowing through normal static serving + _redirects.
 export const onRequest = async (context) => {
   // Delegate to Pages' own static-asset server. For a real hashed asset this returns the
-  // file (correct content-type + long immutable cache headers) which we pass through
+  // file (correct content-type; caching = Pages etag revalidation + any zone-level TTL) passed through
   // unchanged. For a miss it falls through to the SPA rewrite and returns index.html (200,
   // text/html) — the exact condition we must convert into a 404.
   const res = await context.env.ASSETS.fetch(context.request);
