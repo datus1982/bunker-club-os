@@ -1,8 +1,9 @@
-import { lazy, Suspense, useEffect, type ComponentType } from "react";
+import { Suspense, useEffect, type ComponentType } from "react";
 import { Navigate, Routes, Route, useNavigate } from "react-router-dom";
 
 import { supabase } from "./shared/supabaseClient";
 import { RequireAuth, RequireRole, RequireModule } from "./shared/guards";
+import { lazyWithReload } from "./shared/lazyWithReload";
 // The PUBLIC marketing website stays in the main chunk — it's the site root and
 // must paint instantly with no chunk round-trip. Everything else (staff tools,
 // display screens, auth, portal, check-in) is route-split with React.lazy so the
@@ -18,12 +19,16 @@ import * as Website from "./modules/website/routes";
  * `namedLazy` adapts a named export to React.lazy's default-export contract while
  * preserving the single-specifier grouping (the string literal lives in the
  * per-module loader, which Vite still statically analyses).
+ *
+ * It builds on `lazyWithReload` (not React.lazy directly) so a stale-chunk import()
+ * failure during a deploy window self-heals with one reload instead of black-framing a
+ * TV (PR #42 residue). Every route below is defined via namedLazy, so all inherit it.
  */
 function namedLazy<M extends Record<string, unknown>, K extends keyof M>(
   loader: () => Promise<M>,
   name: K,
 ) {
-  return lazy(async () => ({ default: (await loader())[name] as ComponentType }));
+  return lazyWithReload(async () => ({ default: (await loader())[name] as ComponentType }));
 }
 
 const triviaRoutes = () => import("./modules/trivia/routes");
