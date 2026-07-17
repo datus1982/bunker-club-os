@@ -8,7 +8,8 @@ import { supabase, VENUE_ID } from "@/shared/supabaseClient";
  * `source_toast_guid` (+ optional manual overrides / ingredients / flourish). To render
  * such a card the site must resolve that guid through `public_menu` (the anon-safe,
  * POS-visibility-gated view — the correct public surface, same one /menu reads), never
- * the raw `toast_menu_cache`.
+ * the raw `toast_menu_cache`. (The view's `and pos_visible` WHERE-gate — added 0034,
+ * dropped by 0040/0048, restored by 0049 — is what makes "off-POS" mean "absent".)
  *
  * POS principle for the website: a guid that is off-POS is already excluded from the
  * view, and we additionally drop 86'd (in_stock=false) rows here — so a sold-out or

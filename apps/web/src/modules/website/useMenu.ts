@@ -40,7 +40,8 @@ export interface MenuGroup {
 // same three-way invariant useSiteCopy holds for its keys. Owner reorder
 // (2026-07-13); names are the exact `menu_group` strings in the live
 // toast_menu_cache. "Winter Cocktails" is deliberately unlisted — it is POS-hidden
-// in Toast, so the pos_visible gate (0034) keeps it off /menu regardless of order.
+// in Toast, so the pos_visible gate on public_menu keeps it off /menu regardless of
+// order (gate added in 0034, accidentally dropped by 0040/0048, restored by 0049).
 // Update all three together.
 const MENU_GROUP_ORDER_FALLBACK = [
   "Signature Cocktails",
