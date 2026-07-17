@@ -116,6 +116,17 @@ function CaptureVideo({
     let cancelled = false;
     setPhase("acquiring");
 
+    // Grab a stream WITH audio (passthrough is a feature), falling back to video-only if the
+    // capture card exposes no audio endpoint — a silent feed beats a false NO SIGNAL.
+    async function grab(video: MediaTrackConstraints | boolean): Promise<MediaStream> {
+      const md = navigator.mediaDevices;
+      try {
+        return await md.getUserMedia({ video, audio: true });
+      } catch {
+        return await md.getUserMedia({ video, audio: false });
+      }
+    }
+
     async function acquire() {
       const md = navigator.mediaDevices;
       if (!md?.getUserMedia) { if (!cancelled) setPhase("nosignal"); return; }
@@ -123,7 +134,7 @@ function CaptureVideo({
         // A permissive first grab both unlocks labels (blank until permission) and, when no
         // device_match is given, IS the feed. On the kiosk shell permission is pre-granted so
         // this resolves instantly; in a plain browser it prompts once.
-        let stream = await md.getUserMedia({ video: true, audio: true });
+        let stream = await grab(true);
         const cams = (await md.enumerateDevices()).filter((d) => d.kind === "videoinput");
         if (cams.length === 0) throw new Error("no videoinput");
 
@@ -138,10 +149,7 @@ function CaptureVideo({
         const activeId = stream.getVideoTracks()[0]?.getSettings().deviceId;
         if (target.deviceId && target.deviceId !== activeId) {
           for (const t of stream.getTracks()) t.stop();
-          stream = await md.getUserMedia({
-            video: { deviceId: { exact: target.deviceId } },
-            audio: true,
-          });
+          stream = await grab({ deviceId: { exact: target.deviceId } });
         }
 
         if (cancelled) { for (const t of stream.getTracks()) t.stop(); return; }
