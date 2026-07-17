@@ -175,7 +175,20 @@ authenticates, via the device token to the edge fn.
 - **M1 — library + playlist:** migration (tables + `program` column + storage mime/size for
   thumbs), `media-catalog-sync` edge fn, shell v0 (serve + catalog + kiosk), hub MEDIA section,
   `playlist` program end-to-end on the office demo screen.
-- **M2 — capture:** `capture` program + NO SIGNAL card + audio passthrough.
+- **M2 — capture + external control (AMENDED 2026-07-17, owner: "push into M2 now and fold this in"):**
+  the `capture` program (getUserMedia on the shell's capture card — the Roku; fullbleed
+  default per the ratified answers, framed override; skinned NO SIGNAL card, never a black
+  frame or a permission prompt; audio passthrough — always-on at the PC, staff gate at QSYS)
+  + **the Q-SYS control surface**: a token-gated `media-control` edge fn accepting
+  `{slug, cmd}` — program-level commands (`playlist <name|id>` / `rotation` / `capture`)
+  write `signage_slots.program` exactly as the hub does (single source of truth; TV via
+  realtime, hub chip follows), and transport-level commands (`pause` / `resume` / `next`)
+  ride a Supabase realtime broadcast channel `media-cmd:{slug}` the player subscribes to.
+  Q-SYS UCI buttons call the fn via Lua HttpClient (runbook with the command list, curl
+  tests, and an example Lua snippet: `docs/runbooks/qsys-media-control.md`). New secret
+  `QSYS_CONTROL_TOKEN` (separate from the shell's device token — different holder,
+  independently revocable). M2 deliberately touches NO shell code — the installer already
+  staged on the drive remains valid.
 - **M3 — multiview + schedules:** panel slots, multiview renderer, `slot_program_schedule` +
   plain-phrase schedule UI.
 
