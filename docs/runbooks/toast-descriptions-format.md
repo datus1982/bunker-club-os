@@ -4,45 +4,89 @@ Standalone brief for whoever (or whatever session) is driving the Toast descript
 The goal: fill in the **Description** field on Toast menu items. Once filled and published,
 the content flows automatically — no deploy, no code — to:
 
-- the public website menu (bunkerokc.com/menu — blurb under the item name)
+- the public website menu (bunkerokc.com/menu — the short blurb under the item name)
 - What's-On promo card bodies (website + TV event cards that reference the item)
 - drink-slide ingredient fallbacks on the bar TVs (hand-authored slide overrides still win)
+- the long-form description (the eloquent write-up), which renders under the menu
+  ingredient line on the website and is available to signage surfaces
 
-## The one formatting rule that matters
+## The formatting rule that matters
 
-Every description uses this shape, **all on one line**:
+Every description uses this **three-part** shape, **all on one line**:
 
 ```
-Public text customers can see --- private staff notes / build recipe
+Short public blurb --- build recipe | Long-form public description
 ```
 
-- Everything **before** the first `---` is the public blurb.
-- Everything **after** `---` is staff-only. It is never rendered anywhere public.
-- **No `---` at all = nothing shows publicly.** This is a deliberate safety default
-  (old descriptions may contain recipes/costs), so a description without the delimiter
-  is treated as all-private. If an item should show a blurb, it MUST contain `---`.
-- Nothing private to say? End with the delimiter anyway:
-  `Gin, elderflower, lemon — bright and floral ---`
-- Only the FIRST `---` counts; a second one just becomes part of the private text.
+Two delimiters, in this order:
+
+- **`---`** splits **public short blurb** (before) from **staff-only** (after).
+- **`|`** — the FIRST pipe *after* `---` — splits the **private recipe** (before the
+  pipe) from the **public long-form description** (after it).
+
+So the three segments are:
+
+1. **Short blurb** — before `---`. Public. This is the line customers see on the menu,
+   in What's-On card bodies, and as the slide ingredient fallback. Keep it sign-length.
+2. **Recipe** — between `---` and the first `|`. **PRIVATE.** Never stored, never shown
+   anywhere public — it never leaves the write-side sync.
+3. **Long-form** — after the first `|`. Public. The eloquent write-up; renders under the
+   menu ingredient line and is available to signage.
+
+Behavior notes:
+
+- **No `---` at all = nothing shows publicly** (short blurb empty AND long-form empty).
+  Deliberate safety default (old descriptions may carry recipes/costs), so a description
+  without the delimiter is treated as all-private. If an item should show anything, it
+  MUST contain `---`.
+- **No `|` after `---` = no long-form** (everything after `---` is private recipe).
+  Fine — the short blurb still shows. Add `|` only when you have a long-form to publish.
+- Only the FIRST `---` counts, and only the FIRST `|` *after* it counts. A second `---`,
+  or pipes that appear *inside the long-form*, are just part of that later text.
+
+### ⚠ The `|` rule (WARN-2) — DO NOT put a pipe inside the recipe
+
+The first `|` after `---` **starts the public long-form.** That means **any `|` inside
+the recipe segment publishes everything after it** — your build would leak onto the
+website.
+
+- **FORBIDDEN:** a `|` anywhere in the recipe. Use commas or semicolons in builds instead
+  (`1.5oz vodka; .75 midori; top pineapple` — never `1.5oz vodka | .75 midori`).
+- **Harmless:** pipes in the **short blurb** (before `---`) — only pipes *after* `---` are
+  delimiters, so a `|` in the blurb stays part of the blurb.
+- **Fine:** pipes in the **long-form** (after the first `|`) — they're just text there.
 
 ### Two hard constraints from Toast
 
-1. **1,000-character cap** on the whole field, public + private combined.
+1. **1,000-character cap** on the whole field, all three segments combined.
 2. **Line breaks don't survive** the bulk-edit grid — keep the entire thing inline,
-   `---` included. Do not try to format with new lines.
+   `---` and `|` included. Do not try to format with new lines.
 
 ### Examples
 
-Good:
+Good (all three parts):
 ```
-Vodka, midori, pineapple, glow-in-the-dark garnish. Our radioactive signature. --- 1.5oz vodka, .75 midori, top pineapple. Highball, sonic ice.
+Vodka, midori, pineapple, glow-in-the-dark garnish. Our radioactive signature. --- 1.5oz vodka, .75 midori, top pineapple; highball, sonic ice | Our most-poured drink glows for a reason: a bright, tropical rush with a garnish that literally lights up the bar.
 ```
-Shows publicly: "Vodka, midori, pineapple, glow-in-the-dark garnish. Our radioactive signature."
+- Menu line (short blurb): "Vodka, midori, pineapple, glow-in-the-dark garnish. Our radioactive signature."
+- Under the ingredient line (long-form): "Our most-poured drink glows for a reason…"
+- Never shown: the recipe between `---` and `|`.
+
+Good (blurb + recipe, no long-form — just omit the pipe):
+```
+Gin, elderflower, lemon — bright and floral. --- 1.5oz gin, .5 elderflower, .5 lemon
+```
 
 Bad (no delimiter — shows NOTHING publicly even though it looks harmless):
 ```
 Vodka, midori, pineapple, glow-in-the-dark garnish.
 ```
+
+Bad (pipe INSIDE the recipe — leaks the rest of the build publicly as "long-form"):
+```
+Bright and floral. --- 1.5oz gin | .5 elderflower, .5 lemon
+```
+Publishes ".5 elderflower, .5 lemon" as the public long-form. Use `;` in the build instead.
 
 ## Where to do it in Toast (the proven path)
 
@@ -62,10 +106,11 @@ plan-gated. The Advanced-properties grid is the safe way.
 check bunkerokc.com/menu — the blurb appears under the item. That's the whole loop.
 
 Notes:
-- Items hidden from the POS view don't show on the website at all (deliberate gate),
-  so don't be surprised if a POS-hidden item's blurb never appears.
-- The Signature Cocktails group is already done (pasted 2026-07-15) — it's the
-  reference for what finished entries look like.
+- Items hidden from the POS view don't show on the website at all (deliberate gate —
+  the `pos_visible` WHERE-clause on the `public_menu` view), so don't be surprised if a
+  POS-hidden item's blurb never appears. (Winter Cocktails is the standing example.)
+- The bulk description run is done (~230 items, 2026-07-16) in the three-part format —
+  any published item is a reference for what finished entries look like.
 
 ## Photos (separate, slower chore)
 
