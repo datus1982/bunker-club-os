@@ -244,8 +244,14 @@ export async function swapPlaylistItems(
 
 /* ── slot program (the screen-card PROGRAM control) ──────────────────────── */
 
-/** Write a slot's program (null = ROTATION, today's default). Only 'playlist' ships in M1. */
-export async function setSlotProgram(slotId: string, program: { kind: "playlist"; playlist_id: string } | null): Promise<void> {
+/** A program the hub can WRITE: ROTATION (null), a playlist, or capture (M2). Multiview (M3) is
+ *  not writable from the hub yet — kept out of this union so the panel can't set a half-built mode. */
+export type WritableProgram =
+  | { kind: "playlist"; playlist_id: string }
+  | { kind: "capture"; device_match?: string; presentation?: "framed" | "fullbleed" };
+
+/** Write a slot's program (null = ROTATION, today's default). */
+export async function setSlotProgram(slotId: string, program: WritableProgram | null): Promise<void> {
   const { error } = await supabase.from("signage_slots").update({ program }).eq("id", slotId);
   if (error) throw error;
 }

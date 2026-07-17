@@ -21,8 +21,10 @@ import { collectPaged } from "./mediaPagination";
 /** Slot program shapes (docs/15 §Concept: PROGRAMS). null slot.program = rotation. */
 export type SlotProgram =
   | { kind: "playlist"; playlist_id: string }
-  // Reserved (M2/M3) — typed now so the resolver + Slot type never need widening.
-  | { kind: "capture"; device_match?: string; audio?: boolean }
+  // Capture (M2): the live UVC input (the Roku) via getUserMedia. `device_match` filters the
+  // videoinput label (blank = first camera); `presentation` overrides the fullbleed default.
+  | { kind: "capture"; device_match?: string; presentation?: Presentation; audio?: boolean }
+  // Reserved (M3) — typed now so the resolver + Slot type never need widening.
   | { kind: "multiview"; main?: unknown; panel_slot_id?: string };
 
 /**

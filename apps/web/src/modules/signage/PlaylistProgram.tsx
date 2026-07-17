@@ -3,6 +3,7 @@ import {
   installAudioAutoArm, isAudioUnlocked, markAudioUnlocked, subscribeArmed,
 } from "@/shared/videoAudio";
 import { usePlaylistProgram, mediaFileUrl, type MediaFile } from "./mediaProgram";
+import { useTransportCommands } from "./mediaTransport";
 import type { Slot } from "./useSignage";
 import { SUPPORT_TEXT } from "./supportText";
 
@@ -46,6 +47,7 @@ export function PlaylistProgram({
   const video = (
     <PlaylistVideo
       key={playlistId}
+      slug={slot.slug}
       files={files}
       base={base}
       shuffle={!!playlist?.shuffle}
@@ -83,8 +85,9 @@ const PLAYING_MIN_READY = 3; // HTMLMediaElement.readyState HAVE_FUTURE_DATA —
  * OFFLINE (retries the current clip every 8s so it recovers when the shell comes back).
  */
 function PlaylistVideo({
-  files, base, shuffle, fullbleed, orientation, loading, loadError,
+  slug, files, base, shuffle, fullbleed, orientation, loading, loadError,
 }: {
+  slug: string;
   files: MediaFile[];
   base: string;
   shuffle: boolean;
@@ -125,6 +128,14 @@ function PlaylistVideo({
     // First clip never reached 'playing' → the host is unreachable; else a mid-loop hiccup.
     setPhase(everPlayed.current ? "interrupted" : "offline");
   }, []);
+
+  // Q-SYS transport (docs/15 M2): pause/resume toggle the native <video>, next advances the loop.
+  // Subscribed here, so it cleans up the instant a takeover/moment/game unmounts the program tier.
+  useTransportCommands(slug, {
+    onPause: () => videoRef.current?.pause(),
+    onResume: () => { videoRef.current?.play().catch(() => {}); },
+    onNext: advance,
+  });
 
   // FEED INTERRUPTED → finite 5s hold, then skip to the next clip (perf: no infinite state).
   useEffect(() => {
