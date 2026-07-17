@@ -101,8 +101,11 @@ function Photo({
   // fit="contain" letterboxes instead of cropping (fields.photo_fit — QR codes, posters,
   // any upload whose aspect must survive intact). Same .sig-contain rule signagePhoto uses.
   const cls = `sig-viewport${treatment === "phosphor" ? " sig-phosphor" : ""}${fit === "contain" ? " sig-contain" : ""}`;
+  // OWNER-RULED 2026-07-16 ("image boxes should be square"): the photo window is a
+  // centered SQUARE of side `height`, aligning these cards with the drink slides and
+  // the event-stage SquarePhoto instead of the old full-width banner.
   return (
-    <div className={cls} style={{ height, width: "100%", flexShrink: 0 }}>
+    <div className={cls} style={{ height, width: height, alignSelf: "center", flexShrink: 0 }}>
       <span className="sig-feedcap" style={{ fontSize: SUPPORT_TEXT[orientation] }}>{feed}</span>
       <img src={src} alt="" />
     </div>
