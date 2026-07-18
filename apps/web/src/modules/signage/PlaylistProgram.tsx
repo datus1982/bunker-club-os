@@ -84,7 +84,7 @@ const PLAYING_MIN_READY = 3; // HTMLMediaElement.readyState HAVE_FUTURE_DATA —
  * FEED INTERRUPTED for 5s then skip; a first-load failure or zero present files → MEDIA HOST
  * OFFLINE (retries the current clip every 8s so it recovers when the shell comes back).
  */
-function PlaylistVideo({
+export function PlaylistVideo({
   slug, files, base, shuffle, fullbleed, orientation, loading, loadError,
 }: {
   slug: string;

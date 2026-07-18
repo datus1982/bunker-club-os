@@ -43,9 +43,10 @@ curl -sS -X POST "https://api.supabase.com/v1/projects/ysrqvdutayirpoibdlbf/secr
 
 | `cmd`      | extra field | effect                                                         |
 |------------|-------------|----------------------------------------------------------------|
-| `rotation` | —           | `program = null` — the normal signage rotation (the default)   |
-| `capture`  | —           | `program = {kind:"capture"}` — the live capture feed (the Roku)|
-| `playlist` | `playlist`  | `program = {kind:"playlist",…}` — loop a media-library playlist |
+| `rotation` | —           | clear the override — `program = null` (follow the schedule / rotation) |
+| `capture`  | `hold`      | `program = {kind:"capture"}` — the live capture feed (the Roku)|
+| `playlist` | `playlist`, `hold` | `program = {kind:"playlist",…}` — loop a media-library playlist |
+| `schedule` | —           | **M3:** clear the override so the slot follows its daypart SCHEDULE again |
 | `pause`    | —           | broadcast: pause the playlist `<video>`                        |
 | `resume`   | —           | broadcast: resume the playlist `<video>`                       |
 | `next`     | —           | broadcast: skip to the next clip in the playlist               |
@@ -58,11 +59,21 @@ or a **name** (case-insensitive, exact — ambiguous names return 409).
 match, so a UCI capture press RESETS any DEVICE MATCH or FRAMED that was set on the screen card in
 the hub. Configure those in the hub if they matter, or drive capture only from the hub.
 
+**M3 — the `hold` field (schedules):** on a `playlist`/`capture` write, the optional `hold` sets how a
+manual override behaves when the screen has a daypart SCHEDULE (docs/15 D4):
+`event` (**default** — a SPECIAL EVENT hold that survives daypart boundaries and expires at the 04:00
+business-day rollover; the "game running long" case), `boundary` (yields at the next daypart), or `pin`
+(permanent until cleared). A Q-SYS press defaults to `event` because UCI presses are event-driven.
+`rotation` and `schedule` both clear the override — use `schedule` on a "resume normal programming"
+button. (With no schedule on the screen, `hold` is irrelevant — the override is a permanent pin.)
+
 ### JSON shapes
 
 ```json
 { "slug": "landscape-bar", "cmd": "capture" }
+{ "slug": "landscape-bar", "cmd": "capture", "hold": "boundary" }
 { "slug": "landscape-bar", "cmd": "rotation" }
+{ "slug": "landscape-bar", "cmd": "schedule" }
 { "slug": "landscape-bar", "cmd": "playlist", "playlist": "Atomic Age" }
 { "slug": "landscape-bar", "cmd": "next" }
 ```
@@ -72,7 +83,8 @@ the hub. Configure those in the hub if they matter, or drive capture only from t
 - `200 { ok:true, slug, cmd, kind:"program", program }` — program written.
 - `200 { ok:true, slug, cmd, kind:"transport" }` — broadcast sent.
 - `401 { error:"unauthorized" }` — bad/missing `x-qsys-token`.
-- `400` — missing slug/cmd, unknown cmd, portrait slot, or `playlist` missing for a playlist cmd.
+- `400` — missing slug/cmd, unknown cmd, portrait slot, `playlist` missing for a playlist cmd, or an
+  invalid `hold` (must be `pin`|`boundary`|`event`).
 - `404` — unknown slug or no playlist matches.
 - `409` — ambiguous playlist name.
 
@@ -89,6 +101,14 @@ curl -sS -X POST "$BASE" -H "x-qsys-token: $TOK" -H "Content-Type: application/j
 # back to the normal rotation
 curl -sS -X POST "$BASE" -H "x-qsys-token: $TOK" -H "Content-Type: application/json" \
   -d '{"slug":"landscape-bar","cmd":"rotation"}'
+
+# resume the daypart schedule (clear a manual override) — M3
+curl -sS -X POST "$BASE" -H "x-qsys-token: $TOK" -H "Content-Type: application/json" \
+  -d '{"slug":"landscape-bar","cmd":"schedule"}'
+
+# capture as a plain boundary override (yields at the next daypart) instead of the SPECIAL EVENT default
+curl -sS -X POST "$BASE" -H "x-qsys-token: $TOK" -H "Content-Type: application/json" \
+  -d '{"slug":"landscape-bar","cmd":"capture","hold":"boundary"}'
 
 # play a playlist by name
 curl -sS -X POST "$BASE" -H "x-qsys-token: $TOK" -H "Content-Type: application/json" \

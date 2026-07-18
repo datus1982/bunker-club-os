@@ -66,7 +66,7 @@ const PROBE_INTERVAL_MS = 8000; // finite re-probe cadence while NO SIGNAL
  * change / re-probe), renders the stream, and shows NO SIGNAL whenever acquisition fails or the
  * track ends. Tracks are stopped on every re-acquire and on unmount.
  */
-function CaptureVideo({
+export function CaptureVideo({
   deviceMatch, fullbleed, orientation,
 }: {
   deviceMatch: string | undefined;

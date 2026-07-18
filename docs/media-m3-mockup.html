@@ -1,0 +1,648 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bunker Club — Media M3 (Multiview + Schedules) Mockup</title>
+<link href="https://fonts.googleapis.com/css2?family=VT323&family=Share+Tech+Mono&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --phos:#00ff41; --phos-dim:rgba(0,255,65,.60); --phos-mid:rgba(0,255,65,.32); --phos-faint:rgba(0,255,65,.14);
+    --amber:#ffb000; --amber-dim:rgba(255,176,0,.62); --amber-mid:rgba(255,176,0,.32); --amber-faint:rgba(255,176,0,.14);
+    --red:#ff4136; --red-dim:rgba(255,65,54,.65); --red-faint:rgba(255,65,54,.13);
+    --cream:#f3ead9;
+    --bg:#04070a; --crt:#050d07; --panel:#081409; --panel2:#0b1a0d; --panel3:#0e2110;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    background:var(--bg);color:var(--phos);font-family:'Share Tech Mono',monospace;
+    min-height:100vh;padding:20px 16px 132px;display:flex;flex-direction:column;align-items:center;gap:16px;
+  }
+  a{color:inherit}
+
+  .pagehead{text-align:center;max-width:960px}
+  .pagehead h1{font-family:'VT323',monospace;font-size:36px;letter-spacing:2px;color:var(--phos);text-shadow:0 0 12px var(--phos-dim)}
+  .pagehead .lede{font-size:13px;color:var(--phos-dim);margin-top:6px;line-height:1.65}
+  .pagehead .lede b{color:var(--phos)}
+  .pagehead .ratify{font-size:12px;letter-spacing:1px;color:var(--amber);border:1px solid var(--amber-dim);background:rgba(255,176,0,.06);padding:7px 12px;margin-top:11px;display:inline-block}
+  .pagehead .quote{font-size:12.5px;color:var(--amber-dim);margin-top:11px;line-height:1.6;border-left:2px solid var(--amber-faint);padding-left:12px;text-align:left}
+  .pagehead .quote b{color:var(--amber)}
+  .viewcap{font-family:'VT323',monospace;font-size:24px;letter-spacing:2px;color:var(--phos-dim);text-align:center}
+  .viewcap b{color:var(--phos)}
+  .subcap{font-size:12.5px;color:var(--phos-mid);text-align:center;max-width:840px;line-height:1.6}
+
+  .view{display:none;flex-direction:column;align-items:center;gap:16px;width:100%}
+  .view.on{display:flex}
+
+  .frame{
+    background:var(--crt);border:2px solid var(--phos-dim);position:relative;overflow:hidden;
+    box-shadow:0 0 44px var(--phos-faint), inset 0 0 90px rgba(0,0,0,.6);display:flex;flex-direction:column;
+  }
+  .frame::before{content:"";position:absolute;inset:0;pointer-events:none;z-index:80;
+    background:repeating-linear-gradient(0deg, rgba(0,0,0,.15) 0 1px, transparent 1px 3px)}
+  .frame.desktop{width:1000px;max-width:97vw}
+  .frame.narrow{width:780px;max-width:97vw}
+  .navbar{border-bottom:1px solid var(--phos-dim);background:#000;position:relative;z-index:20}
+  .navrow{display:flex;align-items:center;gap:6px;padding:9px 16px}
+  .brand{font-family:'VT323',monospace;font-size:23px;letter-spacing:2px;color:var(--phos);white-space:nowrap;margin-right:6px;text-shadow:0 0 8px var(--phos-dim)}
+  .sect{font-family:'VT323',monospace;font-size:21px;letter-spacing:2px;color:var(--phos-dim);padding:4px 14px;border:1px solid transparent}
+  .sect.on{background:var(--phos);color:#000;font-weight:700}
+  .navspacer{flex:1}
+  .who{font-size:12px;color:var(--phos-dim);letter-spacing:1px;white-space:nowrap}
+  .body{padding:20px 22px 26px}
+  .eyebrow{font-size:11px;letter-spacing:4px;color:var(--phos-mid);margin:0 0 4px}
+  .h2{font-family:'VT323',monospace;font-size:27px;letter-spacing:1px;color:var(--phos);margin:2px 0 4px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .h2 small{font-size:12px;letter-spacing:2px;color:var(--phos-mid);font-family:'Share Tech Mono'}
+  .seclabel{font-size:13px;letter-spacing:3px;color:var(--phos-dim);margin:0 0 10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+
+  .why{max-width:920px;width:100%;font-size:13px;color:var(--phos-dim);line-height:1.6;border-left:2px solid var(--phos-mid);padding-left:12px}
+  .why b{color:var(--phos)}
+  .why .k{color:var(--amber)}
+
+  /* screen cards */
+  .screengrid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .screen{border:1px solid var(--phos-dim);background:var(--panel2);padding:14px 15px;display:flex;flex-direction:column;gap:9px;position:relative}
+  .screen.wide{grid-column:1/-1}
+  .screen .top{display:flex;justify-content:space-between;align-items:center;gap:8px}
+  .screen .nm{font-family:'VT323',monospace;font-size:26px;letter-spacing:1px}
+  .dot{font-size:11px;white-space:nowrap;letter-spacing:1px;display:flex;align-items:center;gap:5px}
+  .dot::before{content:"●";font-size:10px}
+  .dot.live{color:var(--phos)} .dot.stale{color:var(--amber)} .dot.off{color:var(--red)}
+  .screen .meta{font-size:12px;color:var(--phos-mid);letter-spacing:1px}
+  .mode{display:inline-block;align-self:flex-start;font-size:11px;letter-spacing:2px;border:1px solid var(--phos-mid);color:var(--phos-dim);padding:2px 8px}
+  .mode.mv{border-color:var(--phos);color:var(--phos)}
+  .mode.play{border-color:var(--amber-dim);color:var(--amber)}
+  .badge{font-size:10px;letter-spacing:2px;border:1px solid var(--amber-dim);color:var(--amber);padding:2px 7px;align-self:flex-start}
+  .onair{font-size:12.5px;color:var(--phos-dim);line-height:1.55;min-height:20px}
+  .onair em{color:var(--phos);font-style:normal}
+  .onair .live{color:var(--phos)}
+  .cardbtns{display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:7px;margin-top:2px}
+  .cbtn{font-family:'Share Tech Mono';font-size:13px;letter-spacing:1px;color:var(--phos);border:1px solid var(--phos-dim);
+    background:rgba(0,255,65,.05);padding:9px 6px;min-height:42px;display:flex;align-items:center;justify-content:center;gap:5px;text-align:center;cursor:default}
+  .cbtn.key{background:var(--phos);color:#000;font-weight:700;border-color:var(--phos)}
+  .cbtn.warn{color:var(--amber);border-color:var(--amber-dim);background:rgba(255,176,0,.05)}
+  .cbtn.over{padding:9px 10px;font-size:18px;color:var(--phos-mid)}
+  .cbtn.mut{opacity:.5;grid-column:span 2;font-size:11px}
+  .cbtn.wideprog{grid-column:1/-1;justify-content:space-between;padding:9px 12px;color:var(--amber);border-color:var(--amber-dim)}
+
+  /* TV frames */
+  .tv{width:100%;max-width:900px;aspect-ratio:16/9;background:#020402;border:2px solid var(--phos-dim);position:relative;overflow:hidden;
+    box-shadow:0 0 40px var(--phos-faint), inset 0 0 80px rgba(0,0,0,.6);display:flex;flex-direction:column}
+  .tv::before{content:"";position:absolute;inset:0;pointer-events:none;z-index:80;
+    background:repeating-linear-gradient(0deg, rgba(0,0,0,.18) 0 1px, transparent 1px 3px)}
+  .tv::after{content:"";position:absolute;inset:0;pointer-events:none;z-index:81;
+    background:radial-gradient(ellipse at center, transparent 62%, rgba(0,0,0,.42) 100%)}
+  .tv.small{max-width:440px}
+  .tvchrome{flex:0 0 15.83%;display:flex;align-items:center;justify-content:space-between;padding:0 3%;border-bottom:1px solid var(--phos-faint);background:#030803;position:relative;z-index:2}
+  .tvchrome .mk{font-family:'VT323',monospace;font-size:clamp(11px,2.4vw,20px);letter-spacing:1px;color:var(--phos)}
+  .tvchrome .tid{font-size:clamp(7px,1.3vw,11px);color:var(--phos-mid);text-align:right;line-height:1.3}
+  .tvtick{flex:0 0 15.83%;display:flex;align-items:center;gap:2%;padding:0 3%;border-top:1px solid var(--phos-faint);background:#030803;position:relative;z-index:2}
+  .tvtick .on{font-size:clamp(8px,1.5vw,12px);letter-spacing:1px;color:var(--phos);white-space:nowrap}
+  .tvtick .tx{font-size:clamp(8px,1.5vw,12px);color:var(--phos-mid);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .tvstage{flex:1;position:relative;z-index:2;display:flex;align-items:center;justify-content:center;overflow:hidden}
+  .videobox{width:100%;height:100%;position:relative;display:flex;align-items:center;justify-content:center;
+    background:
+      repeating-linear-gradient(0deg, rgba(255,255,255,.02) 0 2px, transparent 2px 4px),
+      repeating-linear-gradient(115deg, rgba(0,255,65,.04) 0 14px, transparent 14px 34px),
+      radial-gradient(ellipse at 30% 40%, rgba(40,60,90,.6), #04070c 70%);
+    border:1px solid var(--phos-faint)}
+  .videobox .play{width:clamp(28px,7vw,58px);height:clamp(28px,7vw,58px);border:2px solid var(--phos-dim);border-radius:50%;
+    display:flex;align-items:center;justify-content:center;color:var(--phos-dim);font-size:clamp(13px,3vw,26px)}
+  .videobox .vlabel{position:absolute;top:6%;left:3.5%;font-size:clamp(8px,1.6vw,13px);letter-spacing:1px;color:var(--phos-dim)}
+  .videobox .vlabel b{color:var(--phos)}
+  .videobox .vdim{position:absolute;bottom:6%;right:3.5%;font-size:clamp(7px,1.3vw,11px);letter-spacing:1px;color:var(--amber-dim)}
+
+  /* multiview split */
+  .tv.mv{flex-direction:row}
+  .mv-main{flex:0 0 68.33%;display:flex;flex-direction:column;min-width:0;border-right:1px solid var(--phos)}
+  .mv-main .tvchrome{flex:0 0 15.83%}
+  .mv-main .mv-video{flex:0 0 68.33%;position:relative;z-index:2;display:flex;align-items:center;justify-content:center;overflow:hidden}
+  .mv-main .tvtick{flex:0 0 15.83%}
+  .mv-panel{flex:0 0 31.67%;position:relative;z-index:2;display:flex;flex-direction:column;overflow:hidden;background:#03070d;min-width:0}
+  .regtag{position:absolute;z-index:6;font-size:clamp(7px,1.25vw,11px);letter-spacing:1px;color:var(--amber);background:rgba(0,0,0,.72);border:1px solid var(--amber-dim);padding:1px 5px}
+  .mslide{width:100%;height:100%;display:flex;flex-direction:column;padding:6% 7%;gap:4%;background:linear-gradient(180deg,#04090f,#020509)}
+  .mslide .mtop{display:flex;justify-content:space-between;align-items:center}
+  .mslide .mtop .mm{font-family:'VT323',monospace;font-size:clamp(8px,1.5vw,13px);color:var(--phos)}
+  .mslide .mtop .mt{font-size:clamp(6px,1vw,8px);color:var(--phos-mid);text-align:right}
+  .mslide .msq{width:100%;aspect-ratio:1/1;border:1px solid var(--phos-mid);display:flex;align-items:center;justify-content:center;
+    background:repeating-linear-gradient(135deg, rgba(0,255,65,.05) 0 9px, transparent 9px 18px), #030803;color:var(--phos-mid);font-size:clamp(7px,1.4vw,11px)}
+  .mslide .mname{font-family:'VT323',monospace;font-size:clamp(14px,3.3vw,28px);letter-spacing:1px;color:var(--cream);line-height:.95}
+  .mslide .mprice{font-family:'VT323',monospace;font-size:clamp(20px,4.8vw,42px);color:var(--phos);line-height:.9}
+  .mslide .mprice small{font-size:.5em;color:var(--phos-dim)}
+  .mslide .mcat{font-size:clamp(6px,1.2vw,10px);letter-spacing:1px;color:var(--amber);margin-top:auto}
+  .framecap{font-size:12px;letter-spacing:1px;color:var(--phos-dim);text-align:center;margin-top:2px}
+  .framecap b{color:var(--phos)}
+
+  /* geometry diagram */
+  .geo{width:100%;max-width:900px;aspect-ratio:16/9;border:2px solid var(--phos-dim);display:flex;position:relative;background:#020402;box-shadow:0 0 40px var(--phos-faint)}
+  .geo .gmain{flex:0 0 68.33%;display:flex;flex-direction:column;border-right:2px solid var(--phos);position:relative}
+  .geo .gband{position:relative;flex:0 0 15.83%;display:flex;align-items:center;justify-content:center;background:rgba(0,255,65,.06);border-bottom:1px dashed var(--phos-mid);font-size:clamp(8px,1.5vw,13px);color:var(--phos-dim);letter-spacing:1px;text-align:center}
+  .geo .gband.bot{border-bottom:none;border-top:1px dashed var(--phos-mid)}
+  .geo .gstage{position:relative;flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;background:rgba(40,60,90,.28);font-family:'VT323',monospace;color:var(--phos)}
+  .geo .gstage .gs1{font-size:clamp(15px,3.4vw,30px);letter-spacing:1px}
+  .geo .gstage .gs2{font-size:clamp(8px,1.5vw,13px);letter-spacing:1px;color:var(--phos-dim);font-family:'Share Tech Mono'}
+  .geo .gpanel{position:relative;flex:0 0 31.67%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;background:linear-gradient(180deg,#04090f,#020509);color:var(--amber)}
+  .geo .gpanel .gp1{font-family:'VT323',monospace;font-size:clamp(15px,3.2vw,28px);letter-spacing:1px}
+  .geo .gpanel .gp2{font-size:clamp(7px,1.4vw,12px);letter-spacing:1px;color:var(--amber-dim);text-align:center;padding:0 8%;line-height:1.5}
+  .mathrow{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;max-width:920px}
+  .mathcell{border:1px solid var(--phos-mid);background:var(--panel);padding:9px 13px;font-size:12px;color:var(--phos-dim);letter-spacing:.5px}
+  .mathcell b{color:var(--phos);font-family:'JetBrains Mono'}
+
+  /* ladder */
+  .ladder{border:1px solid var(--phos-mid);background:var(--panel);padding:14px 16px;max-width:900px;width:100%}
+  .ladder .lt{font-family:'VT323',monospace;font-size:22px;letter-spacing:1px;margin-bottom:10px}
+  .ladder .rung{display:flex;align-items:center;gap:12px;border:1px solid var(--phos-mid);background:var(--panel2);padding:9px 13px;margin-bottom:7px}
+  .ladder .rung .pri{font-family:'VT323',monospace;font-size:20px;color:var(--phos-mid);width:26px;flex-shrink:0;text-align:center}
+  .ladder .rung .rn{font-family:'VT323',monospace;font-size:19px;letter-spacing:1px;flex:1}
+  .ladder .rung .rd{font-size:11.5px;color:var(--phos-mid);text-align:right;line-height:1.4}
+  .ladder .rung.top{border-color:var(--red-dim)} .ladder .rung.top .rn{color:var(--red)}
+  .ladder .rung.mom{border-color:var(--amber-dim)} .ladder .rung.mom .rn{color:var(--amber)}
+  .ladder .rung.game{border-color:var(--amber-dim)} .ladder .rung.game .rn{color:var(--amber)}
+  .ladder .rung.prog{border-color:var(--phos);background:rgba(0,255,65,.05)} .ladder .rung.prog .rn{color:var(--phos)}
+  .ladder .rung .sub{display:block;font-size:10.5px;color:var(--phos-mid);letter-spacing:0}
+  .ladder .gt{text-align:center;color:var(--phos-mid);font-size:13px;letter-spacing:3px;margin:1px 0 8px}
+
+  /* schedule rows */
+  .schedrow{border:1px solid var(--phos-mid);background:var(--panel);padding:11px 13px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+  .schedrow+.schedrow{margin-top:8px}
+  .schedrow .main{flex:1 1 260px;min-width:0}
+  .schedrow .rn{font-family:'VT323',monospace;font-size:21px;letter-spacing:1px}
+  .schedrow .rw{font-size:12px;color:var(--phos-mid);margin-top:2px}
+  .schedrow .rw b{color:var(--amber)}
+  .rbadge{font-size:10px;letter-spacing:1px;border:1px solid var(--amber-dim);color:var(--amber);padding:2px 7px;white-space:nowrap}
+  .rbadge.mv{border-color:var(--phos);color:var(--phos)}
+  .rbadge.fb{border-color:var(--phos-mid);color:var(--phos-dim)}
+  .rstat{font-size:12px;letter-spacing:1px;white-space:nowrap}
+  .rstat.now{color:var(--phos)} .rstat.up{color:var(--phos-mid)} .rstat.ovr{color:var(--amber)}
+  .rowbtn{font-size:12px;letter-spacing:1px;color:var(--phos);border:1px solid var(--phos-mid);padding:6px 11px;background:transparent}
+
+  /* day chips + editor (schedule builder) */
+  .modal{border:1px solid var(--phos-dim);background:var(--crt);box-shadow:0 0 40px rgba(0,0,0,.7);width:100%}
+  .modal .mhead{border-bottom:1px solid var(--phos-mid);padding:12px 16px;display:flex;justify-content:space-between;align-items:center}
+  .modal .mtitle{font-family:'VT323',monospace;font-size:26px;letter-spacing:2px}
+  .modal .mx{font-size:20px;color:var(--phos-dim)}
+  .modal .mbody{padding:16px 18px;display:flex;flex-direction:column;gap:14px}
+  .fld{display:flex;flex-direction:column;gap:6px}
+  .fld .fl{font-size:11px;letter-spacing:2px;color:var(--phos-mid)}
+  .chips{display:flex;gap:6px;flex-wrap:wrap}
+  .chip{font-size:14px;letter-spacing:1px;border:1px solid var(--phos-mid);color:var(--phos-dim);padding:7px 12px;min-width:44px;text-align:center}
+  .chip.on{background:var(--phos);color:#000;font-weight:700;border-color:var(--phos)}
+  .timerow{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  .tbox{border:1px solid var(--phos-mid);background:var(--panel);padding:9px 13px;font-family:'JetBrains Mono';font-size:16px;color:var(--phos);letter-spacing:1px}
+  .tsep{color:var(--phos-mid);font-size:13px;letter-spacing:2px}
+  .tillbtn{font-size:12px;letter-spacing:1px;border:1px solid var(--amber-dim);color:var(--amber);background:rgba(255,176,0,.05);padding:9px 12px}
+  .selrow{display:flex;gap:8px;flex-wrap:wrap}
+  .selopt{font-size:13px;letter-spacing:1px;border:1px solid var(--phos-mid);color:var(--phos-dim);padding:9px 13px}
+  .selopt.on{background:var(--amber);color:#000;font-weight:700;border-color:var(--amber)}
+  .phrase{border:1px solid var(--phos);background:rgba(0,255,65,.05);padding:11px 14px;font-size:14px;color:var(--phos);letter-spacing:.5px;line-height:1.5}
+  .phrase b{color:var(--amber)}
+
+  .pick{font-family:'VT323',monospace;font-size:19px;letter-spacing:1px;padding:4px 12px;border:1px solid var(--phos-mid);color:var(--phos-dim)}
+  .pick.rec{border-color:var(--phos);color:#000;background:var(--phos);font-weight:700}
+  .abrow{display:flex;gap:20px;flex-wrap:wrap;justify-content:center;width:100%;max-width:920px}
+  .abpick{display:flex;flex-direction:column;align-items:center;gap:6px;flex:1 1 380px;min-width:0}
+
+  .decisions{display:flex;flex-direction:column;gap:9px;width:100%;max-width:920px;margin-top:2px}
+  .decision{border:1px solid var(--amber-dim);background:rgba(255,176,0,.06);padding:11px 14px;display:flex;gap:10px;align-items:flex-start}
+  .decision .tag{font-family:'VT323',monospace;font-size:16px;letter-spacing:2px;color:var(--amber);white-space:nowrap;flex-shrink:0;border:1px solid var(--amber-dim);padding:1px 8px;margin-top:1px}
+  .decision .dt{font-size:12.5px;color:var(--amber-dim);line-height:1.6}
+  .decision .dt b{color:var(--amber)}
+  .decision .dt .rec{color:var(--phos)}
+  .decision .dt .alt{color:var(--phos-mid)}
+
+  .callouts{max-width:920px;width:100%;display:flex;flex-direction:column;gap:8px;margin-top:2px}
+  .callout{display:flex;gap:9px;align-items:flex-start;font-size:12.5px;color:var(--phos-dim);line-height:1.6;max-width:920px;width:100%}
+  .callout::before{content:"◂";color:var(--amber-dim);flex-shrink:0}
+  .callout b{color:var(--phos)}
+  .callout.stay::before{content:"✓";color:var(--phos)}
+  .callout.stay{color:var(--phos-dim)} .callout.stay b{color:var(--phos)}
+  .callout.amber::before{content:"⚠";color:var(--amber)}
+  .callout.amber{color:var(--amber-dim)} .callout.amber b{color:var(--amber)}
+  .callout code{font-family:'JetBrains Mono';font-size:.9em;color:var(--amber);background:rgba(255,176,0,.08);padding:0 3px}
+  .annot{max-width:920px;text-align:center;font-size:12.5px;letter-spacing:1px;color:var(--phos);border:1px solid var(--phos-mid);
+    background:rgba(0,255,65,.05);padding:10px 15px;line-height:1.6}
+  .annot b{color:var(--phos)}
+
+  /* summary decision table */
+  .dtable{max-width:920px;width:100%;border:1px solid var(--phos-mid);background:var(--panel)}
+  .dtrow{display:flex;gap:0;border-bottom:1px solid var(--phos-faint)}
+  .dtrow:last-child{border-bottom:none}
+  .dtrow .dc{padding:9px 12px;font-size:12px;line-height:1.5}
+  .dtrow .dc.n{flex:0 0 58px;font-family:'VT323',monospace;font-size:19px;color:var(--amber);border-right:1px solid var(--phos-faint);display:flex;align-items:center;justify-content:center}
+  .dtrow .dc.q{flex:1 1 40%;color:var(--phos-dim)}
+  .dtrow .dc.r{flex:1 1 55%;color:var(--phos);border-left:1px solid var(--phos-faint)}
+  .dtrow .dc.r b{color:var(--amber)}
+  .dtrow .dc.r code{font-family:'JetBrains Mono';font-size:.9em;color:var(--amber)}
+
+  .switch{position:fixed;bottom:0;left:0;right:0;z-index:200;background:#000;border-top:1px solid var(--phos-dim);
+    display:flex;justify-content:center;flex-wrap:wrap;gap:5px;padding:8px 8px}
+  .switch button{font-family:'Share Tech Mono',monospace;font-size:12px;letter-spacing:1px;color:var(--phos-dim);
+    border:1px solid var(--phos-faint);background:transparent;padding:7px 10px;cursor:pointer}
+  .switch button:hover{color:var(--phos)}
+  .switch button.cur{color:#000;background:var(--phos);border-color:var(--phos);font-weight:700}
+
+  @media(max-width:900px){
+    .screengrid{grid-template-columns:1fr!important}
+    .body{padding:16px 14px 20px}
+  }
+</style>
+</head>
+<body>
+
+<div class="pagehead">
+  <h1>MEDIA · M3 — MULTIVIEW + SCHEDULES</h1>
+  <p class="lede">The centerpiece lands last, on proven parts. <b>Multiview</b> pairs a 16:9 video/capture region with a true-portrait <b>slide panel</b> — so specials keep advertising while a game plays. <b>Schedules</b> let a screen flip programs by daypart, in plain phrases, never cron. Nine decisions to ratify, deep-linkable (#d1…#d9 · #summary).</p>
+  <span class="ratify">◆ NOTHING BUILDS UNTIL YOU RATIFY THIS ◆ &nbsp;spec: docs/15-MODULE-MEDIA.md · §M3 (NOT RATIFIED)</span>
+  <div class="quote">
+    "…a <b>multiview mode</b> to show the 16:9 media/capture content with a portrait frame next to it running some slides." &nbsp;— your original direction · M1 (library+playlist) and M2 (capture + Q-SYS control) are shipped &amp; live.
+  </div>
+</div>
+<div class="viewcap" id="viewcap"></div>
+<div class="subcap" id="subcap"></div>
+
+<!-- ══════════════ D1 · MULTIVIEW GEOMETRY (#d1) ══════════════ -->
+<div class="view" id="v1">
+  <div class="why"><b>WHY:</b> The landscape canvas is a fixed <b>1920×1080</b>. Multiview splits it into a 16:9 main region and a true-portrait slide panel. <span class="k">The split has to be honest to the pixel</span> — the panel is a nested fixed canvas (never a responsive reflow), so it must be an exact scale of the real 1080×1920 portrait screen.</div>
+
+  <div class="framecap"><b>THE SPLIT · to the pixel</b> — main region 1312 wide, panel 608 wide</div>
+  <div class="geo">
+    <div class="gmain">
+      <div class="gband"><span class="regtag" style="top:6px;left:6px">CHROME HEADER · 1312×171</span>CHROME HEADER (roundel · BUNKER CLUB · clock)</div>
+      <div class="gstage">
+        <span class="regtag" style="top:6px;left:6px">16:9 STAGE · 1312×738</span>
+        <div class="gs1">◉ 16:9 MAIN · 1312×738</div>
+        <div class="gs2">playlist OR live capture · vertically centered · contain (never crop)</div>
+      </div>
+      <div class="gband bot">TICKER FOOTER · 1312×171 (NOW POURING · top seller · trivia)</div>
+    </div>
+    <div class="gpanel">
+      <span class="regtag" style="top:6px;right:6px">PANEL · 608×1080</span>
+      <div class="gp1">PORTRAIT PANEL</div>
+      <div class="gp2">the real 1080×1920 portrait rotation, scaled ×0.5625 → fills the full 1080 height</div>
+    </div>
+  </div>
+
+  <div class="mathrow">
+    <div class="mathcell">panel scale <b>s = 0.5625</b> → 1920·s = <b>1080</b> (fills height)</div>
+    <div class="mathcell">panel width 1080·s = <b>608</b> px</div>
+    <div class="mathcell">main width 1920−608 = <b>1312</b> px</div>
+    <div class="mathcell">16:9 stage 1312×(1312·9/16) = <b>1312×738</b></div>
+    <div class="mathcell">letterbox bands (1080−738)/2 = <b>171</b> top &amp; bottom</div>
+  </div>
+
+  <div class="callouts">
+    <div class="callout"><span>The <b>171px letterbox top &amp; bottom</b> of the main region is exactly where the <b>chrome header and ticker</b> live — no wasted black. A true-16:9 source (a movie, the Roku) fills the 1312×738 stage perfectly; an odd-ratio archival clip letterboxes <b>inside</b> the stage (contain), never cropped.</span></div>
+    <div class="callout stay"><span><b>What stays:</b> the panel is a nested fixed 1080×1920 canvas scaled by a plain transform — same slides, same templates, same POS/86 gates as the door screen. DisplayCanvas invariants hold; the panel never reflows.</span></div>
+  </div>
+
+  <div class="decisions">
+    <div class="decision"><span class="tag">D1</span><span class="dt"><span class="rec"><b>RECOMMENDED:</b> main region 1312×1080 (a 1312×738 16:9 stage centered between a 171px chrome header and a 171px ticker) + panel 608×1080 = the real portrait canvas scaled ×0.5625. Main content is <b>contained</b> (letterboxed inside the stage), never cropped.</span> <span class="alt">Alt considered: a bigger 1466×825 main + 454-wide panel — rejected, because a 454-wide panel can't be a full-height true-portrait scale (it would letterbox to ~807 tall or distort). 608/×0.5625 is the widest panel that fills the height exactly.</span></span></div>
+  </div>
+</div>
+
+<!-- ══════════════ D2 · PANEL CONTENT SOURCE (#d2) ══════════════ -->
+<div class="view" id="v2">
+  <div class="why"><b>WHY:</b> What plays in the panel? The mechanism is settled (D7 of the M1 mockup, ratified): the panel renders <b>some portrait slot's rotation</b>. The open call is <b>which</b> slot — a dedicated panel with its own curated queue, or a mirror of the door screen you already maintain.</div>
+
+  <div class="frame desktop">
+    <div class="navbar"><div class="navrow"><span class="brand">◭ BUNKER OS</span><span class="sect on">BAR OPS</span><span class="navspacer"></span><span class="who">VIEWING AS ADMIN</span></div></div>
+    <div class="body">
+      <div class="eyebrow">BAR OPS ▸ SIGNAGE HUB ▸ MULTIVIEW · panel source picker</div>
+      <div class="h2">WHERE THE PANEL'S SLIDES COME FROM</div>
+      <div class="selrow" style="margin-bottom:12px">
+        <span class="selopt on">◉ DEDICATED PANEL SLOT (its own queue)</span>
+        <span class="selopt">MIRROR PORTRAIT-MAIN (the door screen)</span>
+      </div>
+      <div class="screengrid">
+        <div class="screen">
+          <div class="top"><span class="nm">BAR-PANEL</span><span class="badge">PANEL</span></div>
+          <div class="meta">PORTRAIT PANEL · runs inside LANDSCAPE-BAR multiview · no TV of its own</div>
+          <span class="mode">MODE: ROTATION</span>
+          <div class="onair"><em>3 assets rotating:</em> SPUTNIK · TOP SELLERS · @BUNKERCLUBOKC <span class="live">· + ★ featured</span></div>
+          <div class="cardbtns"><span class="cbtn key">+ ADD</span><span class="cbtn">QUEUE</span><span class="cbtn mut">no takeover — follows its host</span></div>
+        </div>
+        <div class="screen">
+          <div class="top"><span class="nm">PORTRAIT-MAIN</span><span class="dot live">ON AIR</span></div>
+          <div class="meta">PORTRAIT · TERMINAL 01 — BY THE DOOR · built-in browser</div>
+          <span class="mode">MODE: ROTATION</span>
+          <div class="onair"><em>4 assets rotating</em> · mirror option = the panel shows exactly this queue, zero extra curation</div>
+          <div class="cardbtns"><span class="cbtn key">+ ADD</span><span class="cbtn">QUEUE</span><span class="cbtn warn">TAKEOVER</span><span class="cbtn over">⋯</span></div>
+        </div>
+      </div>
+      <div class="callout" style="margin-top:11px"><span>Both options use the <b>same</b> plumbing — the multiview program stores a <code>panel_slot_id</code> pointing at <b>any portrait slot</b>. A dedicated <b>BAR-PANEL</b> (kind='panel') gives you an independent queue; pointing at <b>PORTRAIT-MAIN</b> mirrors the door with no second queue to keep up.</span></div>
+    </div>
+  </div>
+
+  <div class="callouts">
+    <div class="callout stay"><span><b>Dedicated panel (recommended default):</b> curate a bar-facing queue independent of the door — but it's a second queue to maintain. It shows as a screen card with a PANEL badge and no health dot (D7 of the M1 mockup).</span></div>
+    <div class="callout"><span><b>Mirror portrait-main:</b> the panel is literally the door screen shrunk — one queue, always in sync, zero extra work. The trade: you can't tune the panel separately (e.g. bigger drink photos for the bar).</span></div>
+  </div>
+
+  <div class="decisions">
+    <div class="decision"><span class="tag">D2</span><span class="dt"><span class="rec"><b>RECOMMENDED:</b> ship BOTH — <code>panel_slot_id</code> may point at a dedicated <b>kind='panel'</b> slot (ADD PANEL creates one) OR at an existing portrait slot to mirror it. Default the ADD PANEL flow to a dedicated slot; offer "mirror an existing screen" as one click.</span> <span class="alt">Alt: define the panel's slides inline in the multiview config. Rejected — reusing the screen/queue model means zero new editing surface and the panel gets every queue feature (★ featured, POS gating, dwell) for free.</span></span></div>
+  </div>
+</div>
+
+<!-- ══════════════ D3 · SCHEDULE RESOLUTION MECHANISM (#d3) ══════════════ -->
+<div class="view" id="v3">
+  <div class="why"><b>WHY:</b> A schedule flips programs by daypart. It can be computed two ways: <b>on the screen itself every render</b> (like the events stage engine, no new server plumbing) or a <b>server tick that writes the program</b> (like the events cron). One is dramatically more outage-proof.</div>
+
+  <div class="abrow">
+    <div class="abpick">
+      <div class="frame narrow" style="width:100%">
+        <div class="body">
+          <div class="eyebrow">OPTION A</div>
+          <div class="h2">CLIENT-DERIVED <small>every render</small></div>
+          <div class="callouts">
+            <div class="callout stay"><span>Each TV reads the schedule rows and derives "what program is active right now" itself — <b>no cron, no new table writes</b>. Exactly how event stages already work (<code>eventStage()</code>).</span></div>
+            <div class="callout stay"><span><b>Outage-proof:</b> a TV that boots at 5 PM immediately shows the right daypart. Every screen flips <b>independently</b> at the boundary — a dropped realtime connection can't miss a flip.</span></div>
+            <div class="callout amber"><span>Failure mode: a TV with a badly wrong clock flips at the wrong minute. Mitigated — TVs are NTP-synced; the boundary is venue-local wall time from <code>Intl</code>.</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="framecap"><span class="pick rec">A · CLIENT-DERIVED — recommended</span></div>
+    </div>
+    <div class="abpick">
+      <div class="frame narrow" style="width:100%">
+        <div class="body">
+          <div class="eyebrow">OPTION B</div>
+          <div class="h2">CRON TICK <small>writes program</small></div>
+          <div class="callouts">
+            <div class="callout"><span>A pg_cron job (1/min) writes the active program into <code>signage_slots.program</code>; TVs pick it up via realtime — like <code>tick_scheduled_events()</code>.</span></div>
+            <div class="callout amber"><span>Failure mode: a TV offline at the boundary misses the realtime write and stays on the old program until the next change. And the write <b>collides</b> with a manual override in the same column — you lose the "is this manual or scheduled?" distinction (breaks D4).</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="framecap"><span class="pick">B · CRON TICK</span></div>
+    </div>
+  </div>
+
+  <div class="callout stay" style="max-width:920px"><span><b>What stays:</b> either way, <code>resolveSlotMode</code> is untouched — a program still only renders at the bottom of the ladder, so takeover / MOMENT / live game preempt a scheduled program exactly as they preempt rotation today.</span></div>
+
+  <div class="decisions">
+    <div class="decision"><span class="tag">D3</span><span class="dt"><span class="rec"><b>RECOMMENDED: A — client-derived.</b> A pure <code>scheduleResolve.ts</code> (no react/supabase, like <code>eventStage.ts</code>) computes the active program + the next boundary from anon-readable <code>slot_program_schedule</code> rows, re-derived on the existing 30s tick plus a precise timeout to the next boundary. No cron, no new writes, and it keeps manual-vs-scheduled distinct (D4).</span> <span class="alt">Alt B rejected: a cron write is <b>less</b> resilient than client derivation (offline TVs miss it) and would overwrite the manual-override column.</span></span></div>
+  </div>
+</div>
+
+<!-- ══════════════ D4 · SCHEDULE vs MANUAL PRECEDENCE (#d4) ══════════════ -->
+<div class="view" id="v4">
+  <div class="why"><b>WHY — the honest tension:</b> docs/15 §Schedules says "schedule &gt; manual." But the real bar case is <b>the opposite</b>: it's Sunday, the schedule says PLAYLIST, and you flip the game on by hand. You don't want the schedule stomping you back. So what does a hand flip mean when a schedule is running?</div>
+
+  <div class="frame narrow">
+    <div class="body">
+      <div class="eyebrow">LANDSCAPE-BAR · a hand flip during an active daypart</div>
+      <div class="h2">MANUAL OVERRIDE — WINS UNTIL THE NEXT DAYPART</div>
+      <div class="schedrow" style="border-color:var(--amber-dim)">
+        <div class="main"><div class="rn">▶ LIVE INPUT · CH 1 <span style="font-size:12px;color:var(--amber)">(you flipped this)</span></div><div class="rw">override active · <b>reverts to the schedule at 10:00 PM</b></div></div>
+        <span class="rbadge">CAPTURE</span><span class="rstat ovr">◉ OVERRIDE</span><span class="rowbtn">RESUME SCHEDULE ↺</span>
+      </div>
+      <div class="schedrow" style="opacity:.75">
+        <div class="main"><div class="rn">ATOMIC AMBIENCE</div><div class="rw">daily · <b>4:00 PM – close</b> → PLAYLIST · waiting behind the override</div></div>
+        <span class="rbadge fb">SCHEDULED</span><span class="rstat up">▲ 10:00 PM</span>
+      </div>
+      <div class="callout" style="margin-top:13px"><span>When a schedule is active and you flip a program by hand, it becomes an <b>OVERRIDE</b> that holds until the current daypart's next boundary — then the schedule quietly reclaims the screen. A <b>RESUME SCHEDULE ↺</b> button hands it back immediately.</span></div>
+    </div>
+  </div>
+
+  <div class="callouts">
+    <div class="callout stay"><span><b>Today's behavior is preserved exactly.</b> When NO schedule covers a screen, a hand flip is a <b>permanent pin</b> (<code>program_until = null</code>) — identical to M1/M2. Schedules only change what a flip means <b>while a daypart is running.</b></span></div>
+    <div class="callout amber"><span>This <b>amends</b> the one-line "schedule &gt; manual" in docs/15 §Schedules, which was written before this tension was thought through. The bar-correct rule is <b>manual-wins-until-boundary.</b></span></div>
+  </div>
+
+  <div class="decisions">
+    <div class="decision"><span class="tag">D4</span><span class="dt"><span class="rec"><b>RECOMMENDED:</b> a manual (or Q-SYS) program flip during an active daypart sets an OVERRIDE that wins until the next schedule boundary, then auto-resumes the schedule; a RESUME SCHEDULE control clears it at once. With no schedule present, a flip is a permanent pin (unchanged from today). Stored as <code>signage_slots.program</code> + a nullable <code>program_until</code>.</span> <span class="alt">Alts: (b) manual pins permanently until a FOLLOW-SCHEDULE toggle is pressed — more surprising ("why is the game still on Monday morning?"); (c) manual only wins for the current minute — too fragile. Reply if you'd prefer (b).</span></span></div>
+  </div>
+</div>
+
+<!-- ══════════════ D5 · Q-SYS INTERACTION (#d5) ══════════════ -->
+<div class="view" id="v5">
+  <div class="why"><b>WHY:</b> M2 shipped a Q-SYS control surface — a UCI button on your iPad can already set a screen's program via the <code>media-control</code> edge fn. Once schedules exist, a Q-SYS "put the game on" press has to behave like a hand flip, or the two surfaces disagree.</div>
+
+  <div class="ladder">
+    <div class="lt">ONE RULE, TWO SURFACES — hub flip &amp; Q-SYS press are identical</div>
+    <div class="rung prog"><span class="pri">▶</span><span class="rn">Q-SYS: "LIVE INPUT" <span class="sub">media-control {cmd:'capture'} → sets program + program_until = next boundary</span></span><span class="rd">= a hand flip</span></div>
+    <div class="gt">▼ behaves exactly like</div>
+    <div class="rung prog"><span class="pri">✋</span><span class="rn">HUB: SWITCH PROGRAM → LIVE INPUT <span class="sub">writes the same program + program_until</span></span><span class="rd">override to boundary</span></div>
+    <div class="gt">▼ and to hand it back</div>
+    <div class="rung"><span class="pri">↺</span><span class="rn">Q-SYS "RESUME" / hub RESUME SCHEDULE <span class="sub">media-control {cmd:'schedule'} → clears program (program=null)</span></span><span class="rd">schedule reclaims</span></div>
+  </div>
+
+  <div class="callouts">
+    <div class="callout stay"><span><b>Single source of truth stays intact:</b> both surfaces write <code>signage_slots.program</code> / <code>program_until</code>; the TV and the hub chip follow via realtime. The boundary is computed the same way in both (shared <code>scheduleResolve</code> logic) so a UCI press and a hub tap are byte-identical.</span></div>
+    <div class="callout"><span>New Q-SYS command <code>schedule</code> (alongside M2's <code>playlist</code>/<code>rotation</code>/<code>capture</code>) = "resume the schedule." Documented in <code>docs/runbooks/qsys-media-control.md</code> with a curl test + Lua snippet, like the M2 commands.</span></div>
+  </div>
+
+  <div class="decisions">
+    <div class="decision"><span class="tag">D5</span><span class="dt"><span class="rec"><b>RECOMMENDED:</b> a Q-SYS program command sets the same OVERRIDE-until-boundary as a hub flip (consistent with D4); a new <code>schedule</code> / <code>resume</code> command clears the override. The <code>media-control</code> fn computes <code>program_until</code> with the same venue-TZ boundary logic (shared pure module, or a small <code>next_schedule_boundary()</code> SQL helper it calls).</span> <span class="alt">Alt: Q-SYS presses are permanent pins (<code>program_until=null</code>), cleared only by an explicit <code>resume</code> — simpler in the fn (no boundary math) but inconsistent with the hub. Acceptable fallback if computing the boundary in Deno is unwanted.</span></span></div>
+  </div>
+</div>
+
+<!-- ══════════════ D6 · MULTIVIEW AUDIO (#d6) ══════════════ -->
+<div class="view" id="v6">
+  <div class="why"><b>WHY:</b> Audio is <b>always on at the media PC</b> (ratified in M1) — the room hears it only when staff route it at QSYS/Sonos. In multiview two things play at once: the 16:9 main video and the panel of slides. Which one carries sound?</div>
+
+  <div class="tv mv" style="max-width:820px">
+    <div class="mv-main">
+      <div class="tvchrome"><span class="mk">BUNKER CLUB</span><span class="tid">MULTIVIEW · 8:41 PM</span></div>
+      <div class="mv-video">
+        <span class="regtag" style="top:6px;left:6px">◉ AUDIO — main region only</span>
+        <div class="videobox"><span class="vlabel"><b>▶ LIVE INPUT</b> · the game</span><div class="play">▶</div></div>
+      </div>
+      <div class="tvtick"><span class="on">■ ON AIR</span><span class="tx">NOW POURING · TOP SELLER: GUINNESS</span></div>
+    </div>
+    <div class="mv-panel">
+      <span class="regtag" style="top:6px;right:6px">SILENT · slides</span>
+      <div class="mslide">
+        <div class="mtop"><span class="mm">BUNKER</span><span class="mt">PANEL<br>8:41 PM</span></div>
+        <div class="msq"><b>TOAST PHOTO · 1:1</b></div>
+        <div class="mname">SPUTNIK</div>
+        <div class="mprice"><small>$</small>9</div>
+        <div class="mcat">◆ SIGNATURE COCKTAIL</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="callout stay" style="max-width:820px"><span><b>The panel is silent slides</b> (drink photos, top sellers, Instagram stills) — nothing there makes sound. Only the main region's <code>&lt;video&gt;</code> / capture stream carries audio, on the same muted-boot-then-probe path M1/M2 already use.</span></div>
+
+  <div class="decisions">
+    <div class="decision"><span class="tag">D6</span><span class="dt"><span class="rec"><b>RECOMMENDED:</b> audio comes from the <b>main region only</b>; the panel renders muted. (Audio remains always-on at the PC; the room hears it only via the QSYS/Sonos source select, unchanged.)</span> <span class="alt">No real alternative — the panel has no audio to play. Stated for completeness.</span></span></div>
+  </div>
+</div>
+
+<!-- ══════════════ D7 · CHROME / TICKER SURVIVAL (#d7) ══════════════ -->
+<div class="view" id="v7">
+  <div class="why"><b>WHY — the whole point of multiview is "ads keep working while video plays."</b> A plain playlist can run full-bleed (no chrome). Does multiview also have a full-bleed mode, or is it always framed so the ticker AND the panel keep advertising?</div>
+
+  <div class="framecap"><b>THE ADS SPECTRUM</b> — how much promo survives, by program</div>
+  <div class="mathrow" style="align-items:stretch">
+    <div class="mathcell" style="flex:1 1 240px"><b>FULL-BLEED PLAYLIST</b><br><span style="color:var(--phos-mid)">movie edge-to-edge · <b style="color:var(--red)">zero ads</b> · no header, no ticker, no panel</span></div>
+    <div class="mathcell" style="flex:1 1 240px"><b>FRAMED PLAYLIST</b><br><span style="color:var(--phos-mid)">video in chrome · header + ticker advertise under it</span></div>
+    <div class="mathcell" style="flex:1 1 240px;border-color:var(--phos)"><b style="color:var(--phos)">MULTIVIEW</b><br><span style="color:var(--phos-mid)">header + ticker <b style="color:var(--phos)">+ a full portrait promo panel</b> · maximal ads</span></div>
+  </div>
+
+  <div class="tv mv small" style="max-width:520px">
+    <div class="mv-main">
+      <div class="tvchrome"><span class="mk">BUNKER CLUB</span><span class="tid">MULTIVIEW</span></div>
+      <div class="mv-video"><div class="videobox"><div class="play">▶</div></div></div>
+      <div class="tvtick"><span class="on">■ ON AIR</span><span class="tx">NOW POURING · GUINNESS</span></div>
+    </div>
+    <div class="mv-panel"><div class="mslide"><div class="mtop"><span class="mm">BUNKER</span></div><div class="msq"><b>1:1</b></div><div class="mname">SPUTNIK</div><div class="mprice"><small>$</small>9</div><div class="mcat">◆ COCKTAIL</div></div></div>
+  </div>
+
+  <div class="callouts">
+    <div class="callout stay"><span><b>Multiview is always framed and never suppresses chrome.</b> The main region keeps its header + ticker; the panel is a whole extra promo surface. It's the <b>opposite</b> of full-bleed — the maximal-ads program, which is the entire reason it exists.</span></div>
+    <div class="callout"><span>A "full-bleed main inside multiview" (drop the main's header/ticker, keep only the panel) was considered and rejected: the panel already guarantees ads, and dropping the header/ticker buys only the 171px letterbox bands — which the ratio-locked 16:9 stage can't grow into anyway. No upside.</span></div>
+  </div>
+
+  <div class="decisions">
+    <div class="decision"><span class="tag">D7</span><span class="dt"><span class="rec"><b>RECOMMENDED:</b> multiview does NOT count as full-bleed — it is always framed. All chrome survives (header + ticker on the main region) PLUS the promo panel. There is no full-bleed multiview toggle. Full-bleed stays a plain-playlist choice (M1 mockup D6, ratified) for movies where ads aren't wanted.</span></span></div>
+  </div>
+</div>
+
+<!-- ══════════════ D8 · MAIN-CONTENT MODELING (#d8) ══════════════ -->
+<div class="view" id="v8">
+  <div class="why"><b>WHY:</b> The multiview main region can be a <b>playlist</b> or a <b>live capture</b> — the same two things a plain screen can run. How is that stored, and does it reuse the shipped renderers?</div>
+
+  <div class="frame narrow">
+    <div class="body">
+      <div class="eyebrow">program jsonb · signage_slots.program</div>
+      <div class="h2">THE MULTIVIEW SHAPE <small>nested, reuses M1/M2</small></div>
+      <div class="phrase" style="font-family:'JetBrains Mono';font-size:12.5px;line-height:1.7;white-space:pre-wrap;color:var(--phos-dim)">{
+  <b style="color:var(--phos)">"kind"</b>: "multiview",
+  <b style="color:var(--phos)">"main"</b>: { "kind":"playlist", "playlist_id":"…" },   <span style="color:var(--phos-mid)">// OR { "kind":"capture", "device_match":"…" }</span>
+  <b style="color:var(--phos)">"panel_slot_id"</b>: "…"   <span style="color:var(--phos-mid)">// a portrait/panel slot (D2)</span>
+}</div>
+      <div class="callout" style="margin-top:12px"><span>The <code>main</code> field is a <b>nested program shape</b> — the exact <code>playlist</code> / <code>capture</code> shapes M1/M2 already defined. The multiview main region embeds the <b>same</b> video-playback + offline-card + Q-SYS-transport machinery, just inside the 1312×738 stage instead of the full canvas.</span></div>
+    </div>
+  </div>
+
+  <div class="callouts">
+    <div class="callout stay"><span><b>Reuse, don't rebuild:</b> the playlist loop (native <code>&lt;video&gt;</code>, MEDIA HOST OFFLINE / FEED INTERRUPTED recovery, muted-boot audio probe, pause/resume/next transport) and the capture stream (getUserMedia, NO SIGNAL card) are lifted verbatim into the main region.</span></div>
+    <div class="callout amber"><span>A <code>presentation</code> on <code>main</code> (framed/full-bleed) is <b>ignored</b> in multiview — the geometry fixes the stage. The 16:9 source is always contained in the 1312×738 stage.</span></div>
+  </div>
+
+  <div class="decisions">
+    <div class="decision"><span class="tag">D8</span><span class="dt"><span class="rec"><b>RECOMMENDED:</b> <code>{kind:'multiview', main:&lt;playlist|capture shape&gt;, panel_slot_id}</code> — <code>main</code> reuses the M1/M2 program shapes and their renderers verbatim; <code>main.presentation</code> is ignored (the geometry owns the stage). Widen <code>WritableProgram</code> to include multiview so the hub can set it.</span> <span class="alt">Alt: flatten main into top-level fields (main_kind, main_playlist_id, …). Rejected — nesting the existing shape means the M1/M2 types + renderers extend with zero divergence.</span></span></div>
+  </div>
+</div>
+
+<!-- ══════════════ D9 · PREEMPTION (#d9) ══════════════ -->
+<div class="view" id="v9">
+  <div class="why"><b>WHY:</b> Wednesday trivia, a priority takeover, a scheduled MOMENT — these must interrupt multiview exactly as they interrupt everything else. The centerpiece can't become a loophole that keeps a movie running during a game.</div>
+
+  <div class="ladder">
+    <div class="lt">THE MODE LADDER — multiview is a PROGRAM, so it's preempted whole</div>
+    <div class="rung top"><span class="pri">1</span><span class="rn">TAKEOVER</span><span class="rd">priority broadcast · always wins</span></div>
+    <div class="gt">▲ overrides the WHOLE multiview</div>
+    <div class="rung mom"><span class="pri">2</span><span class="rn">MOMENT STAGES</span><span class="rd">Rocket Launch, celebrations</span></div>
+    <div class="gt">▲ overrides the WHOLE multiview</div>
+    <div class="rung game"><span class="pri">3</span><span class="rn">LIVE GAME (TRIVIA)</span><span class="rd">Wednesday · sacred · unchanged</span></div>
+    <div class="gt">▲ overrides the WHOLE multiview</div>
+    <div class="rung prog"><span class="pri">4</span><span class="rn">PROGRAM <span class="sub">rotation · playlist · capture · MULTIVIEW (+ any active schedule/override)</span></span><span class="rd">the bottom tier</span></div>
+  </div>
+
+  <div class="callouts">
+    <div class="callout stay"><span><b>Whole-multiview preemption is automatic.</b> Multiview lives at the bottom of the ladder like every program. When mode flips off 'rotation' (takeover / MOMENT / game), the ENTIRE multiview — main video AND panel — unmounts; the standard full-1920×1080 surface takes over. The <code>&lt;video&gt;</code> stops, the capture <code>MediaStream</code> tracks stop, both with it. When the interruption ends, multiview resumes.</span></div>
+    <div class="callout"><span>Active WINDOW/MESSAGE promos still surface — in the <b>panel's</b> rotation (they're venue-wide and the panel runs the full portrait resolver), not layered over the main video. The main region stays the video.</span></div>
+    <div class="callout stay"><span><b>No resolver change:</b> <code>resolveSlotMode</code> is untouched — the same one source of truth the hub chip reads. Preemption needs no new code, just the multiview renderer sitting where playlist sits today.</span></div>
+  </div>
+
+  <div class="decisions">
+    <div class="decision"><span class="tag">D9</span><span class="dt"><span class="rec"><b>RECOMMENDED:</b> multiview is a program at the bottom of the mode ladder; takeover / MOMENT / live game preempt the whole multiview (main + panel) exactly as they preempt rotation today. <code>resolveSlotMode</code> stays unchanged.</span></span></div>
+  </div>
+</div>
+
+<!-- ══════════════ SCHEDULE BUILDER + SUMMARY (#summary) ══════════════ -->
+<div class="view" id="v10">
+  <div class="viewcap" style="margin-bottom:2px"><b>THE SCHEDULE BUILDER</b> — plain phrases, day chips, never cron</div>
+  <div class="subcap" style="margin-bottom:8px">The daypart editor mirrors the events recurrence builder (docs/13): day chips, a start/end time (or TILL CLOSE), a program to run, and a live plain-English phrase. Referenced by D3 &amp; D4.</div>
+
+  <div class="frame narrow">
+    <div class="body">
+      <div class="eyebrow">BAR OPS ▸ SIGNAGE HUB ▸ LANDSCAPE-BAR ▸ SCHEDULE ▸ EDIT DAYPART</div>
+      <div class="modal">
+        <div class="mhead"><span class="mtitle">DAYPART</span><span class="mx">✕</span></div>
+        <div class="mbody">
+          <div class="fld">
+            <span class="fl">◆ ON THESE DAYS</span>
+            <div class="chips"><span class="chip on">MON</span><span class="chip on">TUE</span><span class="chip on">WED</span><span class="chip on">THU</span><span class="chip on">FRI</span><span class="chip on">SAT</span><span class="chip on">SUN</span></div>
+          </div>
+          <div class="fld">
+            <span class="fl">◆ FROM — TO</span>
+            <div class="timerow"><span class="tbox">4:00 PM</span><span class="tsep">→</span><span class="tbox">CLOSE</span><span class="tillbtn">◉ TILL CLOSE</span></div>
+          </div>
+          <div class="fld">
+            <span class="fl">◆ RUN THIS PROGRAM</span>
+            <div class="selrow"><span class="selopt">ROTATION</span><span class="selopt on">PLAYLIST · ATOMIC AMBIENCE</span><span class="selopt">LIVE INPUT</span><span class="selopt">MULTIVIEW</span></div>
+          </div>
+          <div class="phrase">Reads as: <b>daily · 4:00 PM – close → PLAYLIST 'Atomic Ambience'</b></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="callouts">
+    <div class="callout"><span>Dayparts stack: whichever covers "now" runs; if two overlap, the lower one in the list wins (an explicit tiebreak). Any time <b>no daypart covers</b> falls to <b>ROTATION</b> — the default, no row needed.</span></div>
+    <div class="callout"><span><b>TILL CLOSE</b> and windows that cross midnight (4 PM → 2 AM) are handled as wrap-aware venue-local minutes — the same honest-phrasing the events ticker uses ("NOW UNTIL CLOSE").</span></div>
+  </div>
+
+  <hr style="border:none;border-top:1px solid var(--phos-faint);margin:22px 0 6px;width:100%;max-width:920px">
+
+  <div class="viewcap" style="margin-bottom:2px"><b>DECISION SUMMARY</b> — D1…D9</div>
+  <div class="dtable">
+    <div class="dtrow"><div class="dc n">D1</div><div class="dc q">Multiview geometry</div><div class="dc r"><b>1312×1080 main</b> (1312×738 16:9 stage + 171px chrome bands) + <b>608×1080 panel</b> (portrait ×0.5625); contain, never crop</div></div>
+    <div class="dtrow"><div class="dc n">D2</div><div class="dc q">Panel content source</div><div class="dc r"><code>panel_slot_id</code> → a <b>dedicated kind='panel' slot</b> (default) OR mirror an existing portrait slot</div></div>
+    <div class="dtrow"><div class="dc n">D3</div><div class="dc q">Schedule mechanism</div><div class="dc r"><b>Client-derived</b> (pure scheduleResolve.ts, no cron) — outage-proof, keeps manual/scheduled distinct</div></div>
+    <div class="dtrow"><div class="dc n">D4</div><div class="dc q">Schedule vs manual</div><div class="dc r"><b>Manual wins until the next boundary</b> then auto-resumes; no schedule ⇒ permanent pin (unchanged). <code>program_until</code></div></div>
+    <div class="dtrow"><div class="dc n">D5</div><div class="dc q">Q-SYS interaction</div><div class="dc r">Q-SYS program press = same override-to-boundary as a hub flip; new <code>schedule</code> command resumes</div></div>
+    <div class="dtrow"><div class="dc n">D6</div><div class="dc q">Multiview audio</div><div class="dc r"><b>Main region only</b>; panel is silent slides</div></div>
+    <div class="dtrow"><div class="dc n">D7</div><div class="dc q">Chrome survival</div><div class="dc r">Multiview is <b>always framed</b> — header + ticker + panel all survive; no full-bleed multiview</div></div>
+    <div class="dtrow"><div class="dc n">D8</div><div class="dc q">Main-content modeling</div><div class="dc r"><code>main</code> = nested playlist/capture shape; reuses M1/M2 renderers; <code>main.presentation</code> ignored</div></div>
+    <div class="dtrow"><div class="dc n">D9</div><div class="dc q">Preemption</div><div class="dc r">Multiview preempted <b>whole</b> (main + panel) by takeover/MOMENT/game; <code>resolveSlotMode</code> unchanged</div></div>
+  </div>
+
+  <div class="annot" style="margin-top:14px"><b>Nothing here is built.</b> Ratify D1–D9 (or flag any you want changed), and M3 starts as its own branch <code>phase-media-m3</code> with a reviewer pass — exactly like M1 and M2. The buildable spec lives in <b>docs/15-MODULE-MEDIA.md · §M3 (NOT RATIFIED)</b>.</div>
+</div>
+
+<div class="switch" id="switch">
+  <button data-v="v1" class="cur">D1 · GEOMETRY</button>
+  <button data-v="v2">D2 · PANEL SRC</button>
+  <button data-v="v3">D3 · SCHED MECH</button>
+  <button data-v="v4">D4 · SCHED vs MANUAL</button>
+  <button data-v="v5">D5 · Q-SYS</button>
+  <button data-v="v6">D6 · AUDIO</button>
+  <button data-v="v7">D7 · CHROME</button>
+  <button data-v="v8">D8 · MAIN SHAPE</button>
+  <button data-v="v9">D9 · PREEMPTION</button>
+  <button data-v="v10">BUILDER + SUMMARY</button>
+</div>
+
+<script>
+const CAPS = {
+  v1:{hash:'d1', cap:'D1 · <b>Multiview geometry</b>',        sub:"The honest 1920×1080 split: a 1312-wide 16:9 main region + a 608-wide true-portrait panel scaled ×0.5625."},
+  v2:{hash:'d2', cap:'D2 · <b>Panel content source</b>',       sub:"panel_slot_id points at a dedicated kind='panel' slot (its own queue) or mirrors an existing portrait screen."},
+  v3:{hash:'d3', cap:'D3 · <b>Schedule mechanism</b>',         sub:"Client-derived every render (like eventStage, no cron) vs a server tick that writes the program. Client wins on resilience."},
+  v4:{hash:'d4', cap:'D4 · <b>Schedule vs manual</b>',         sub:"A hand flip during a daypart wins until the next boundary, then the schedule resumes. No schedule ⇒ permanent pin (unchanged)."},
+  v5:{hash:'d5', cap:'D5 · <b>Q-SYS interaction</b>',          sub:"A Q-SYS program press behaves exactly like a hub flip (override to boundary); a new schedule command resumes."},
+  v6:{hash:'d6', cap:'D6 · <b>Multiview audio</b>',            sub:"Audio comes from the main region only; the panel is silent slides. (Always-on at the PC; QSYS routes the room.)"},
+  v7:{hash:'d7', cap:'D7 · <b>Chrome / ticker survival</b>',   sub:"Multiview is always framed — header + ticker + a full promo panel. It's the maximal-ads program, never full-bleed."},
+  v8:{hash:'d8', cap:'D8 · <b>Main-content modeling</b>',      sub:"main = a nested playlist/capture shape reusing the M1/M2 renderers verbatim; main.presentation is ignored."},
+  v9:{hash:'d9', cap:'D9 · <b>Preemption</b>',                 sub:"Multiview is a program at the bottom of the ladder — takeover / MOMENT / live game preempt the whole thing. resolveSlotMode unchanged."},
+  v10:{hash:'summary', cap:'<b>Schedule builder + decision summary</b>', sub:"The plain-phrase daypart editor (day chips, TILL CLOSE) and the full D1…D9 table."},
+};
+const HASH2V = Object.fromEntries(Object.entries(CAPS).map(([v,o])=>[o.hash,v]));
+const cap = document.getElementById('viewcap');
+const sub = document.getElementById('subcap');
+function show(v){
+  document.querySelectorAll('.view').forEach(el=>el.classList.toggle('on', el.id===v));
+  document.querySelectorAll('#switch button').forEach(b=>b.classList.toggle('cur', b.dataset.v===v));
+  cap.innerHTML = CAPS[v].cap; sub.innerHTML = CAPS[v].sub;
+  if(location.hash.slice(1)!==CAPS[v].hash) history.replaceState(null,'','#'+CAPS[v].hash);
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+document.querySelectorAll('#switch button').forEach(b=>b.addEventListener('click',()=>show(b.dataset.v)));
+window.addEventListener('hashchange',()=>{const v=HASH2V[location.hash.slice(1)]; if(v) show(v);});
+show(HASH2V[location.hash.slice(1)] || 'v1');
+</script>
+</body>
+</html>

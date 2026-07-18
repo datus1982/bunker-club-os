@@ -4,6 +4,7 @@ import { supabase, VENUE_ID } from "@/shared/supabaseClient";
 import { fetchSlotQueuePublic } from "./slotQueue";
 import { eventStage, isTakeoverStage, type LiveEvent } from "./eventStage";
 import type { SlotProgram } from "./mediaProgram";
+import type { ScheduleRow, ProgramHold, ScheduleProgram } from "./scheduleResolve";
 import { slotRenderFieldsUnchanged, TV_SLOT_RENDER_FIELDS } from "./slotRealtime";
 
 // Re-export the pure events surface so the app imports it from one place. The pure
@@ -45,8 +46,15 @@ export interface Slot {
   overscan_inset_pct: number;
   scale_adjust: number;
   /** The programmable bottom tier of the mode ladder (docs/15). null = today's rotation.
-   *  Only `playlist` renders in M1; capture/multiview are reserved (M2/M3). */
+   *  playlist (M1) / capture (M2) / multiview (M3). */
   program: SlotProgram | null;
+  /** M3 (D4): the manual-override hold tier (null = no override / follow schedule) + when it was
+   *  set. resolveEffectiveProgram uses these + the slot's schedule to pick what actually renders. */
+  program_hold: ProgramHold | null;
+  program_set_at: string | null;
+  /** M3 (D2): 'panel' = a portrait sidebar slot that runs inside a landscape multiview (no TV of
+   *  its own, never heartbeats). 'screen' = a normal slot. */
+  kind: "screen" | "panel";
 }
 
 export type Template =
@@ -220,7 +228,7 @@ export function useSlot(slug: string) {
     queryFn: async (): Promise<Slot | null> => {
       const { data, error } = await supabase
         .from("signage_slots")
-        .select("id, venue_id, name, orientation, slug, terminal_number, location_label, overscan_inset_pct, scale_adjust, program")
+        .select("id, venue_id, name, orientation, slug, terminal_number, location_label, overscan_inset_pct, scale_adjust, program, program_hold, program_set_at, kind")
         .eq("slug", slug)
         .maybeSingle();
       if (error) throw error;
@@ -320,6 +328,12 @@ export function useSlot(slug: string) {
     staleTime: 60_000,
   });
 
+  // M3 (D3): this slot's dayparts (anon-readable slot_program_schedule) — the effective program is
+  // DERIVED client-side from these + the manual-override hold, never a cron write.
+  const schedule = useSlotSchedule(slotId);
+  // M3 (D4): the venue business-day rollover hour (04:00 closeout) that the 'event' hold expires at.
+  const closeoutHour = useCloseoutHour();
+
   // ── Realtime: one channel, invalidate only the affected keys (ARCH-1) ───────
   useEffect(() => {
     const ch = supabase
@@ -349,11 +363,98 @@ export function useSlot(slug: string) {
           if (slotRenderFieldsUnchanged(TV_SLOT_RENDER_FIELDS, cached as Record<string, unknown> | undefined, payload.new as Record<string, unknown>)) return;
           qc.invalidateQueries({ queryKey: ["signage", "slot", slug] });
         })
+      // A schedule edit (M3) re-derives the effective program with no reload. No venue_id column on
+      // the junction (single-venue), so subscribe unfiltered and invalidate all schedule keys.
+      .on("postgres_changes", { event: "*", schema: "public", table: "slot_program_schedule" },
+        () => qc.invalidateQueries({ queryKey: ["signage", "schedule"] }))
       .subscribe();
     return () => { supabase.removeChannel(ch); };
   }, [qc, slug]);
 
-  return { venue, slot, items, takeover, liveGame, toast };
+  return { venue, slot, items, takeover, liveGame, toast, schedule, closeoutHour };
+}
+
+/* ── M3: schedule rows / closeout hour / panel slot data ──────────────────────── */
+
+/** Map a raw slot_program_schedule row to the pure resolver's ScheduleRow shape. */
+export function mapScheduleRow(r: {
+  id: string; program: unknown; days_of_week: string[] | null;
+  start_minute: number; end_minute: number; position: number; active: boolean;
+}): ScheduleRow {
+  return {
+    id: r.id,
+    program: (r.program ?? { kind: "rotation" }) as ScheduleProgram,
+    daysOfWeek: r.days_of_week ?? [],
+    startMinute: r.start_minute,
+    endMinute: r.end_minute,
+    position: r.position,
+    active: r.active,
+  };
+}
+
+/** This slot's daypart rows (anon-readable). Realtime is handled by the caller's channel
+ *  (useSlot subscribes to slot_program_schedule; the hub has its own). */
+export function useSlotSchedule(slotId: string | null) {
+  return useQuery({
+    queryKey: ["signage", "schedule", slotId],
+    enabled: !!slotId,
+    queryFn: async (): Promise<ScheduleRow[]> => {
+      const { data, error } = await supabase
+        .from("slot_program_schedule")
+        .select("id, program, days_of_week, start_minute, end_minute, position, active, slot_id")
+        .eq("slot_id", slotId as string)
+        .order("position", { ascending: false })
+        .order("id");
+      if (error) throw error;
+      return ((data ?? []) as Parameters<typeof mapScheduleRow>[0][]).map(mapScheduleRow);
+    },
+    staleTime: 30_000,
+  });
+}
+
+/** The venue business-day rollover hour (venue_settings.toast_closeout_hour, jsonb scalar; anon
+ *  can read venue_settings). Default 4 (04:00) — the 'event' hold and business-date math use it. */
+export function useCloseoutHour() {
+  return useQuery({
+    queryKey: ["signage", "closeoutHour"],
+    staleTime: 10 * 60_000,
+    queryFn: async (): Promise<number> => {
+      const { data } = await supabase
+        .from("venue_settings")
+        .select("value")
+        .eq("venue_id", VENUE_ID)
+        .eq("key", "toast_closeout_hour")
+        .maybeSingle();
+      const v = Number((data as { value?: unknown } | null)?.value);
+      return Number.isFinite(v) && v >= 0 && v <= 23 ? v : 4;
+    },
+  });
+}
+
+/** A multiview PANEL's data: its slot row (by id) + its queued rotation items. The panel reuses
+ *  the whole portrait rotation stack; toast/events/now are shared down from the host (no second
+ *  fetch of those). Realtime on the panel's items is covered by the host page's signage:slot
+ *  channel (it invalidates ["signage","items"] venue-wide). */
+export function usePanelSlot(panelSlotId: string | null) {
+  const slot = useQuery({
+    queryKey: ["signage", "panel-slot", panelSlotId],
+    enabled: !!panelSlotId,
+    queryFn: async (): Promise<Slot | null> => {
+      const { data, error } = await supabase
+        .from("signage_slots")
+        .select("id, venue_id, name, orientation, slug, terminal_number, location_label, overscan_inset_pct, scale_adjust, program, program_hold, program_set_at, kind")
+        .eq("id", panelSlotId as string)
+        .maybeSingle();
+      if (error) throw error;
+      return (data as Slot | null) ?? null;
+    },
+  });
+  const items = useQuery({
+    queryKey: ["signage", "items", panelSlotId],
+    enabled: !!panelSlotId,
+    queryFn: (): Promise<SignageItem[]> => fetchSlotQueuePublic(panelSlotId as string),
+  });
+  return { slot, items };
 }
 
 /**

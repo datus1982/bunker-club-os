@@ -189,6 +189,9 @@ export function useScreens() {
         .from("signage_slots")
         .select("id, name, slug, terminal_number, location_label, last_seen")
         .eq("venue_id", VENUE_ID)
+        // M3 (NOTE-6): panel slots have no TV of their own and never heartbeat — health belongs to
+        // their host screen, so they must not appear on the dashboard STATUS BOARD as offline.
+        .neq("kind", "panel")
         .order("terminal_number", { nullsFirst: false });
       if (error) throw error;
       return (data ?? []) as ScreenSlot[];

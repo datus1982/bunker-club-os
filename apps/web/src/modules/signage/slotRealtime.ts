@@ -12,9 +12,14 @@
  * diff — we compare payload.new to the CACHED row instead (per the task's fallback path).
  */
 
-/** Fields the public TV board (useSignage.Slot) actually renders off a signage_slots row. */
+/** Fields the public TV board (useSignage.Slot) actually renders off a signage_slots row.
+ *  program_hold / program_set_at drive the M3 two-tier override (D4) — a hold change with the
+ *  same program jsonb (e.g. plain flip → SPECIAL EVENT) must still wake the TV, so they're here. */
 export const TV_SLOT_RENDER_FIELDS = [
   "program",
+  "program_hold",
+  "program_set_at",
+  "kind",
   "name",
   "orientation",
   "location_label",
@@ -33,6 +38,9 @@ export const HUB_SLOT_RENDER_FIELDS = [
   "terminal_number",
   "location_label",
   "program",
+  "program_hold",
+  "program_set_at",
+  "kind",
 ] as const;
 
 /**

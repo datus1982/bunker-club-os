@@ -18,14 +18,22 @@ import { collectPaged } from "./mediaPagination";
  * the media_* tables (TVs read anon), like every other display surface.
  */
 
+/** The program shown in a multiview MAIN region — a playlist or a live capture (docs/15 M3 D8).
+ *  Reuses the M1/M2 shapes verbatim; `presentation` is IGNORED in multiview (the geometry owns
+ *  the 1312×738 stage — always contained). */
+export type MultiviewMain =
+  | { kind: "playlist"; playlist_id: string }
+  | { kind: "capture"; device_match?: string };
+
 /** Slot program shapes (docs/15 §Concept: PROGRAMS). null slot.program = rotation. */
 export type SlotProgram =
   | { kind: "playlist"; playlist_id: string }
   // Capture (M2): the live UVC input (the Roku) via getUserMedia. `device_match` filters the
   // videoinput label (blank = first camera); `presentation` overrides the fullbleed default.
   | { kind: "capture"; device_match?: string; presentation?: Presentation; audio?: boolean }
-  // Reserved (M3) — typed now so the resolver + Slot type never need widening.
-  | { kind: "multiview"; main?: unknown; panel_slot_id?: string };
+  // Multiview (M3, D1/D8): a 16:9 main region (playlist|capture) + a portrait PANEL slot running
+  // the existing rotation. Preempted whole by takeover/moment/game (D9 — resolveSlotMode unchanged).
+  | { kind: "multiview"; main: MultiviewMain; panel_slot_id: string };
 
 /**
  * The default localhost port the Electron media shell serves video on. A `?mediahost=host:port`

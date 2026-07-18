@@ -2,7 +2,8 @@ import { useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase, VENUE_ID } from "@/shared/supabaseClient";
 import { thumbUrl } from "./mediaProgram";
-import type { MediaFile, MediaPlaylist, Presentation } from "./mediaProgram";
+import type { MediaFile, MediaPlaylist, Presentation, MultiviewMain } from "./mediaProgram";
+import type { ProgramHold, ScheduleProgram } from "./scheduleResolve";
 import { collectPaged } from "./mediaPagination";
 
 /**
@@ -244,15 +245,140 @@ export async function swapPlaylistItems(
 
 /* ── slot program (the screen-card PROGRAM control) ──────────────────────── */
 
-/** A program the hub can WRITE: ROTATION (null), a playlist, or capture (M2). Multiview (M3) is
- *  not writable from the hub yet — kept out of this union so the panel can't set a half-built mode. */
+/** A program the hub can WRITE: ROTATION (null), playlist, capture (M2), or multiview (M3). */
 export type WritableProgram =
   | { kind: "playlist"; playlist_id: string }
-  | { kind: "capture"; device_match?: string; presentation?: "framed" | "fullbleed" };
+  | { kind: "capture"; device_match?: string; presentation?: "framed" | "fullbleed" }
+  | { kind: "multiview"; main: MultiviewMain; panel_slot_id: string };
 
-/** Write a slot's program (null = ROTATION, today's default). */
-export async function setSlotProgram(slotId: string, program: WritableProgram | null): Promise<void> {
-  const { error } = await supabase.from("signage_slots").update({ program }).eq("id", slotId);
+/**
+ * Write a slot's program + the M3 hold pair (D4). null = ROTATION / follow the schedule (clears
+ * the override). A non-null program is a manual OVERRIDE with a hold tier:
+ *   'pin'      — permanent (used when the slot has NO schedule; unchanged from M1/M2).
+ *   'boundary' — a plain flip; yields at the next schedule boundary.
+ *   'event'    — a SPECIAL EVENT hold; survives boundaries, expires at the 04:00 rollover.
+ * The caller (ProgramPanel) picks the tier from the SPECIAL EVENT toggle + whether a schedule exists.
+ */
+export async function setSlotProgram(
+  slotId: string, program: WritableProgram | null, hold: ProgramHold = "boundary",
+): Promise<void> {
+  const update = program === null
+    ? { program: null, program_hold: null, program_set_at: null }
+    : { program, program_hold: hold, program_set_at: new Date().toISOString() };
+  const { error } = await supabase.from("signage_slots").update(update).eq("id", slotId);
+  if (error) throw error;
+}
+
+/** Clear the manual override so the slot follows its schedule again (RESUME SCHEDULE / D4/D5). */
+export async function resumeSchedule(slotId: string): Promise<void> {
+  return setSlotProgram(slotId, null);
+}
+
+/* ── panel slots (D2) + dayparts (D3) ───────────────────────────────────────── */
+
+/** Create a dedicated multiview PANEL slot (kind='panel', portrait, no TV). Returns its id so the
+ *  caller can point a multiview program at it. slug is unique — derive from the name + a suffix. */
+export async function createPanelSlot(name: string): Promise<string> {
+  const base = (name.trim() || "panel").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") || "panel";
+  const slug = `${base}-${Math.random().toString(36).slice(2, 7)}`;
+  const { data, error } = await supabase
+    .from("signage_slots")
+    .insert({ venue_id: VENUE_ID, name: name.trim() || "BAR PANEL", orientation: "portrait", slug, kind: "panel" })
+    .select("id")
+    .single();
+  if (error) throw error;
+  return (data as { id: string }).id;
+}
+
+/** Raw slot_program_schedule row shape (admin editor). */
+export interface ScheduleRowRaw {
+  id: string;
+  slot_id: string;
+  program: ScheduleProgram;
+  days_of_week: string[];
+  start_minute: number;
+  end_minute: number;
+  position: number;
+  active: boolean;
+}
+
+/** A slot's dayparts for the admin schedule editor (raw columns; realtime via the hub channel). */
+export function useSlotScheduleAdmin(slotId: string | null) {
+  const qc = useQueryClient();
+  const q = useQuery({
+    queryKey: ["media-admin", "schedule", slotId],
+    enabled: !!slotId,
+    queryFn: async (): Promise<ScheduleRowRaw[]> => {
+      const { data, error } = await supabase
+        .from("slot_program_schedule")
+        .select("id, slot_id, program, days_of_week, start_minute, end_minute, position, active")
+        .eq("slot_id", slotId as string)
+        .order("position", { ascending: false })
+        .order("id");
+      if (error) throw error;
+      return ((data ?? []) as Array<Omit<ScheduleRowRaw, "days_of_week"> & { days_of_week: string[] | null }>).map((r) => ({
+        ...r, days_of_week: r.days_of_week ?? [],
+      }));
+    },
+  });
+  useEffect(() => {
+    const ch = supabase
+      .channel("media-admin:schedule")
+      .on("postgres_changes", { event: "*", schema: "public", table: "slot_program_schedule" },
+        () => qc.invalidateQueries({ queryKey: ["media-admin", "schedule"] }))
+      .subscribe();
+    return () => { supabase.removeChannel(ch); };
+  }, [qc]);
+  return q;
+}
+
+/** ALL dayparts across the venue's slots (single-venue; the junction has no venue_id), grouped by
+ *  slot_id — for the hub to show which screens have a schedule + the active-daypart chip. */
+export function useAllScheduleRows() {
+  const qc = useQueryClient();
+  const q = useQuery({
+    queryKey: ["media-admin", "schedule", "all"],
+    queryFn: async (): Promise<Map<string, ScheduleRowRaw[]>> => {
+      const { data, error } = await supabase
+        .from("slot_program_schedule")
+        .select("id, slot_id, program, days_of_week, start_minute, end_minute, position, active")
+        .order("position", { ascending: false });
+      if (error) throw error;
+      const m = new Map<string, ScheduleRowRaw[]>();
+      for (const r of (data ?? []) as Array<Omit<ScheduleRowRaw, "days_of_week"> & { days_of_week: string[] | null }>) {
+        const row: ScheduleRowRaw = { ...r, days_of_week: r.days_of_week ?? [] };
+        if (!m.has(row.slot_id)) m.set(row.slot_id, []);
+        m.get(row.slot_id)!.push(row);
+      }
+      return m;
+    },
+  });
+  useEffect(() => {
+    const ch = supabase
+      .channel("media-admin:schedule-all")
+      .on("postgres_changes", { event: "*", schema: "public", table: "slot_program_schedule" },
+        () => qc.invalidateQueries({ queryKey: ["media-admin", "schedule"] }))
+      .subscribe();
+    return () => { supabase.removeChannel(ch); };
+  }, [qc]);
+  return q;
+}
+
+export async function createScheduleRow(row: {
+  slot_id: string; program: ScheduleProgram; days_of_week: string[];
+  start_minute: number; end_minute: number; position: number;
+}): Promise<void> {
+  const { error } = await supabase.from("slot_program_schedule").insert(row);
+  if (error) throw error;
+}
+
+export async function updateScheduleRow(id: string, patch: Partial<Omit<ScheduleRowRaw, "id" | "slot_id">>): Promise<void> {
+  const { error } = await supabase.from("slot_program_schedule").update(patch).eq("id", id);
+  if (error) throw error;
+}
+
+export async function deleteScheduleRow(id: string): Promise<void> {
+  const { error } = await supabase.from("slot_program_schedule").delete().eq("id", id);
   if (error) throw error;
 }
 
