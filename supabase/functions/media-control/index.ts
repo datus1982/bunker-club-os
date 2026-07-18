@@ -31,8 +31,15 @@ function transportTopic(slug: string): string {
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const PROGRAM_CMDS = new Set(["playlist", "rotation", "capture"]);
+// 'schedule' (M3, D5): clear the manual override so the slot follows its daypart schedule again
+// (alias 'rotation' kept from M2 — both clear the override; with no schedule that IS rotation).
+const PROGRAM_CMDS = new Set(["playlist", "rotation", "capture", "schedule"]);
 const TRANSPORT_CMDS = new Set(["pause", "resume", "next"]);
+// The manual-override hold tier a program write carries (docs/15 M3, D4/D5). A Q-SYS press defaults
+// to 'event' — a SPECIAL EVENT hold that survives daypart boundaries and expires at the 04:00
+// business-day rollover (the owner's overtime case). An explicit `hold` param overrides it.
+const HOLDS = new Set(["pin", "boundary", "event"]);
+const DEFAULT_HOLD = "event";
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json", ...cors } });
@@ -61,7 +68,7 @@ Deno.serve(async (req) => {
     return json({ error: "unauthorized" }, 401);
   }
 
-  let body: { slug?: string; cmd?: string; playlist?: string };
+  let body: { slug?: string; cmd?: string; playlist?: string; hold?: string };
   try {
     body = await req.json();
   } catch {
@@ -73,7 +80,12 @@ Deno.serve(async (req) => {
   if (!slug) return json({ error: "slug required" }, 400);
   if (!cmd) return json({ error: "cmd required" }, 400);
   if (!PROGRAM_CMDS.has(cmd) && !TRANSPORT_CMDS.has(cmd)) {
-    return json({ error: `unknown cmd '${cmd}' (expected playlist|rotation|capture|pause|resume|next)` }, 400);
+    return json({ error: `unknown cmd '${cmd}' (expected playlist|rotation|capture|schedule|pause|resume|next)` }, 400);
+  }
+  // Optional hold tier for a program write (D4/D5). Default 'event'. Ignored by rotation/schedule.
+  const hold = (body.hold ?? "").trim() || DEFAULT_HOLD;
+  if ((cmd === "playlist" || cmd === "capture") && !HOLDS.has(hold)) {
+    return json({ error: `invalid hold '${hold}' (expected pin|boundary|event)` }, 400);
   }
 
   const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
@@ -101,26 +113,33 @@ Deno.serve(async (req) => {
     return json({ ok: true, slug, cmd, kind: "transport" });
   }
 
-  // Program commands: write signage_slots.program (single source of truth; TV + hub follow live).
+  // Program commands: write signage_slots.program + the M3 hold pair (single source of truth; the
+  // TV + hub follow live). rotation/schedule CLEAR the override (null program + null hold) so the
+  // slot follows its daypart schedule; playlist/capture SET an override with a hold + set-at anchor.
   let program: { kind: "playlist"; playlist_id: string } | { kind: "capture" } | null;
-  if (cmd === "rotation") {
+  let update: Record<string, unknown>;
+  if (cmd === "rotation" || cmd === "schedule") {
     program = null;
-  } else if (cmd === "capture") {
-    program = { kind: "capture" };
+    update = { program: null, program_hold: null, program_set_at: null };
   } else {
-    // playlist — resolve by id (uuid) else case-insensitive name, scoped to the slot's venue.
-    const ref = (body.playlist ?? "").trim();
-    if (!ref) return json({ error: "playlist required for cmd 'playlist'" }, 400);
-    let q = admin.from("media_playlists").select("id, name").eq("venue_id", slot.venue_id);
-    q = UUID_RE.test(ref) ? q.eq("id", ref) : q.ilike("name", ref);
-    const { data: pls, error: plErr } = await q.limit(2);
-    if (plErr) return json({ error: `playlist lookup failed: ${plErr.message}` }, 500);
-    if (!pls || pls.length === 0) return json({ error: `no playlist matching '${ref}'` }, 404);
-    if (pls.length > 1) return json({ error: `playlist '${ref}' is ambiguous (matches ${pls.length})` }, 409);
-    program = { kind: "playlist", playlist_id: pls[0].id as string };
+    if (cmd === "capture") {
+      program = { kind: "capture" };
+    } else {
+      // playlist — resolve by id (uuid) else case-insensitive name, scoped to the slot's venue.
+      const ref = (body.playlist ?? "").trim();
+      if (!ref) return json({ error: "playlist required for cmd 'playlist'" }, 400);
+      let q = admin.from("media_playlists").select("id, name").eq("venue_id", slot.venue_id);
+      q = UUID_RE.test(ref) ? q.eq("id", ref) : q.ilike("name", ref);
+      const { data: pls, error: plErr } = await q.limit(2);
+      if (plErr) return json({ error: `playlist lookup failed: ${plErr.message}` }, 500);
+      if (!pls || pls.length === 0) return json({ error: `no playlist matching '${ref}'` }, 404);
+      if (pls.length > 1) return json({ error: `playlist '${ref}' is ambiguous (matches ${pls.length})` }, 409);
+      program = { kind: "playlist", playlist_id: pls[0].id as string };
+    }
+    update = { program, program_hold: hold, program_set_at: new Date().toISOString() };
   }
 
-  const { error: upErr } = await admin.from("signage_slots").update({ program }).eq("id", slot.id);
+  const { error: upErr } = await admin.from("signage_slots").update(update).eq("id", slot.id);
   if (upErr) return json({ error: `program write failed: ${upErr.message}` }, 500);
-  return json({ ok: true, slug, cmd, kind: "program", program });
+  return json({ ok: true, slug, cmd, kind: "program", program, hold: program ? hold : null });
 });

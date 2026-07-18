@@ -231,14 +231,19 @@ shared code); a `?mediahost=` query param on the slot URL overrides for unusual 
 
 ---
 
-## M3 — proposed amendment (NOT RATIFIED)
+## M3 — RATIFIED (as amended) — multiview + schedules
 
-> **Status: DRAFT, pending owner ratification.** Nothing here builds until the owner ratifies
-> `docs/media-m3-mockup.html` (decisions D1…D9, deep-linkable #d1…#d9). M1 (library + playlist)
-> and M2 (capture + Q-SYS control) are shipped & live; M3 is the last phase — multiview + the
-> schedule layer. Every open decision below carries a **D-number that matches the mockup.** This
-> section supersedes the two thinner M3 notes above (§Concept "Schedules" and §Multiview) once
-> ratified; where they conflict, the tension is called out explicitly (see D4).
+> **Status: RATIFIED 2026-07-17 and BUILT (branch `phase-media-m3`, migration 0051).** The owner
+> ratified `docs/media-m3-mockup.html` (D1…D9) with **D4 amended to a two-tier hold** and **D5
+> resolved consistently** (the rulings are folded into D4/D5 below). M1 (library + playlist) and M2
+> (capture + Q-SYS control) are shipped & live. This section supersedes the two thinner M3 notes
+> above (§Concept "Schedules" and §Multiview); where they conflict, D4 governs (manual-until-boundary,
+> not the old "schedule > manual" one-liner).
+>
+> **Owner rulings folded in:** D4 gains a SPECIAL EVENT hold (a manual/Q-SYS override that survives
+> daypart boundaries and expires at the 04:00 business-day rollover — his "a game running long"
+> case); D5 makes a Q-SYS program press default to that SPECIAL EVENT hold (event-driven), with a
+> new `schedule` command to resume schedules early.
 
 ### What M3 adds
 
@@ -318,54 +323,54 @@ Re-derived on the SlotDisplay's existing 30s tick **plus a precise `setTimeout` 
   TVs are NTP-synced and the boundary is venue-local wall time from `Intl` (the DST-safe part is just
   "what time is it in the venue now," which `Intl` gives). No missed-fire class exists (unlike cron).
 
-### D4 — Schedule vs. manual precedence (the honest tension)
+### D4 — Schedule vs. manual precedence — RULED: TWO-TIER hold
 
-The existing §Concept one-liner ("active schedule row > manual program > rotation") is **amended**.
-The real bar case is the opposite: a schedule says PLAYLIST, staff flip the game on by hand, and the
-schedule must NOT stomp them back. **Recommended: manual wins until the next boundary, then auto-resumes.**
+The old §Concept one-liner ("active schedule row > manual program > rotation") is **amended**. The
+bar case is the opposite: a schedule says PLAYLIST, staff flip the game on by hand, and the schedule
+must NOT stomp them back. **The owner ruled a two-tier hold.** Stored as `signage_slots.program` (the
+override program) **+ `program_hold text` + `program_set_at timestamptz`** (migration 0051):
 
-Stored as `signage_slots.program` (the manual/override program) **+ a new nullable
-`program_until timestamptz`**:
+| `program_hold` | Meaning | Expires |
+|---|---|---|
+| `'pin'` | permanent manual pin — **the no-schedule default (unchanged from M1/M2)** | never |
+| `'boundary'` | a plain flip while a schedule exists | at the next schedule **boundary** after `program_set_at` |
+| `'event'` | **SPECIAL EVENT** — a tag/toggle on the manual switch (the owner's "game running long" case) | at the venue **business-day rollover** (04:00 closeout) after `program_set_at` — SURVIVES daypart boundaries |
 
-- **No schedule covers the slot →** a hand flip is a **permanent pin** (`program_until = null`) —
-  **identical to M1/M2 behavior, fully back-compatible.**
-- **A daypart is active →** a hand flip (or Q-SYS press) sets `program = chosen`,
-  `program_until = nextBoundary` → an **OVERRIDE** that wins until the daypart ends, then the schedule
-  reclaims. A **RESUME SCHEDULE** control (and Q-SYS `schedule` command, D5) clears it now
-  (`program = null`).
+`program = null` ⇒ no override; follow the schedule (⇒ rotation when no daypart covers now). RESUME
+SCHEDULE (hub) / the Q-SYS `schedule` command clears the override (`program = null, program_hold = null`).
 
-Effective-program resolution (client, render-time):
+Effective-program resolution (client, render-time — `resolveEffectiveProgram` in `scheduleResolve.ts`):
 ```
-if slot.program && (slot.program_until == null || slot.program_until > now):
-    → slot.program                         # permanent pin OR live override
+if slot.program && !isHoldExpired(program_hold, program_set_at, now, rows, rolloverHour):
+    → slot.program                         # unexpired manual override (pin/boundary/event)
 else:
     → activeScheduledProgram(now, rows)     # the daypart's program, or null = rotation
 ```
-`resolveSlotMode` is unchanged; whatever this resolves to still renders only at rotation-bottom.
+`isHoldExpired`: pin → false; boundary → `nextBoundary(program_set_at) <= now` (no schedule ⇒ never,
+so a 'boundary' flip on a schedule-less slot is a permanent pin); event → `nextRollover(program_set_at)
+<= now`. `resolveSlotMode` is **unchanged**; whatever this resolves to still renders only at
+rotation-bottom. **DECISION:** storing the hold TIER + set-at (not a precomputed `program_until`) means
+the expiry is derived at read time — robust to schedule edits, and the `media-control` fn only writes a
+tier + `now()` (no boundary math in Deno, D5).
 
-- **Alts (reply to choose):** (b) manual pins **permanently** until a FOLLOW-SCHEDULE toggle — more
-  surprising ("why is the game still on Monday morning?"); (c) manual wins for the current minute only
-  — too fragile.
+**Built:** `program_hold`/`program_set_at` are in `TV_SLOT_RENDER_FIELDS` + `HUB_SLOT_RENDER_FIELDS`
+(`slotRealtime.ts`) so a hold change with the same program (plain flip → SPECIAL EVENT) still wakes the
+TV/hub. The hub's SWITCH PROGRAM shows the SPECIAL EVENT toggle only when the slot has a schedule
+(otherwise every flip is a `pin`).
 
-⚠ **Build constraint (M1/M2 code):** `program_until` must be added to `TV_SLOT_RENDER_FIELDS`
-(`slotRealtime.ts`) so the heartbeat-skip diff treats a `program_until` change as render-affecting and
-wakes the TV; otherwise a schedule/override change wouldn't refetch the slot.
+### D5 — Q-SYS interaction under schedules — RULED
 
-### D5 — Q-SYS interaction under schedules
+M2's `media-control` edge fn writes `signage_slots.program`. **RULED:** a Q-SYS program press
+(`playlist`/`capture`) defaults to the **SPECIAL EVENT hold** (`program_hold='event'`) — Q-SYS presses
+are typically event-driven (the overtime case). An optional `hold` param (`pin`|`boundary`|`event`) wires
+a boundary-scoped UCI button. A new **`schedule` command** clears the override (`program = null,
+program_hold = null`) to resume schedules early (the hub's RESUME SCHEDULE does the same).
 
-M2's `media-control` edge fn already writes `signage_slots.program`. **Recommended: a Q-SYS program
-command behaves identically to a hub flip** — sets the same OVERRIDE-until-boundary (D4). A **new
-`schedule` / `resume` command** clears the override (`program = null`). Both surfaces write the same
-columns; the TV and hub chip follow via realtime (single source of truth preserved).
-
-- The fn computes `program_until` with the **same** venue-TZ boundary logic as the client. Two ways,
-  pick at build: (i) vendor/import the pure `scheduleResolve.ts` into the Deno fn (matches how
-  toast-sync imports pure `selectionCounts.ts`/`priceOptions.ts`), or (ii) a small SECURITY DEFINER
-  `next_schedule_boundary(slot_id, now)` SQL helper the fn calls by RPC.
-- **Accepted fallback:** Q-SYS presses set a **permanent pin** (`program_until = null`), cleared only
-  by an explicit `resume` — simpler in the fn (no boundary math) but inconsistent with the hub. Only if
-  computing the boundary in Deno is unwanted.
-- Runbook `docs/runbooks/qsys-media-control.md` gains the `schedule` command (curl test + Lua snippet).
+**Built (media-control v2, DEPLOYED):** the fn sets `program_hold + program_set_at = now()` on a program
+write — **no boundary math in Deno** (the D4 read-time design makes that unnecessary; the fn just stamps
+the tier + time). `schedule`/`rotation` clear the override. Curl matrix verified: default→`event`,
+`hold:'boundary'`→`boundary`, bad hold→400, `schedule`→program null, landscape-only→400, bad token→401.
+Runbook `docs/runbooks/qsys-media-control.md` updated with the `schedule` command + `hold` param.
 
 ### D6 — Multiview audio
 
@@ -426,13 +431,15 @@ unmounts — the `<video>` stops, the capture `MediaStream` tracks stop — and 
 - Active WINDOW/MESSAGE promos still surface — in the **panel's** rotation (venue-wide events flow
   through the panel's portrait resolver), never layered over the main video.
 
-### Proposed schema
+### Schema (migration 0051, APPLIED live)
 
 ```sql
--- signage_slots: panel modeling + manual-override expiry
+-- signage_slots: panel modeling + the two-tier manual-override hold (D4)
 alter table signage_slots add column if not exists kind text not null default 'screen'
   check (kind in ('screen','panel'));           -- 'panel' = a multiview sidebar slot (no TV/heartbeat)
-alter table signage_slots add column if not exists program_until timestamptz;  -- D4: null = permanent pin
+alter table signage_slots add column if not exists program_hold text
+  check (program_hold in ('pin','boundary','event'));  -- D4 tier; null = no override (follow schedule)
+alter table signage_slots add column if not exists program_set_at timestamptz;  -- override anchor
 
 -- slot_program_schedule: per-slot dayparts (D3 anon-readable, client-derived; no cron)
 create table slot_program_schedule (

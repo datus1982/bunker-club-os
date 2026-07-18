@@ -26,6 +26,11 @@ export interface AdminSlot {
   last_seen: string | null;
   /** The screen's PROGRAM (docs/15). null = ROTATION; else a playlist/capture/multiview program. */
   program: SlotProgram | null;
+  /** M3 (D4): the manual-override hold tier + when set (drives the schedule-state chip). */
+  program_hold: "pin" | "boundary" | "event" | null;
+  program_set_at: string | null;
+  /** M3 (D2): 'panel' = a multiview sidebar slot (no TV/health/takeover); 'screen' = normal. */
+  kind: "screen" | "panel";
 }
 
 export interface AdminItem extends SignageItem {
@@ -77,7 +82,7 @@ export function useAdminSlots() {
     queryFn: async (): Promise<AdminSlot[]> => {
       const { data, error } = await supabase
         .from("signage_slots")
-        .select("id, name, orientation, slug, terminal_number, location_label, last_seen, program")
+        .select("id, name, orientation, slug, terminal_number, location_label, last_seen, program, program_hold, program_set_at, kind")
         .eq("venue_id", VENUE_ID)
         .order("terminal_number", { nullsFirst: false });
       if (error) throw error;

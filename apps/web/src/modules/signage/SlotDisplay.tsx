@@ -13,7 +13,9 @@ import { TemplateView } from "./SignageTemplates";
 import { EventStageView, EventTeaseCard } from "./EventStages";
 import { PlaylistProgram } from "./PlaylistProgram";
 import { CaptureProgram } from "./CaptureProgram";
+import { MultiviewProgram } from "./MultiviewProgram";
 import { resolveMediaBase } from "./mediaProgram";
+import { resolveEffectiveProgram, nextTransition, type ScheduleRow } from "./scheduleResolve";
 import { SUPPORT_TEXT } from "./supportText";
 import "./signage.css";
 
@@ -38,7 +40,7 @@ type ToastMap = Map<string, ToastCacheRow>;
  */
 export function SlotDisplay() {
   const { slug = "" } = useParams();
-  const { venue, slot, items, takeover, liveGame, toast } = useSlot(slug);
+  const { venue, slot, items, takeover, liveGame, toast, schedule, closeoutHour } = useSlot(slug);
   useHeartbeat(slug);
 
   if (slot.isPending || venue.isPending) {
@@ -59,6 +61,8 @@ export function SlotDisplay() {
         takeover={takeover.data ?? null}
         liveGameId={liveGame.data?.id ?? null}
         toast={toast.data ?? new Map()}
+        schedule={schedule.data ?? []}
+        rolloverHour={closeoutHour.data ?? 4}
       />
     </DisplayCanvas>
   );
@@ -67,7 +71,7 @@ export function SlotDisplay() {
 type Mode = SlotMode;
 
 function SlotScreen({
-  slot, venueName, timezone, items, takeover, liveGameId, toast,
+  slot, venueName, timezone, items, takeover, liveGameId, toast, schedule, rolloverHour,
 }: {
   slot: Slot;
   venueName: string;
@@ -76,6 +80,8 @@ function SlotScreen({
   takeover: Takeover | null;
   liveGameId: string | null;
   toast: ToastMap;
+  schedule: ScheduleRow[];
+  rolloverHour: number;
 }) {
   const [params] = useSearchParams();
   const preview = params.has("preview");
@@ -92,6 +98,21 @@ function SlotScreen({
     return () => window.clearInterval(id);
   }, []);
   const now = useMemo(() => new Date(nowTick), [nowTick]);
+
+  // M3 (D3/D4): precise re-render at the next schedule boundary / hold expiry, so a daypart flip
+  // or an override yielding is crisp (not up to 30s late). The 30s tick above is the safety net.
+  useEffect(() => {
+    const trans = nextTransition(
+      { program: slot.program, program_hold: slot.program_hold, program_set_at: slot.program_set_at },
+      schedule, new Date(nowTick), timezone, rolloverHour,
+    );
+    if (!trans) return;
+    const ms = trans.getTime() - Date.now();
+    if (ms <= 0) { setNowTick(Date.now()); return; }
+    // Cap to a setTimeout-safe delay; the 30s tick re-arms this well before any cap matters.
+    const id = window.setTimeout(() => setNowTick(Date.now()), Math.min(ms + 500, 2_000_000_000));
+    return () => window.clearTimeout(id);
+  }, [nowTick, schedule, timezone, rolloverHour, slot.program, slot.program_hold, slot.program_set_at]);
 
   const rotation = useMemo(
     () => resolveRotation(items, toast, now, liveEvents),
@@ -141,14 +162,27 @@ function SlotScreen({
       <RotationSurface slot={slot} venueName={venueName} timezone={timezone} rotation={rotation} toast={toast} tease={tease} ticker={ticker} />
     ) : null;
 
-  // PROGRAM tier (docs/15): a `playlist` program renders INSIDE rotation mode (the bottom of the
-  // ladder) — so takeover/moment/game already preempt it (mode !== 'rotation' unmounts it, and
-  // the <video> stops with it). Only 'playlist' renders in M1; capture/multiview are reserved.
+  // PROGRAM tier (docs/15): the EFFECTIVE program renders INSIDE rotation mode (the bottom of the
+  // ladder) — so takeover/moment/game already preempt it (mode !== 'rotation' unmounts it, and the
+  // <video>/capture stops with it). The effective program is the M3 resolution (D3/D4): an unexpired
+  // manual override (pin/boundary/event hold) wins, else the active scheduled daypart, else rotation.
+  // In ?preview mode there is no schedule/override reasoning — show the raw authored rotation.
+  const effProgram = useMemo(
+    () => preview ? null : resolveEffectiveProgram(
+      { program: slot.program, program_hold: slot.program_hold, program_set_at: slot.program_set_at },
+      schedule, now, timezone, rolloverHour,
+    ),
+    [preview, slot.program, slot.program_hold, slot.program_set_at, schedule, now, timezone, rolloverHour],
+  );
   const programPlaylistId =
-    mode === "rotation" && slot.program?.kind === "playlist" ? slot.program.playlist_id : null;
+    mode === "rotation" && effProgram?.kind === "playlist" ? effProgram.playlist_id : null;
   // CAPTURE program (M2): the live UVC input renders in the same rotation-bottom slot as playlist.
   const programCapture =
-    mode === "rotation" && slot.program?.kind === "capture" ? slot.program : null;
+    mode === "rotation" && effProgram?.kind === "capture" ? effProgram : null;
+  // MULTIVIEW program (M3): landscape only (the 1312+608 geometry assumes the 1920×1080 canvas);
+  // a portrait slot never carries multiview, but gate defensively so it falls back to rotation.
+  const programMultiview =
+    mode === "rotation" && slot.orientation === "landscape" && effProgram?.kind === "multiview" ? effProgram : null;
   const mediaBase = useMemo(() => resolveMediaBase(params), [params]);
 
   return (
@@ -182,6 +216,23 @@ function SlotScreen({
           presentation={programCapture.presentation}
           header={<ChromeHeader slot={slot} venueName={venueName} timezone={timezone} />}
           footer={<ChromeFooter ticker={ticker} live={false} orientation={slot.orientation} />}
+        />
+      ) : programMultiview ? (
+        // MULTIVIEW (M3): 16:9 main (playlist|capture) + a portrait PANEL running rotation. Always
+        // framed (D7). Preempted whole (D9) — this branch only renders while mode==='rotation'.
+        <MultiviewProgram
+          main={programMultiview.main}
+          panelSlotId={programMultiview.panel_slot_id}
+          hostSlug={slot.slug}
+          base={mediaBase}
+          header={<ChromeHeader slot={slot} venueName={venueName} timezone={timezone} />}
+          footer={<ChromeFooter ticker={ticker} live={false} orientation={slot.orientation} />}
+          venueName={venueName}
+          timezone={timezone}
+          toast={toast}
+          liveEvents={liveEvents}
+          ticker={ticker}
+          now={now}
         />
       ) : (
         <>
