@@ -103,11 +103,11 @@ curl -sS -X POST "$BASE" -H "x-qsys-token: $TOK" -H "Content-Type: application/j
   -d '{"slug":"landscape-bar","cmd":"rotation"}'
 
 # resume the daypart schedule (clear a manual override) — M3
-curl -sS -X POST "$FN" -H "x-qsys-token: $TOK" -H "content-type: application/json" \
+curl -sS -X POST "$BASE" -H "x-qsys-token: $TOK" -H "Content-Type: application/json" \
   -d '{"slug":"landscape-bar","cmd":"schedule"}'
 
 # capture as a plain boundary override (yields at the next daypart) instead of the SPECIAL EVENT default
-curl -sS -X POST "$FN" -H "x-qsys-token: $TOK" -H "content-type: application/json" \
+curl -sS -X POST "$BASE" -H "x-qsys-token: $TOK" -H "Content-Type: application/json" \
   -d '{"slug":"landscape-bar","cmd":"capture","hold":"boundary"}'
 
 # play a playlist by name

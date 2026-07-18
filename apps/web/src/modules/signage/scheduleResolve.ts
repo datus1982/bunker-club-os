@@ -189,17 +189,34 @@ export function isHoldExpired(
   return nextRollover(setAt, tz, rolloverHour).getTime() <= now.getTime();
 }
 
-/** The program the slot should render right now: an UNEXPIRED manual override wins; else the
- *  active scheduled program; else null = rotation. Pure (D3/D4). */
-export function resolveEffectiveProgram(
+/** Where the effective program comes from — for the hub to label the source (parity: the hub chip
+ *  and ProgramPanel must show what the TV is ACTUALLY playing, not the raw stale slot.program row). */
+export type ProgramSource = "override" | "pinned" | "scheduled" | "rotation";
+
+/** The program the slot should render right now + WHERE it comes from: an UNEXPIRED manual override
+ *  wins ('override' for boundary/event, 'pinned' for pin); else the active scheduled daypart
+ *  ('scheduled'); else null = rotation ('rotation'). Pure (D3/D4). This is the ONE resolver the TV,
+ *  the hub card chip, and ProgramPanel all read — an expired override (its DB row is never cleared,
+ *  DECISION-1) resolves to the schedule/rotation here, exactly as the TV has already yielded. */
+export function resolveEffectiveProgramWithSource(
   slot: SlotProgramState, rows: ScheduleRow[], now: Date, tz: string, rolloverHour: number,
-): SlotProgram | null {
+): { program: SlotProgram | null; source: ProgramSource } {
   if (slot.program) {
     const hold: ProgramHold = slot.program_hold ?? "pin";
     const setAt = slot.program_set_at ? new Date(slot.program_set_at) : now;
-    if (!isHoldExpired(hold, setAt, now, tz, rows, rolloverHour)) return slot.program;
+    if (!isHoldExpired(hold, setAt, now, tz, rows, rolloverHour)) {
+      return { program: slot.program, source: hold === "pin" ? "pinned" : "override" };
+    }
   }
-  return activeScheduledProgram(rows, now, tz);
+  const scheduled = activeScheduledProgram(rows, now, tz);
+  return { program: scheduled, source: scheduled ? "scheduled" : "rotation" };
+}
+
+/** The program the slot should render right now (source discarded) — the TV path. */
+export function resolveEffectiveProgram(
+  slot: SlotProgramState, rows: ScheduleRow[], now: Date, tz: string, rolloverHour: number,
+): SlotProgram | null {
+  return resolveEffectiveProgramWithSource(slot, rows, now, tz, rolloverHour).program;
 }
 
 /** The next instant the effective program could change — for a precise re-render timeout (a crisp

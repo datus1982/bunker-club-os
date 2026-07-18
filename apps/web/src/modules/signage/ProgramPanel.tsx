@@ -22,11 +22,14 @@ import { SlideOver } from "./SlideOver";
  * RESUME SCHEDULE clears the override so the daypart schedule takes over again.
  */
 export function ProgramPanel({
-  slot, hasSchedule, panelChoices, onClose, onChanged,
+  slot, hasSchedule, overrideActive, panelChoices, onClose, onChanged,
 }: {
   slot: AdminSlot;
   /** Does this slot have any dayparts? Decides the default hold + whether SPECIAL EVENT shows. */
   hasSchedule: boolean;
+  /** Is a manual override LIVE right now (WARN-1)? An expired override's DB row lingers but the TV
+   *  has yielded — so the pre-selected state must come from this, not the raw slot.program row. */
+  overrideActive: boolean;
   /** Portrait + panel slots a multiview can point its PANEL at (dedicated or mirror — D2). */
   panelChoices: AdminSlot[];
   onClose: () => void;
@@ -34,13 +37,16 @@ export function ProgramPanel({
 }) {
   const playlistsQ = useMediaPlaylists();
   const playlists = playlistsQ.data ?? [];
-  const currentPlaylistId = slot.program?.kind === "playlist" ? slot.program.playlist_id : null;
-  const captureSelected = slot.program?.kind === "capture";
-  const multiviewSelected = slot.program?.kind === "multiview";
-  const rotationSelected = !slot.program;
+  // Selection reflects the LIVE override only (parity — an expired override is not "selected"; the
+  // slot is following its schedule/rotation, so FOLLOW SCHEDULE / ROTATION is the highlighted state).
+  const ovProgram = overrideActive ? slot.program : null;
+  const currentPlaylistId = ovProgram?.kind === "playlist" ? ovProgram.playlist_id : null;
+  const captureSelected = ovProgram?.kind === "capture";
+  const multiviewSelected = ovProgram?.kind === "multiview";
+  const rotationSelected = !overrideActive;
 
-  // SPECIAL EVENT hold toggle (D4). Default off = a plain 'boundary' flip.
-  const [specialEvent, setSpecialEvent] = useState(slot.program_hold === "event");
+  // SPECIAL EVENT hold toggle (D4). Default on only when a LIVE 'event' override is active.
+  const [specialEvent, setSpecialEvent] = useState(overrideActive && slot.program_hold === "event");
   const holdFor = (): ProgramHold => (!hasSchedule ? "pin" : specialEvent ? "event" : "boundary");
 
   const write = useMutation({
@@ -49,16 +55,16 @@ export function ProgramPanel({
   });
   const resume = useMutation({ mutationFn: () => resumeSchedule(slot.id), onSuccess: () => { onChanged(); } });
 
-  // LIVE INPUT draft state.
-  const [deviceMatch, setDeviceMatch] = useState(slot.program?.kind === "capture" ? slot.program.device_match ?? "" : "");
-  const [captureFramed, setCaptureFramed] = useState(slot.program?.kind === "capture" ? slot.program.presentation === "framed" : false);
+  // LIVE INPUT draft state (seeded from the LIVE override only — parity).
+  const [deviceMatch, setDeviceMatch] = useState(ovProgram?.kind === "capture" ? ovProgram.device_match ?? "" : "");
+  const [captureFramed, setCaptureFramed] = useState(ovProgram?.kind === "capture" ? ovProgram.presentation === "framed" : false);
 
   // MULTIVIEW draft state (D1/D2/D8).
-  const [mvMain, setMvMain] = useState<"playlist" | "capture">(slot.program?.kind === "multiview" && slot.program.main.kind === "capture" ? "capture" : "playlist");
-  const [mvPlaylistId, setMvPlaylistId] = useState(slot.program?.kind === "multiview" && slot.program.main.kind === "playlist" ? slot.program.main.playlist_id : "");
+  const [mvMain, setMvMain] = useState<"playlist" | "capture">(ovProgram?.kind === "multiview" && ovProgram.main.kind === "capture" ? "capture" : "playlist");
+  const [mvPlaylistId, setMvPlaylistId] = useState(ovProgram?.kind === "multiview" && ovProgram.main.kind === "playlist" ? ovProgram.main.playlist_id : "");
   const [mvPanelMode, setMvPanelMode] = useState<"new" | "mirror">("new");
   const [mvPanelName, setMvPanelName] = useState("BAR PANEL");
-  const [mvMirrorId, setMvMirrorId] = useState(slot.program?.kind === "multiview" ? slot.program.panel_slot_id : (panelChoices[0]?.id ?? ""));
+  const [mvMirrorId, setMvMirrorId] = useState(ovProgram?.kind === "multiview" ? ovProgram.panel_slot_id : (panelChoices[0]?.id ?? ""));
 
   const applyMultiview = useMutation({
     mutationFn: async () => {

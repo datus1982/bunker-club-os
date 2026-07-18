@@ -9,8 +9,10 @@ import {
 } from "./useSignageAdmin";
 import {
   resolveRotation, resolveSlotMode, useLiveEvents, activeMoment, useVenue,
+  useCloseoutHour, mapScheduleRow,
   type SlotMode, type SignageItem, type ToastCacheRow, type Template,
 } from "./useSignage";
+import { resolveEffectiveProgramWithSource, type ProgramHold } from "./scheduleResolve";
 import {
   useEventsList, schedulePhrase, statusInfo, pauseEvent, resumeEvent, fireNowEvent, type EventRow,
 } from "./useEventsAdmin";
@@ -72,6 +74,7 @@ export function SignageHub({ openQueueSlug }: { openQueueSlug?: string }) {
   useSlotsRealtime();
   const slotsQ = useAdminSlots();
   const schedulesQ = useAllScheduleRows();
+  const closeoutQ = useCloseoutHour();
   const playlistsQ = useMediaPlaylists();
   const itemsQ = useAllItems();
   const assetsQ = useSignageAssets();
@@ -86,7 +89,19 @@ export function SignageHub({ openQueueSlug }: { openQueueSlug?: string }) {
   // M3 (D2/D3): per-slot dayparts, and the portrait/panel slots a multiview PANEL can point at.
   const scheduleBySlot = useMemo(() => schedulesQ.data ?? new Map(), [schedulesQ.data]);
   const timezone = venueQ.data?.timezone ?? "America/Chicago";
+  const rolloverHour = closeoutQ.data ?? 4;
   const panelChoices = useMemo(() => slots.filter((s) => s.orientation === "portrait"), [slots]);
+
+  // WARN-1 (hub/TV parity): the card chip + ProgramPanel must show what the TV is ACTUALLY playing —
+  // run the SAME resolver the display runs (schedule rows + hold), never the raw slot.program row (an
+  // active daypart would read ROTATION, and an EXPIRED override would read PROGRAM: X forever). now()
+  // at render is fine — the hub re-renders on realtime + the 60s slot poll (it is not a TV).
+  const effFor = (slot: AdminSlot) =>
+    resolveEffectiveProgramWithSource(
+      { program: slot.program, program_hold: slot.program_hold, program_set_at: slot.program_set_at },
+      (scheduleBySlot.get(slot.id) ?? []).map(mapScheduleRow),
+      new Date(), timezone, rolloverHour,
+    );
   const items = itemsQ.data ?? [];
   const assets = assetsQ.data ?? [];
   const toastRows = useMemo(() => toastQ.data ?? [], [toastQ.data]);
@@ -120,11 +135,22 @@ export function SignageHub({ openQueueSlug }: { openQueueSlug?: string }) {
     for (const p of playlistsQ.data ?? []) m.set(p.playlist.id, p.playlist.name);
     return m;
   }, [playlistsQ.data]);
+  // The EFFECTIVE program label + its source suffix (parity — matches the TV, WARN-1). null = rotation.
   const programLabelFor = (slot: AdminSlot): string | null => {
-    if (slot.program?.kind === "playlist") return `PLAYLIST '${playlistNameById.get(slot.program.playlist_id) ?? "…"}'`;
-    if (slot.program?.kind === "capture") return "LIVE INPUT";
-    if (slot.program?.kind === "multiview") return "MULTIVIEW";
-    return null;
+    const { program, source } = effFor(slot);
+    if (!program) return null; // rotation (no override, no active daypart)
+    const base =
+      program.kind === "playlist" ? `PLAYLIST '${playlistNameById.get(program.playlist_id) ?? "…"}'`
+      : program.kind === "capture" ? "LIVE INPUT"
+      : "MULTIVIEW";
+    const suffix = source === "scheduled" ? " · scheduled" : source === "override" ? " · override" : source === "pinned" ? " · pinned" : "";
+    return base + suffix;
+  };
+  // The hold tier of an ACTIVE override (for the ⧗ chip); null when no override is live (following a
+  // schedule / rotation — even if a stale override row lingers in the DB, DECISION-1).
+  const overrideHoldFor = (slot: AdminSlot): ProgramHold | null => {
+    const { source } = effFor(slot);
+    return source === "override" || source === "pinned" ? (slot.program_hold ?? "pin") : null;
   };
 
   // Venue-wide mode inputs (a live game + a moment each hold EVERY screen); the takeover is now
@@ -244,6 +270,7 @@ export function SignageHub({ openQueueSlug }: { openQueueSlug?: string }) {
                   onProgram={s.orientation === "landscape" ? () => setOverlay({ kind: "program", slot: s }) : undefined}
                   onSchedule={s.orientation === "landscape" ? () => setOverlay({ kind: "schedule", slot: s }) : undefined}
                   scheduleCount={(scheduleBySlot.get(s.id)?.length ?? 0)}
+                  overrideHold={overrideHoldFor(s)}
                   isPanel={s.kind === "panel"}
                 />
               );
@@ -384,6 +411,7 @@ export function SignageHub({ openQueueSlug }: { openQueueSlug?: string }) {
         <ProgramPanel
           slot={overlay.slot}
           hasSchedule={(scheduleBySlot.get(overlay.slot.id)?.length ?? 0) > 0}
+          overrideActive={overrideHoldFor(overlay.slot) !== null}
           panelChoices={panelChoices}
           onClose={() => setOverlay(null)}
           onChanged={() => qc.invalidateQueries({ queryKey: ["signage-admin", "slots"] })}
@@ -422,7 +450,7 @@ function placementsFor(assets: AssetWithPlacements[], itemId: string): string[] 
 function ScreenCard({
   slot, mode, takeoverMessage, staleGameDate, eventLabel, slotItems, tmap,
   overflowOpen, onToggleOverflow, onAdd, onQueue, onTakeover, programLabel, onProgram,
-  onSchedule, scheduleCount, isPanel,
+  onSchedule, scheduleCount, overrideHold, isPanel,
 }: {
   slot: AdminSlot;
   mode: SlotMode;
@@ -436,7 +464,7 @@ function ScreenCard({
   onAdd: () => void;
   onQueue: () => void;
   onTakeover: () => void;
-  /** PLAYLIST '{name}' when a program is set (docs/15); null = ROTATION. */
+  /** EFFECTIVE program label + source suffix (parity — matches the TV); null = ROTATION. */
   programLabel: string | null;
   /** Landscape-only: open the SWITCH PROGRAM slide-over. undefined = portrait (no control). */
   onProgram?: () => void;
@@ -444,6 +472,8 @@ function ScreenCard({
   onSchedule?: () => void;
   /** How many dayparts this slot has (M3). >0 shows the SCHEDULE chip. */
   scheduleCount: number;
+  /** The hold tier of a LIVE override (WARN-1 parity); null = following schedule/rotation. */
+  overrideHold: ProgramHold | null;
   /** M3 (D2): a multiview PANEL slot — badge, no health/takeover/program, "follows its host". */
   isPanel: boolean;
 }) {
@@ -485,8 +515,8 @@ function ScreenCard({
       <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
         <ModeChip mode={mode} eventLabel={eventLabel} programLabel={programActive ? programLabel : null} />
         {scheduleCount > 0 && (
-          <span className={slot.program ? "u-amber" : ""} style={{ fontSize: 11, letterSpacing: 1, border: "1px solid currentColor", padding: "2px 7px", opacity: 0.85, color: slot.program ? "var(--terminal-amber, #ffb000)" : "var(--terminal-green)" }}>
-            {slot.program ? (slot.program_hold === "event" ? "⧗ SPECIAL EVENT" : "⧗ OVERRIDE") : `⧗ ${scheduleCount} DAYPART${scheduleCount === 1 ? "" : "S"}`}
+          <span className={overrideHold ? "u-amber" : ""} style={{ fontSize: 11, letterSpacing: 1, border: "1px solid currentColor", padding: "2px 7px", opacity: 0.85, color: overrideHold ? "var(--terminal-amber, #ffb000)" : "var(--terminal-green)" }}>
+            {overrideHold ? (overrideHold === "event" ? "⧗ SPECIAL EVENT" : "⧗ OVERRIDE") : `⧗ ${scheduleCount} DAYPART${scheduleCount === 1 ? "" : "S"}`}
           </span>
         )}
       </div>

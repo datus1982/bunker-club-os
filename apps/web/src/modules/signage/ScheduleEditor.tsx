@@ -83,6 +83,7 @@ export function ScheduleEditor({ slot, timezone, onClose }: { slot: AdminSlot; t
       <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
         <div style={{ fontSize: 14, opacity: 0.7, lineHeight: 1.5 }}>
           Programs that flip themselves by time of day. A manual SWITCH PROGRAM still wins until the next daypart (or the 4 AM rollover for a SPECIAL EVENT). Any time no daypart covers falls to ROTATION.
+          {" "}<span className="u-amber">When two dayparts overlap, the one at the TOP of the list wins.</span>
         </div>
 
         {/* existing dayparts */}

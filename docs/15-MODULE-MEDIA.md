@@ -309,7 +309,7 @@ exactly like `eventStage.ts`) computes, from anon-readable `slot_program_schedul
 - `activeScheduledProgram(now, venueTz, rows): SlotProgram | null` — the program the covering daypart
   runs (null = rotation / no covering row).
 - `nextBoundary(now, venueTz, rows): Date | null` — when the current daypart ends (for a precise flip
-  timeout + for computing `program_until` on a manual override, D4).
+  timeout + for computing an override's hold expiry from `program_set_at`, D4).
 
 Re-derived on the SlotDisplay's existing 30s tick **plus a precise `setTimeout` to the next boundary**
 (mirrors the takeover `ends_at` handling) so the flip is crisp, not up-to-30s late.
@@ -461,7 +461,7 @@ create table slot_program_schedule (
   read anon; schedule rows carry no PII), `has_module('signage')` manage; derive venue via the existing
   `slot_venue()` definer for the write policy. Realtime added so a schedule edit re-derives without a
   reload.
-- **`program_until` / `kind`** are additive; `program` stays `jsonb` (holds the multiview shape).
+- **`program_hold` / `program_set_at` / `kind`** are additive; `program` stays `jsonb` (holds the multiview shape).
 - No new cron, no new tick, **no edge-fn change beyond `media-control` gaining the `schedule` command**
   and (per D5-i) the boundary computation.
 - **DST:** resolution is against venue-local wall time via `Intl` (client) — no fixed-offset math. A
@@ -483,7 +483,7 @@ the logic server-side but is less resilient and breaks D4 — rejected.
 ### QA plan
 
 All QA on **throwaway `qa-*` slots** — the standing rule; the REAL `portrait-main` / `landscape-bar`
-slots are never touched, and `program`/`program_until`/`kind` on them stay null/default.
+slots are never touched, and `program`/`program_hold`/`program_set_at`/`kind` on them stay null/default.
 
 1. **Geometry (D1):** a qa landscape slot in multiview; verify by DOM measurement at 1920×1080 that
    main = 1312×1080 (738 stage + 171×2 chrome) and panel = 608×1080 with the portrait content scaled
@@ -495,7 +495,8 @@ slots are never touched, and `program`/`program_until`/`kind` on them stay null/
    panel keeps running) and capture main (NO SIGNAL card); Q-SYS pause/resume/next drives the main video.
 4. **Schedule (D3/D4):** seed `slot_program_schedule` rows with near-future boundaries on a qa slot;
    verify the client flips at the boundary with no reload; a hand flip mid-daypart sets
-   `program_until = nextBoundary` and auto-resumes; RESUME SCHEDULE clears it; wrap-past-midnight and
+   a plain (boundary) override yields at the next boundary while a SPECIAL EVENT (event) override holds
+   through to the 04:00 rollover; RESUME SCHEDULE clears either; wrap-past-midnight and
    TILL CLOSE dayparts resolve correctly.
 5. **Preemption (D9):** fire a takeover / MOMENT / start a game while multiview is up → the whole
    multiview unmounts (video + capture tracks stop), the standard surface shows, multiview resumes after.
@@ -514,7 +515,7 @@ slots are never touched, and `program`/`program_until`/`kind` on them stay null/
   panel (D1 constraint above).
 - `PlaylistVideo`/`CaptureProgram` are full-canvas + `PlaylistVideo` is unexported → extract a
   `MainMediaStage` for the 1312×738 region (D8 constraint above).
-- `TV_SLOT_RENDER_FIELDS` (`slotRealtime.ts`) must gain `program_until` (D4 constraint above).
+- `TV_SLOT_RENDER_FIELDS` (`slotRealtime.ts`) must gain `program_hold`/`program_set_at` (D4 constraint above).
 - `WritableProgram` (`useMediaAdmin.ts`) deliberately excludes multiview → widen it (D8).
 - Hub `ProgramPanel`/`ScreenCard` gate the PROGRAM control on `orientation === 'landscape'` — panel
   slots are portrait, so they're naturally excluded from a program control; but `ScreenCard` must gain a
