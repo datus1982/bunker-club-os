@@ -540,6 +540,7 @@ function TopSellersFields({ fields, setField }: FieldProps) {
 function InstagramFields({ fields, setField }: FieldProps) {
   const postCount = typeof fields.post_count === "number" ? fields.post_count : 5;
   const includeStories = fields.include_stories !== false; // default true
+  const latestOnly = fields.latest_only === true;
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       <div className="terminal-border" style={{ padding: "12px 14px", display: "flex", flexDirection: "column", gap: 6, fontSize: 15, lineHeight: 1.5 }}>
@@ -549,6 +550,16 @@ function InstagramFields({ fields, setField }: FieldProps) {
           No links to paste — it pulls straight from Instagram and refreshes on its own.
         </div>
       </div>
+      <label style={{ ...checkLabel, alignItems: "flex-start" }}>
+        <input type="checkbox" checked={latestOnly} onChange={(e) => setField("latest_only", e.target.checked ? true : "")} style={{ ...checkbox, marginTop: 2 }} />
+        <span>
+          LATEST ONLY
+          <span style={{ display: "block", fontSize: 14, opacity: 0.55, letterSpacing: 0 }}>
+            Always show exactly one thing — the newest post (or story, if stories are included below).
+          </span>
+        </span>
+      </label>
+      {!latestOnly && (
       <Field label="HOW MANY RECENT POSTS IN THE CYCLE (1–10)">
         <input
           type="number" min={1} max={10} value={postCount}
@@ -556,6 +567,7 @@ function InstagramFields({ fields, setField }: FieldProps) {
           style={{ ...sel, width: 120 }}
         />
       </Field>
+      )}
       <label style={{ ...checkLabel, alignItems: "flex-start" }}>
         <input type="checkbox" checked={includeStories} onChange={(e) => setField("include_stories", e.target.checked)} style={{ ...checkbox, marginTop: 2 }} />
         <span>

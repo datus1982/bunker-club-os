@@ -750,8 +750,9 @@ let instagramSeq = 0;
 export function InstagramCard({ item, orientation }: TemplateProps) {
   const postCount = clampInt(n(item.fields, "post_count") ?? 5, 1, 10);
   const includeStories = item.fields?.include_stories !== false; // default true
+  const latestOnly = item.fields?.latest_only === true; // owner beat: one newest post/story
   const dwell = Math.max(4, item.duration_seconds || 12);
-  const { items, loading } = useInstagramFeed(postCount, includeStories);
+  const { items, loading } = useInstagramFeed(postCount, includeStories, latestOnly);
 
   // Which post shows is a bucket SEEDED at mount from a session-monotonic counter (no mid-dwell
   // swap under a guest; no cross-pass aliasing — the old floor(now/dwell) seed could repeat a

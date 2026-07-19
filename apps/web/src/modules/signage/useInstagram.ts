@@ -27,10 +27,10 @@ export interface IgPost {
 
 const BUCKET = "signage";
 
-export function useInstagramFeed(postCount: number, includeStories: boolean) {
+export function useInstagramFeed(postCount: number, includeStories: boolean, latestOnly = false) {
   const limit = Math.max(1, Math.min(10, Math.floor(postCount) || 5));
   const q = useQuery({
-    queryKey: ["signage", "instagram", limit, includeStories],
+    queryKey: ["signage", "instagram", limit, includeStories, latestOnly],
     refetchInterval: 60_000,
     staleTime: 60_000,
     queryFn: async (): Promise<IgPost[]> => {
@@ -81,6 +81,17 @@ export function useInstagramFeed(postCount: number, includeStories: boolean) {
       // hence the edge fn is where black posters are actually screened out.
       const stories = mapped.filter((m) => m.is_story && !!m.image);
       const posts = mapped.filter((m) => !m.is_story).slice(0, limit);
+
+      // LATEST ONLY (owner beat 2026-07-18): exactly ONE item — the newest thing on the
+      // account, story or post, by posted_at. No queue-jumping, no walk; the card becomes
+      // a static "here's the latest" frame that updates when the feed does.
+      if (latestOnly) {
+        const newest = [...stories, ...posts].sort(
+          (a, b) => new Date(b.posted_at).getTime() - new Date(a.posted_at).getTime()
+        )[0];
+        return newest ? [newest] : [];
+      }
+
       return [...stories, ...posts];
     },
   });
