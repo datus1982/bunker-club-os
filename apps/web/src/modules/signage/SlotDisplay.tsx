@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 import { DisplayCanvas } from "@/shared/DisplayCanvas";
 import { supabase } from "@/shared/supabaseClient";
@@ -200,12 +200,13 @@ function SlotScreen({
       ) : programPlaylistId ? (
         // Playlist program: framed keeps the chrome, fullbleed hides it (PlaylistProgram decides
         // from the playlist's presentation toggle). The <video> unmounts the moment mode flips.
+        // renderHeader flows the playing film's NOW SHOWING title into the header's center.
         <PlaylistProgram
           slot={slot}
           playlistId={programPlaylistId}
           base={mediaBase}
-          header={<ChromeHeader slot={slot} venueName={venueName} timezone={timezone} />}
-          footer={<ChromeFooter ticker={ticker} live={false} orientation={slot.orientation} />}
+          renderHeader={(nowShowing) => <ChromeHeader slot={slot} venueName={venueName} timezone={timezone} nowShowing={nowShowing} slim />}
+          footer={<ChromeFooter ticker={ticker} live={false} orientation={slot.orientation} slim />}
         />
       ) : programCapture ? (
         // Capture program (M2): fullbleed by default (no chrome), framed override keeps it. The
@@ -214,8 +215,8 @@ function SlotScreen({
           slot={slot}
           deviceMatch={programCapture.device_match}
           presentation={programCapture.presentation}
-          header={<ChromeHeader slot={slot} venueName={venueName} timezone={timezone} />}
-          footer={<ChromeFooter ticker={ticker} live={false} orientation={slot.orientation} />}
+          header={<ChromeHeader slot={slot} venueName={venueName} timezone={timezone} slim />}
+          footer={<ChromeFooter ticker={ticker} live={false} orientation={slot.orientation} slim />}
         />
       ) : programMultiview ? (
         // MULTIVIEW (M3): 16:9 main (playlist|capture) + a portrait PANEL running rotation. Always
@@ -225,7 +226,7 @@ function SlotScreen({
           panelSlotId={programMultiview.panel_slot_id}
           hostSlug={slot.slug}
           base={mediaBase}
-          header={<ChromeHeader slot={slot} venueName={venueName} timezone={timezone} />}
+          renderHeader={(nowShowing) => <ChromeHeader slot={slot} venueName={venueName} timezone={timezone} nowShowing={nowShowing} />}
           footer={<ChromeFooter ticker={ticker} live={false} orientation={slot.orientation} />}
           venueName={venueName}
           timezone={timezone}
@@ -352,30 +353,42 @@ function Rotation({ slot, rotation, toast, teaseEvent, venueName }: { slot: Slot
 }
 
 /* ── Chrome ─────────────────────────────────────────────────────────────────── */
-function ChromeHeader({ slot, venueName, timezone }: { slot: Slot; venueName: string; timezone: string }) {
+function ChromeHeader({ slot, venueName, timezone, nowShowing, slim }: { slot: Slot; venueName: string; timezone: string; nowShowing?: ReactNode; slim?: boolean }) {
   const clock = useClock(timezone);
   // Owner design-beat: render the location separator ONLY when a label exists (it is now
   // nulled venue-wide, which otherwise left a dangling "— ·").
   const label = (slot.location_label ?? "").trim().toUpperCase();
   const terminalLine = `TERMINAL ${String(slot.terminal_number ?? 0).padStart(2, "0")}${label ? ` — ${label}` : ""} · ${clock}`;
+  // Beat 5 (owner 2026-07-20): framed MEDIA playback uses a SLIM header — cut the vertical padding
+  // hard and shrink the roundel/wordmark/right block so the NOW SHOWING title carries the bar and
+  // the video gets the space. This variant is used ONLY by framed playlist/capture (NOT rotation
+  // slides, whose chrome is ratified, and NOT multiview, whose 171px band is ratified D1).
   return (
     // Owner design-beats: header BAR height is right, but the content grows into the
     // negative space (2026-07-14: "reduce some of the negative space and bump the text
     // and logo sizes") — padding 13 → 8px vertical while roundel 52 → 64, wordmark
     // 56 → 68, right block 24 → 30 w/ tighter leading: net bar height ~unchanged.
     // Chrome rule stays dim green (--sig-rule); body ink stays amber.
-    <header style={{ flexShrink: 0, borderBottom: "2px solid var(--sig-rule)", padding: "8px 40px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 22 }}>
+    // `nowShowing` (owner beat 2026-07-20) rides the header's unused CENTER width for a framed
+    // playlist / multiview main — a flex middle child, so the left/right blocks keep their size
+    // (flexShrink:0) and the film title takes the slack (never a second bar).
+    <header style={{ flexShrink: 0, borderBottom: "2px solid var(--sig-rule)", padding: slim ? "3px 24px" : "8px 40px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: slim ? 16 : 24 }}>
+      <div style={{ flexShrink: 0, display: "flex", alignItems: "center", gap: slim ? 12 : 22 }}>
         {/* Official white 1-color roundel — used byte-identical, NEVER recolored (brand rule).
             An external SVG in an <img> is isolated from the terminal-theme cascade, so it
             stays white-on-dark (correct on the amber CRT). Sized to the wordmark cap height. */}
-        <img src="/brand/roundel-white.svg" alt="" style={{ height: 64, width: "auto", display: "block", flexShrink: 0 }} />
-        <div style={{ fontSize: 68, fontWeight: 700, letterSpacing: 2, textShadow: "0 0 10px var(--terminal-glow)" }}>{venueName.toUpperCase()}</div>
+        <img src="/brand/roundel-white.svg" alt="" style={{ height: slim ? 30 : 64, width: "auto", display: "block", flexShrink: 0 }} />
+        <div style={{ fontSize: slim ? 28 : 68, fontWeight: 700, letterSpacing: 2, textShadow: "0 0 10px var(--terminal-glow)" }}>{venueName.toUpperCase()}</div>
       </div>
-      <div style={{ fontSize: 30, opacity: 0.75, textAlign: "right", lineHeight: 1.35 }}>
-        BUNKER UNIFIED OS v2.1<br />
-        {terminalLine}
-      </div>
+      {nowShowing}
+      {slim ? (
+        <div style={{ flexShrink: 0, fontSize: 22, opacity: 0.7, textAlign: "right", whiteSpace: "nowrap" }}>{terminalLine}</div>
+      ) : (
+        <div style={{ flexShrink: 0, fontSize: 30, opacity: 0.75, textAlign: "right", lineHeight: 1.35 }}>
+          BUNKER UNIFIED OS v2.1<br />
+          {terminalLine}
+        </div>
+      )}
     </header>
   );
 }
@@ -385,8 +398,12 @@ function ChromeHeader({ slot, venueName, timezone }: { slot: Slot; venueName: st
 // height is governed by BASE (a transform-scale never shrinks the layout box), so both
 // orientations keep a consistent taller bar; the markers ride the same base for proportion.
 const TICKER_BASE: Record<"portrait" | "landscape", number> = { portrait: 46, landscape: 42 };
+// Beat 5: slim framed-media footer — the ticker stays (framed keeps its ticker, ratified) but at a
+// reduced height. Sized DOWN TO but never below the shared SUPPORT_TEXT floor (portrait 40 /
+// landscape 32) — "a smudge" smaller, floor-respecting.
+const TICKER_BASE_SLIM: Record<"portrait" | "landscape", number> = { portrait: SUPPORT_TEXT.portrait, landscape: 34 };
 
-function ChromeFooter({ ticker, live, orientation }: { ticker: TickerLine[]; live: boolean; orientation: "portrait" | "landscape" }) {
+function ChromeFooter({ ticker, live, orientation, slim }: { ticker: TickerLine[]; live: boolean; orientation: "portrait" | "landscape"; slim?: boolean }) {
   const [ti, setTi] = useState(0);
   useEffect(() => {
     if (ticker.length <= 1) return;
@@ -394,11 +411,12 @@ function ChromeFooter({ ticker, live, orientation }: { ticker: TickerLine[]; liv
     return () => window.clearInterval(id);
   }, [ticker.length]);
   const line = ticker[ti % Math.max(1, ticker.length)] ?? { text: "", live: false };
-  const base = TICKER_BASE[orientation];
+  const base = (slim ? TICKER_BASE_SLIM : TICKER_BASE)[orientation];
 
   return (
     // Owner design-beat: chrome rule shifted to dim green (--sig-rule); ticker sized up.
-    <footer style={{ flexShrink: 0, borderTop: "2px solid var(--sig-rule)", padding: "16px 40px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 24, fontSize: base }}>
+    // Beat 5: slim variant cuts the padding hard for framed media (keeps the ticker, smaller bar).
+    <footer style={{ flexShrink: 0, borderTop: "2px solid var(--sig-rule)", padding: slim ? "5px 24px" : "16px 40px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: slim ? 16 : 24, fontSize: base }}>
       {/* Dual-phosphor: the ON AIR / LIVE status light is a live-state indicator, so it
           reads green like the mockup's `.cbot .now` — a single restrained green accent. */}
       {/* fontSize is explicit on these spans: the global `.terminal-theme span` 1.5rem rule

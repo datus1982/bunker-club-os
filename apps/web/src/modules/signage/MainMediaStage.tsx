@@ -1,6 +1,6 @@
 import { PlaylistVideo } from "./PlaylistProgram";
 import { CaptureVideo } from "./CaptureProgram";
-import { usePlaylistProgram, type MultiviewMain } from "./mediaProgram";
+import { usePlaylistProgram, type MultiviewMain, type MediaFile } from "./mediaProgram";
 
 /**
  * The 16:9 MAIN region content of a multiview (docs/15 M3 D8) — a playlist loop OR a live capture,
@@ -13,14 +13,23 @@ import { usePlaylistProgram, type MultiviewMain } from "./mediaProgram";
  * odd-ratio clip letterboxes inside the stage, never cropped. orientation is 'landscape' (the
  * stage is 16:9), which sizes the status-card typography.
  */
-export function MainMediaStage({ main, slug, base }: { main: MultiviewMain; slug: string; base: string }) {
+export function MainMediaStage({ main, slug, base, onNowShowing }: {
+  main: MultiviewMain;
+  slug: string;
+  base: string;
+  /** Reports the main-region playing file up so the multiview chrome can show NOW SHOWING (a
+   *  capture main has no title, so it never reports — the label stays clear). */
+  onNowShowing?: (file: MediaFile | null) => void;
+}) {
   if (main.kind === "capture") {
     return <CaptureVideo deviceMatch={main.device_match} fullbleed={false} orientation="landscape" />;
   }
-  return <PlaylistMainStage playlistId={main.playlist_id} slug={slug} base={base} />;
+  return <PlaylistMainStage playlistId={main.playlist_id} slug={slug} base={base} onNowShowing={onNowShowing} />;
 }
 
-function PlaylistMainStage({ playlistId, slug, base }: { playlistId: string; slug: string; base: string }) {
+function PlaylistMainStage({ playlistId, slug, base, onNowShowing }: {
+  playlistId: string; slug: string; base: string; onNowShowing?: (file: MediaFile | null) => void;
+}) {
   const { data, isPending, isError } = usePlaylistProgram(playlistId);
   return (
     <PlaylistVideo
@@ -33,6 +42,7 @@ function PlaylistMainStage({ playlistId, slug, base }: { playlistId: string; slu
       orientation="landscape"
       loading={isPending}
       loadError={isError}
+      onNowShowing={onNowShowing}
     />
   );
 }

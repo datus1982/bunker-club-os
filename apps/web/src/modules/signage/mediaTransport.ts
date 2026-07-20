@@ -24,6 +24,29 @@ export function transportTopic(slug: string): string {
 }
 
 /**
+ * Send one transport command from the hub client (owner beat 2026-07-20 — "skip films and such"
+ * without curl/Q-SYS). Same payload shape the media-control edge fn sends, so a playing TV reacts
+ * identically. supabase-js requires the channel be SUBSCRIBED before `.send()`, so we subscribe,
+ * send, and tear the throwaway channel down — transport is fire-and-forget by design (ephemeral,
+ * never persisted; a missed command is just a no-op). The channel is PUBLIC (accepted backlog
+ * WARN-2, PR #56) — fine from an authenticated staff page.
+ */
+export async function sendTransportCommand(slug: string, cmd: TransportCmd): Promise<void> {
+  const ch = supabase.channel(transportTopic(slug));
+  try {
+    await new Promise<void>((resolve, reject) => {
+      ch.subscribe((status) => {
+        if (status === "SUBSCRIBED") resolve();
+        else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") reject(new Error(status));
+      });
+    });
+    await ch.send({ type: "broadcast", event: "cmd", payload: { cmd } });
+  } finally {
+    supabase.removeChannel(ch);
+  }
+}
+
+/**
  * Subscribe to a slot's transport-command broadcast for the lifetime of the calling component.
  * Only PLAYLIST programs react (pause/resume/advance the <video>); capture ignores transport, so
  * it never calls this. Because the subscription lives with the program renderer, it cleans up the

@@ -159,6 +159,31 @@ export function usePlaylistProgram(playlistId: string | null) {
   return query;
 }
 
+/**
+ * Split a Kodi-style title into its name + a trailing "(YYYY)" year, if present (owner beat
+ * 2026-07-20: the framed-playlist chrome shows NOW SHOWING with the film's name + year).
+ * "Labyrinth (1986)" → { title: "Labyrinth", year: "1986" }; "The Thing" → { title, year: null };
+ * "Alien (Director's Cut)" → year stays null (parens carry no 4-digit year) so it renders as-is —
+ * a manual hub-edited title is preserved verbatim minus a real trailing year.
+ */
+export function parseTitleYear(raw: string): { title: string; year: string | null } {
+  const m = raw.match(/^(.*\S)\s*\((\d{4})\)\s*$/);
+  if (m) return { title: m[1].trim(), year: m[2] };
+  return { title: raw.trim(), year: null };
+}
+
+/**
+ * The NOW SHOWING name + year for a playing file, or null when there is no file. Sources
+ * media_files.title (the sync prettifies filenames; the hub can hand-edit it) and only falls back
+ * to the filename (extension stripped) when the title is unset. Blank → null (no label).
+ */
+export function nowShowingParts(file: MediaFile | null | undefined): { title: string; year: string | null } | null {
+  if (!file) return null;
+  const raw = (file.title && file.title.trim()) || file.filename.replace(/\.[^.]+$/, "");
+  const t = raw.trim();
+  return t ? parseTitleYear(t) : null;
+}
+
 /** mm:ss for a duration (null → "—:—"). Shared by the display + the hub library. */
 export function formatDuration(seconds: number | null | undefined): string {
   if (seconds == null || !Number.isFinite(seconds)) return "—:—";

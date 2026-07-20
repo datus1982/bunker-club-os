@@ -2,9 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import {
   installAudioAutoArm, isAudioUnlocked, markAudioUnlocked, subscribeArmed,
 } from "@/shared/videoAudio";
-import { usePlaylistProgram, mediaFileUrl, type MediaFile } from "./mediaProgram";
+import { usePlaylistProgram, mediaFileUrl, nowShowingParts, type MediaFile } from "./mediaProgram";
 import { useTransportCommands } from "./mediaTransport";
-import type { Slot } from "./useSignage";
+import type { Slot, Orientation } from "./useSignage";
 import { SUPPORT_TEXT } from "./supportText";
 
 /**
@@ -28,14 +28,16 @@ import { SUPPORT_TEXT } from "./supportText";
  * the native `ended` event (no interval), error/stall recovery by FINITE timeouts.
  */
 export function PlaylistProgram({
-  slot, playlistId, base, header, footer,
+  slot, playlistId, base, renderHeader, footer,
 }: {
   slot: Slot;
   playlistId: string;
   /** Media host base URL (resolveMediaBase — 127.0.0.1:{port} or ?mediahost override). */
   base: string;
-  /** Chrome nodes rendered around the video in `framed` mode (hidden in `fullbleed`). */
-  header: ReactNode;
+  /** Builds the framed chrome header, given the NOW SHOWING node for the header's center (owner
+   *  beat 2026-07-20). Hidden entirely in `fullbleed`. A render fn (not a static node) so the
+   *  playing film's title can flow into the existing header bar as the loop advances. */
+  renderHeader: (nowShowing: ReactNode) => ReactNode;
   footer: ReactNode;
 }) {
   const { data, isPending, isError } = usePlaylistProgram(playlistId);
@@ -43,6 +45,10 @@ export function PlaylistProgram({
   const files = data?.files ?? [];
   // Default framed until the row loads (never flash fullbleed while unknown).
   const fullbleed = playlist?.presentation === "fullbleed";
+
+  // The file playing right now (reported up from PlaylistVideo) → the NOW SHOWING header label.
+  // fullbleed shows no chrome, so it never renders the label (the callback is harmless there).
+  const [nowFile, setNowFile] = useState<MediaFile | null>(null);
 
   const video = (
     <PlaylistVideo
@@ -55,6 +61,7 @@ export function PlaylistProgram({
       orientation={slot.orientation}
       loading={isPending}
       loadError={isError}
+      onNowShowing={fullbleed ? undefined : setNowFile}
     />
   );
 
@@ -63,16 +70,42 @@ export function PlaylistProgram({
     return <div style={{ position: "absolute", inset: 0, background: "#000" }}>{video}</div>;
   }
 
-  // Framed: chrome header + video in the content zone + ticker footer (mirrors SlotScreen's
-  // rotation layout so the frame reads identically to a normal slide).
+  // Framed: SLIM chrome header (the NOW SHOWING title is its main content) + video in the content
+  // zone + slim ticker footer (Beat 5 — maximize the video; SlotDisplay builds the slim chrome).
   return (
     <>
-      {header}
+      {renderHeader(<NowShowing file={nowFile} orientation={slot.orientation} compact />)}
       <div style={{ flex: 1, position: "relative", overflow: "hidden", background: "#000" }}>
         {video}
       </div>
       {footer}
     </>
+  );
+}
+
+/**
+ * NOW SHOWING chrome-header label (owner beat 2026-07-20) — rides the existing chrome header's
+ * unused center width (never a new bar). "NOW SHOWING" at the shared SUPPORT_TEXT floor, the film
+ * name at header scale (uppercased), the parsed year separated by a dot. No file (or an untitled
+ * one) → renders nothing, so the header reads as a normal slide chrome. Purely presentational —
+ * re-renders when the parent's nowFile advances; no timers of its own (display perf rule).
+ *
+ * `compact` (owner beat 2026-07-20 "Beat 5") — the slim framed-media header: the title becomes the
+ * header's MAIN content, so it drops from 52 to ~1.25× the floor and tightens the gap. Multiview
+ * keeps the full size (its 171px band is ratified). The label never drops below the SUPPORT_TEXT floor.
+ */
+export function NowShowing({ file, orientation, compact }: { file: MediaFile | null; orientation: Orientation; compact?: boolean }) {
+  const parts = nowShowingParts(file);
+  if (!parts) return null;
+  const support = SUPPORT_TEXT[orientation];
+  const titleSize = compact ? Math.round(support * 1.25) : 52;
+  const yearSize = compact ? support : 40;
+  return (
+    <div style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "baseline", justifyContent: "center", gap: compact ? 12 : 16, overflow: "hidden", whiteSpace: "nowrap" }}>
+      <span style={{ flexShrink: 0, fontSize: support, letterSpacing: compact ? 3 : 4, opacity: 0.6 }}>NOW SHOWING</span>
+      <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", fontSize: titleSize, fontWeight: 700, letterSpacing: 1, textShadow: "0 0 10px var(--terminal-glow)" }}>{parts.title.toUpperCase()}</span>
+      {parts.year && <span style={{ flexShrink: 0, fontSize: yearSize, opacity: 0.75 }}>· {parts.year}</span>}
+    </div>
   );
 }
 
@@ -85,7 +118,7 @@ const PLAYING_MIN_READY = 3; // HTMLMediaElement.readyState HAVE_FUTURE_DATA —
  * OFFLINE (retries the current clip every 8s so it recovers when the shell comes back).
  */
 export function PlaylistVideo({
-  slug, files, base, shuffle, fullbleed, orientation, loading, loadError,
+  slug, files, base, shuffle, fullbleed, orientation, loading, loadError, onNowShowing,
 }: {
   slug: string;
   files: MediaFile[];
@@ -95,6 +128,9 @@ export function PlaylistVideo({
   orientation: "portrait" | "landscape";
   loading: boolean;
   loadError: boolean;
+  /** Reports the file playing now (or null when the loop is empty) so a parent chrome header can
+   *  show its NOW SHOWING title. Optional — omitted for fullbleed (no chrome to label). */
+  onNowShowing?: (file: MediaFile | null) => void;
 }) {
   // Shuffle deterministically per mount via a session-monotonic seed (top_sellers precedent —
   // no Math.random-per-render). A stable order per mount keeps the loop predictable.
@@ -117,6 +153,12 @@ export function PlaylistVideo({
   }, [order.length, index]);
 
   const current = order.length ? order[index % order.length] : null;
+
+  // Report the playing file up for the NOW SHOWING header. Keyed on identity+title so it only
+  // fires on an actual advance (or a title edit landing via realtime), not every render.
+  useEffect(() => {
+    onNowShowing?.(current ?? null);
+  }, [current?.id, current?.title, onNowShowing]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const advance = useCallback(() => {
     setPhase("ok");

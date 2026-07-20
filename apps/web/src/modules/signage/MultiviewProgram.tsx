@@ -1,13 +1,14 @@
-import { useMemo, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { FixedCanvas } from "@/shared/FixedCanvas";
 import { MainMediaStage } from "./MainMediaStage";
 import { RotationSurface } from "./SlotDisplay";
+import { NowShowing } from "./PlaylistProgram";
 import {
   usePanelSlot, resolveRotation, teaseMoment,
   type ToastCacheRow, type LiveEvent,
 } from "./useSignage";
 import type { TickerLine } from "./useTicker";
-import type { MultiviewMain } from "./mediaProgram";
+import type { MultiviewMain, MediaFile } from "./mediaProgram";
 
 /**
  * MULTIVIEW program renderer (docs/15 M3 — D1/D6/D7/D8/D9). A 16:9 MAIN region (playlist or live
@@ -29,7 +30,7 @@ import type { MultiviewMain } from "./mediaProgram";
  * only the panel slot row + its queue are fetched here (usePanelSlot).
  */
 export function MultiviewProgram({
-  main, panelSlotId, hostSlug, base, header, footer,
+  main, panelSlotId, hostSlug, base, renderHeader, footer,
   venueName, timezone, toast, liveEvents, ticker, now,
 }: {
   main: MultiviewMain;
@@ -37,8 +38,9 @@ export function MultiviewProgram({
   /** The host (landscape) slug — the main video's Q-SYS transport channel rides it. */
   hostSlug: string;
   base: string;
-  /** Host chrome nodes for the MAIN region (built by SlotScreen so ink/venue/clock match). */
-  header: ReactNode;
+  /** Builds the MAIN-region chrome header (built by SlotScreen so ink/venue/clock match), given
+   *  the NOW SHOWING node for its center — the main playlist's film title flows into the header. */
+  renderHeader: (nowShowing: ReactNode) => ReactNode;
   footer: ReactNode;
   venueName: string;
   timezone: string;
@@ -51,6 +53,10 @@ export function MultiviewProgram({
   const panelSlot = panelSlotQ.data ?? null;
   const panelItems = useMemo(() => panelItemsQ.data ?? [], [panelItemsQ.data]);
 
+  // The MAIN-region playing file → the NOW SHOWING title in the multiview chrome header (landscape;
+  // a capture main reports nothing, so the label stays clear).
+  const [mainFile, setMainFile] = useState<MediaFile | null>(null);
+
   const panelRotation = useMemo(
     () => resolveRotation(panelItems, toast, now, liveEvents),
     [panelItems, toast, now, liveEvents],
@@ -61,9 +67,9 @@ export function MultiviewProgram({
     <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "row", background: "#000" }}>
       {/* ── MAIN region: 1312 wide (171 header + 738 16:9 stage + 171 ticker) ── */}
       <div style={{ width: 1312, height: "100%", flexShrink: 0, display: "flex", flexDirection: "column", borderRight: "2px solid var(--sig-rule)" }}>
-        <div style={{ height: 171, flexShrink: 0, overflow: "hidden" }}>{header}</div>
+        <div style={{ height: 171, flexShrink: 0, overflow: "hidden" }}>{renderHeader(<NowShowing file={mainFile} orientation="landscape" />)}</div>
         <div style={{ height: 738, flexShrink: 0, position: "relative", overflow: "hidden", background: "#000" }}>
-          <MainMediaStage main={main} slug={hostSlug} base={base} />
+          <MainMediaStage main={main} slug={hostSlug} base={base} onNowShowing={setMainFile} />
         </div>
         <div style={{ height: 171, flexShrink: 0, overflow: "hidden", display: "flex", flexDirection: "column", justifyContent: "flex-end" }}>{footer}</div>
       </div>

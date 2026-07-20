@@ -31,6 +31,7 @@ import { MediaSection } from "./MediaSection";
 import { ProgramPanel } from "./ProgramPanel";
 import { ScheduleEditor } from "./ScheduleEditor";
 import { useMediaPlaylists, useAllScheduleRows } from "./useMediaAdmin";
+import { sendTransportCommand, type TransportCmd } from "./mediaTransport";
 import { useRole } from "@/shared/useRole";
 import "./signage.css";
 
@@ -272,6 +273,9 @@ export function SignageHub({ openQueueSlug }: { openQueueSlug?: string }) {
                   scheduleCount={(scheduleBySlot.get(s.id)?.length ?? 0)}
                   overrideHold={overrideHoldFor(s)}
                   isPanel={s.kind === "panel"}
+                  // Beat 4: transport row shows only when the EFFECTIVE program (M3 resolver, not the
+                  // raw row — WARN-1) is a live playlist the TV is actually looping.
+                  transportPlaylist={mode === "rotation" && effFor(s).program?.kind === "playlist"}
                 />
               );
             })}
@@ -450,7 +454,7 @@ function placementsFor(assets: AssetWithPlacements[], itemId: string): string[] 
 function ScreenCard({
   slot, mode, takeoverMessage, staleGameDate, eventLabel, slotItems, tmap,
   overflowOpen, onToggleOverflow, onAdd, onQueue, onTakeover, programLabel, onProgram,
-  onSchedule, scheduleCount, overrideHold, isPanel,
+  onSchedule, scheduleCount, overrideHold, isPanel, transportPlaylist,
 }: {
   slot: AdminSlot;
   mode: SlotMode;
@@ -476,6 +480,8 @@ function ScreenCard({
   overrideHold: ProgramHold | null;
   /** M3 (D2): a multiview PANEL slot — badge, no health/takeover/program, "follows its host". */
   isPanel: boolean;
+  /** Beat 4: the effective program is a live playlist → show the ⏸/▶/⏭ transport row. */
+  transportPlaylist: boolean;
 }) {
   const health = screenHealth(slot.last_seen);
   const summary = useMemo(() => rotationSummary(slotItems, tmap), [slotItems, tmap]);
@@ -559,6 +565,10 @@ function ScreenCard({
         </button>
       )}
 
+      {/* TRANSPORT — skip/pause a live playlist without curl/Q-SYS (Beat 4). Fire-and-forget
+          broadcast; no state tracking (transport is ephemeral by design). */}
+      {transportPlaylist && <TransportRow slug={slot.slug} />}
+
       {/* SCHEDULE — dayparts that flip the program by time of day (M3, landscape only). */}
       {onSchedule && (
         <button type="button" onClick={onSchedule} style={{ ...cardBtn, gridColumn: "1 / -1", justifyContent: "space-between", padding: "9px 12px" }}>
@@ -584,6 +594,39 @@ function ScreenCard({
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * Playlist transport row (Beat 4) — ⏸ PAUSE / ▶ RESUME / ⏭ NEXT, broadcast to the TV playing this
+ * slug. Fire-and-forget: a brief pressed flash is the only feedback (transport is ephemeral — the
+ * hub tracks NO play/pause state; a paused TV self-heals at the 04:00 reload or the next program
+ * write). The channel is torn down per send inside sendTransportCommand.
+ */
+function TransportRow({ slug }: { slug: string }) {
+  const [pressed, setPressed] = useState<TransportCmd | null>(null);
+  const send = (cmd: TransportCmd) => {
+    setPressed(cmd);
+    window.setTimeout(() => setPressed((c) => (c === cmd ? null : c)), 260);
+    void sendTransportCommand(slug, cmd).catch(() => {});
+  };
+  const btns: { cmd: TransportCmd; label: string }[] = [
+    { cmd: "pause", label: "⏸ PAUSE" },
+    { cmd: "resume", label: "▶ RESUME" },
+    { cmd: "next", label: "⏭ NEXT" },
+  ];
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 7, gridColumn: "1 / -1" }}>
+      {btns.map(({ cmd, label }) => {
+        const on = pressed === cmd;
+        return (
+          <button key={cmd} type="button" onClick={() => send(cmd)} className={on ? "u-fill u-ink" : ""}
+            style={{ ...cardBtn, justifyContent: "center", background: on ? "var(--terminal-green)" : "transparent", color: on ? "#000" : "var(--terminal-green)", fontWeight: on ? 700 : 400 }}>
+            {label}
+          </button>
+        );
+      })}
     </div>
   );
 }
