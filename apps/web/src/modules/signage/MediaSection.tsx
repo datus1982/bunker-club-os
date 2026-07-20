@@ -8,7 +8,7 @@ import {
   type MediaFile, type PlaylistWithStats, type PlaylistItemDetail,
 } from "./useMediaAdmin";
 import { formatDuration } from "./mediaProgram";
-import { MONO, SectionLabel, ghost } from "./signageAdminShared";
+import { MONO, CollapsibleSection, ghost } from "./signageAdminShared";
 import { SlideOver } from "./SlideOver";
 
 /**
@@ -33,32 +33,42 @@ export function MediaSection() {
   // editing = an existing playlist; "new" = the create flow; null = closed.
   const [editing, setEditing] = useState<PlaylistWithStats | "new" | null>(null);
 
+  // Compact header summaries from data already loaded (no new queries — owner beat 2026-07-20).
+  const needThumbs = useMemo(() => files.filter((f) => !f.thumb).length, [files]);
+  const mediaSummary = filesQ.isLoading
+    ? "…"
+    : `${files.length} file${files.length === 1 ? "" : "s"}${needThumbs > 0 ? ` · ${needThumbs} need thumb${needThumbs === 1 ? "" : "s"}` : ""}`;
+  const playlistSummary = playlistsQ.isLoading ? "…" : `${playlists.length}`;
+
   return (
     <div style={{ marginTop: 32 }}>
-      <SectionLabel>MEDIA LIBRARY · local video on the media PC — playlists loop as a screen program</SectionLabel>
+      {/* ── MEDIA LIBRARY (collapsible; DEFAULT COLLAPSED — the 361-file grid is the overwhelming one) ── */}
+      <CollapsibleSection sectionKey="media" title="MEDIA LIBRARY" summary={mediaSummary} defaultOpen={false}>
+        {filesQ.isLoading ? (
+          <div style={{ fontSize: 18, opacity: 0.7 }}>LOADING MEDIA…</div>
+        ) : files.length === 0 ? (
+          <div className="terminal-border" style={{ padding: "16px 16px", opacity: 0.8, fontSize: 16, lineHeight: 1.5 }}>
+            No media synced yet. Drop video files into the watched folder on the media PC
+            (<code>~/BunkerMedia</code> by default) — the shell probes each file and reports it here.
+            Subfolders become auto-playlists.
+          </div>
+        ) : (
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(min(100%,200px),1fr))", gap: 12 }}>
+            {files.map((f) => <MediaFileCard key={f.id} file={f} />)}
+          </div>
+        )}
+      </CollapsibleSection>
 
-      {/* ── files grid ──────────────────────────────────────────────── */}
-      {filesQ.isLoading ? (
-        <div style={{ fontSize: 18, opacity: 0.7 }}>LOADING MEDIA…</div>
-      ) : files.length === 0 ? (
-        <div className="terminal-border" style={{ padding: "16px 16px", opacity: 0.8, fontSize: 16, lineHeight: 1.5 }}>
-          No media synced yet. Drop video files into the watched folder on the media PC
-          (<code>~/BunkerMedia</code> by default) — the shell probes each file and reports it here.
-          Subfolders become auto-playlists.
-        </div>
-      ) : (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(min(100%,200px),1fr))", gap: 12 }}>
-          {files.map((f) => <MediaFileCard key={f.id} file={f} />)}
-        </div>
-      )}
-
-      {/* ── playlists ───────────────────────────────────────────────── */}
-      <div style={{ marginTop: 22 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
-          <SectionLabel style={{ margin: 0 }}>PLAYLISTS · loop these on a landscape screen</SectionLabel>
-          <button type="button" onClick={() => setEditing("new")} style={{ ...ghost, fontWeight: 700 }}>+ NEW PLAYLIST</button>
-        </div>
-        <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 8 }}>
+      {/* ── PLAYLISTS (collapsible; default expanded) ─────────────────── */}
+      <CollapsibleSection
+        style={{ marginTop: 22 }}
+        sectionKey="playlists"
+        title="PLAYLISTS"
+        summary={playlistSummary}
+        defaultOpen={true}
+        headerRight={<button type="button" onClick={() => setEditing("new")} style={{ ...ghost, fontWeight: 700 }}>+ NEW PLAYLIST</button>}
+      >
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {playlistsQ.isLoading ? (
             <div style={{ fontSize: 18, opacity: 0.7 }}>LOADING PLAYLISTS…</div>
           ) : playlists.length === 0 ? (
@@ -69,7 +79,7 @@ export function MediaSection() {
             playlists.map((p) => <PlaylistRow key={p.playlist.id} p={p} onEdit={() => setEditing(p)} />)
           )}
         </div>
-      </div>
+      </CollapsibleSection>
 
       {editing && (
         <PlaylistEditor

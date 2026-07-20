@@ -17,7 +17,7 @@ import {
   useEventsList, schedulePhrase, statusInfo, pauseEvent, resumeEvent, fireNowEvent, type EventRow,
 } from "./useEventsAdmin";
 import {
-  MONO, SectionLabel, HealthDot, CopyKioskButton, EventKindBadge,
+  MONO, SectionLabel, CollapsibleSection, HealthDot, CopyKioskButton, EventKindBadge,
   ghost, summarize, templateIcon, templateBadge, isSmartTemplate,
 } from "./signageAdminShared";
 import { addToQueue } from "./slotQueue";
@@ -282,30 +282,31 @@ export function SignageHub({ openQueueSlug }: { openQueueSlug?: string }) {
           </div>
         )}
 
-        {/* ── B · ASSET LIBRARY ──────────────────────────────────────────── */}
-        <div style={{ marginTop: 32 }}>
-          <SectionLabel>ASSET LIBRARY · build once — queue on any screen</SectionLabel>
+        {/* ── B · ASSET LIBRARY (collapsible — owner beat 2026-07-20) ──────── */}
+        {/* + NEW ASSET moved from the grid's first tile to the section header so it stays reachable
+            while the section is collapsed (matches PLAYLISTS' header + NEW pattern). */}
+        <CollapsibleSection
+          style={{ marginTop: 32 }}
+          sectionKey="assets"
+          title="ASSET LIBRARY"
+          summary={assetsQ.isLoading ? "…" : `${assets.length} asset${assets.length === 1 ? "" : "s"}`}
+          defaultOpen={true}
+          headerRight={
+            <button type="button" onClick={() => setOverlay({ kind: "asset", editing: null, preset: null, queueOnSlotId: null })} style={{ ...ghost, fontWeight: 700 }}>+ NEW ASSET</button>
+          }
+        >
           {assetsQ.isLoading ? (
             <div style={{ fontSize: 18, opacity: 0.7 }}>LOADING ASSETS…</div>
+          ) : assets.length === 0 ? (
+            <div style={{ opacity: 0.6, fontSize: 16 }}>No assets yet — + NEW ASSET to build one.</div>
           ) : (
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(min(100%,200px),1fr))", gap: 12 }}>
-              <button
-                type="button"
-                onClick={() => setOverlay({ kind: "asset", editing: null, preset: null, queueOnSlotId: null })}
-                style={newAssetTile}
-              >
-                <span style={{ fontSize: 40, lineHeight: 1 }}>+</span>
-                <span style={{ fontSize: 13, letterSpacing: 2, marginTop: 6 }}>NEW ASSET</span>
-              </button>
               {assets.map((a) => (
                 <AssetCard key={a.asset.id} a={a} slots={slots} toastRows={toastRows} tmap={tmap} onOpen={() => openAsset(a)} />
               ))}
             </div>
           )}
-          {!assetsQ.isLoading && assets.length === 0 && (
-            <div style={{ opacity: 0.6, fontSize: 16, marginTop: 8 }}>No assets yet — + NEW ASSET to build one.</div>
-          )}
-        </div>
+        </CollapsibleSection>
 
         {/* ── B2 · MEDIA LIBRARY (docs/15 M1) ────────────────────────────── */}
         <MediaSection />
@@ -876,9 +877,4 @@ const rowBtn: CSSProperties = {
   fontFamily: MONO, fontSize: 13, letterSpacing: 1, color: "var(--terminal-green)",
   border: "1px solid var(--terminal-green)", background: "transparent", padding: "7px 11px",
   minHeight: 44, cursor: "pointer", whiteSpace: "nowrap",
-};
-const newAssetTile: CSSProperties = {
-  display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-  border: "1px dashed var(--terminal-green)", background: "transparent", color: "var(--terminal-green)",
-  cursor: "pointer", fontFamily: MONO, minHeight: 210, opacity: 0.8,
 };
