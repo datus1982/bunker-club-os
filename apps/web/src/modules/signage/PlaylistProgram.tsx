@@ -179,16 +179,18 @@ export function PlaylistVideo({
   }, [current?.id, current?.title, onNowShowing]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Report the playing file to the server (0054) so the Q-SYS `status` API can show TITLE · YEAR +
-  // poster art on the iPad UCI. Fires on each advance (current.id change), then a FINITE 5-min
-  // re-arm keeps a long film fresh past the fn's 15-min gate. Runs for framed AND fullbleed — a
-  // movie belongs on the UCI card either way. The interval is cleared on unmount/advance, so
-  // nothing reports once a takeover/moment/game unmounts the loop (display rule: no stray timers).
+  // poster art on the iPad UCI. Tied to ACTUAL playback (WARN-1): the INITIAL stamp fires from
+  // onPlaying (below) once the clip really starts — never at bare mount — and here we re-arm a
+  // FINITE 5-min refresh only WHILE the clip is playing (phase 'ok'), so a long film stays fresh.
+  // An errored/offline player never reaches onPlaying and this interval is torn down (phase flips
+  // off 'ok'), so it STOPS reporting and the fn's 15-min freshness gate honestly drops the film the
+  // TV is no longer showing. Runs for framed AND fullbleed; cleared on unmount/advance too (display
+  // rule: no stray timers once a takeover/moment/game unmounts the loop).
   useEffect(() => {
-    if (!current) return;
-    reportNowPlaying(slug, current.id);
+    if (phase !== "ok" || !current) return;
     const id = window.setInterval(() => reportNowPlaying(slug, current.id), NOW_PLAYING_REFRESH_MS);
     return () => window.clearInterval(id);
-  }, [slug, current?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [phase, slug, current?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const advance = useCallback(() => {
     setPhase("ok");
@@ -268,7 +270,11 @@ export function PlaylistVideo({
     everPlayed.current = true;
     if (loadTimer.current) window.clearTimeout(loadTimer.current);
     if (bootMuted.current) probe();
-  }, [probe]);
+    // Initial now-playing stamp (WARN-1): report only once the clip is ACTUALLY playing, so a clip
+    // that never starts (host offline) never stamps a film the TV isn't showing. The 5-min refresh
+    // (the effect above) keeps it fresh; both stop the moment phase leaves 'ok'.
+    if (current) reportNowPlaying(slug, current.id);
+  }, [probe, slug, current?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const objectFit = fullbleed ? "cover" : "contain";
   const bigText = orientation === "portrait" ? 88 : 76;
