@@ -16,13 +16,15 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const http = require('http');
+const net = require('net');
 const { execFileSync } = require('child_process');
 
 const { MediaLibrary } = require('../src/mediaLibrary');
 const { createMediaServer } = require('../src/mediaServer');
 const { CatalogSync } = require('../src/catalogSync');
+const { probeMeta } = require('../src/prober');
 const { ffmpegPath } = require('../src/fftools');
-const { DEFAULT_MEDIA_PORT } = require('../src/constants');
+const { DEFAULT_MEDIA_PORT, PROBE_CONCURRENCY } = require('../src/constants');
 const pkg = require('../package.json');
 
 const PORT = 48752; // isolated test port (not the default, to avoid collisions)
@@ -42,9 +44,13 @@ function ok(cond, label, extra) {
  * could never answer, deadlocking. Returns { status, headers, body, raw }.
  */
 function httpReq(reqPath, headers = {}, method = 'GET') {
+  return httpReqPort(PORT, reqPath, headers, method);
+}
+
+function httpReqPort(port, reqPath, headers = {}, method = 'GET') {
   return new Promise((resolve, reject) => {
     const req = http.request(
-      { host: '127.0.0.1', port: PORT, path: reqPath, method, headers },
+      { host: '127.0.0.1', port, path: reqPath, method, headers },
       (res) => {
         const chunks = [];
         res.on('data', (d) => chunks.push(d));
@@ -91,8 +97,18 @@ async function main() {
   );
   ok(fs.existsSync(clip) && fs.statSync(clip).size > 0, 'test clip generated');
 
-  // --- scan ---
-  const library = new MediaLibrary(mediaDir);
+  // Sidecar subtitle (Kodi-style, same basename). Comma decimal separators — the shell rewrites
+  // them to dots when serving WebVTT.
+  const srt = path.join(subDir, 'colorbars.srt');
+  fs.writeFileSync(
+    srt,
+    '1\n00:00:00,500 --> 00:00:02,000\nColor bars, dear boy.\n\n2\n00:00:02,000 --> 00:00:04,500\nProbably.\n'
+  );
+  ok(fs.existsSync(srt), 'sidecar .srt created');
+
+  // --- scan (with a persisted cache dir so we can exercise warm-boot) ---
+  const cacheDir = path.join(tmp, 'cache');
+  const library = new MediaLibrary(mediaDir, { cacheDir });
   await library.scanAll();
   ok(library.fileCount() === 1, 'library scanned 1 file', `got ${library.fileCount()}`);
 
@@ -109,6 +125,8 @@ async function main() {
   ok(entry && entry.thumb && entry.thumb.slice(0, 2).toString('hex') === 'ffd8',
     'thumbnail has JPEG SOI marker (ffd8)');
   ok(entry && entry.thumb && entry.thumb.length <= 200 * 1024, 'thumbnail <= 200KB');
+  ok(entry && entry.has_subtitles === true, 'sidecar subtitle detected (has_subtitles)', entry && String(entry.has_subtitles));
+  ok(entry && entry.srtPath === srt, 'srtPath points at the sidecar', entry && entry.srtPath);
 
   const hash = entry.hash;
 
@@ -170,6 +188,23 @@ async function main() {
   const traversal = await httpReq('/media/..%2f..%2fetc%2fpasswd');
   ok(traversal.status === 404, 'traversal-shaped path -> 404', String(traversal.status));
 
+  // --- subtitles: /subs/{hash} -> WebVTT ---
+  console.log('\n  --- GET /subs/{hash}  (SRT -> WebVTT) ---');
+  const subs = await httpReq(`/subs/${hash}`);
+  console.log('  ' + subs.raw.split('\n').join('\n  '));
+  const vtt = subs.body.toString('utf8');
+  console.log('  ' + vtt.split('\n').join('\n  '));
+  ok(subs.status === 200, '/subs status 200', String(subs.status));
+  ok((subs.headers['content-type'] || '').startsWith('text/vtt'), 'Content-Type text/vtt', subs.headers['content-type']);
+  ok(vtt.startsWith('WEBVTT\n\n'), 'WebVTT header present');
+  ok(vtt.includes('00:00:00.500 --> 00:00:02.000'), 'comma decimal rewritten to dot in cue timestamps');
+  ok(vtt.includes('Color bars, dear boy.'), 'cue text (incl. its comma) preserved');
+  ok(subs.headers['access-control-allow-origin'] === 'https://os.bunkerokc.com', '/subs CORS pinned to app origin', subs.headers['access-control-allow-origin']);
+  const subsVtt = await httpReq(`/subs/${hash}.vtt`);
+  ok(subsVtt.status === 200, '/subs/{hash}.vtt (explicit ext) also serves', String(subsVtt.status));
+  const noSubs = await httpReq('/subs/deadbeef');
+  ok(noSubs.status === 404, 'unknown hash /subs -> 404', String(noSubs.status));
+
   // --- catalog (dev mode: no url/token -> logs payload, returns it) ---
   console.log('\n  --- catalog dev-mode payload ---');
   const sync = new CatalogSync(library, { catalogUrl: '', deviceToken: '' });
@@ -190,8 +225,10 @@ async function main() {
   ok(f0 && typeof f0.filename === 'string' && typeof f0.hash === 'string'
      && typeof f0.duration_seconds === 'number' && typeof f0.width === 'number'
      && typeof f0.height === 'number' && typeof f0.size_bytes === 'number'
-     && typeof f0.status === 'string' && typeof f0.thumb_b64 === 'string',
-    'file object has all contract fields incl. thumb_b64');
+     && typeof f0.status === 'string' && typeof f0.thumb_b64 === 'string'
+     && typeof f0.has_subtitles === 'boolean',
+    'file object has all contract fields incl. thumb_b64 + has_subtitles');
+  ok(f0 && f0.has_subtitles === true, 'payload reports has_subtitles for the sidecar file');
   ok(payload.folders.length === 1, 'payload.folders length 1');
   const fo = payload.folders[0];
   ok(fo && fo.path === 'Ambient Loops' && fo.name === 'Ambient Loops'
@@ -233,6 +270,137 @@ async function main() {
   ok(foB && foB.hashes.includes(dupHash), 'Folder B lists the shared hash');
 
   await srv.close();
+
+  // --- persisted catalog cache (v0.2 fast boot) --------------------------------
+  console.log('\n  --- persisted catalog cache (warm boot) ---');
+  // The first library (with a cacheDir) already scanned. Persist it, then simulate a warm boot:
+  // a fresh library over the SAME cacheDir loads metadata synchronously (serve-immediately) and a
+  // subsequent scan must SKIP the unchanged file's probe (returns the very same entry object).
+  await library.persistCache();
+  const cacheFile = path.join(cacheDir, 'catalog-cache.json');
+  const thumbFile = path.join(cacheDir, 'thumb-cache', `${hash}.jpg`);
+  ok(fs.existsSync(cacheFile), 'catalog-cache.json written');
+  ok(fs.existsSync(thumbFile), 'thumb-cache/{hash}.jpg written');
+
+  const warm = new MediaLibrary(mediaDir, { cacheDir });
+  const loaded = warm.loadCacheMetadata();
+  ok(loaded === 1, 'warm boot loaded 1 entry from cache (metadata, sync)', `got ${loaded}`);
+  const cachedEntry = warm.getByHash(hash);
+  ok(!!cachedEntry, 'cached entry servable immediately (byHash populated pre-scan)');
+  ok(cachedEntry && cachedEntry.thumb === null, 'metadata load defers thumbnails (thumb null until loadCacheThumbs)');
+  ok(cachedEntry && cachedEntry.has_subtitles === true, 'has_subtitles restored from cache');
+  ok(cachedEntry && cachedEntry.srtPath === srt, 'srtPath reconstructed from cache');
+
+  // Warm-boot serve BEFORE any scan: a server over the cache-only library streams the clip.
+  // Use a DISTINCT port — the global http agent keep-alives sockets, and reusing the just-closed
+  // PORT would hand back a dead pooled socket (a harness artifact, not a server bug).
+  const WARM_PORT = PORT + 1;
+  const warmSrv = createMediaServer(warm, { port: WARM_PORT, appOrigin: 'https://os.bunkerokc.com', version: pkg.version });
+  await warmSrv.listen(WARM_PORT);
+  const warmHead = await httpReqPort(WARM_PORT, `/media/${hash}`, {}, 'HEAD');
+  ok(warmHead.status === 200, 'cache-only server serves /media/{hash} pre-scan (playback resume)', String(warmHead.status));
+  await warmSrv.close();
+
+  // Now run the background scan over the loaded cache: the unchanged file's probe is SKIPPED
+  // (processFile returns the SAME object it loaded from cache — a re-probe would build a new one).
+  const before = warm.getByHash(hash);
+  await warm.processFile(clip);
+  const after = warm.getByHash(hash);
+  ok(before === after, 'warm boot re-uses the cached entry — NO re-probe of the unchanged file');
+
+  // Thumbs restore from disk in the background.
+  const restored = await warm.loadCacheThumbs();
+  ok(restored === 1, 'loadCacheThumbs restored the thumbnail from disk', `got ${restored}`);
+  ok(Buffer.isBuffer(warm.getByHash(hash).thumb), 'restored thumb is a Buffer');
+
+  // A CHANGED file is re-probed (size/mtime differ -> a fresh entry object).
+  const clip2 = path.join(subDir, 'colorbars2.mp4');
+  execFileSync(ffmpegPath, ['-y', '-f', 'lavfi', '-i', 'testsrc=size=320x240:rate=15:duration=3', '-pix_fmt', 'yuv420p', '-c:v', 'libx264', '-t', '3', clip2], { stdio: 'ignore' });
+  await warm.processFile(clip2);
+  ok(warm.fileCount() === 2, 'new file added to the library on scan', `got ${warm.fileCount()}`);
+  // Corrupt cache -> cold walk (empty load), self-heals.
+  fs.writeFileSync(cacheFile, 'not json{');
+  const cold = new MediaLibrary(mediaDir, { cacheDir });
+  ok(cold.loadCacheMetadata() === 0, 'corrupt cache loads 0 entries (cold walk self-heals)');
+
+  // --- WARN-1: close() resolves promptly despite an open connection ------------
+  // On the watchdog path the kiosk holds keep-alive/video sockets open; a bare http.Server.close()
+  // would block on them forever. close() force-destroys in-flight connections (closeAllConnections),
+  // so it must resolve fast even with an ESTABLISHED socket that never sends a request.
+  console.log('\n  --- close() promptness with an open connection (WARN-1) ---');
+  const CLOSE_PORT = PORT + 2;
+  const csrv = createMediaServer(warm, { port: CLOSE_PORT, appOrigin: 'https://os.bunkerokc.com', version: pkg.version });
+  await csrv.listen(CLOSE_PORT);
+  const sock = net.connect(CLOSE_PORT, '127.0.0.1');
+  await new Promise((res, rej) => { sock.once('connect', res); sock.once('error', rej); });
+  const tClose = Date.now();
+  await csrv.close();
+  const closeMs = Date.now() - tClose;
+  ok(closeMs < 2000, 'close() resolves < 2s with an idle ESTABLISHED connection open', `${closeMs}ms`);
+  sock.destroy();
+
+  // --- PR #61: TIMEOUT ≠ UNSUPPORTED (probeMeta retry classification) ----------
+  // ffprobe metadata reads that TIME OUT (bus contention) must be retried once, not flagged
+  // 'unsupported'; a genuine error (no video stream) must NOT be retried. Injected runner.
+  console.log('\n  --- probeMeta timeout/retry classification (PR #61) ---');
+  const okJson = JSON.stringify({ streams: [{ width: 1920, height: 1080, codec_name: 'h264' }], format: { duration: '120' } });
+  const mkTimeout = () => Object.assign(new Error('timed out'), { timedOut: true });
+
+  let c1 = 0;
+  const meta = await probeMeta('x', { runner: async () => { c1 += 1; if (c1 === 1) throw mkTimeout(); return okJson; } });
+  ok(c1 === 2 && meta.width === 1920 && meta.duration_seconds === 120,
+    'timeout is RETRIED ONCE then succeeds -> present metadata', `calls=${c1}`);
+
+  let c2 = 0;
+  let threwTO = false;
+  try { await probeMeta('x', { runner: async () => { c2 += 1; throw mkTimeout(); } }); } catch { threwTO = true; }
+  ok(threwTO && c2 === 2, 'two timeouts -> throws after ONE retry (caller then flags unsupported)', `calls=${c2}`);
+
+  let c3 = 0;
+  let threwErr = false;
+  try { await probeMeta('x', { runner: async () => { c3 += 1; throw new Error('no video stream'); } }); } catch { threwErr = true; }
+  ok(threwErr && c3 === 1, 'genuine probe error -> NO retry, throws immediately', `calls=${c3}`);
+
+  // --- PR #61: an 'unsupported' cached/DB status is NEVER trusted (always re-probed) ---
+  console.log('\n  --- unsupported-in-cache is always re-probed (PR #61) ---');
+  let probeCalls = 0;
+  const countProbe = async () => { probeCalls += 1; return { status: 'present', duration_seconds: 5, width: 320, height: 240, codec: 'h264', thumb: null }; };
+  const heal = new MediaLibrary(mediaDir, { cacheDir: path.join(tmp, 'cache-heal'), probeFn: countProbe });
+  await heal.processFile(clip);
+  ok(probeCalls === 1, 'first process probes once', `calls=${probeCalls}`);
+  const before61 = probeCalls;
+  await heal.processFile(clip);
+  ok(probeCalls === before61, 'present + unchanged size/mtime -> SKIPPED (no re-probe)', `calls=${probeCalls}`);
+  heal.byPath.get(path.resolve(clip)).status = 'unsupported'; // simulate a false-flag in cache/DB
+  const before61b = probeCalls;
+  await heal.processFile(clip);
+  ok(probeCalls === before61b + 1, 'unsupported + unchanged size/mtime -> ALWAYS RE-PROBED (self-heals)', `calls=${probeCalls}`);
+  ok(heal.byHash.get([...heal.byHash.keys()][0]).status === 'present', 're-probe cleared the false unsupported flag -> present');
+
+  // --- PR #61: probe/thumbnail concurrency is capped (synthetic slow probe) -----
+  console.log('\n  --- probe concurrency cap respected (PR #61) ---');
+  const capDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bms-cap-'));
+  const CAP_FILES = PROBE_CONCURRENCY * 4;
+  for (let i = 0; i < CAP_FILES; i += 1) fs.writeFileSync(path.join(capDir, `f${i}.mp4`), 'x');
+  let cur = 0;
+  let peak = 0;
+  const slowProbe = async () => {
+    cur += 1; peak = Math.max(peak, cur);
+    await new Promise((r) => setTimeout(r, 30));
+    cur -= 1;
+    return { status: 'present', duration_seconds: 1, width: 2, height: 2, codec: null, thumb: null };
+  };
+  const capLib = new MediaLibrary(capDir, {
+    concurrency: PROBE_CONCURRENCY,
+    probeFn: slowProbe,
+    hashFn: async (p) => `h${path.basename(p)}`,
+  });
+  const capFiles = fs.readdirSync(capDir).map((f) => path.join(capDir, f));
+  await Promise.all(capFiles.map((f) => capLib.processFile(f)));
+  ok(peak <= PROBE_CONCURRENCY, `peak concurrent probes <= cap (${PROBE_CONCURRENCY})`, `peak ${peak}`);
+  ok(peak >= 2, 'the pool actually ran probes in parallel (peak >= 2)', `peak ${peak}`);
+  ok(capLib.fileCount() === CAP_FILES, 'all files processed under the cap', `got ${capLib.fileCount()}`);
+  fs.rmSync(capDir, { recursive: true, force: true });
 
   // cleanup
   fs.rmSync(tmp, { recursive: true, force: true });

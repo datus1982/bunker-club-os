@@ -2,7 +2,7 @@ import { useMemo, useState, type CSSProperties } from "react";
 import { useMutation } from "@tanstack/react-query";
 import {
   useMediaFiles, useMediaPlaylists, usePlaylistDetail,
-  updateMediaTitle, setPlaylistPresentation, setPlaylistShuffle,
+  updateMediaTitle, setPlaylistPresentation, setPlaylistShuffle, setPlaylistSubtitles,
   createCustomPlaylist, renamePlaylist, deletePlaylist,
   addPlaylistItem, removePlaylistItem, swapPlaylistItems, statusChip,
   type MediaFile, type PlaylistWithStats, type PlaylistItemDetail,
@@ -144,6 +144,7 @@ function PlaylistRow({ p, onEdit }: { p: PlaylistWithStats; onEdit: () => void }
   const isFolder = playlist.source === "folder";
   const pres = useMutation({ mutationFn: () => setPlaylistPresentation(playlist.id, playlist.presentation === "fullbleed" ? "framed" : "fullbleed") });
   const shuf = useMutation({ mutationFn: () => setPlaylistShuffle(playlist.id, !playlist.shuffle) });
+  const subs = useMutation({ mutationFn: () => setPlaylistSubtitles(playlist.id, !playlist.subtitles) });
   const missing = p.itemCount - p.presentCount;
 
   return (
@@ -163,6 +164,9 @@ function PlaylistRow({ p, onEdit }: { p: PlaylistWithStats; onEdit: () => void }
       </button>
       <button type="button" onClick={() => shuf.mutate()} disabled={shuf.isPending} className={playlist.shuffle ? "u-fill u-ink" : ""} style={{ ...toggleBtn, ...(playlist.shuffle ? { fontWeight: 700, background: "var(--terminal-green)", color: "#000" } : null) }}>
         {playlist.shuffle ? "⤨ SHUFFLE ON" : "→ IN ORDER"}
+      </button>
+      <button type="button" onClick={() => subs.mutate()} disabled={subs.isPending} title="Show subtitles when a clip has a sidecar .srt" className={playlist.subtitles ? "u-fill u-ink" : ""} style={{ ...toggleBtn, ...(playlist.subtitles ? { fontWeight: 700, background: "var(--terminal-green)", color: "#000" } : null) }}>
+        {playlist.subtitles ? "＂ SUBS ON" : "✕ SUBS OFF"}
       </button>
       <button type="button" onClick={onEdit} style={toggleBtn}>{isFolder ? "VIEW" : "EDIT"}</button>
     </div>

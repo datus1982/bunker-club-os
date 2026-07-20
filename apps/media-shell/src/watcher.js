@@ -12,8 +12,36 @@
  * server, catalog) can run in environments where chokidar isn't installed.
  */
 
+const fs = require('fs');
+const path = require('path');
 const { MediaLibrary } = require('./mediaLibrary');
+const { VIDEO_EXTENSIONS, SUBTITLE_EXTENSION } = require('./constants');
 const log = require('./log');
+
+/**
+ * When a sidecar `.srt` is added/removed, re-process the sibling video(s) so has_subtitles
+ * updates without waiting for the next full scan. Returns the sibling video abs paths that
+ * exist on disk (an exact-basename match, plus any language-tagged `base.<lang>.srt`).
+ */
+function siblingVideosFor(srtAbsPath) {
+  const dir = path.dirname(srtAbsPath);
+  // Strip ".srt", then also strip a possible ".<lang>" tag to recover the video basename.
+  let base = path.basename(srtAbsPath, SUBTITLE_EXTENSION);
+  const langStripped = base.replace(/\.[^.]+$/, '');
+  const bases = new Set([base, langStripped]);
+  const out = [];
+  for (const b of bases) {
+    for (const ext of VIDEO_EXTENSIONS) {
+      const vid = path.join(dir, b + ext);
+      try {
+        if (fs.existsSync(vid)) out.push(vid);
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+  return out;
+}
 
 /**
  * @param {MediaLibrary} library
@@ -45,7 +73,23 @@ function startWatcher(library, opts) {
     }, settleMs);
   };
 
+  const isSubtitle = (p) => path.extname(p).toLowerCase() === SUBTITLE_EXTENSION;
+
   const handle = async (event, filePath) => {
+    // A sidecar .srt landing/leaving flips has_subtitles on its sibling video — re-process it
+    // (processFile re-detects the sidecar; an unlink triggers a re-process too, dropping the flag).
+    if (isSubtitle(filePath)) {
+      try {
+        for (const vid of siblingVideosFor(filePath)) {
+          // eslint-disable-next-line no-await-in-loop
+          if (library.byPath.has(path.resolve(vid))) await library.processFile(vid);
+        }
+        fire();
+      } catch (e) {
+        log.error('subtitle watch handler failed', event, filePath, String(e));
+      }
+      return;
+    }
     if (!MediaLibrary.isVideo(filePath)) return;
     try {
       if (event === 'unlink') library.removeFile(filePath);

@@ -8,21 +8,26 @@
  *   edge is <= THUMB_MAX_EDGE, JPEG, re-encoded down until the payload is
  *   <= THUMB_MAX_BYTES.
  *
- * Anything that fails to probe (corrupt, DRM, no video stream, codec ffprobe
- * can't read) is returned with status 'unsupported' and no thumbnail — the
- * catalog still lists it so staff can see it exists.
+ * ⚠ TIMEOUT ≠ UNSUPPORTED (v0.2, PR #61). A ffprobe TIMEOUT is treated distinctly from a genuine
+ * probe error (corrupt / no video stream / a codec ffprobe can't read). Under the install-night
+ * "catalog storm" (361 files probed at once over one USB bus) big files' header reads timed out and
+ * were FALSELY flagged 'unsupported'. Now: the metadata probe uses a generous timeout
+ * (META_PROBE_TIMEOUT_MS) and, on a TIMEOUT specifically, RETRIES ONCE before giving up — by which
+ * point the caller's concurrency cap has drained most of the contention. A genuine error flags
+ * 'unsupported' immediately (no retry). Only a file that fails for real, or times out even after the
+ * retry, ends up 'unsupported'.
  *
- * The catalog `status` values the shell emits are 'present' | 'unsupported',
- * matching the media_files.status CHECK constraint (migration 0047; 'missing'
- * is server-derived when a hash vanishes from the catalog — the shell never
- * sends it). A probe that yields metadata but no thumbnail still counts as
- * 'present' (thumb_b64 simply absent) — the frame grab is best-effort.
+ * The catalog `status` values the shell emits are 'present' | 'unsupported', matching the
+ * media_files.status CHECK constraint (migration 0047; 'missing' is server-derived). A probe that
+ * yields metadata but no thumbnail still counts as 'present' (thumb_b64 simply absent).
  */
 
 const { spawn } = require('child_process');
 const { ffmpegPath, ffprobePath } = require('./fftools');
-const { THUMB_MAX_EDGE, THUMB_MAX_BYTES } = require('./constants');
+const { THUMB_MAX_EDGE, THUMB_MAX_BYTES, META_PROBE_TIMEOUT_MS } = require('./constants');
 
+/** Spawn a binary, capture stdout. Rejects on non-zero exit or timeout; a TIMEOUT error carries
+ *  `.timedOut = true` so the caller can distinguish it from a genuine failure. */
 function run(bin, args, { capture = 'utf8', timeoutMs = 60000 } = {}) {
   return new Promise((resolve, reject) => {
     const child = spawn(bin, args, { windowsHide: true });
@@ -38,7 +43,9 @@ function run(bin, args, { capture = 'utf8', timeoutMs = 60000 } = {}) {
       } catch {
         /* ignore */
       }
-      reject(new Error(`${bin} timed out after ${timeoutMs}ms`));
+      const e = new Error(`${bin} timed out after ${timeoutMs}ms`);
+      e.timedOut = true;
+      reject(e);
     }, timeoutMs);
 
     child.stdout.on('data', (d) => out.push(d));
@@ -62,14 +69,9 @@ function run(bin, args, { capture = 'utf8', timeoutMs = 60000 } = {}) {
   });
 }
 
-async function probeMeta(absPath) {
-  const json = await run(ffprobePath, [
-    '-v', 'error',
-    '-select_streams', 'v:0',
-    '-show_entries', 'stream=width,height,codec_name:format=duration',
-    '-of', 'json',
-    absPath,
-  ]);
+/** Parse the ffprobe JSON into our metadata shape. Throws (a non-timeout error) when there is no
+ *  decodable video stream — a GENUINE unsupported. */
+function parseMeta(json) {
   const parsed = JSON.parse(json);
   const stream = (parsed.streams && parsed.streams[0]) || {};
   const format = parsed.format || {};
@@ -77,7 +79,6 @@ async function probeMeta(absPath) {
   const height = Number(stream.height) || null;
   const duration = format.duration != null ? Math.round(Number(format.duration)) : null;
   if (!width || !height) {
-    // No decodable video stream.
     throw new Error('no video stream / dimensions');
   }
   return {
@@ -86,6 +87,40 @@ async function probeMeta(absPath) {
     duration_seconds: Number.isFinite(duration) ? duration : null,
     codec: stream.codec_name || null,
   };
+}
+
+const metaArgs = (absPath) => [
+  '-v', 'error',
+  '-select_streams', 'v:0',
+  '-show_entries', 'stream=width,height,codec_name:format=duration',
+  '-of', 'json',
+  absPath,
+];
+
+/**
+ * Read metadata via ffprobe, RETRYING ONCE on a timeout (not on a genuine error). `runner(args,
+ * timeoutMs)` resolves the raw ffprobe JSON string — injectable so the retry/timeout classification
+ * is unit-testable without spawning ffprobe. Throws after `retries` timeouts, or immediately on a
+ * genuine error (no video stream / spawn failure) — the caller maps a throw to 'unsupported'.
+ *
+ * @param {string} absPath
+ * @param {{ timeoutMs?:number, retries?:number, runner?:(args:string[],timeoutMs:number)=>Promise<string> }} [opts]
+ */
+async function probeMeta(absPath, opts = {}) {
+  const timeoutMs = opts.timeoutMs ?? META_PROBE_TIMEOUT_MS;
+  const retries = opts.retries ?? 1; // one retry on timeout
+  const runner = opts.runner ?? ((args, to) => run(ffprobePath, args, { timeoutMs: to }));
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      return parseMeta(await runner(metaArgs(absPath), timeoutMs));
+    } catch (e) {
+      if (e && e.timedOut && attempt < retries) {
+        // Timed out — retry once; by now the concurrency cap has drained most bus contention.
+        continue;
+      }
+      throw e; // genuine error, or a timeout that survived the retry -> caller flags unsupported
+    }
+  }
 }
 
 async function grabThumb(absPath, durationSeconds) {
@@ -129,6 +164,7 @@ async function probe(absPath) {
     }
     return { status: 'present', ...meta, thumb };
   } catch {
+    // Genuine unsupported (corrupt / no video stream) OR a timeout that survived the retry.
     return {
       status: 'unsupported',
       duration_seconds: null,
@@ -140,4 +176,4 @@ async function probe(absPath) {
   }
 }
 
-module.exports = { probe };
+module.exports = { probe, probeMeta };

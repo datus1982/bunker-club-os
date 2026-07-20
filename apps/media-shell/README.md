@@ -7,12 +7,18 @@ It does three jobs and nothing else (all real UI lives in the web app):
 
 1. Opens a fullscreen kiosk browser at `{appUrl}/signage/s/{slug}`.
 2. Serves the local video library over `http://127.0.0.1:{port}/media/{hash}`
-   with full HTTP Range support so the signage board can play + seek it.
+   with full HTTP Range support so the signage board can play + seek it, plus
+   sidecar subtitles as WebVTT at `/subs/{hash}` (v0.2).
 3. Watches the media folder, probes each clip, and POSTs a catalog to the
    `media-catalog-sync` edge fn so the web app knows what's on this PC.
 
 The shell is **thin** — it has no interface of its own beyond a loud error
 screen when config is wrong.
+
+**v0.2 (2026-07-20):** fast boot (a persisted catalog cache + serve-before-scan so
+a restart resumes playback in ~tens of ms instead of showing MEDIA HOST OFFLINE
+while the library re-probes), sidecar `.srt` subtitles served as WebVTT, and a
+single-instance lock + retry-bind so a relaunch can't strand the media port.
 
 ---
 
@@ -92,6 +98,27 @@ screen when config is wrong.
 
 ---
 
+## Upgrading an already-installed shell (v0.1 → v0.2)
+
+Do this ON the mini PC (it needs to download the new installer):
+
+1. **Download the new installer.** In the PC's browser, open the download link the
+   platform provides (the v0.2 installer is hosted publicly at
+   `…/storage/v1/object/public/signage/shell/BunkerMediaShell-Setup-0.2.0.exe`) and
+   save `BunkerMediaShell-Setup-0.2.0.exe`.
+2. **Run it over the top.** Double-click the downloaded `.exe`. It installs the new
+   version in place (per-user, same app id) and relaunches. No uninstall needed.
+3. **Your config + library are preserved.** `config.json`, the media folder, the
+   catalog cache, and the sent-thumbs cache all live in `%APPDATA%\Bunker Media
+   Shell\` (or beside the app) and are untouched — the screen comes back on the same
+   slug with the same library. Subtitles then appear on any clip that has a sidecar
+   `.srt` (for playlists with SUBS ON, which is the default).
+
+If anything looks wrong after an update, the loud config-error screen tells you
+exactly what; the logs are in `%APPDATA%\Bunker Media Shell\logs\`.
+
+---
+
 ## Verify it's working
 
 - **Health:** browse (or `curl`) `http://127.0.0.1:48151/health` on the PC →
@@ -99,6 +126,11 @@ screen when config is wrong.
   number of videos under `mediaDir`.
 - **A clip streams:** `http://127.0.0.1:48151/media/<hash>` returns the video
   with `Accept-Ranges: bytes` (seeking works).
+- **Subtitles (v0.2):** `http://127.0.0.1:48151/subs/<hash>` returns `text/vtt`
+  for any clip that has a sidecar `.srt`, or 404 if it has none.
+- **Warm boot (v0.2):** after a first successful run the logs show
+  `catalog cache: loaded N entries (metadata) — serving immediately` on the next
+  start, and the ffprobe walk re-probes only new/changed files.
 - **Catalog:** with `catalogUrl`+`deviceToken` set, the logs (in
   `%APPDATA%\Bunker Media Shell\logs\`) show `catalog synced: N files ...` after
   startup and after any folder change.
@@ -188,6 +220,7 @@ openAtLogin: true })`, guarded to packaged win32 only — plus the NSIS
         "height": 1080,
         "size_bytes": 48210433,
         "status": "present",                          // or "unsupported" ("missing" is server-derived)
+        "has_subtitles": true,                        // a sidecar .srt exists (served at /subs/{hash})
         "thumb_b64": "<jpeg base64>"                  // ONLY for not-yet-acked hashes
       }
     ],
@@ -207,6 +240,11 @@ openAtLogin: true })`, guarded to packaged win32 only — plus the NSIS
     `acknowledged` / `known_hashes` array in the POST response.
   - `folders` = each first-level subfolder = one playlist; root-level loose files
     are omitted from `folders` (they still appear in `files`).
+  - `has_subtitles` (v0.2) = a sidecar `.srt` sits next to the video. The web app
+    renders a WebVTT `<track>` (fetched from `/subs/{hash}` on this same host) only
+    when this is true AND the playlist's `subtitles` toggle is on. A v0.1 shell never
+    sends this field, so it defaults false and the track never renders — the update
+    is backward-compatible.
 
 - **Hash strategy:** `sha1( 8-byte big-endian size ++ first 1MB ++ last 1MB )`.
   Whole multi-GB movies are never fully read. Files ≤2MB hash `size ++ whole
