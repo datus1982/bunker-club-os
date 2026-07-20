@@ -18,7 +18,7 @@ import { collectPaged } from "./mediaPagination";
 export type { MediaFile, MediaPlaylist, Presentation };
 
 const FILE_COLS =
-  "id, filename, title, hash, duration_seconds, width, height, size_bytes, thumb_path, status";
+  "id, filename, title, hash, duration_seconds, width, height, size_bytes, thumb_path, status, has_subtitles";
 
 /* ── media library (files) ───────────────────────────────────────────────── */
 
@@ -76,7 +76,7 @@ export function useMediaPlaylists() {
         collectPaged<MediaPlaylist>(async (from, to) => {
           const { data, error } = await supabase
             .from("media_playlists")
-            .select("id, name, source, folder_path, presentation, shuffle")
+            .select("id, name, source, folder_path, presentation, shuffle, subtitles")
             .eq("venue_id", VENUE_ID)
             .order("source") // folder first? order name below
             .order("name")
@@ -187,6 +187,12 @@ export async function setPlaylistPresentation(id: string, presentation: Presenta
 /** Per-playlist shuffle toggle — editable for BOTH sources. */
 export async function setPlaylistShuffle(id: string, shuffle: boolean): Promise<void> {
   const { error } = await supabase.from("media_playlists").update({ shuffle }).eq("id", id);
+  if (error) throw error;
+}
+
+/** Per-playlist subtitle toggle — editable for BOTH sources (the sync never overwrites it). */
+export async function setPlaylistSubtitles(id: string, subtitles: boolean): Promise<void> {
+  const { error } = await supabase.from("media_playlists").update({ subtitles }).eq("id", id);
   if (error) throw error;
 }
 

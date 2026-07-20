@@ -530,3 +530,46 @@ slots are never touched, and `program`/`program_hold`/`program_set_at`/`kind` on
 - **apps/media-shell stays FROZEN** — multiview needs **zero shell changes** (panel slides come from
   Supabase over the internet; main video from the shell's existing localhost server; capture via the
   already-granted `getUserMedia`). The drive installer stays valid.
+
+---
+
+## Media shell v0.2 (2026-07-20 — two owner field asks from the bar install)
+
+The shell is no longer frozen (M1's freeze was to protect the drive installer; that installer served
+its purpose). v0.2 ships as a NEW installer delivered by a download link (uploaded to the public
+`signage` bucket under `shell/`). Two asks:
+
+### Fast boot (a restart should resume the film, not show MEDIA HOST OFFLINE for minutes)
+
+- **Serve-before-scan.** The 127.0.0.1 media server (health + range file serving) binds BEFORE any
+  catalog work; the ffprobe walk runs in the background afterward.
+- **Persisted catalog cache** at `%APPDATA%/Bunker Media Shell/catalog-cache.json` (metadata) +
+  `thumb-cache/{hash}.jpg` (thumbnails), keyed by path+size+mtime. A warm boot loads metadata
+  synchronously (files servable immediately) and re-probes ONLY new/changed files. Corrupt/missing
+  cache ⇒ cold walk (self-heals).
+- **Clean quit/relaunch.** Single-instance lock (a second launch focuses the kiosk and exits); the
+  media server closes gracefully before a watchdog/Alt-F4 relaunch, and the port binder retries on
+  EADDRINUSE so a relaunch can't strand port 48151.
+
+### Subtitles
+
+- The shell indexes a sidecar `.srt` (same basename, e.g. `Labyrinth (1986).srt`; a language-tagged
+  `.<lang>.srt` also matches) and serves it as **WebVTT at `/subs/{hash}`** (SRT→VTT: `WEBVTT` header +
+  comma→dot in cue timestamps; BOM/latin1 tolerant). Catalog payload gains `has_subtitles`.
+- Migration **0053** (additive): `media_files.has_subtitles` (default false — a v0.1 shell never
+  reports it) + `media_playlists.subtitles` (**default TRUE**, all existing rows flipped — owner
+  ruling; mirrors 0052's shuffle default; a manual hub un-toggle sticks, the sync never overwrites it).
+- The web PlaylistProgram/MainMediaStage render a `<track kind="subtitles" default>` **only** when the
+  playlist's `subtitles` is on AND the current file's `has_subtitles` is true — so the v0.1 shell
+  currently at the bar is unaffected until it's updated. Hub MEDIA LIBRARY playlist rows gain a
+  SUBTITLES on/off toggle beside FRAMED/SHUFFLE.
+
+### Backlog (v0.2)
+
+- **Resume-at-position across restarts (NOT built).** Transport/playlist position is ephemeral — a
+  shell restart resumes the loop but restarts the current clip from the beginning (a warm boot makes
+  the clip servable in ~tens of ms, so it resumes near-instantly, just not at the exact frame).
+  Persisting the last file + offset per slot would restore the exact position; deferred.
+- A sidecar `.srt` added while the shell is OFF and the video is otherwise unchanged (size+mtime same)
+  is picked up on the next full scan / when the sync re-checks the sidecar on a cache hit — the
+  watcher also re-processes the sibling video when a `.srt` lands/leaves at runtime.

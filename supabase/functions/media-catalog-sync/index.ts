@@ -45,6 +45,7 @@ interface InFile {
   size_bytes?: number;
   status?: string; // 'present' | 'missing' | 'unsupported' (default present)
   thumb_b64?: string; // jpeg, optionally data-URI prefixed; ≤200KB decoded
+  has_subtitles?: boolean; // a sidecar .srt sits next to the video (served as WebVTT at /subs/{hash})
 }
 interface InFolder {
   path: string; // subfolder path (relative) — the media_playlists.folder_path key (stable, raw)
@@ -234,6 +235,7 @@ Deno.serve(async (req) => {
         height: typeof f.height === "number" ? f.height : null,
         size_bytes: typeof f.size_bytes === "number" ? f.size_bytes : null,
         status,
+        has_subtitles: typeof f.has_subtitles === "boolean" ? f.has_subtitles : false,
         thumb_path: thumbPathByHash.get(f.hash) ?? null,
         updated_at: nowIso,
       };

@@ -42,9 +42,13 @@ function ok(cond, label, extra) {
  * could never answer, deadlocking. Returns { status, headers, body, raw }.
  */
 function httpReq(reqPath, headers = {}, method = 'GET') {
+  return httpReqPort(PORT, reqPath, headers, method);
+}
+
+function httpReqPort(port, reqPath, headers = {}, method = 'GET') {
   return new Promise((resolve, reject) => {
     const req = http.request(
-      { host: '127.0.0.1', port: PORT, path: reqPath, method, headers },
+      { host: '127.0.0.1', port, path: reqPath, method, headers },
       (res) => {
         const chunks = [];
         res.on('data', (d) => chunks.push(d));
@@ -91,8 +95,18 @@ async function main() {
   );
   ok(fs.existsSync(clip) && fs.statSync(clip).size > 0, 'test clip generated');
 
-  // --- scan ---
-  const library = new MediaLibrary(mediaDir);
+  // Sidecar subtitle (Kodi-style, same basename). Comma decimal separators — the shell rewrites
+  // them to dots when serving WebVTT.
+  const srt = path.join(subDir, 'colorbars.srt');
+  fs.writeFileSync(
+    srt,
+    '1\n00:00:00,500 --> 00:00:02,000\nColor bars, dear boy.\n\n2\n00:00:02,000 --> 00:00:04,500\nProbably.\n'
+  );
+  ok(fs.existsSync(srt), 'sidecar .srt created');
+
+  // --- scan (with a persisted cache dir so we can exercise warm-boot) ---
+  const cacheDir = path.join(tmp, 'cache');
+  const library = new MediaLibrary(mediaDir, { cacheDir });
   await library.scanAll();
   ok(library.fileCount() === 1, 'library scanned 1 file', `got ${library.fileCount()}`);
 
@@ -109,6 +123,8 @@ async function main() {
   ok(entry && entry.thumb && entry.thumb.slice(0, 2).toString('hex') === 'ffd8',
     'thumbnail has JPEG SOI marker (ffd8)');
   ok(entry && entry.thumb && entry.thumb.length <= 200 * 1024, 'thumbnail <= 200KB');
+  ok(entry && entry.has_subtitles === true, 'sidecar subtitle detected (has_subtitles)', entry && String(entry.has_subtitles));
+  ok(entry && entry.srtPath === srt, 'srtPath points at the sidecar', entry && entry.srtPath);
 
   const hash = entry.hash;
 
@@ -170,6 +186,23 @@ async function main() {
   const traversal = await httpReq('/media/..%2f..%2fetc%2fpasswd');
   ok(traversal.status === 404, 'traversal-shaped path -> 404', String(traversal.status));
 
+  // --- subtitles: /subs/{hash} -> WebVTT ---
+  console.log('\n  --- GET /subs/{hash}  (SRT -> WebVTT) ---');
+  const subs = await httpReq(`/subs/${hash}`);
+  console.log('  ' + subs.raw.split('\n').join('\n  '));
+  const vtt = subs.body.toString('utf8');
+  console.log('  ' + vtt.split('\n').join('\n  '));
+  ok(subs.status === 200, '/subs status 200', String(subs.status));
+  ok((subs.headers['content-type'] || '').startsWith('text/vtt'), 'Content-Type text/vtt', subs.headers['content-type']);
+  ok(vtt.startsWith('WEBVTT\n\n'), 'WebVTT header present');
+  ok(vtt.includes('00:00:00.500 --> 00:00:02.000'), 'comma decimal rewritten to dot in cue timestamps');
+  ok(vtt.includes('Color bars, dear boy.'), 'cue text (incl. its comma) preserved');
+  ok(subs.headers['access-control-allow-origin'] === 'https://os.bunkerokc.com', '/subs CORS pinned to app origin', subs.headers['access-control-allow-origin']);
+  const subsVtt = await httpReq(`/subs/${hash}.vtt`);
+  ok(subsVtt.status === 200, '/subs/{hash}.vtt (explicit ext) also serves', String(subsVtt.status));
+  const noSubs = await httpReq('/subs/deadbeef');
+  ok(noSubs.status === 404, 'unknown hash /subs -> 404', String(noSubs.status));
+
   // --- catalog (dev mode: no url/token -> logs payload, returns it) ---
   console.log('\n  --- catalog dev-mode payload ---');
   const sync = new CatalogSync(library, { catalogUrl: '', deviceToken: '' });
@@ -190,8 +223,10 @@ async function main() {
   ok(f0 && typeof f0.filename === 'string' && typeof f0.hash === 'string'
      && typeof f0.duration_seconds === 'number' && typeof f0.width === 'number'
      && typeof f0.height === 'number' && typeof f0.size_bytes === 'number'
-     && typeof f0.status === 'string' && typeof f0.thumb_b64 === 'string',
-    'file object has all contract fields incl. thumb_b64');
+     && typeof f0.status === 'string' && typeof f0.thumb_b64 === 'string'
+     && typeof f0.has_subtitles === 'boolean',
+    'file object has all contract fields incl. thumb_b64 + has_subtitles');
+  ok(f0 && f0.has_subtitles === true, 'payload reports has_subtitles for the sidecar file');
   ok(payload.folders.length === 1, 'payload.folders length 1');
   const fo = payload.folders[0];
   ok(fo && fo.path === 'Ambient Loops' && fo.name === 'Ambient Loops'
@@ -233,6 +268,58 @@ async function main() {
   ok(foB && foB.hashes.includes(dupHash), 'Folder B lists the shared hash');
 
   await srv.close();
+
+  // --- persisted catalog cache (v0.2 fast boot) --------------------------------
+  console.log('\n  --- persisted catalog cache (warm boot) ---');
+  // The first library (with a cacheDir) already scanned. Persist it, then simulate a warm boot:
+  // a fresh library over the SAME cacheDir loads metadata synchronously (serve-immediately) and a
+  // subsequent scan must SKIP the unchanged file's probe (returns the very same entry object).
+  await library.persistCache();
+  const cacheFile = path.join(cacheDir, 'catalog-cache.json');
+  const thumbFile = path.join(cacheDir, 'thumb-cache', `${hash}.jpg`);
+  ok(fs.existsSync(cacheFile), 'catalog-cache.json written');
+  ok(fs.existsSync(thumbFile), 'thumb-cache/{hash}.jpg written');
+
+  const warm = new MediaLibrary(mediaDir, { cacheDir });
+  const loaded = warm.loadCacheMetadata();
+  ok(loaded === 1, 'warm boot loaded 1 entry from cache (metadata, sync)', `got ${loaded}`);
+  const cachedEntry = warm.getByHash(hash);
+  ok(!!cachedEntry, 'cached entry servable immediately (byHash populated pre-scan)');
+  ok(cachedEntry && cachedEntry.thumb === null, 'metadata load defers thumbnails (thumb null until loadCacheThumbs)');
+  ok(cachedEntry && cachedEntry.has_subtitles === true, 'has_subtitles restored from cache');
+  ok(cachedEntry && cachedEntry.srtPath === srt, 'srtPath reconstructed from cache');
+
+  // Warm-boot serve BEFORE any scan: a server over the cache-only library streams the clip.
+  // Use a DISTINCT port — the global http agent keep-alives sockets, and reusing the just-closed
+  // PORT would hand back a dead pooled socket (a harness artifact, not a server bug).
+  const WARM_PORT = PORT + 1;
+  const warmSrv = createMediaServer(warm, { port: WARM_PORT, appOrigin: 'https://os.bunkerokc.com', version: pkg.version });
+  await warmSrv.listen(WARM_PORT);
+  const warmHead = await httpReqPort(WARM_PORT, `/media/${hash}`, {}, 'HEAD');
+  ok(warmHead.status === 200, 'cache-only server serves /media/{hash} pre-scan (playback resume)', String(warmHead.status));
+  await warmSrv.close();
+
+  // Now run the background scan over the loaded cache: the unchanged file's probe is SKIPPED
+  // (processFile returns the SAME object it loaded from cache — a re-probe would build a new one).
+  const before = warm.getByHash(hash);
+  await warm.processFile(clip);
+  const after = warm.getByHash(hash);
+  ok(before === after, 'warm boot re-uses the cached entry — NO re-probe of the unchanged file');
+
+  // Thumbs restore from disk in the background.
+  const restored = await warm.loadCacheThumbs();
+  ok(restored === 1, 'loadCacheThumbs restored the thumbnail from disk', `got ${restored}`);
+  ok(Buffer.isBuffer(warm.getByHash(hash).thumb), 'restored thumb is a Buffer');
+
+  // A CHANGED file is re-probed (size/mtime differ -> a fresh entry object).
+  const clip2 = path.join(subDir, 'colorbars2.mp4');
+  execFileSync(ffmpegPath, ['-y', '-f', 'lavfi', '-i', 'testsrc=size=320x240:rate=15:duration=3', '-pix_fmt', 'yuv420p', '-c:v', 'libx264', '-t', '3', clip2], { stdio: 'ignore' });
+  await warm.processFile(clip2);
+  ok(warm.fileCount() === 2, 'new file added to the library on scan', `got ${warm.fileCount()}`);
+  // Corrupt cache -> cold walk (empty load), self-heals.
+  fs.writeFileSync(cacheFile, 'not json{');
+  const cold = new MediaLibrary(mediaDir, { cacheDir });
+  ok(cold.loadCacheMetadata() === 0, 'corrupt cache loads 0 entries (cold walk self-heals)');
 
   // cleanup
   fs.rmSync(tmp, { recursive: true, force: true });

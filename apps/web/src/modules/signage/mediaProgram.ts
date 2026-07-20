@@ -63,6 +63,17 @@ export function mediaFileUrl(base: string, hash: string): string {
   return `${base}/media/${encodeURIComponent(hash)}`;
 }
 
+/**
+ * The WebVTT subtitle URL for a content-hashed file: `{base}/subs/{hash}` (the shell v0.2 route —
+ * it converts the sidecar .srt to WebVTT on demand). Same mediahost origin as the video, so the
+ * <track> is CORS-fetched (the <video> must carry crossorigin) against the shell's pinned CORS.
+ * A v0.1 shell has no /subs route, but the <track> is only rendered when the file's `has_subtitles`
+ * is true — which a v0.1 shell never reports — so this URL is never requested against v0.1.
+ */
+export function subtitleUrl(base: string, hash: string): string {
+  return `${base}/subs/${encodeURIComponent(hash)}`;
+}
+
 export type MediaStatus = "present" | "missing" | "unsupported";
 
 export interface MediaFile {
@@ -76,6 +87,9 @@ export interface MediaFile {
   size_bytes: number | null;
   thumb_path: string | null;
   status: MediaStatus;
+  /** A sidecar .srt exists (the shell serves it as WebVTT at /subs/{hash}). Default false — a v0.1
+   *  shell never reports it, so the subtitle <track> stays absent until the mini PC is updated. */
+  has_subtitles: boolean;
   /** Public URL of the mirrored thumbnail in the signage bucket (null when unsynced). */
   thumb: string | null;
 }
@@ -89,6 +103,9 @@ export interface MediaPlaylist {
   folder_path: string | null;
   presentation: Presentation;
   shuffle: boolean;
+  /** Per-playlist subtitle toggle (default ON — migration 0053). The <track> renders only when this
+   *  is on AND the current file has_subtitles. Hub-editable; the sync never overwrites it. */
+  subtitles: boolean;
 }
 
 /** Turn a signage-bucket thumb path into a public URL (mirrors useInstagram's pattern). */
@@ -97,7 +114,7 @@ export function thumbUrl(path: string | null): string | null {
 }
 
 const FILE_COLS =
-  "id, filename, title, hash, duration_seconds, width, height, size_bytes, thumb_path, status";
+  "id, filename, title, hash, duration_seconds, width, height, size_bytes, thumb_path, status, has_subtitles";
 
 /**
  * The playlist a slot's `playlist` program should play right now: the playlist row + its items
@@ -117,7 +134,7 @@ export function usePlaylistProgram(playlistId: string | null) {
       const [playlistRes, itemRows] = await Promise.all([
         supabase
           .from("media_playlists")
-          .select("id, name, source, folder_path, presentation, shuffle")
+          .select("id, name, source, folder_path, presentation, shuffle, subtitles")
           .eq("id", pid)
           .maybeSingle(),
         collectPaged<{ file: Omit<MediaFile, "thumb"> | null }>(async (from, to) => {

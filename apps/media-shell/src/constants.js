@@ -28,6 +28,22 @@ const DEFAULT_APP_URL = 'https://os.bunkerokc.com';
 // still get cataloged (status set by the prober).
 const VIDEO_EXTENSIONS = ['.mp4', '.mkv', '.webm', '.mov'];
 
+// Sidecar subtitle extension (Kodi convention: "Movie (1986).srt" beside the video).
+// Served as WebVTT at /subs/{hash}; reported up as has_subtitles in the catalog.
+const SUBTITLE_EXTENSION = '.srt';
+
+// Persisted catalog cache (v0.2 fast boot): probe results keyed by path+size+mtime so a
+// warm boot re-probes only new/changed files. Metadata lives in one JSON file; thumbnails
+// live one-jpeg-per-hash under a sibling dir so the JSON stays small + fast to read/write.
+const CATALOG_CACHE_FILE = 'catalog-cache.json';
+const THUMB_CACHE_DIR = 'thumb-cache';
+const CATALOG_CACHE_VERSION = 1;
+
+// Media-server bind retry (v0.2 clean relaunch): if the port is momentarily held by a just-
+// killed prior instance, retry the bind a few times before giving up (release/retry-bind).
+const PORT_BIND_RETRIES = 12;
+const PORT_BIND_RETRY_MS = 500;
+
 // Thumbnail: JPEG, long edge <= 480px, encoded payload kept <= 200KB.
 const THUMB_MAX_EDGE = 480;
 const THUMB_MAX_BYTES = 200 * 1024;
@@ -50,6 +66,12 @@ module.exports = {
   DEFAULT_MEDIA_PORT,
   DEFAULT_APP_URL,
   VIDEO_EXTENSIONS,
+  SUBTITLE_EXTENSION,
+  CATALOG_CACHE_FILE,
+  THUMB_CACHE_DIR,
+  CATALOG_CACHE_VERSION,
+  PORT_BIND_RETRIES,
+  PORT_BIND_RETRY_MS,
   THUMB_MAX_EDGE,
   THUMB_MAX_BYTES,
   HASH_CHUNK_BYTES,

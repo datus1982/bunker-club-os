@@ -18,7 +18,8 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
-const { CONTENT_TYPES } = require('./constants');
+const { CONTENT_TYPES, PORT_BIND_RETRIES, PORT_BIND_RETRY_MS } = require('./constants');
+const { readSubtitleAsVtt } = require('./subtitles');
 const log = require('./log');
 
 function contentTypeFor(filename) {
@@ -87,6 +88,42 @@ function createMediaServer(library, opts) {
       cors();
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ ok: true, fileCount: library.fileCount(), version }));
+      return;
+    }
+
+    // Subtitles: /subs/{hash}[.vtt] -> the sidecar .srt converted to WebVTT on demand (v0.2).
+    // Cross-origin: the <track> is CORS-fetched (the video carries crossorigin="anonymous"), so
+    // this must send the same pinned CORS headers as /media. Unknown hash / no sidecar -> 404.
+    const subMatch = /^\/subs\/([A-Za-z0-9]+)(?:\.vtt)?$/.exec(url.pathname);
+    if (subMatch) {
+      cors();
+      const entry = library.getByHash(subMatch[1]);
+      if (!entry || !entry.srtPath) {
+        res.writeHead(404);
+        res.end('no subtitles');
+        return;
+      }
+      const subAbs = path.resolve(entry.srtPath);
+      const subRoot = path.resolve(library.mediaDir);
+      if (subAbs !== subRoot && !subAbs.startsWith(subRoot + path.sep)) {
+        log.error('subtitle path escaped media root, refusing', subAbs);
+        res.writeHead(404);
+        res.end('not found');
+        return;
+      }
+      let vtt;
+      try {
+        vtt = readSubtitleAsVtt(subAbs);
+      } catch {
+        res.writeHead(404);
+        res.end('subtitle unreadable');
+        return;
+      }
+      res.setHeader('Content-Type', 'text/vtt; charset=utf-8');
+      res.setHeader('Content-Length', Buffer.byteLength(vtt, 'utf8'));
+      res.writeHead(200);
+      if (req.method === 'HEAD') return res.end();
+      res.end(vtt);
       return;
     }
 
@@ -166,15 +203,32 @@ function createMediaServer(library, opts) {
     stream.pipe(res);
   });
 
-  function listen(port) {
+  // Bind 127.0.0.1:{port}, retrying on EADDRINUSE. On a watchdog relaunch the just-killed prior
+  // instance can still be holding the port for a moment (TIME_WAIT / not-yet-released socket); a
+  // few short retries let the relaunched shell recover the port instead of dying on the error
+  // screen and stranding the TV on MEDIA HOST OFFLINE.
+  function listen(port, { retries = PORT_BIND_RETRIES, delayMs = PORT_BIND_RETRY_MS } = {}) {
     return new Promise((resolve, reject) => {
-      server.once('error', reject);
-      // 127.0.0.1 ONLY — never expose the library to the LAN.
-      server.listen(port, '127.0.0.1', () => {
-        server.removeListener('error', reject);
-        log.info(`media server listening on http://127.0.0.1:${port}`);
-        resolve(server);
-      });
+      let attempt = 0;
+      const tryBind = () => {
+        const onErr = (e) => {
+          if (e && e.code === 'EADDRINUSE' && attempt < retries) {
+            attempt += 1;
+            log.warn(`port ${port} in use — retry ${attempt}/${retries} in ${delayMs}ms`);
+            setTimeout(tryBind, delayMs);
+            return;
+          }
+          reject(e);
+        };
+        server.once('error', onErr);
+        // 127.0.0.1 ONLY — never expose the library to the LAN.
+        server.listen(port, '127.0.0.1', () => {
+          server.removeListener('error', onErr);
+          log.info(`media server listening on http://127.0.0.1:${port}`);
+          resolve(server);
+        });
+      };
+      tryBind();
     });
   }
 

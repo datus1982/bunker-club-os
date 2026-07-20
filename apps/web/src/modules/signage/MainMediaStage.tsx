@@ -38,6 +38,7 @@ function PlaylistMainStage({ playlistId, slug, base, onNowShowing }: {
       files={data?.files ?? []}
       base={base}
       shuffle={!!data?.playlist?.shuffle}
+      subtitles={!!data?.playlist?.subtitles}
       fullbleed={false}
       orientation="landscape"
       loading={isPending}

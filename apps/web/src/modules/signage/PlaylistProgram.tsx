@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import {
   installAudioAutoArm, isAudioUnlocked, markAudioUnlocked, subscribeArmed,
 } from "@/shared/videoAudio";
-import { usePlaylistProgram, mediaFileUrl, nowShowingParts, type MediaFile } from "./mediaProgram";
+import { usePlaylistProgram, mediaFileUrl, subtitleUrl, nowShowingParts, type MediaFile } from "./mediaProgram";
 import { useTransportCommands } from "./mediaTransport";
 import type { Slot, Orientation } from "./useSignage";
 import { SUPPORT_TEXT } from "./supportText";
@@ -57,6 +57,7 @@ export function PlaylistProgram({
       files={files}
       base={base}
       shuffle={!!playlist?.shuffle}
+      subtitles={!!playlist?.subtitles}
       fullbleed={fullbleed}
       orientation={slot.orientation}
       loading={isPending}
@@ -118,12 +119,14 @@ const PLAYING_MIN_READY = 3; // HTMLMediaElement.readyState HAVE_FUTURE_DATA —
  * OFFLINE (retries the current clip every 8s so it recovers when the shell comes back).
  */
 export function PlaylistVideo({
-  slug, files, base, shuffle, fullbleed, orientation, loading, loadError, onNowShowing,
+  slug, files, base, shuffle, subtitles, fullbleed, orientation, loading, loadError, onNowShowing,
 }: {
   slug: string;
   files: MediaFile[];
   base: string;
   shuffle: boolean;
+  /** Playlist subtitle toggle — render a WebVTT <track> when on AND the file has_subtitles. */
+  subtitles: boolean;
   fullbleed: boolean;
   orientation: "portrait" | "landscape";
   loading: boolean;
@@ -242,6 +245,10 @@ export function PlaylistVideo({
 
   const objectFit = fullbleed ? "cover" : "contain";
   const bigText = orientation === "portrait" ? 88 : 76;
+  // Render a WebVTT subtitle <track> only when the playlist toggle is on AND this clip has a
+  // sidecar. A v0.1 shell reports has_subtitles=false, so the track (and its crossorigin fetch)
+  // never engages until the mini PC is updated — the video path is byte-identical for v0.1.
+  const showSub = subtitles && !!current?.has_subtitles;
 
   if (order.length === 0) {
     // No present files (empty playlist, or every file missing) → honest offline/empty card.
@@ -259,6 +266,10 @@ export function PlaylistVideo({
           poster={current.thumb ?? undefined}
           autoPlay
           playsInline
+          // A <track> from a different origin (the shell's 127.0.0.1) needs a CORS-enabled fetch, so
+          // the video must opt into CORS — but ONLY when a track is present, to keep the common no-
+          // subtitle path (and v0.1) exactly as before. The shell pins CORS to the app origin.
+          crossOrigin={showSub ? "anonymous" : undefined}
           // NOTE-6: init muted per-CLIP from the live unlock state, not a mount-captured ref — so a
           // clip that mounts AFTER audio was unlocked this session starts unmuted (no muted pop-in).
           muted={!isAudioUnlocked()}
@@ -266,7 +277,17 @@ export function PlaylistVideo({
           onError={onError}
           onPlaying={onPlaying}
           style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit, background: "#000" }}
-        />
+        >
+          {showSub && current && (
+            <track
+              kind="subtitles"
+              srcLang="en"
+              label="Subtitles"
+              src={subtitleUrl(base, current.hash)}
+              default
+            />
+          )}
+        </video>
       )}
       {phase === "interrupted" && (
         <StatusCard kind="interrupted" support={SUPPORT_TEXT[orientation]} bigText={bigText} thumb={current?.thumb ?? null} note="RESUMING FEED…" />
