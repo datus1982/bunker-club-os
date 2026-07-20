@@ -22,8 +22,9 @@ const { execFileSync } = require('child_process');
 const { MediaLibrary } = require('../src/mediaLibrary');
 const { createMediaServer } = require('../src/mediaServer');
 const { CatalogSync } = require('../src/catalogSync');
+const { probeMeta } = require('../src/prober');
 const { ffmpegPath } = require('../src/fftools');
-const { DEFAULT_MEDIA_PORT } = require('../src/constants');
+const { DEFAULT_MEDIA_PORT, PROBE_CONCURRENCY } = require('../src/constants');
 const pkg = require('../package.json');
 
 const PORT = 48752; // isolated test port (not the default, to avoid collisions)
@@ -337,6 +338,69 @@ async function main() {
   const closeMs = Date.now() - tClose;
   ok(closeMs < 2000, 'close() resolves < 2s with an idle ESTABLISHED connection open', `${closeMs}ms`);
   sock.destroy();
+
+  // --- PR #61: TIMEOUT ≠ UNSUPPORTED (probeMeta retry classification) ----------
+  // ffprobe metadata reads that TIME OUT (bus contention) must be retried once, not flagged
+  // 'unsupported'; a genuine error (no video stream) must NOT be retried. Injected runner.
+  console.log('\n  --- probeMeta timeout/retry classification (PR #61) ---');
+  const okJson = JSON.stringify({ streams: [{ width: 1920, height: 1080, codec_name: 'h264' }], format: { duration: '120' } });
+  const mkTimeout = () => Object.assign(new Error('timed out'), { timedOut: true });
+
+  let c1 = 0;
+  const meta = await probeMeta('x', { runner: async () => { c1 += 1; if (c1 === 1) throw mkTimeout(); return okJson; } });
+  ok(c1 === 2 && meta.width === 1920 && meta.duration_seconds === 120,
+    'timeout is RETRIED ONCE then succeeds -> present metadata', `calls=${c1}`);
+
+  let c2 = 0;
+  let threwTO = false;
+  try { await probeMeta('x', { runner: async () => { c2 += 1; throw mkTimeout(); } }); } catch { threwTO = true; }
+  ok(threwTO && c2 === 2, 'two timeouts -> throws after ONE retry (caller then flags unsupported)', `calls=${c2}`);
+
+  let c3 = 0;
+  let threwErr = false;
+  try { await probeMeta('x', { runner: async () => { c3 += 1; throw new Error('no video stream'); } }); } catch { threwErr = true; }
+  ok(threwErr && c3 === 1, 'genuine probe error -> NO retry, throws immediately', `calls=${c3}`);
+
+  // --- PR #61: an 'unsupported' cached/DB status is NEVER trusted (always re-probed) ---
+  console.log('\n  --- unsupported-in-cache is always re-probed (PR #61) ---');
+  let probeCalls = 0;
+  const countProbe = async () => { probeCalls += 1; return { status: 'present', duration_seconds: 5, width: 320, height: 240, codec: 'h264', thumb: null }; };
+  const heal = new MediaLibrary(mediaDir, { cacheDir: path.join(tmp, 'cache-heal'), probeFn: countProbe });
+  await heal.processFile(clip);
+  ok(probeCalls === 1, 'first process probes once', `calls=${probeCalls}`);
+  const before61 = probeCalls;
+  await heal.processFile(clip);
+  ok(probeCalls === before61, 'present + unchanged size/mtime -> SKIPPED (no re-probe)', `calls=${probeCalls}`);
+  heal.byPath.get(path.resolve(clip)).status = 'unsupported'; // simulate a false-flag in cache/DB
+  const before61b = probeCalls;
+  await heal.processFile(clip);
+  ok(probeCalls === before61b + 1, 'unsupported + unchanged size/mtime -> ALWAYS RE-PROBED (self-heals)', `calls=${probeCalls}`);
+  ok(heal.byHash.get([...heal.byHash.keys()][0]).status === 'present', 're-probe cleared the false unsupported flag -> present');
+
+  // --- PR #61: probe/thumbnail concurrency is capped (synthetic slow probe) -----
+  console.log('\n  --- probe concurrency cap respected (PR #61) ---');
+  const capDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bms-cap-'));
+  const CAP_FILES = PROBE_CONCURRENCY * 4;
+  for (let i = 0; i < CAP_FILES; i += 1) fs.writeFileSync(path.join(capDir, `f${i}.mp4`), 'x');
+  let cur = 0;
+  let peak = 0;
+  const slowProbe = async () => {
+    cur += 1; peak = Math.max(peak, cur);
+    await new Promise((r) => setTimeout(r, 30));
+    cur -= 1;
+    return { status: 'present', duration_seconds: 1, width: 2, height: 2, codec: null, thumb: null };
+  };
+  const capLib = new MediaLibrary(capDir, {
+    concurrency: PROBE_CONCURRENCY,
+    probeFn: slowProbe,
+    hashFn: async (p) => `h${path.basename(p)}`,
+  });
+  const capFiles = fs.readdirSync(capDir).map((f) => path.join(capDir, f));
+  await Promise.all(capFiles.map((f) => capLib.processFile(f)));
+  ok(peak <= PROBE_CONCURRENCY, `peak concurrent probes <= cap (${PROBE_CONCURRENCY})`, `peak ${peak}`);
+  ok(peak >= 2, 'the pool actually ran probes in parallel (peak >= 2)', `peak ${peak}`);
+  ok(capLib.fileCount() === CAP_FILES, 'all files processed under the cap', `got ${capLib.fileCount()}`);
+  fs.rmSync(capDir, { recursive: true, force: true });
 
   // cleanup
   fs.rmSync(tmp, { recursive: true, force: true });

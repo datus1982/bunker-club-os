@@ -19,15 +19,44 @@ const { hashFile } = require('./hash');
 const { probe } = require('./prober');
 const { findSidecar } = require('./subtitles');
 const {
-  VIDEO_EXTENSIONS, CATALOG_CACHE_FILE, THUMB_CACHE_DIR, CATALOG_CACHE_VERSION,
+  VIDEO_EXTENSIONS, CATALOG_CACHE_FILE, THUMB_CACHE_DIR, CATALOG_CACHE_VERSION, PROBE_CONCURRENCY,
 } = require('./constants');
 const log = require('./log');
+
+/**
+ * Tiny async semaphore (permit-handoff). Caps how many heavy per-file operations (hash + ffprobe +
+ * ffmpeg thumbnail) run at once so the USB bus never saturates — the fix for the install-night
+ * "catalog storm" that FALSELY timed-out big files into 'unsupported' (PR #61). Serve-before-scan
+ * means the slower walk no longer affects boot latency.
+ */
+class Semaphore {
+  constructor(max) {
+    this.max = Math.max(1, max | 0);
+    this.count = 0;
+    this.queue = [];
+  }
+  async acquire() {
+    if (this.count < this.max) {
+      this.count += 1;
+      return;
+    }
+    await new Promise((resolve) => this.queue.push(resolve)); // permit handed over on release()
+  }
+  release() {
+    const next = this.queue.shift();
+    if (next) next(); // hand this permit straight to a waiter (count unchanged)
+    else this.count -= 1;
+  }
+}
 
 class MediaLibrary {
   /**
    * @param {string} mediaDir absolute path to the watched media root
-   * @param {{ cacheDir?: string }} [opts] cacheDir = where to persist the catalog cache
-   *   (Electron userData in prod; a temp dir in tests). null/omitted = no persistence.
+   * @param {{ cacheDir?: string, concurrency?: number, probeFn?: Function, hashFn?: Function }} [opts]
+   *   cacheDir = where to persist the catalog cache (Electron userData in prod; a temp dir in
+   *   tests). null/omitted = no persistence. concurrency/probeFn/hashFn override the defaults
+   *   (probeFn/hashFn are test seams so the concurrency cap + status logic are unit-testable
+   *   without spawning ffprobe/ffmpeg).
    */
   constructor(mediaDir, opts = {}) {
     this.mediaDir = path.resolve(mediaDir);
@@ -41,6 +70,11 @@ class MediaLibrary {
     this.cacheDir = opts.cacheDir ? path.resolve(opts.cacheDir) : null;
     this.cachePath = this.cacheDir ? path.join(this.cacheDir, CATALOG_CACHE_FILE) : null;
     this.thumbCacheDir = this.cacheDir ? path.join(this.cacheDir, THUMB_CACHE_DIR) : null;
+
+    // Heavy-work concurrency cap + injectable probe/hash (test seams).
+    this._probeSem = new Semaphore(opts.concurrency ?? PROBE_CONCURRENCY);
+    this._probe = opts.probeFn ?? probe;
+    this._hash = opts.hashFn ?? hashFile;
   }
 
   static isVideo(p) {
@@ -101,7 +135,16 @@ class MediaLibrary {
 
     const prev = this.byPath.get(abs);
     // Skip the (expensive) hash + probe if size + mtime are unchanged — a warm-boot cache hit.
-    if (prev && prev.size_bytes === stat.size && prev._mtimeMs === stat.mtimeMs) {
+    // ⚠ NEVER cache-trust an 'unsupported' status (PR #61): an unsupported entry carries no useful
+    // metadata and may be a FALSE flag from the install-night timeout storm, so always re-probe it
+    // (cheap — only failures re-run). With the concurrency cap + timeout-retry the re-probe now
+    // succeeds, which also self-heals the live 'unsupported' rows on the owner's first v0.2 boot.
+    if (
+      prev &&
+      prev.size_bytes === stat.size &&
+      prev._mtimeMs === stat.mtimeMs &&
+      prev.status !== 'unsupported'
+    ) {
       if (prev.srtPath !== srtPath) {
         prev.srtPath = srtPath;
         prev.has_subtitles = !!srtPath;
@@ -109,8 +152,17 @@ class MediaLibrary {
       return prev;
     }
 
-    const hash = await hashFile(abs, stat.size);
-    const probed = await probe(abs);
+    // Gate the heavy work (hash + ffprobe + ffmpeg thumbnail) through the concurrency cap so a
+    // watcher storm can't saturate the USB bus (the root cause of the false timeouts).
+    await this._probeSem.acquire();
+    let hash;
+    let probed;
+    try {
+      hash = await this._hash(abs, stat.size);
+      probed = await this._probe(abs);
+    } finally {
+      this._probeSem.release();
+    }
 
     const entry = {
       filename: this.relFilename(abs),
