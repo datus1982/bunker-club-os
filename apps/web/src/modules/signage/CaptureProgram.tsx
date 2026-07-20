@@ -130,6 +130,11 @@ export function CaptureVideo({
     async function acquire() {
       const md = navigator.mediaDevices;
       if (!md?.getUserMedia) { if (!cancelled) setPhase("nosignal"); return; }
+      // UVC capture sticks negotiate their DEFAULT mode when no resolution is requested —
+      // commonly 640×480 (4:3) even on a card that does 1080p (owner hit exactly this with
+      // the Roku at the bar). Ask for 1080p16:9; `ideal` never rejects, so a lesser device
+      // still returns its best mode instead of NO SIGNAL.
+      const HD: MediaTrackConstraints = { width: { ideal: 1920 }, height: { ideal: 1080 }, aspectRatio: { ideal: 16 / 9 } };
       // The stream this attempt is holding right now. Tracked so EVERY exit path (throw, cancel)
       // stops the freshly-grabbed stream — stopStream() only stops streamRef.current (the PREVIOUS
       // live stream), so a device-match miss or a cancel mid-acquire would otherwise leak this one
@@ -139,7 +144,7 @@ export function CaptureVideo({
         // A permissive first grab both unlocks labels (blank until permission) and, when no
         // device_match is given, IS the feed. On the kiosk shell permission is pre-granted so
         // this resolves instantly; in a plain browser it prompts once.
-        pending = await grab(true);
+        pending = await grab(HD);
         const cams = (await md.enumerateDevices()).filter((d) => d.kind === "videoinput");
         if (cams.length === 0) throw new Error("no videoinput");
 
@@ -154,7 +159,7 @@ export function CaptureVideo({
         const activeId = pending.getVideoTracks()[0]?.getSettings().deviceId;
         if (target.deviceId && target.deviceId !== activeId) {
           for (const t of pending.getTracks()) t.stop();
-          pending = await grab({ deviceId: { exact: target.deviceId } });
+          pending = await grab({ deviceId: { exact: target.deviceId }, ...HD });
         }
 
         if (cancelled) { for (const t of pending.getTracks()) t.stop(); return; }
