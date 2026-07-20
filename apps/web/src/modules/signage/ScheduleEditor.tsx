@@ -1,9 +1,9 @@
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { SlideOver } from "./SlideOver";
 import { MONO } from "./signageAdminShared";
 import {
-  useSlotScheduleAdmin, createScheduleRow, deleteScheduleRow, useMediaPlaylists,
+  useSlotScheduleAdmin, createScheduleRow, updateScheduleRow, deleteScheduleRow, useMediaPlaylists,
   type ScheduleRowRaw,
 } from "./useMediaAdmin";
 import {
@@ -39,7 +39,9 @@ export function ScheduleEditor({ slot, timezone, onClose }: { slot: AdminSlot; t
   const playlistsQ = useMediaPlaylists();
   const playlists = playlistsQ.data ?? [];
 
-  // Draft daypart state.
+  // Draft daypart state. `editingId` non-null ⇒ the form is editing that existing row in place
+  // (SAVE updates it, keeping its position + overlap rank); null ⇒ building a NEW daypart.
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [days, setDays] = useState<Set<string>>(new Set());
   const [start, setStart] = useState(960); // 4:00 PM
   const [tillClose, setTillClose] = useState(true);
@@ -53,11 +55,39 @@ export function ScheduleEditor({ slot, timezone, onClose }: { slot: AdminSlot; t
     progKind === "rotation" ? { kind: "rotation" }
     : progKind === "capture" ? { kind: "capture" }
     : { kind: "playlist", playlist_id: playlistId };
-  const canAdd = progKind !== "playlist" || !!playlistId;
+  const canSubmit = progKind !== "playlist" || !!playlistId;
 
   const phrase = schedulePhrase({ daysOfWeek: draftDays, startMinute: start, endMinute: effEnd }, CLOSE_MINUTE);
 
   const nextPosition = rows.length ? Math.max(...rows.map((r) => r.position)) + 1 : 0;
+
+  // Reset the form back to NEW-daypart defaults (matches the useState seeds).
+  const resetForm = useCallback(() => {
+    setEditingId(null);
+    setDays(new Set());
+    setStart(960);
+    setTillClose(true);
+    setEnd(1320);
+    setProgKind("playlist");
+    setPlaylistId("");
+  }, []);
+
+  // Load an existing row into the form for editing (mirrors the events recurrence-builder feel:
+  // day chips, FROM/TO, program picker). Only rotation/playlist/capture rows reach here (multiview
+  // rows aren't buildable in this editor — see the row render; DECISION there).
+  const loadRow = useCallback((r: ScheduleRowRaw) => {
+    setEditingId(r.id);
+    setDays(new Set(r.days_of_week));
+    setStart(r.start_minute);
+    const isClose = r.end_minute === CLOSE_MINUTE;
+    setTillClose(isClose);
+    // Always set the end draft (NOTE-2) — chaining EDIT A (custom end) → EDIT B (TILL CLOSE) must
+    // not leave A's end in state, so unchecking TILL CLOSE on B would show A's stale minute. A
+    // TILL-CLOSE row seeds the sensible default (10:00 PM) so unchecking reveals a fresh value.
+    setEnd(isClose ? 1320 : r.end_minute);
+    setProgKind(r.program.kind === "playlist" ? "playlist" : r.program.kind === "capture" ? "capture" : "rotation");
+    setPlaylistId(r.program.kind === "playlist" ? r.program.playlist_id : "");
+  }, []);
 
   const add = useMutation({
     mutationFn: () =>
@@ -65,8 +95,22 @@ export function ScheduleEditor({ slot, timezone, onClose }: { slot: AdminSlot; t
         slot_id: slot.id, program: draftProgram, days_of_week: draftDays,
         start_minute: start, end_minute: effEnd, position: nextPosition,
       }),
+    onSuccess: resetForm,
   });
-  const del = useMutation({ mutationFn: (id: string) => deleteScheduleRow(id) });
+  // SAVE an edit: UPDATE the same row id, keeping its position (don't re-number — the top-of-list
+  // overlap rank must not silently shuffle just because a daypart was edited).
+  const save = useMutation({
+    mutationFn: () =>
+      updateScheduleRow(editingId as string, {
+        program: draftProgram, days_of_week: draftDays, start_minute: start, end_minute: effEnd,
+      }),
+    onSuccess: resetForm,
+  });
+  const del = useMutation({
+    mutationFn: (id: string) => deleteScheduleRow(id),
+    // If the row being edited is removed, drop back to NEW mode so the form isn't stranded on it.
+    onSuccess: (_data, id) => { if (id === editingId) resetForm(); },
+  });
 
   // Which row is active right now (highest position among rows covering "now").
   const activeId = useMemo(() => {
@@ -93,23 +137,36 @@ export function ScheduleEditor({ slot, timezone, onClose }: { slot: AdminSlot; t
           ) : rows.length === 0 ? (
             <div style={{ opacity: 0.6, fontSize: 15 }}>No dayparts yet — build one below. Until then this screen is always ROTATION (or a manual program).</div>
           ) : (
-            rows.map((r) => (
-              <div key={r.id} className="terminal-border" style={{ padding: "9px 11px", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                <div style={{ flex: "1 1 200px", minWidth: 0 }}>
-                  <div style={{ fontSize: 18, letterSpacing: 1 }}>{programLabel(r, playlists)}</div>
-                  <div style={{ fontSize: 13, opacity: 0.6 }}>{schedulePhrase({ daysOfWeek: r.days_of_week, startMinute: r.start_minute, endMinute: r.end_minute }, CLOSE_MINUTE)}</div>
+            rows.map((r) => {
+              // DECISION: a MULTIVIEW daypart isn't buildable in this editor (only rotation /
+              // playlist / capture) — such a row (only creatable via media-control / a manual
+              // multiview) stays REMOVE-only so editing can't silently downgrade it.
+              const editable = r.program.kind === "rotation" || r.program.kind === "playlist" || r.program.kind === "capture";
+              const isEditing = r.id === editingId;
+              return (
+                <div key={r.id} className="terminal-border" style={{ padding: "9px 11px", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", ...(isEditing ? { borderColor: "var(--terminal-amber, #ffb000)" } : null) }}>
+                  <div style={{ flex: "1 1 200px", minWidth: 0 }}>
+                    <div style={{ fontSize: 18, letterSpacing: 1 }}>{programLabel(r, playlists)}</div>
+                    <div style={{ fontSize: 13, opacity: 0.6 }}>{schedulePhrase({ daysOfWeek: r.days_of_week, startMinute: r.start_minute, endMinute: r.end_minute }, CLOSE_MINUTE)}</div>
+                  </div>
+                  {r.id === activeId && <span className="sig-live" style={{ fontSize: 12, letterSpacing: 1 }}>● ACTIVE NOW</span>}
+                  {editable && (
+                    <button type="button" onClick={() => loadRow(r)} className={isEditing ? "u-fill u-ink" : ""} style={{ ...miniBtn, ...(isEditing ? { background: "var(--terminal-green)", color: "#000", fontWeight: 700 } : null) }}>{isEditing ? "● EDITING" : "✎ EDIT"}</button>
+                  )}
+                  <button type="button" onClick={() => del.mutate(r.id)} disabled={del.isPending} className="u-amber" style={{ ...miniBtn, color: "var(--terminal-amber, #ffb000)", borderColor: "var(--terminal-amber, #ffb000)" }}>✕ REMOVE</button>
                 </div>
-                {r.id === activeId && <span className="sig-live" style={{ fontSize: 12, letterSpacing: 1 }}>● ACTIVE NOW</span>}
-                <button type="button" onClick={() => del.mutate(r.id)} disabled={del.isPending} className="u-amber" style={{ ...miniBtn, color: "var(--terminal-amber, #ffb000)", borderColor: "var(--terminal-amber, #ffb000)" }}>✕ REMOVE</button>
-              </div>
-            ))
+              );
+            })
           )}
         </div>
 
         <div className="terminal-separator" />
 
-        {/* new daypart */}
-        <div style={{ fontSize: 13, letterSpacing: 2, opacity: 0.6 }}>◆ NEW DAYPART</div>
+        {/* new / edit daypart */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+          <div className={editingId ? "u-amber" : ""} style={{ fontSize: 13, letterSpacing: 2, opacity: editingId ? 1 : 0.6, ...(editingId ? { color: "var(--terminal-amber, #ffb000)" } : null) }}>{editingId ? "◆ EDIT DAYPART" : "◆ NEW DAYPART"}</div>
+          {editingId && <button type="button" onClick={resetForm} style={miniBtn}>✕ CANCEL</button>}
+        </div>
 
         <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
           <label style={fl}>ON THESE DAYS <span style={{ opacity: 0.5 }}>(none = daily)</span></label>
@@ -164,9 +221,9 @@ export function ScheduleEditor({ slot, timezone, onClose }: { slot: AdminSlot; t
           <span className="u-amber">{phrase} → {progKind === "rotation" ? "ROTATION" : progKind === "capture" ? "LIVE INPUT" : playlistId ? (playlists.find((p) => p.playlist.id === playlistId)?.playlist.name ?? "PLAYLIST") : "PLAYLIST…"}</span>
         </div>
 
-        <button type="button" disabled={!canAdd || add.isPending} onClick={() => { add.mutate(); }} className="u-fill u-ink"
-          style={{ ...seg, background: "var(--terminal-green)", color: "#000", fontWeight: 700, minHeight: 48, opacity: canAdd ? 1 : 0.5 }}>
-          + ADD DAYPART
+        <button type="button" disabled={!canSubmit || add.isPending || save.isPending} onClick={() => { editingId ? save.mutate() : add.mutate(); }} className="u-fill u-ink"
+          style={{ ...seg, background: "var(--terminal-green)", color: "#000", fontWeight: 700, minHeight: 48, opacity: canSubmit ? 1 : 0.5 }}>
+          {editingId ? "✓ SAVE DAYPART" : "+ ADD DAYPART"}
         </button>
       </div>
     </SlideOver>

@@ -31,6 +31,61 @@ export function SectionLabel({ children, style }: { children: React.ReactNode; s
   return <div style={{ fontSize: 20, letterSpacing: 3, opacity: 0.7, margin: "0 0 10px", ...style }}>{children}</div>;
 }
 
+/* ── collapsible hub section (owner beat 2026-07-20 — the 361-file catalog made the hub long) ── */
+// A section whose body collapses under a ▸/▾ header toggle, with the state persisted PER DEVICE in
+// localStorage (his phone stays how he leaves it). The collapsed header still informs: title + a
+// compact `summary` (counts from data already loaded — no new queries) + an optional `headerRight`
+// action (e.g. + NEW …) that stays reachable even when collapsed. No animation (display rule): the
+// body simply renders or doesn't. A missing localStorage key reads as `defaultOpen`.
+const COLLAPSE_PREFIX = "bunker-hub-collapse:";
+function readCollapse(key: string, def: boolean): boolean {
+  try {
+    const v = localStorage.getItem(COLLAPSE_PREFIX + key);
+    return v == null ? def : v === "1";
+  } catch {
+    return def;
+  }
+}
+function writeCollapse(key: string, open: boolean): void {
+  try { localStorage.setItem(COLLAPSE_PREFIX + key, open ? "1" : "0"); } catch { /* private mode / disabled storage — non-fatal */ }
+}
+
+export function CollapsibleSection({
+  sectionKey, title, summary, defaultOpen, headerRight, style, children,
+}: {
+  /** localStorage sub-key (bunker-hub-collapse:{sectionKey}). */
+  sectionKey: string;
+  title: React.ReactNode;
+  /** Compact count line shown beside the title (both states) — informs while collapsed. */
+  summary?: React.ReactNode;
+  defaultOpen: boolean;
+  /** An action kept in the header row, visible even when collapsed (e.g. + NEW …). */
+  headerRight?: React.ReactNode;
+  style?: CSSProperties;
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(() => readCollapse(sectionKey, defaultOpen));
+  const toggle = () => setOpen((o) => { const n = !o; writeCollapse(sectionKey, n); return n; });
+  return (
+    <div style={style}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+        <button
+          type="button"
+          onClick={toggle}
+          aria-expanded={open}
+          style={{ display: "flex", alignItems: "center", gap: 10, flex: "1 1 auto", minWidth: 0, background: "transparent", border: "none", color: "var(--terminal-green)", cursor: "pointer", fontFamily: MONO, minHeight: 44, padding: 0, textAlign: "left" }}
+        >
+          <span style={{ fontSize: 20, width: "1.1em", flexShrink: 0, opacity: 0.85 }}>{open ? "▾" : "▸"}</span>
+          <span style={{ fontSize: 20, letterSpacing: 3, opacity: 0.7, whiteSpace: "nowrap" }}>{title}</span>
+          {summary != null && <span style={{ fontSize: 14, letterSpacing: 1, opacity: 0.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", minWidth: 0 }}>· {summary}</span>}
+        </button>
+        {headerRight}
+      </div>
+      {open && <div style={{ marginTop: 10 }}>{children}</div>}
+    </div>
+  );
+}
+
 /* ── screen health dot ──────────────────────────────────────────────────────── */
 export function HealthDot({ health }: { health: ScreenHealth }) {
   const label = health === "online" ? "● LIVE" : health === "stale" ? "◐ STALE" : "○ DOWN";

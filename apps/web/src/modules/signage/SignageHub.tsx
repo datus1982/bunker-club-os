@@ -17,7 +17,7 @@ import {
   useEventsList, schedulePhrase, statusInfo, pauseEvent, resumeEvent, fireNowEvent, type EventRow,
 } from "./useEventsAdmin";
 import {
-  MONO, SectionLabel, HealthDot, CopyKioskButton, EventKindBadge,
+  MONO, SectionLabel, CollapsibleSection, HealthDot, CopyKioskButton, EventKindBadge,
   ghost, summarize, templateIcon, templateBadge, isSmartTemplate,
 } from "./signageAdminShared";
 import { addToQueue } from "./slotQueue";
@@ -31,6 +31,7 @@ import { MediaSection } from "./MediaSection";
 import { ProgramPanel } from "./ProgramPanel";
 import { ScheduleEditor } from "./ScheduleEditor";
 import { useMediaPlaylists, useAllScheduleRows } from "./useMediaAdmin";
+import { sendTransportCommand, type TransportCmd } from "./mediaTransport";
 import { useRole } from "@/shared/useRole";
 import "./signage.css";
 
@@ -272,36 +273,40 @@ export function SignageHub({ openQueueSlug }: { openQueueSlug?: string }) {
                   scheduleCount={(scheduleBySlot.get(s.id)?.length ?? 0)}
                   overrideHold={overrideHoldFor(s)}
                   isPanel={s.kind === "panel"}
+                  // Beat 4: transport row shows only when the EFFECTIVE program (M3 resolver, not the
+                  // raw row — WARN-1) is a live playlist the TV is actually looping.
+                  transportPlaylist={mode === "rotation" && effFor(s).program?.kind === "playlist"}
                 />
               );
             })}
           </div>
         )}
 
-        {/* ── B · ASSET LIBRARY ──────────────────────────────────────────── */}
-        <div style={{ marginTop: 32 }}>
-          <SectionLabel>ASSET LIBRARY · build once — queue on any screen</SectionLabel>
+        {/* ── B · ASSET LIBRARY (collapsible — owner beat 2026-07-20) ──────── */}
+        {/* + NEW ASSET moved from the grid's first tile to the section header so it stays reachable
+            while the section is collapsed (matches PLAYLISTS' header + NEW pattern). */}
+        <CollapsibleSection
+          style={{ marginTop: 32 }}
+          sectionKey="assets"
+          title="ASSET LIBRARY"
+          summary={assetsQ.isLoading ? "…" : `${assets.length} asset${assets.length === 1 ? "" : "s"}`}
+          defaultOpen={true}
+          headerRight={
+            <button type="button" onClick={() => setOverlay({ kind: "asset", editing: null, preset: null, queueOnSlotId: null })} style={{ ...ghost, fontWeight: 700 }}>+ NEW ASSET</button>
+          }
+        >
           {assetsQ.isLoading ? (
             <div style={{ fontSize: 18, opacity: 0.7 }}>LOADING ASSETS…</div>
+          ) : assets.length === 0 ? (
+            <div style={{ opacity: 0.6, fontSize: 16 }}>No assets yet — + NEW ASSET to build one.</div>
           ) : (
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(min(100%,200px),1fr))", gap: 12 }}>
-              <button
-                type="button"
-                onClick={() => setOverlay({ kind: "asset", editing: null, preset: null, queueOnSlotId: null })}
-                style={newAssetTile}
-              >
-                <span style={{ fontSize: 40, lineHeight: 1 }}>+</span>
-                <span style={{ fontSize: 13, letterSpacing: 2, marginTop: 6 }}>NEW ASSET</span>
-              </button>
               {assets.map((a) => (
                 <AssetCard key={a.asset.id} a={a} slots={slots} toastRows={toastRows} tmap={tmap} onOpen={() => openAsset(a)} />
               ))}
             </div>
           )}
-          {!assetsQ.isLoading && assets.length === 0 && (
-            <div style={{ opacity: 0.6, fontSize: 16, marginTop: 8 }}>No assets yet — + NEW ASSET to build one.</div>
-          )}
-        </div>
+        </CollapsibleSection>
 
         {/* ── B2 · MEDIA LIBRARY (docs/15 M1) ────────────────────────────── */}
         <MediaSection />
@@ -450,7 +455,7 @@ function placementsFor(assets: AssetWithPlacements[], itemId: string): string[] 
 function ScreenCard({
   slot, mode, takeoverMessage, staleGameDate, eventLabel, slotItems, tmap,
   overflowOpen, onToggleOverflow, onAdd, onQueue, onTakeover, programLabel, onProgram,
-  onSchedule, scheduleCount, overrideHold, isPanel,
+  onSchedule, scheduleCount, overrideHold, isPanel, transportPlaylist,
 }: {
   slot: AdminSlot;
   mode: SlotMode;
@@ -476,6 +481,8 @@ function ScreenCard({
   overrideHold: ProgramHold | null;
   /** M3 (D2): a multiview PANEL slot — badge, no health/takeover/program, "follows its host". */
   isPanel: boolean;
+  /** Beat 4: the effective program is a live playlist → show the ⏸/▶/⏭ transport row. */
+  transportPlaylist: boolean;
 }) {
   const health = screenHealth(slot.last_seen);
   const summary = useMemo(() => rotationSummary(slotItems, tmap), [slotItems, tmap]);
@@ -559,6 +566,10 @@ function ScreenCard({
         </button>
       )}
 
+      {/* TRANSPORT — skip/pause a live playlist without curl/Q-SYS (Beat 4). Fire-and-forget
+          broadcast; no state tracking (transport is ephemeral by design). */}
+      {transportPlaylist && <TransportRow slug={slot.slug} />}
+
       {/* SCHEDULE — dayparts that flip the program by time of day (M3, landscape only). */}
       {onSchedule && (
         <button type="button" onClick={onSchedule} style={{ ...cardBtn, gridColumn: "1 / -1", justifyContent: "space-between", padding: "9px 12px" }}>
@@ -584,6 +595,39 @@ function ScreenCard({
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * Playlist transport row (Beat 4) — ⏸ PAUSE / ▶ RESUME / ⏭ NEXT, broadcast to the TV playing this
+ * slug. Fire-and-forget: a brief pressed flash is the only feedback (transport is ephemeral — the
+ * hub tracks NO play/pause state; a paused TV self-heals at the 04:00 reload or the next program
+ * write). The channel is torn down per send inside sendTransportCommand.
+ */
+function TransportRow({ slug }: { slug: string }) {
+  const [pressed, setPressed] = useState<TransportCmd | null>(null);
+  const send = (cmd: TransportCmd) => {
+    setPressed(cmd);
+    window.setTimeout(() => setPressed((c) => (c === cmd ? null : c)), 260);
+    void sendTransportCommand(slug, cmd).catch(() => {});
+  };
+  const btns: { cmd: TransportCmd; label: string }[] = [
+    { cmd: "pause", label: "⏸ PAUSE" },
+    { cmd: "resume", label: "▶ RESUME" },
+    { cmd: "next", label: "⏭ NEXT" },
+  ];
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 7, gridColumn: "1 / -1" }}>
+      {btns.map(({ cmd, label }) => {
+        const on = pressed === cmd;
+        return (
+          <button key={cmd} type="button" onClick={() => send(cmd)} className={on ? "u-fill u-ink" : ""}
+            style={{ ...cardBtn, justifyContent: "center", background: on ? "var(--terminal-green)" : "transparent", color: on ? "#000" : "var(--terminal-green)", fontWeight: on ? 700 : 400 }}>
+            {label}
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -833,9 +877,4 @@ const rowBtn: CSSProperties = {
   fontFamily: MONO, fontSize: 13, letterSpacing: 1, color: "var(--terminal-green)",
   border: "1px solid var(--terminal-green)", background: "transparent", padding: "7px 11px",
   minHeight: 44, cursor: "pointer", whiteSpace: "nowrap",
-};
-const newAssetTile: CSSProperties = {
-  display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-  border: "1px dashed var(--terminal-green)", background: "transparent", color: "var(--terminal-green)",
-  cursor: "pointer", fontFamily: MONO, minHeight: 210, opacity: 0.8,
 };
