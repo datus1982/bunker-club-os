@@ -6,7 +6,7 @@ import { parseInline, RichText, alignOf } from "./richText";
 import { SUPPORT_TEXT } from "./supportText";
 import { useDrinksBoard, useSalesCache, useSalesHistory, useMenuGroups, overallTopSellers, groupGuidByName, groupTopSellers, OVERALL_GROUP, type DrinkItem, type HistorySum } from "@/modules/leaderboard/useDrinks";
 import { QRCodeSVG } from "qrcode.react";
-import { useInstagramFeed } from "./useInstagram";
+import { useInstagramFeed, type IgPost } from "./useInstagram";
 
 /**
  * Signage template components (docs/09). Each renders one item inside the slot's
@@ -807,6 +807,16 @@ export function InstagramCard({ item, orientation }: TemplateProps) {
   const handle = post.username ? `@${post.username}` : "SOCIAL FEED";
   const rel = relativeTime(post.posted_at).toUpperCase();
 
+  // STORY VARIANT (owner beat 2026-07-20): a story is 9:16 portrait media, so the post layout's
+  // SQUARE frame letterboxes it small with dead canvas top/bottom. When the CURRENTLY SHOWN item
+  // is a story, hand off to a tall-media layout that gives the vertical real estate to the media
+  // (a 9:16 frame sized by HEIGHT — contain-fit still, we never crop a story) and compacts the
+  // handle/time/QR into one bottom (portrait) / side (landscape) row. This early return keeps the
+  // POST path below byte-identical — a post never touches the story branch.
+  if (post.is_story) {
+    return <InstagramStory post={post} caption={caption} handle={handle} rel={rel} orientation={orientation} />;
+  }
+
   const square = (
     // sig-contain (owner note 2026-07-14): IG posts are 4:5 / 1.91:1 — letterbox inside the
     // square frame, never crop heads/text (unlike drink_special, which keeps Toast's own square crop).
@@ -871,6 +881,110 @@ export function InstagramCard({ item, orientation }: TemplateProps) {
         </div>
         <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", justifyContent: "center", gap: 28 }}>
           {captionBlock}
+          {qr}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * STORY layout for the Instagram card (owner beat 2026-07-20). Stories are 9:16 portrait media;
+ * the post layout's square frame wasted most of the canvas letterboxing them. This gives the
+ * media the vertical real estate:
+ *
+ *  • PORTRAIT — a 9:16 media frame sized by HEIGHT fills the flex:1 region (media box grows from
+ *    the post's 880px square to ~1400px tall — a full-height 9:16 story is ~2.5× the visible area),
+ *    with a compact bottom meta row: @handle · STORY badge · time on one line, one truncated caption
+ *    line beneath if a caption exists, and the QR to the right.
+ *  • LANDSCAPE — the 9:16 media is a full-height column on the LEFT (no square letterboxing waste),
+ *    caption/handle/time/QR stacked in the wider remaining column.
+ *
+ * contain-fit is retained (never crop a story). No new animation/interval — this is a pure layout.
+ */
+function InstagramStory({
+  post, caption, handle, rel, orientation,
+}: { post: IgPost; caption: string; handle: string; rel: string; orientation: Orientation }) {
+  const port = orientation === "portrait";
+  const z = SIZES[orientation];
+
+  // 9:16 media frame sized by height so it takes the tall space (contain-fit → a true 9:16 story
+  // fills it with no bars; an off-aspect story letterboxes minimally, never cropping).
+  const media = (
+    <div className="sig-viewport sig-contain" style={{ height: "100%", aspectRatio: "9 / 16", maxWidth: "100%", flexShrink: 0 }}>
+      <span className="sig-feedcap sig-live" style={{ fontSize: SUPPORT_TEXT[orientation] }}>◉ OPTICAL FEED — LIVE</span>
+      {post.image
+        ? <img src={post.image} alt="" />
+        : <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", fontSize: port ? 44 : 36, opacity: 0.45, letterSpacing: 3 }}>NO IMAGE</div>}
+    </div>
+  );
+
+  const qr = (
+    <div style={{ display: "flex", alignItems: "center", gap: port ? 20 : 16, flexShrink: 0 }}>
+      <div style={{ background: "#000", padding: 8, border: "2px solid var(--terminal-green)", lineHeight: 0, flexShrink: 0 }}>
+        <QRCodeSVG value={post.permalink} size={port ? 140 : 128} bgColor="#000000" fgColor="#00ff41" level="M" />
+      </div>
+      <div style={{ fontSize: SUPPORT_TEXT[orientation], letterSpacing: 3, opacity: 0.8, lineHeight: 1.25 }}>
+        SCAN TO<br />OPEN THE<br />STORY
+      </div>
+    </div>
+  );
+
+  // Handle + STORY badge + relative time on one line; one truncated caption line if present
+  // (stories usually have little/no caption — never a paragraph block).
+  const meta = (
+    <div style={{ display: "flex", flexDirection: "column", gap: port ? 10 : 12, minWidth: 0, flex: 1 }}>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 16, flexWrap: "wrap" }}>
+        <span className="sig-live" style={{ fontSize: port ? 48 : 40, fontWeight: 700, letterSpacing: 1, textShadow: "0 0 12px var(--terminal-glow)" }}>{handle}</span>
+        <span style={{ fontSize: SUPPORT_TEXT[orientation], letterSpacing: 2, border: "2px solid var(--terminal-green)", padding: "3px 10px", opacity: 0.9 }}>STORY — TODAY ONLY</span>
+        <span className="sig-live" style={{ fontSize: SUPPORT_TEXT[orientation], letterSpacing: 2, opacity: 0.85 }}>{rel}</span>
+      </div>
+      {caption && (
+        <div style={{
+          fontSize: port ? z.body : Math.round(z.body * 0.95), lineHeight: 1.35, opacity: 0.9,
+          whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+        }}>
+          {caption}
+        </div>
+      )}
+    </div>
+  );
+
+  const header = (
+    <div style={{ flexShrink: 0 }}>
+      <Eyebrow text="SOCIAL FEED — TRANSMISSION LOG" orientation={orientation} />
+    </div>
+  );
+
+  if (port) {
+    return (
+      <div style={{ height: "100%", display: "flex", flexDirection: "column", gap: z.gap }}>
+        {header}
+        <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", gap: 22 }}>
+          {/* Tall media takes all the vertical slack; the frame is centered horizontally. */}
+          <div style={{ flex: 1, minHeight: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+            {media}
+          </div>
+          {/* Compact bottom row: meta on the left, QR on the right. */}
+          <div style={{ flexShrink: 0, display: "flex", flexDirection: "row", alignItems: "flex-end", justifyContent: "space-between", gap: 24 }}>
+            {meta}
+            {qr}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Landscape: full-height 9:16 media column on the left, meta + QR stacked in the wider right column.
+  return (
+    <div style={{ height: "100%", display: "flex", flexDirection: "column", gap: z.gap }}>
+      {header}
+      <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "row", gap: 44, alignItems: "stretch" }}>
+        <div style={{ flexShrink: 0, height: "100%", display: "flex", justifyContent: "center" }}>
+          {media}
+        </div>
+        <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", justifyContent: "center", gap: 28 }}>
+          {meta}
           {qr}
         </div>
       </div>
