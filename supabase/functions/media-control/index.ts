@@ -13,10 +13,19 @@
 // token-gated fns (toast-sync's CRON_SECRET, media-catalog-sync's device token). Service role for
 // all DB writes + the server-side broadcast (bypasses RLS after the token gate authenticates).
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  resolveEffectiveProgramWithSource,
+  mapScheduleRow,
+  type ScheduleRow,
+} from "./scheduleResolve.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const CONTROL_TOKEN = Deno.env.get("QSYS_CONTROL_TOKEN") ?? "";
+// Single-venue scope for the slug-less `playlists` command (media_playlists carries venue_id but
+// `playlists` has no slot to derive it from). Optional — absent ⇒ every venue's playlists (the
+// deployment is single-venue, so this is belt-and-suspenders).
+const VENUE_ID = Deno.env.get("VENUE_ID") ?? "";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -35,6 +44,34 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 // (alias 'rotation' kept from M2 — both clear the override; with no schedule that IS rotation).
 const PROGRAM_CMDS = new Set(["playlist", "rotation", "capture", "schedule"]);
 const TRANSPORT_CMDS = new Set(["pause", "resume", "next"]);
+// v3: discovery + status. `playlists` needs NO slug (a global picker feed); `status` reads a slug
+// but writes nothing and is orientation-agnostic (a UCI may report on any screen).
+const NOSLUG_CMDS = new Set(["playlists"]);
+const READ_CMDS = new Set(["status"]);
+
+/** Escape LIKE/ILIKE metacharacters so a playlist name with % or _ matches LITERALLY (NOTE-5,
+ *  PR #56 accepted backlog). Backslash is the default LIKE ESCAPE; `\%`/`\_`/`\\` are literals.
+ *  Keeps the case-insensitive EXACT semantics the runbook promises for a name reference. */
+function escapeLike(s: string): string {
+  return s.replace(/([\\%_])/g, "\\$1");
+}
+
+/** Fetch every row of a query in pages of `size` (defeats PostgREST's max-rows cap — the PR #38
+ *  truncation-bug class). `build(from,to)` returns a fresh ranged query each call. */
+async function fetchAllRanged<T>(
+  build: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>,
+  size = 1000,
+): Promise<T[]> {
+  const out: T[] = [];
+  for (let from = 0; ; from += size) {
+    const { data, error } = await build(from, from + size - 1);
+    if (error) throw new Error(error.message);
+    const rows = data ?? [];
+    out.push(...rows);
+    if (rows.length < size) break;
+  }
+  return out;
+}
 // The manual-override hold tier a program write carries (docs/15 M3, D4/D5). A Q-SYS press defaults
 // to 'event' — a SPECIAL EVENT hold that survives daypart boundaries and expires at the 04:00
 // business-day rollover (the owner's overtime case). An explicit `hold` param overrides it.
@@ -77,28 +114,105 @@ Deno.serve(async (req) => {
 
   const slug = (body.slug ?? "").trim();
   const cmd = (body.cmd ?? "").trim();
-  if (!slug) return json({ error: "slug required" }, 400);
   if (!cmd) return json({ error: "cmd required" }, 400);
-  if (!PROGRAM_CMDS.has(cmd) && !TRANSPORT_CMDS.has(cmd)) {
-    return json({ error: `unknown cmd '${cmd}' (expected playlist|rotation|capture|schedule|pause|resume|next)` }, 400);
+  const known = PROGRAM_CMDS.has(cmd) || TRANSPORT_CMDS.has(cmd) || NOSLUG_CMDS.has(cmd) || READ_CMDS.has(cmd);
+  if (!known) {
+    return json({ error: `unknown cmd '${cmd}' (expected playlist|rotation|capture|schedule|pause|resume|next|playlists|status)` }, 400);
   }
+
+  const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
+
+  // ── v3 `playlists`: a slug-less discovery feed for a dynamic UCI picker ───────────────
+  // Returns every playlist (id, name, non-missing fileCount) sorted by name. Read-only.
+  if (cmd === "playlists") {
+    let plQ = admin.from("media_playlists").select("id, name");
+    if (VENUE_ID) plQ = plQ.eq("venue_id", VENUE_ID);
+    const { data: pls, error: plErr } = await plQ;
+    if (plErr) return json({ error: `playlist list failed: ${plErr.message}` }, 500);
+
+    // Non-missing file ids (present/unsupported both count as library-present; only 'missing' —
+    // a file the shell no longer sees — is excluded from a playlist's playable count).
+    const files = await fetchAllRanged<{ id: string }>((from, to) => {
+      let fq = admin.from("media_files").select("id").neq("status", "missing");
+      if (VENUE_ID) fq = fq.eq("venue_id", VENUE_ID);
+      return fq.range(from, to);
+    }).catch((e) => { throw e; });
+    const liveIds = new Set(files.map((f) => f.id));
+
+    const items = await fetchAllRanged<{ playlist_id: string; file_id: string }>((from, to) =>
+      admin.from("media_playlist_items").select("playlist_id, file_id").range(from, to),
+    );
+    const counts = new Map<string, number>();
+    for (const it of items) {
+      if (liveIds.has(it.file_id)) counts.set(it.playlist_id, (counts.get(it.playlist_id) ?? 0) + 1);
+    }
+
+    const playlists = (pls ?? [])
+      .map((p) => ({ id: p.id as string, name: p.name as string, fileCount: counts.get(p.id as string) ?? 0 }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+    return json({ ok: true, playlists });
+  }
+
+  // Everything below needs a slug.
+  if (!slug) return json({ error: "slug required" }, 400);
+
   // Optional hold tier for a program write (D4/D5). Default 'event'. Ignored by rotation/schedule.
   const hold = (body.hold ?? "").trim() || DEFAULT_HOLD;
   if ((cmd === "playlist" || cmd === "capture") && !HOLDS.has(hold)) {
     return json({ error: `invalid hold '${hold}' (expected pin|boundary|event)` }, 400);
   }
 
-  const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
-
   // Resolve + validate the target slot: it must exist and be a landscape screen (programs are a
   // landscape-only feature in the hub — the same semantics the PROGRAM control enforces).
   const { data: slot, error: slotErr } = await admin
     .from("signage_slots")
-    .select("id, venue_id, orientation")
+    .select("id, venue_id, orientation, program, program_hold, program_set_at")
     .eq("slug", slug)
     .maybeSingle();
   if (slotErr) return json({ error: `slot lookup failed: ${slotErr.message}` }, 500);
   if (!slot) return json({ error: `no slot with slug '${slug}'` }, 404);
+
+  // ── v3 `status`: report what the slot is ACTUALLY playing (the WARN-1 parity lesson) ──
+  // Runs the SAME resolver the TV runs (scheduleResolve port) over the slot's program + schedule
+  // rows in venue-local time. Read-only + orientation-agnostic (a UCI may query any screen).
+  if (cmd === "status") {
+    const rawRows = await fetchAllRanged<Parameters<typeof mapScheduleRow>[0]>((from, to) =>
+      admin.from("slot_program_schedule")
+        .select("id, program, days_of_week, start_minute, end_minute, position, active")
+        .eq("slot_id", slot.id).range(from, to),
+    ).catch((e: Error) => { throw e; });
+    const rows: ScheduleRow[] = rawRows.map(mapScheduleRow);
+
+    // Venue timezone (venues.timezone; default America/Chicago — same fallback as useSignage).
+    const { data: venue } = await admin.from("venues").select("timezone").eq("id", slot.venue_id).maybeSingle();
+    const tz = (venue?.timezone as string | undefined) ?? "America/Chicago";
+
+    // Business-day rollover hour (venue_settings.toast_closeout_hour, jsonb scalar; default 4).
+    const { data: co } = await admin.from("venue_settings")
+      .select("value").eq("venue_id", slot.venue_id).eq("key", "toast_closeout_hour").maybeSingle();
+    const cv = Number((co as { value?: unknown } | null)?.value);
+    const rolloverHour = Number.isFinite(cv) && cv >= 0 && cv <= 23 ? cv : 4;
+
+    const { program, source } = resolveEffectiveProgramWithSource(
+      { program: slot.program ?? null, program_hold: slot.program_hold ?? null, program_set_at: slot.program_set_at ?? null },
+      rows, new Date(), tz, rolloverHour,
+    );
+    const kind = program ? program.kind : "rotation";
+    // hold only means something while a manual override is live (override/pinned).
+    const activeHold = source === "override" || source === "pinned" ? (slot.program_hold as string | null) ?? null : null;
+
+    const status: {
+      kind: string; source: string; hold: string | null;
+      playlistId?: string; playlistName?: string | null;
+    } = { kind, source, hold: activeHold };
+    if (program && program.kind === "playlist") {
+      status.playlistId = program.playlist_id;
+      const { data: pl } = await admin.from("media_playlists").select("name").eq("id", program.playlist_id).maybeSingle();
+      status.playlistName = (pl?.name as string | undefined) ?? null;
+    }
+    return json({ ok: true, slug, status });
+  }
+
   if (slot.orientation !== "landscape") {
     return json({ error: `slot '${slug}' is ${slot.orientation}; programs are landscape-only` }, 400);
   }
@@ -129,7 +243,8 @@ Deno.serve(async (req) => {
       const ref = (body.playlist ?? "").trim();
       if (!ref) return json({ error: "playlist required for cmd 'playlist'" }, 400);
       let q = admin.from("media_playlists").select("id, name").eq("venue_id", slot.venue_id);
-      q = UUID_RE.test(ref) ? q.eq("id", ref) : q.ilike("name", ref);
+      // NOTE-5 (PR #56 backlog): escape %/_ so a name with them matches literally, not as wildcards.
+      q = UUID_RE.test(ref) ? q.eq("id", ref) : q.ilike("name", escapeLike(ref));
       const { data: pls, error: plErr } = await q.limit(2);
       if (plErr) return json({ error: `playlist lookup failed: ${plErr.message}` }, 500);
       if (!pls || pls.length === 0) return json({ error: `no playlist matching '${ref}'` }, 404);

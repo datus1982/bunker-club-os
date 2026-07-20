@@ -50,6 +50,8 @@ curl -sS -X POST "https://api.supabase.com/v1/projects/ysrqvdutayirpoibdlbf/secr
 | `pause`    | —           | broadcast: pause the playlist `<video>`                        |
 | `resume`   | —           | broadcast: resume the playlist `<video>`                       |
 | `next`     | —           | broadcast: skip to the next clip in the playlist               |
+| `playlists`| — (**no slug**) | **v3:** list every playlist (id, name, non-missing fileCount) sorted by name |
+| `status`   | —           | **v3:** what the slot is ACTUALLY playing right now (kind/source/hold + playlist) |
 
 `slug` (the screen, e.g. `landscape-bar`) is required on every command. The slot must exist and be
 **landscape** (programs are a landscape-only feature). `playlist` accepts a playlist **id** (uuid)
@@ -88,6 +90,57 @@ button. (With no schedule on the screen, `hold` is irrelevant — the override i
 - `404` — unknown slug or no playlist matches.
 - `409` — ambiguous playlist name.
 
+## Discovery & status (v3)
+
+Two read-only commands that let a UCI build a **dynamic** playlist picker and highlight what's really on.
+
+### `playlists` — the picker feed (no `slug`)
+
+Lists every playlist so a UCI can render buttons/rows without hardcoding names. `fileCount` counts
+only files the shell currently sees (a `missing` file — one the media PC no longer has — is not
+counted). Sorted by `name`. Prefer wiring each button to the returned **`id`** (a playlist `cmd`
+by id is unambiguous — no 409 risk if two folders ever share a display name).
+
+```json
+// request
+{ "cmd": "playlists" }
+
+// response
+{ "ok": true, "playlists": [
+  { "id": "b4b90c48-…", "name": "90s Indie Explosion", "fileCount": 5 },
+  { "id": "…",          "name": "Action 80s",          "fileCount": 9 }
+] }
+```
+
+### `status` — what's really playing (needs `slug`)
+
+Runs the SAME resolver the TV runs (program override + daypart schedule, in venue-local time) so a
+UCI can show the truth — e.g. dim the picker's active playlist, or light a "SCHEDULED" vs
+"MANUAL HOLD" lamp. Read-only; works on any screen (orientation-agnostic).
+
+```json
+// request
+{ "slug": "landscape-bar", "cmd": "status" }
+
+// response — a scheduled playlist daypart is running, no manual override
+{ "ok": true, "slug": "landscape-bar", "status": {
+  "kind": "playlist",            // playlist | capture | multiview | rotation
+  "source": "scheduled",         // scheduled | override | pinned | rotation
+  "hold": null,                  // pin | boundary | event — only while an override is live, else null
+  "playlistId": "6a316bd0-…",    // present only when kind = playlist
+  "playlistName": "Atomic Age"
+} }
+```
+
+`source` tells the UCI *why* that program is on:
+- `rotation` — no program, no covering daypart: the normal ad rotation (`kind` is then `"rotation"`).
+- `scheduled` — a daypart schedule is running this program right now (no manual override).
+- `override` — a manual/Q-SYS flip is live (a `boundary` or `event` hold — see the `hold` field).
+- `pinned` — a manual program with a permanent `pin` hold (the no-schedule default).
+
+An **expired** override reports as `scheduled`/`rotation` here — exactly what the TV shows once it
+yields; the UCI never shows a stale "still on capture" once the hold has timed out.
+
 ## curl tests
 
 ```bash
@@ -117,6 +170,14 @@ curl -sS -X POST "$BASE" -H "x-qsys-token: $TOK" -H "Content-Type: application/j
 # transport (only affects a running playlist)
 curl -sS -X POST "$BASE" -H "x-qsys-token: $TOK" -H "Content-Type: application/json" \
   -d '{"slug":"landscape-bar","cmd":"next"}'
+
+# v3: the playlist picker feed (no slug) — id, name, fileCount, sorted by name
+curl -sS -X POST "$BASE" -H "x-qsys-token: $TOK" -H "Content-Type: application/json" \
+  -d '{"cmd":"playlists"}'
+
+# v3: what landscape-bar is actually playing right now (kind/source/hold + playlist)
+curl -sS -X POST "$BASE" -H "x-qsys-token: $TOK" -H "Content-Type: application/json" \
+  -d '{"slug":"landscape-bar","cmd":"status"}'
 
 # bad token → 401
 curl -sS -o /dev/null -w '%{http_code}\n' -X POST "$BASE" \
@@ -168,10 +229,16 @@ Q-SYS mixer — the TV shows the feed, the room hears it, from a single tap on t
 ## Deploy
 
 ```bash
-# source: supabase/functions/media-control/index.ts (deploy via the Management API multipart)
+# source: supabase/functions/media-control/{index.ts, scheduleResolve.ts}
+# (v3 bundles the ported M3 resolver — deploy BOTH file parts via the Management API multipart)
 curl -sS -X POST \
   "https://api.supabase.com/v1/projects/ysrqvdutayirpoibdlbf/functions/deploy?slug=media-control" \
   -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
   -F 'metadata={"name":"media-control","entrypoint_path":"index.ts","verify_jwt":false};type=application/json' \
-  -F "file=@supabase/functions/media-control/index.ts;type=application/typescript"
+  -F "file=@supabase/functions/media-control/index.ts;type=application/typescript;filename=index.ts" \
+  -F "file=@supabase/functions/media-control/scheduleResolve.ts;type=application/typescript;filename=scheduleResolve.ts"
 ```
+
+> ⚠ **`scheduleResolve.ts` is a PARITY port** of `apps/web/src/modules/signage/scheduleResolve.ts`
+> (the resolver the TV runs). If you touch the schedule/hold logic in one, change the other and
+> re-run `pnpm test:scheduleresolve` (web) + `pnpm test:qsysstatus` (this port).
