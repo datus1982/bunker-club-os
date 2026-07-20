@@ -50,7 +50,7 @@ curl -sS -X POST "https://api.supabase.com/v1/projects/ysrqvdutayirpoibdlbf/secr
 | `pause`    | —           | broadcast: pause the playlist `<video>`                        |
 | `resume`   | —           | broadcast: resume the playlist `<video>`                       |
 | `next`     | —           | broadcast: skip to the next clip in the playlist               |
-| `playlists`| — (**no slug**) | **v3:** list every playlist (id, name, non-missing fileCount) sorted by name |
+| `playlists`| — (**no slug**) | **v3:** list every playlist (id, name, present-only fileCount) sorted by name |
 | `status`   | —           | **v3:** what the slot is ACTUALLY playing right now (kind/source/hold + playlist) |
 
 `slug` (the screen, e.g. `landscape-bar`) is required on every command **except `playlists`** (a
@@ -99,8 +99,9 @@ Two read-only commands that let a UCI build a **dynamic** playlist picker and hi
 ### `playlists` — the picker feed (no `slug`)
 
 Lists every playlist so a UCI can render buttons/rows without hardcoding names. `fileCount` counts
-only files the shell currently sees (a `missing` file — one the media PC no longer has — is not
-counted). Sorted by `name`. Prefer wiring each button to the returned **`id`** (a playlist `cmd`
+only files with `status = 'present'` — it **excludes both `missing` files** (one the media PC no
+longer has) **and `unsupported` files** (a codec/container the shell can't play), so it is exactly
+what the TV would actually play. Sorted by `name`. Prefer wiring each button to the returned **`id`** (a playlist `cmd`
 by id is unambiguous — no 409 risk if two folders ever share a display name).
 
 ```json
@@ -130,9 +131,26 @@ UCI can show the truth — e.g. dim the picker's active playlist, or light a "SC
   "source": "scheduled",         // scheduled | override | pinned | rotation
   "hold": null,                  // pin | boundary | event — only while an override is live, else null
   "playlistId": "6a316bd0-…",    // present only when kind = playlist
-  "playlistName": "Atomic Age"
+  "playlistName": "Atomic Age",
+  "nowPlaying": {                // present only when a playlist is up AND the TV reported a film ≤15 min ago
+    "title": "Labyrinth",        // film name (trailing "(YYYY)" split out), from the TV's NOW SHOWING label
+    "year": "1986",              // parsed year, or null
+    "thumbUrl": "https://…/signage/media-thumbs/…jpg",  // public poster (≈480px JPEG), or null when no thumb
+    "reportedAt": "2026-07-20T23:31:35.290Z"            // when the TV last reported this file
+  }
 } }
 ```
+
+**`nowPlaying` — the film on screen right now (v5).** A playlist shuffles in the TV browser, so the
+server doesn't otherwise know which clip is up. The TV pings the current file on each advance (and a
+5-min refresh), and `status` surfaces it **only** when:
+- the effective program is a **playlist** (a capture/rotation/multiview program never carries it), and
+- the TV's last report is **fresh (≤ 15 min)** — a TV that stopped reporting (off, program changed,
+  trivia took over) drops `nowPlaying` within 15 minutes, so the UCI never shows a stale film.
+
+When `nowPlaying` is **absent**, fall back to `playlistName` (and clear any poster art on the UCI).
+It is **advisory / display-only** — spoofable-harmless, like the screen-health heartbeat; nothing is
+authorized off it. Use it to set a TITLE · YEAR text control and a poster image (§4c of the Hal brief).
 
 `source` tells the UCI *why* that program is on:
 - `rotation` — no program, no covering daypart: the normal ad rotation (`kind` is then `"rotation"`).
