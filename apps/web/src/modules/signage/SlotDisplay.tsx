@@ -401,7 +401,12 @@ const TICKER_BASE: Record<"portrait" | "landscape", number> = { portrait: 46, la
 // Beat 5: slim framed-media footer — the ticker stays (framed keeps its ticker, ratified) but at a
 // reduced height. Sized DOWN TO but never below the shared SUPPORT_TEXT floor (portrait 40 /
 // landscape 32) — "a smudge" smaller, floor-respecting.
-const TICKER_BASE_SLIM: Record<"portrait" | "landscape", number> = { portrait: SUPPORT_TEXT.portrait, landscape: 34 };
+// NOTE-4: derive BOTH entries from the shared SUPPORT_TEXT floor so a future floor change can't
+// silently strand landscape at a stale literal. Slim ticker sits at (or a smudge above) the floor.
+const TICKER_BASE_SLIM: Record<"portrait" | "landscape", number> = {
+  portrait: SUPPORT_TEXT.portrait,
+  landscape: Math.max(SUPPORT_TEXT.landscape, 34),
+};
 
 function ChromeFooter({ ticker, live, orientation, slim }: { ticker: TickerLine[]; live: boolean; orientation: "portrait" | "landscape"; slim?: boolean }) {
   const [ti, setTi] = useState(0);

@@ -81,7 +81,10 @@ export function ScheduleEditor({ slot, timezone, onClose }: { slot: AdminSlot; t
     setStart(r.start_minute);
     const isClose = r.end_minute === CLOSE_MINUTE;
     setTillClose(isClose);
-    if (!isClose) setEnd(r.end_minute);
+    // Always set the end draft (NOTE-2) — chaining EDIT A (custom end) → EDIT B (TILL CLOSE) must
+    // not leave A's end in state, so unchecking TILL CLOSE on B would show A's stale minute. A
+    // TILL-CLOSE row seeds the sensible default (10:00 PM) so unchecking reveals a fresh value.
+    setEnd(isClose ? 1320 : r.end_minute);
     setProgKind(r.program.kind === "playlist" ? "playlist" : r.program.kind === "capture" ? "capture" : "rotation");
     setPlaylistId(r.program.kind === "playlist" ? r.program.playlist_id : "");
   }, []);
