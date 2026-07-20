@@ -233,7 +233,18 @@ function createMediaServer(library, opts) {
   }
 
   function close() {
-    return new Promise((resolve) => server.close(() => resolve()));
+    return new Promise((resolve) => {
+      // http.Server.close() stops accepting new connections but NEVER terminates ESTABLISHED
+      // ones — on the watchdog path the kiosk's keep-alive/video sockets are still open, so a
+      // bare close() would hang forever and the relaunch/exit would never run. Forcibly destroy
+      // in-flight sockets first (Node ≥18.2) so close() resolves promptly.
+      try {
+        if (typeof server.closeAllConnections === 'function') server.closeAllConnections();
+      } catch {
+        /* ignore */
+      }
+      server.close(() => resolve());
+    });
   }
 
   return { server, listen, close };

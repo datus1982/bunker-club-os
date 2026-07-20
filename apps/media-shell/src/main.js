@@ -164,17 +164,40 @@ async function boot() {
 // Close the watcher + server (releasing the port) BEFORE the process exits, so a relaunch's fresh
 // instance can bind cleanly. Combined with the server's retry-bind, this ends the Alt+F4 +
 // watchdog race that used to strand port 48151.
+let shuttingDown = false;
+const SHUTDOWN_TIMEOUT_MS = 5000;
+
 async function shutdown({ relaunch }) {
-  try {
-    if (watcherHandle) await watcherHandle.close();
-  } catch {
-    /* ignore */
-  }
-  try {
-    if (serverHandle) await serverHandle.close();
-  } catch {
-    /* ignore */
-  }
+  if (shuttingDown) return; // never run the exit dance twice (e.g. window-all-closed + a fatal)
+  shuttingDown = true;
+
+  // WARN-1: on the watchdog path the kiosk window is still open mid-stream, so a bare
+  // server.close() can block forever on the kiosk's keep-alive/video sockets — mediaServer.close()
+  // now force-destroys in-flight connections, and we ALSO race the whole teardown against a hard
+  // timeout so app.relaunch()/exit ALWAYS run promptly (belt + suspenders on the self-heal path).
+  const teardown = (async () => {
+    // NOTE-4: persist the cache first so churn since the last watcher debounce isn't re-probed
+    // on the next boot (best-effort; must not block the exit).
+    try {
+      if (library) await library.persistCache();
+    } catch {
+      /* ignore */
+    }
+    try {
+      if (watcherHandle) await watcherHandle.close();
+    } catch {
+      /* ignore */
+    }
+    try {
+      if (serverHandle) await serverHandle.close();
+    } catch {
+      /* ignore */
+    }
+  })();
+
+  const timeout = new Promise((resolve) => setTimeout(resolve, SHUTDOWN_TIMEOUT_MS));
+  await Promise.race([teardown, timeout]);
+
   if (relaunch) app.relaunch();
   app.exit(0);
 }

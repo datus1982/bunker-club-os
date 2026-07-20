@@ -16,6 +16,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const http = require('http');
+const net = require('net');
 const { execFileSync } = require('child_process');
 
 const { MediaLibrary } = require('../src/mediaLibrary');
@@ -320,6 +321,22 @@ async function main() {
   fs.writeFileSync(cacheFile, 'not json{');
   const cold = new MediaLibrary(mediaDir, { cacheDir });
   ok(cold.loadCacheMetadata() === 0, 'corrupt cache loads 0 entries (cold walk self-heals)');
+
+  // --- WARN-1: close() resolves promptly despite an open connection ------------
+  // On the watchdog path the kiosk holds keep-alive/video sockets open; a bare http.Server.close()
+  // would block on them forever. close() force-destroys in-flight connections (closeAllConnections),
+  // so it must resolve fast even with an ESTABLISHED socket that never sends a request.
+  console.log('\n  --- close() promptness with an open connection (WARN-1) ---');
+  const CLOSE_PORT = PORT + 2;
+  const csrv = createMediaServer(warm, { port: CLOSE_PORT, appOrigin: 'https://os.bunkerokc.com', version: pkg.version });
+  await csrv.listen(CLOSE_PORT);
+  const sock = net.connect(CLOSE_PORT, '127.0.0.1');
+  await new Promise((res, rej) => { sock.once('connect', res); sock.once('error', rej); });
+  const tClose = Date.now();
+  await csrv.close();
+  const closeMs = Date.now() - tClose;
+  ok(closeMs < 2000, 'close() resolves < 2s with an idle ESTABLISHED connection open', `${closeMs}ms`);
+  sock.destroy();
 
   // cleanup
   fs.rmSync(tmp, { recursive: true, force: true });

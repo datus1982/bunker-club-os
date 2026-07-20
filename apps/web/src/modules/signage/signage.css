@@ -125,6 +125,22 @@
   line-height: 1;
 }
 
+/* ── Media subtitles (::cue) — themed but LEGIBLE (owner ruling 2026-07-20) ─────
+   Scoped to the media playback <video> (.sig-media-video) so it can't leak to any other
+   <video>. The readable terminal mono (JetBrains Mono / Share Tech Mono — NOT VT323; this is
+   dialogue at bar distance) in the brand cream accent (#f3ead9, the .sig-cream ink) over a
+   solid band. Chromium ::cue supports a limited property set (color, background, font-*,
+   text-shadow) — we stay within it, and keep the shadow to a soft 2px for edge contrast
+   (readability beats vibe on this one surface — no glow). Sized for the 1080p fixed canvas. */
+.sig-media-video::cue {
+  font-family: 'JetBrains Mono', 'Share Tech Mono', monospace;
+  color: #f3ead9;
+  background: rgba(0, 0, 0, 0.75);
+  font-size: 46px;
+  line-height: 1.25;
+  text-shadow: 0 2px 3px rgba(0, 0, 0, 0.9);
+}
+
 /* ── Finite transitions (perf rule: one-shot per content entry; no loops) ────── */
 .sig-enter {
   animation: sigEnter 380ms ease-out;

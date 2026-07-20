@@ -262,6 +262,7 @@ export function PlaylistVideo({
         <video
           ref={videoRef}
           key={`${index}-${retry}-${plays}`}
+          className="sig-media-video"
           src={mediaFileUrl(base, current.hash)}
           poster={current.thumb ?? undefined}
           autoPlay
