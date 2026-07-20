@@ -53,9 +53,11 @@ curl -sS -X POST "https://api.supabase.com/v1/projects/ysrqvdutayirpoibdlbf/secr
 | `playlists`| — (**no slug**) | **v3:** list every playlist (id, name, non-missing fileCount) sorted by name |
 | `status`   | —           | **v3:** what the slot is ACTUALLY playing right now (kind/source/hold + playlist) |
 
-`slug` (the screen, e.g. `landscape-bar`) is required on every command. The slot must exist and be
-**landscape** (programs are a landscape-only feature). `playlist` accepts a playlist **id** (uuid)
-or a **name** (case-insensitive, exact — ambiguous names return 409).
+`slug` (the screen, e.g. `landscape-bar`) is required on every command **except `playlists`** (a
+global list, no slug). For the program/transport commands the slot must exist and be **landscape**
+(programs are a landscape-only feature); **`status` is read-only and works on any slot** (any
+orientation). `playlist` accepts a playlist **id** (uuid) or a **name** (case-insensitive, exact —
+ambiguous names return 409).
 
 `cmd:"capture"` writes a bare `{kind:"capture"}` — it uses the fullbleed default with NO device
 match, so a UCI capture press RESETS any DEVICE MATCH or FRAMED that was set on the screen card in

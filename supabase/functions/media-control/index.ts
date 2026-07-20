@@ -130,17 +130,22 @@ Deno.serve(async (req) => {
     const { data: pls, error: plErr } = await plQ;
     if (plErr) return json({ error: `playlist list failed: ${plErr.message}` }, 500);
 
-    // Non-missing file ids (present/unsupported both count as library-present; only 'missing' —
-    // a file the shell no longer sees — is excluded from a playlist's playable count).
+    // Only status='present' files count — that's exactly what the TV plays (mediaProgram.ts) and
+    // what the hub counts; 'unsupported'/'missing' are library-known but non-playable, so the
+    // picker must never advertise them (NOTE-1 — three-way fn/hub/TV parity).
+    // .order("id") gives a STABLE cross-page order: without it Postgres makes no ordering guarantee
+    // across .range() pages, so rows could dup/skip past 1000 → wrong counts (WARN-1; the exact
+    // truncation class the paginator exists to defeat — PR #38/#54).
     const files = await fetchAllRanged<{ id: string }>((from, to) => {
-      let fq = admin.from("media_files").select("id").neq("status", "missing");
+      let fq = admin.from("media_files").select("id").eq("status", "present");
       if (VENUE_ID) fq = fq.eq("venue_id", VENUE_ID);
-      return fq.range(from, to);
+      return fq.order("id").range(from, to);
     }).catch((e) => { throw e; });
     const liveIds = new Set(files.map((f) => f.id));
 
     const items = await fetchAllRanged<{ playlist_id: string; file_id: string }>((from, to) =>
-      admin.from("media_playlist_items").select("playlist_id, file_id").range(from, to),
+      admin.from("media_playlist_items").select("playlist_id, file_id")
+        .order("playlist_id").order("file_id").range(from, to),
     );
     const counts = new Map<string, number>();
     for (const it of items) {
@@ -179,7 +184,9 @@ Deno.serve(async (req) => {
     const rawRows = await fetchAllRanged<Parameters<typeof mapScheduleRow>[0]>((from, to) =>
       admin.from("slot_program_schedule")
         .select("id, program, days_of_week, start_minute, end_minute, position, active")
-        .eq("slot_id", slot.id).range(from, to),
+        // .order("id") = stable cross-page order (the resolver re-sorts by position/id itself; this
+        // is purely paging safety, mirroring the media_files/items call sites — WARN-1).
+        .eq("slot_id", slot.id).order("id").range(from, to),
     ).catch((e: Error) => { throw e; });
     const rows: ScheduleRow[] = rawRows.map(mapScheduleRow);
 
