@@ -95,15 +95,29 @@ function n(fields: Record<string, unknown>, key: string): number | undefined {
 
 /* ── Photo viewport ─────────────────────────────────────────────────────────── */
 function Photo({
-  src, treatment, height, orientation, feed = "OPTICAL FEED — LIVE", fit = "cover",
-}: { src: string | undefined; treatment: string; height: number; orientation: Orientation; feed?: string; fit?: "cover" | "contain" }) {
+  src, treatment, height, orientation, feed = "OPTICAL FEED — LIVE", fit = "cover", grow = false,
+}: { src: string | undefined; treatment: string; height: number; orientation: Orientation; feed?: string; fit?: "cover" | "contain"; grow?: boolean }) {
   if (!src) return null;
   // fit="contain" letterboxes instead of cropping (fields.photo_fit — QR codes, posters,
   // any upload whose aspect must survive intact). Same .sig-contain rule signagePhoto uses.
   const cls = `sig-viewport${treatment === "phosphor" ? " sig-phosphor" : ""}${fit === "contain" ? " sig-contain" : ""}`;
   // OWNER-RULED 2026-07-16 ("image boxes should be square"): the photo window is a
-  // centered SQUARE of side `height`, aligning these cards with the drink slides and
-  // the event-stage SquarePhoto instead of the old full-width banner.
+  // centered SQUARE, aligning these cards with the drink slides and the event-stage
+  // SquarePhoto instead of the old full-width banner.
+  // grow (owner design-beat: the menu-QR bulletin's code was "not nearly big enough"):
+  // instead of the fixed `height` side, take ALL leftover column space as the largest
+  // square that fits — width:100% + aspect-ratio + max-height uses the CSS transferred-size
+  // rules, so a short-message card yields a scan-size code while a long one still fits.
+  if (grow) {
+    return (
+      <div style={{ flex: 1, minHeight: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <div className={cls} style={{ width: "100%", maxWidth: "100%", maxHeight: "100%", aspectRatio: "1 / 1" }}>
+          <span className="sig-feedcap" style={{ fontSize: SUPPORT_TEXT[orientation] }}>{feed}</span>
+          <img src={src} alt="" />
+        </div>
+      </div>
+    );
+  }
   return (
     <div className={cls} style={{ height, width: height, alignSelf: "center", flexShrink: 0 }}>
       <span className="sig-feedcap" style={{ fontSize: SUPPORT_TEXT[orientation] }}>{feed}</span>
@@ -363,8 +377,10 @@ export function Announcement({ item, orientation }: TemplateProps) {
       <div className="sig-cursor" style={{ fontSize: Math.min(z.mid + 14, headlineFont(msg, orientation)), fontWeight: 700, lineHeight: 1.25, whiteSpace: "pre-wrap", textShadow: "0 0 14px var(--terminal-glow)", textAlign: alignOf(item.fields, "left") }}>
         {parseInline(typed)}
       </div>
-      {/* Owner design-beat: announcement photo ~30% larger (0.55 → 0.72). */}
-      {photo && <Photo src={photo} treatment={treatment} height={z.photoH * 0.72} orientation={orientation} feed="ARCHIVE FEED" fit={s(item.fields, "photo_fit") === "contain" ? "contain" : "cover"} />}
+      {/* Owner design-beats: photo ~30% larger (0.55 → 0.72), then grow — the bulletin photo
+        * takes ALL leftover space as the largest fitting square (the menu-QR scan-size fix);
+        * `height` remains only as the non-grow API default. */}
+      {photo && <Photo src={photo} treatment={treatment} height={z.photoH * 0.72} orientation={orientation} feed="ARCHIVE FEED" fit={s(item.fields, "photo_fit") === "contain" ? "contain" : "cover"} grow />}
     </div>
   );
 }
@@ -734,8 +750,9 @@ let instagramSeq = 0;
 export function InstagramCard({ item, orientation }: TemplateProps) {
   const postCount = clampInt(n(item.fields, "post_count") ?? 5, 1, 10);
   const includeStories = item.fields?.include_stories !== false; // default true
+  const latestOnly = item.fields?.latest_only === true; // owner beat: one newest post/story
   const dwell = Math.max(4, item.duration_seconds || 12);
-  const { items, loading } = useInstagramFeed(postCount, includeStories);
+  const { items, loading } = useInstagramFeed(postCount, includeStories, latestOnly);
 
   // Which post shows is a bucket SEEDED at mount from a session-monotonic counter (no mid-dwell
   // swap under a guest; no cross-pass aliasing — the old floor(now/dwell) seed could repeat a
