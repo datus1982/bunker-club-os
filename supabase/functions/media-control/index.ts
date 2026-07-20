@@ -49,6 +49,24 @@ const TRANSPORT_CMDS = new Set(["pause", "resume", "next"]);
 const NOSLUG_CMDS = new Set(["playlists"]);
 const READ_CMDS = new Set(["status"]);
 
+// v5: a `status` on a playlist screen enriches with the film ON SCREEN (title/year/poster) when the
+// TV has reported it (report_now_playing, 0054) within this window. Older ⇒ omit nowPlaying (the UCI
+// falls back to the playlist name), so a TV that stopped reporting never shows a stale film.
+const NOW_PLAYING_FRESH_MS = 15 * 60_000;
+
+/** The NOW SHOWING name + year for a reported file, mirroring mediaProgram.ts's
+ *  parseTitleYear/nowShowingParts (the framed TV header's label). Kept inline + tiny here like the
+ *  scheduleResolve port — if the Kodi-name split changes in one place, mirror it in the other.
+ *  "Labyrinth (1986)" → {title:"Labyrinth", year:"1986"}; falls back to the filename (ext stripped)
+ *  when the title is unset; blank ⇒ null (no label). */
+function nowPlayingParts(title: string | null, filename: string): { title: string; year: string | null } | null {
+  const raw = (title && title.trim()) || filename.replace(/\.[^.]+$/, "");
+  const t = raw.trim();
+  if (!t) return null;
+  const m = t.match(/^(.*\S)\s*\((\d{4})\)\s*$/);
+  return m ? { title: m[1].trim(), year: m[2] } : { title: t, year: null };
+}
+
 /** Escape LIKE/ILIKE metacharacters so a playlist name with % or _ matches LITERALLY (NOTE-5,
  *  PR #56 accepted backlog). Backslash is the default LIKE ESCAPE; `\%`/`\_`/`\\` are literals.
  *  Keeps the case-insensitive EXACT semantics the runbook promises for a name reference. */
@@ -171,7 +189,7 @@ Deno.serve(async (req) => {
   // landscape-only feature in the hub — the same semantics the PROGRAM control enforces).
   const { data: slot, error: slotErr } = await admin
     .from("signage_slots")
-    .select("id, venue_id, orientation, program, program_hold, program_set_at")
+    .select("id, venue_id, orientation, program, program_hold, program_set_at, now_playing_file_id, now_playing_at")
     .eq("slug", slug)
     .maybeSingle();
   if (slotErr) return json({ error: `slot lookup failed: ${slotErr.message}` }, 500);
@@ -211,11 +229,34 @@ Deno.serve(async (req) => {
     const status: {
       kind: string; source: string; hold: string | null;
       playlistId?: string; playlistName?: string | null;
+      nowPlaying?: { title: string; year: string | null; thumbUrl: string | null; reportedAt: string };
     } = { kind, source, hold: activeHold };
     if (program && program.kind === "playlist") {
       status.playlistId = program.playlist_id;
       const { data: pl } = await admin.from("media_playlists").select("name").eq("id", program.playlist_id).maybeSingle();
       status.playlistName = (pl?.name as string | undefined) ?? null;
+
+      // Now-playing enrichment (0054, v5): the film ON SCREEN, when the TV reported it recently.
+      // The shuffle position lives only in the TV browser, so the TV pings report_now_playing on
+      // each advance; here we surface it iff fresh (≤15 min). Stale/absent ⇒ omit (UCI falls back
+      // to the playlist name). Only meaningful for an EFFECTIVE playlist program — a capture/rotation
+      // program never reads this (guarded by kind === "playlist"), so a leftover stamp can't leak.
+      const reportedAt = slot.now_playing_at as string | null;
+      const fileId = slot.now_playing_file_id as string | null;
+      if (reportedAt && fileId && Date.now() - new Date(reportedAt).getTime() <= NOW_PLAYING_FRESH_MS) {
+        const { data: file } = await admin
+          .from("media_files").select("title, filename, thumb_path").eq("id", fileId).maybeSingle();
+        if (file) {
+          const parts = nowPlayingParts((file.title as string | null) ?? null, (file.filename as string) ?? "");
+          if (parts) {
+            const thumbPath = file.thumb_path as string | null;
+            const thumbUrl = thumbPath
+              ? admin.storage.from("signage").getPublicUrl(thumbPath).data.publicUrl ?? null
+              : null;
+            status.nowPlaying = { title: parts.title, year: parts.year, thumbUrl, reportedAt };
+          }
+        }
+      }
     }
     return json({ ok: true, slug, status });
   }
