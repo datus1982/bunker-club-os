@@ -522,6 +522,18 @@
   margin: 0;
   max-width: 56ch;
 }
+/* Attribution credit (e.g. "POSTERS: TMDB") — a terms obligation shown only on a card that
+   carries a credit (the NOW PLAYING hero with a real sourced poster). Dim green, small, mono —
+   present but never competing with the title. */
+.site-feed__credit,
+.site-card__credit {
+  font-family: var(--site-font-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.12em;
+  color: var(--site-live);
+  opacity: 0.5;
+  margin: 0.5rem 0 0;
+}
 /* Block cursor — present only while a segment is typing (finite; gone when done).
    Blinks via a short keyframe; reduced motion never reaches this path (grid used). */
 .site-feed__cursor {

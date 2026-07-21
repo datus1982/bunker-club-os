@@ -102,13 +102,20 @@ export async function resolveNowPlayingCard(item: DynamicItem): Promise<StripCar
   if (!raw.trim()) return null;
   const { title, year } = parseTitleYear(raw);
 
+  // poster_path preferred (real one-sheet), thumb_path fallback (frame grab) — never a broken image.
+  const posterUrl = bucketUrl(file.poster_path);
+  const image = posterUrl ?? bucketUrl(file.thumb_path) ?? undefined;
+
   return {
     key: `now-playing-${item.id}`,
     kind: "media",
     kicker: "On the bar screen now",
     title: `NOW SHOWING — ${title.toUpperCase()}${year ? ` · ${year}` : ""}`,
-    // poster_path preferred (real one-sheet), thumb_path fallback (frame grab) — never a broken image.
-    image: bucketUrl(file.poster_path) ?? bucketUrl(file.thumb_path) ?? undefined,
+    image,
+    // TMDB API terms: credit ONLY when a real sourced poster is the image on screen (poster_path
+    // resolved AND chosen) — NOT on a thumb-grab or text fallback. Mirrors the TV template's
+    // hasPoster gate (SignageTemplates.tsx). Full disclaimer lives in the qsys-media-control runbook.
+    credit: image && image === posterUrl ? "POSTERS: TMDB" : undefined,
     live: true,
   };
 }

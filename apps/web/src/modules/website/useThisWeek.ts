@@ -38,6 +38,9 @@ export type StripCard = {
   image?: string;
   /** Small kind tag rendered beside the kicker (live screen events: WINDOW / MESSAGE). */
   badge?: string;
+  /** Attribution credit shown as a dim caption on this card only (e.g. "POSTERS: TMDB" on the
+   *  NOW PLAYING hero when a real sourced poster is on screen — a TMDB API terms obligation). */
+  credit?: string;
   live?: boolean;
 };
 
