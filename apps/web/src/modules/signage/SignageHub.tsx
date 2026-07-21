@@ -63,7 +63,11 @@ type Overlay =
   | { kind: "queue"; slot: AdminSlot }
   | { kind: "takeover"; slot: AdminSlot }
   | { kind: "event"; editing: EventRow | null; seed?: EventSeed | null }
-  | { kind: "asset"; editing: AdminItem | null; preset: Template | null; queueOnSlotId: string | null }
+  // returnTo: the overlay to reopen when the editor closes (save/delete/cancel all fire onClose).
+  // Set when the editor is opened FROM a slide-over (QUEUE / ADD picker) so the manager lands back
+  // where he was working; left null at the top-level entry points (library card, + NEW ASSET) so
+  // those still close to the bare hub.
+  | { kind: "asset"; editing: AdminItem | null; preset: Template | null; queueOnSlotId: string | null; returnTo?: Overlay | null }
   | { kind: "program"; slot: AdminSlot }
   | { kind: "schedule"; slot: AdminSlot };
 
@@ -368,7 +372,7 @@ export function SignageHub({ openQueueSlug }: { openQueueSlug?: string }) {
             assets={assets}
             toastRows={toastRows}
             busyItemId={busyQueueId}
-            onPickTemplate={(t) => setOverlay({ kind: "asset", editing: null, preset: t, queueOnSlotId: overlay.slot.id })}
+            onPickTemplate={(t) => setOverlay({ kind: "asset", editing: null, preset: t, queueOnSlotId: overlay.slot.id, returnTo: { kind: "add", slot: overlay.slot } })}
             onQueueExisting={(a) => queueExisting.mutate({ slot: overlay.slot, a })}
           />
         </SlideOver>
@@ -385,7 +389,7 @@ export function SignageHub({ openQueueSlug }: { openQueueSlug?: string }) {
             takeovers={takeovers}
             canEvents={canEvents}
             onAdd={() => setOverlay({ kind: "add", slot: overlay.slot })}
-            onEditAsset={(item) => setOverlay({ kind: "asset", editing: item, preset: null, queueOnSlotId: null })}
+            onEditAsset={(item) => setOverlay({ kind: "asset", editing: item, preset: null, queueOnSlotId: null, returnTo: { kind: "queue", slot: overlay.slot } })}
             onChanged={invalidateItems}
             onEventsChanged={invalidateEvents}
             onTakeover={() => setOverlay({ kind: "takeover", slot: overlay.slot })}
@@ -437,7 +441,11 @@ export function SignageHub({ openQueueSlug }: { openQueueSlug?: string }) {
           queueOnSlotId={overlay.queueOnSlotId}
           placementSlotIds={overlay.editing ? placementsFor(assets, overlay.editing.id) : undefined}
           nextPosition={nextPosition}
-          onClose={() => setOverlay(null)}
+          // Return to the slide-over we came from (QUEUE / ADD) if set, else close to the hub.
+          // ItemEditor fires this same onClose on save, delete, AND cancel, so all three exit paths
+          // reappear behind the editor. onSaved/onDeleted run first (they invalidate queries) so the
+          // reopened queue re-renders with fresh data.
+          onClose={() => setOverlay(overlay.returnTo ?? null)}
           onSaved={invalidateItems}
           onDeleted={invalidateItems}
         />
