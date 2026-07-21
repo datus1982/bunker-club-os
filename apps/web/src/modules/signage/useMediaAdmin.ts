@@ -251,11 +251,13 @@ export async function swapPlaylistItems(
 
 /* ── slot program (the screen-card PROGRAM control) ──────────────────────── */
 
-/** A program the hub can WRITE: ROTATION (null), playlist, capture (M2), or multiview (M3). */
+/** A program the hub can WRITE: ROTATION (null), playlist, capture (M2), multiview (M3), or
+ *  carousel (play a whole playlist then hop to the next — owner beat 2026-07-20). */
 export type WritableProgram =
   | { kind: "playlist"; playlist_id: string }
   | { kind: "capture"; device_match?: string; presentation?: "framed" | "fullbleed" }
-  | { kind: "multiview"; main: MultiviewMain; panel_slot_id: string };
+  | { kind: "multiview"; main: MultiviewMain; panel_slot_id: string }
+  | { kind: "carousel"; order: "ordered" | "random" };
 
 /**
  * Write a slot's program + the M3 hold pair (D4). null = ROTATION / follow the schedule (clears

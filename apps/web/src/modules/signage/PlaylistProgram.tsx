@@ -29,7 +29,7 @@ import { SUPPORT_TEXT } from "./supportText";
  * the native `ended` event (no interval), error/stall recovery by FINITE timeouts.
  */
 export function PlaylistProgram({
-  slot, playlistId, base, renderHeader, footer,
+  slot, playlistId, base, renderHeader, footer, onPassComplete,
 }: {
   slot: Slot;
   playlistId: string;
@@ -40,6 +40,10 @@ export function PlaylistProgram({
    *  playing film's title can flow into the existing header bar as the loop advances. */
   renderHeader: (nowShowing: ReactNode) => ReactNode;
   footer: ReactNode;
+  /** CAROUSEL only (owner beat 2026-07-20): when set, the loop does NOT wrap — the moment the last
+   *  present clip ends (or a `next` at the last clip), this fires so the carousel hops to the next
+   *  playlist. Undefined (a normal single-playlist program) ⇒ the loop wraps forever, as before. */
+  onPassComplete?: () => void;
 }) {
   const { data, isPending, isError } = usePlaylistProgram(playlistId);
   const playlist = data?.playlist ?? null;
@@ -64,6 +68,7 @@ export function PlaylistProgram({
       loading={isPending}
       loadError={isError}
       onNowShowing={fullbleed ? undefined : setNowFile}
+      onPassComplete={onPassComplete}
     />
   );
 
@@ -134,7 +139,7 @@ function reportNowPlaying(slug: string, fileId: string) {
  * OFFLINE (retries the current clip every 8s so it recovers when the shell comes back).
  */
 export function PlaylistVideo({
-  slug, files, base, shuffle, subtitles, fullbleed, orientation, loading, loadError, onNowShowing,
+  slug, files, base, shuffle, subtitles, fullbleed, orientation, loading, loadError, onNowShowing, onPassComplete,
 }: {
   slug: string;
   files: MediaFile[];
@@ -149,6 +154,9 @@ export function PlaylistVideo({
   /** Reports the file playing now (or null when the loop is empty) so a parent chrome header can
    *  show its NOW SHOWING title. Optional — omitted for fullbleed (no chrome to label). */
   onNowShowing?: (file: MediaFile | null) => void;
+  /** CAROUSEL only: fire instead of wrapping when the last present clip ends (or `next` at the
+   *  last clip), so the parent hops to the next playlist. Undefined ⇒ wrap forever (normal loop). */
+  onPassComplete?: () => void;
 }) {
   // Shuffle deterministically per mount via a session-monotonic seed (top_sellers precedent —
   // no Math.random-per-render). A stable order per mount keeps the loop predictable.
@@ -172,6 +180,12 @@ export function PlaylistVideo({
 
   const current = order.length ? order[index % order.length] : null;
 
+  // Track the live index in a ref so `advance` can detect "this was the last clip" WITHOUT taking
+  // `index` as a dep (which would re-identify advance every clip and needlessly re-run the effects
+  // + transport subscription that hold it). Updated right after each committed render.
+  const indexRef = useRef(0);
+  useEffect(() => { indexRef.current = index; }, [index]);
+
   // Report the playing file up for the NOW SHOWING header. Keyed on identity+title so it only
   // fires on an actual advance (or a title edit landing via realtime), not every render.
   useEffect(() => {
@@ -193,10 +207,26 @@ export function PlaylistVideo({
   }, [phase, slug, current?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const advance = useCallback(() => {
+    // CAROUSEL: at the last present clip, hop to the next playlist instead of wrapping. The parent
+    // swaps the playlist (and bumps a leg key) so THIS PlaylistVideo remounts fresh — no local
+    // index change here. Covers both the `ended` event and a Q-SYS `next` at the last clip.
+    if (onPassComplete && order.length > 0 && indexRef.current + 1 >= order.length) {
+      onPassComplete();
+      return;
+    }
     setPhase("ok");
     setPlays((p) => p + 1);
     setIndex((i) => (order.length ? (i + 1) % order.length : 0));
-  }, [order.length]);
+  }, [order.length, onPassComplete]);
+
+  // CAROUSEL safety: if the current playlist resolves to ZERO present files (e.g. every file went
+  // missing mid-cycle) it can never fire `ended` to hop — so after a finite hold, hop anyway. The
+  // carousel excludes empty playlists at selection time, so this is only a rare realtime edge.
+  useEffect(() => {
+    if (!onPassComplete || loading || order.length > 0) return;
+    const id = window.setTimeout(() => onPassComplete(), 4000);
+    return () => window.clearTimeout(id);
+  }, [onPassComplete, loading, order.length]);
 
   const onError = useCallback(() => {
     // First clip never reached 'playing' → the host is unreachable; else a mid-loop hiccup.

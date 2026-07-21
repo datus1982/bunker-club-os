@@ -31,6 +31,7 @@ import { MediaSection } from "./MediaSection";
 import { ProgramPanel } from "./ProgramPanel";
 import { ScheduleEditor } from "./ScheduleEditor";
 import { useMediaPlaylists, useAllScheduleRows } from "./useMediaAdmin";
+import { isAllMedia, ALL_MEDIA_NAME } from "./mediaProgram";
 import { sendTransportCommand, type TransportCmd } from "./mediaTransport";
 import { useRole } from "@/shared/useRole";
 import "./signage.css";
@@ -145,8 +146,10 @@ export function SignageHub({ openQueueSlug }: { openQueueSlug?: string }) {
     const { program, source } = effFor(slot);
     if (!program) return null; // rotation (no override, no active daypart)
     const base =
-      program.kind === "playlist" ? `PLAYLIST '${playlistNameById.get(program.playlist_id) ?? "…"}'`
+      program.kind === "playlist"
+        ? (isAllMedia(program.playlist_id) ? ALL_MEDIA_NAME : `PLAYLIST '${playlistNameById.get(program.playlist_id) ?? "…"}'`)
       : program.kind === "capture" ? "LIVE INPUT"
+      : program.kind === "carousel" ? `CAROUSEL · ${program.order === "random" ? "random" : "ordered"}`
       : "MULTIVIEW";
     const suffix = source === "scheduled" ? " · scheduled" : source === "override" ? " · override" : source === "pinned" ? " · pinned" : "";
     return base + suffix;
@@ -279,7 +282,7 @@ export function SignageHub({ openQueueSlug }: { openQueueSlug?: string }) {
                   isPanel={s.kind === "panel"}
                   // Beat 4: transport row shows only when the EFFECTIVE program (M3 resolver, not the
                   // raw row — WARN-1) is a live playlist the TV is actually looping.
-                  transportPlaylist={mode === "rotation" && effFor(s).program?.kind === "playlist"}
+                  transportPlaylist={mode === "rotation" && (effFor(s).program?.kind === "playlist" || effFor(s).program?.kind === "carousel")}
                 />
               );
             })}

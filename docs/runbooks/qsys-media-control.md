@@ -45,7 +45,8 @@ curl -sS -X POST "https://api.supabase.com/v1/projects/ysrqvdutayirpoibdlbf/secr
 |------------|-------------|----------------------------------------------------------------|
 | `rotation` | —           | clear the override — `program = null` (follow the schedule / rotation) |
 | `capture`  | `hold`      | `program = {kind:"capture"}` — the live capture feed (the Roku)|
-| `playlist` | `playlist`, `hold` | `program = {kind:"playlist",…}` — loop a media-library playlist |
+| `playlist` | `playlist`, `hold` | `program = {kind:"playlist",…}` — loop a media-library playlist (or the virtual `all-media`) |
+| `carousel` | `order`, `hold` | `program = {kind:"carousel",order}` — play a whole playlist, then hop to the next (`order` `ordered`\|`random`, default `ordered`) |
 | `schedule` | —           | **M3:** clear the override so the slot follows its daypart SCHEDULE again |
 | `pause`    | —           | broadcast: pause the playlist `<video>`                        |
 | `resume`   | —           | broadcast: resume the playlist `<video>`                       |
@@ -57,7 +58,16 @@ curl -sS -X POST "https://api.supabase.com/v1/projects/ysrqvdutayirpoibdlbf/secr
 global list, no slug). For the program/transport commands the slot must exist and be **landscape**
 (programs are a landscape-only feature); **`status` is read-only and works on any slot** (any
 orientation). `playlist` accepts a playlist **id** (uuid) or a **name** (case-insensitive, exact —
-ambiguous names return 409).
+ambiguous names return 409), plus the **virtual `all-media` playlist** (by the id `all-media` or its
+name `ALL MEDIA (SHUFFLE)`) — every present file in the library, shuffled. `all-media` is also the
+first entry of the `playlists` list (`fileCount` = all present files).
+
+`cmd:"carousel"` plays one whole playlist through, then hops to the next: `order:"ordered"` walks the
+playlists alphabetically by name, `order:"random"` picks a different one each hop (no immediate
+repeat). Each playlist keeps its own shuffle/framed/subtitles while it plays. `pause`/`resume`/`next`
+drive the film currently on screen (`next` at a playlist's last clip hops to the next playlist); a
+`status` on a carousel screen reports `kind:"carousel"` + `order`, and (like a playlist) the film on
+screen under `nowPlaying` when the TV has reported it recently.
 
 `cmd:"capture"` writes a bare `{kind:"capture"}` — it uses the fullbleed default with NO device
 match, so a UCI capture press RESETS any DEVICE MATCH or FRAMED that was set on the screen card in
@@ -79,6 +89,8 @@ button. (With no schedule on the screen, `hold` is irrelevant — the override i
 { "slug": "landscape-bar", "cmd": "rotation" }
 { "slug": "landscape-bar", "cmd": "schedule" }
 { "slug": "landscape-bar", "cmd": "playlist", "playlist": "Atomic Age" }
+{ "slug": "landscape-bar", "cmd": "playlist", "playlist": "all-media" }
+{ "slug": "landscape-bar", "cmd": "carousel", "order": "random" }
 { "slug": "landscape-bar", "cmd": "next" }
 ```
 
@@ -87,8 +99,8 @@ button. (With no schedule on the screen, `hold` is irrelevant — the override i
 - `200 { ok:true, slug, cmd, kind:"program", program }` — program written.
 - `200 { ok:true, slug, cmd, kind:"transport" }` — broadcast sent.
 - `401 { error:"unauthorized" }` — bad/missing `x-qsys-token`.
-- `400` — missing slug/cmd, unknown cmd, portrait slot, `playlist` missing for a playlist cmd, or an
-  invalid `hold` (must be `pin`|`boundary`|`event`).
+- `400` — missing slug/cmd, unknown cmd, portrait slot, `playlist` missing for a playlist cmd, an
+  invalid `order` (must be `ordered`|`random`), or an invalid `hold` (must be `pin`|`boundary`|`event`).
 - `404` — unknown slug or no playlist matches.
 - `409` — ambiguous playlist name.
 

@@ -64,6 +64,18 @@ assert("overlap → higher position wins", activeScheduledProgram([PLAY, CAPROW]
 const ROT: ScheduleRow = { id: "r3", program: { kind: "rotation" }, daysOfWeek: [], startMinute: 960, endMinute: 1140 /*7 PM*/, position: 9, active: true };
 assert("rotation sentinel → null", activeScheduledProgram([PLAY, ROT], wed6pm, TZ), null);
 
+/* ── CAROUSEL program value flows through the resolver like any other ── */
+const CAROUSEL = { kind: "carousel", order: "random" } as const;
+const CAROUSEL_ROW: ScheduleRow = {
+  id: "rc", program: CAROUSEL, daysOfWeek: [], startMinute: 960, endMinute: 120, position: 0, active: true,
+};
+assert("scheduled carousel @ Wed 6PM", activeScheduledProgram([CAROUSEL_ROW], wed6pm, TZ), CAROUSEL);
+assert("scheduled carousel @ Thu 3AM = rotation(null)", activeScheduledProgram([CAROUSEL_ROW], thu3am, TZ), null);
+const carouselFlip: SlotProgramState = { program: { kind: "carousel", order: "ordered" }, program_hold: "event", program_set_at: wed5pm.toISOString() };
+assert("eff carousel override @ Wed 6PM = carousel", resolveEffectiveProgram(carouselFlip, [PLAY], wed6pm, TZ, ROLL), { kind: "carousel", order: "ordered" });
+assert("eff carousel event @ Thu 5AM = rotation (rolled over)", resolveEffectiveProgram(carouselFlip, [PLAY], thu5am, TZ, ROLL), null);
+assert("null program + carousel daypart → carousel", resolveEffectiveProgram({ program: null, program_hold: null, program_set_at: null }, [CAROUSEL_ROW], wed6pm, TZ, ROLL), CAROUSEL);
+
 /* ── boundaries + rollover ───────────────────────────────────────── */
 assert("nextBoundary Wed 6PM → Thu 2AM", nextBoundary([PLAY], wed6pm, TZ)?.toISOString(), "2026-07-16T07:00:00.000Z");
 assert("nextBoundary Wed 3PM → Wed 4PM (start)", nextBoundary([PLAY], wed3pm, TZ)?.toISOString(), "2026-07-15T21:00:00.000Z");

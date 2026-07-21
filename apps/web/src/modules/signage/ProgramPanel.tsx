@@ -3,7 +3,7 @@ import { useMutation } from "@tanstack/react-query";
 import {
   useMediaPlaylists, setSlotProgram, resumeSchedule, createPanelSlot, type WritableProgram,
 } from "./useMediaAdmin";
-import { formatDuration } from "./mediaProgram";
+import { formatDuration, ALL_MEDIA_PLAYLIST_ID, ALL_MEDIA_NAME, type CarouselOrder } from "./mediaProgram";
 import type { ProgramHold } from "./scheduleResolve";
 import type { AdminSlot } from "./useSignageAdmin";
 import { MONO } from "./signageAdminShared";
@@ -41,8 +41,11 @@ export function ProgramPanel({
   // slot is following its schedule/rotation, so FOLLOW SCHEDULE / ROTATION is the highlighted state).
   const ovProgram = overrideActive ? slot.program : null;
   const currentPlaylistId = ovProgram?.kind === "playlist" ? ovProgram.playlist_id : null;
+  const allMediaSelected = currentPlaylistId === ALL_MEDIA_PLAYLIST_ID;
   const captureSelected = ovProgram?.kind === "capture";
   const multiviewSelected = ovProgram?.kind === "multiview";
+  const carouselSelected = ovProgram?.kind === "carousel";
+  const carouselOrder: CarouselOrder | null = ovProgram?.kind === "carousel" ? ovProgram.order : null;
   const rotationSelected = !overrideActive;
 
   // SPECIAL EVENT hold toggle (D4). Default on only when a LIVE 'event' override is active.
@@ -109,12 +112,19 @@ export function ProgramPanel({
         {/* PLAYLIST */}
         <div style={{ marginTop: 4 }}>
           <div style={label2}>PLAYLIST · loop a media library playlist</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            {/* ALL MEDIA (virtual): every present file, shuffled — always offered, above the real
+                playlists. Writes a `playlist` program pointed at the sentinel id. */}
+            <ProgramOption selected={allMediaSelected} label={ALL_MEDIA_NAME}
+              sub="every clip in the library, shuffled · framed" disabled={busy}
+              onSelect={() => { if (!allMediaSelected) write.mutate({ kind: "playlist", playlist_id: ALL_MEDIA_PLAYLIST_ID }); }} />
+          </div>
           {playlistsQ.isLoading ? (
-            <div style={{ opacity: 0.6, fontSize: 15 }}>LOADING PLAYLISTS…</div>
+            <div style={{ opacity: 0.6, fontSize: 15, marginTop: 6 }}>LOADING PLAYLISTS…</div>
           ) : playlists.length === 0 ? (
-            <div style={{ opacity: 0.6, fontSize: 15 }}>No playlists yet — build one in the MEDIA LIBRARY section.</div>
+            <div style={{ opacity: 0.6, fontSize: 15, marginTop: 6 }}>No custom/folder playlists yet — build one in the MEDIA LIBRARY section.</div>
           ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 6 }}>
               {playlists.map((p) => {
                 const selected = currentPlaylistId === p.playlist.id;
                 return (
@@ -127,6 +137,26 @@ export function ProgramPanel({
               })}
             </div>
           )}
+        </div>
+
+        {/* CAROUSEL · play a whole playlist, then hop to the next */}
+        <div style={{ marginTop: 4 }}>
+          <div style={label2}>CAROUSEL · a whole playlist, then the next one</div>
+          {carouselSelected && <div className="u-amber" style={{ fontSize: 13, marginBottom: 6 }}>● Currently running CAROUSEL ({carouselOrder === "random" ? "random" : "ordered"}).</div>}
+          <div style={{ display: "flex", gap: 8 }}>
+            {(["ordered", "random"] as CarouselOrder[]).map((o) => {
+              const on = carouselSelected && carouselOrder === o;
+              const sub = o === "ordered" ? "A → Z by name" : "shuffle playlists";
+              return (
+                <button key={o} type="button" disabled={busy} onClick={() => { if (!on) write.mutate({ kind: "carousel", order: o }); }}
+                  className={on ? "u-fill u-ink" : ""}
+                  style={{ ...opt, flex: 1, flexDirection: "column", alignItems: "flex-start", gap: 2, background: on ? "var(--terminal-green)" : "transparent", color: on ? "#000" : "var(--terminal-green)" }}>
+                  <span style={{ fontWeight: on ? 700 : 400, letterSpacing: 1 }}>{on ? "● " : "◦ "}{o === "ordered" ? "ORDERED" : "RANDOM"}</span>
+                  <span style={{ fontSize: 12, opacity: 0.75 }}>{sub}</span>
+                </button>
+              );
+            })}
+          </div>
         </div>
 
         {/* LIVE INPUT (capture) */}

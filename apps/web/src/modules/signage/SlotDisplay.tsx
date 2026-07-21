@@ -13,6 +13,7 @@ import { useTicker, type TickerLine } from "./useTicker";
 import { TemplateView } from "./SignageTemplates";
 import { EventStageView, EventTeaseCard } from "./EventStages";
 import { PlaylistProgram } from "./PlaylistProgram";
+import { CarouselProgram } from "./CarouselProgram";
 import { CaptureProgram } from "./CaptureProgram";
 import { MultiviewProgram } from "./MultiviewProgram";
 import { resolveMediaBase } from "./mediaProgram";
@@ -193,6 +194,10 @@ function SlotScreen({
   );
   const programPlaylistId =
     mode === "rotation" && effProgram?.kind === "playlist" ? effProgram.playlist_id : null;
+  // CAROUSEL program (owner beat 2026-07-20): play a whole playlist through then hop to the next.
+  // Renders in the same rotation-bottom slot as playlist; preempted whole exactly like playlist.
+  const programCarousel =
+    mode === "rotation" && effProgram?.kind === "carousel" ? effProgram : null;
   // CAPTURE program (M2): the live UVC input renders in the same rotation-bottom slot as playlist.
   const programCapture =
     mode === "rotation" && effProgram?.kind === "capture" ? effProgram : null;
@@ -221,6 +226,17 @@ function SlotScreen({
         <PlaylistProgram
           slot={slot}
           playlistId={programPlaylistId}
+          base={mediaBase}
+          renderHeader={(nowShowing) => <ChromeHeader slot={slot} venueName={venueName} timezone={timezone} nowShowing={nowShowing} slim />}
+          footer={<ChromeFooter ticker={ticker} live={false} orientation={slot.orientation} slim />}
+        />
+      ) : programCarousel ? (
+        // Carousel: plays each playlist through, then hops to the next (ordered|random). Each leg is
+        // a PlaylistProgram, so a framed leg keeps the slim chrome (NOW SHOWING) and a fullbleed leg
+        // hides it — the per-playlist presentation decides, same as a plain playlist program.
+        <CarouselProgram
+          slot={slot}
+          order={programCarousel.order}
           base={mediaBase}
           renderHeader={(nowShowing) => <ChromeHeader slot={slot} venueName={venueName} timezone={timezone} nowShowing={nowShowing} slim />}
           footer={<ChromeFooter ticker={ticker} live={false} orientation={slot.orientation} slim />}
