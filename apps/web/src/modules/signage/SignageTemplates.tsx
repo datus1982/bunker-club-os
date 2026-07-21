@@ -1,5 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import type { Orientation, SignageItem, ToastCacheRow } from "./useSignage";
+import { useNowPlayingSource, nowPlayingSourceSlug, isNowPlayingFresh } from "./useSignage";
+import { parseTitleYear } from "./mediaProgram";
 import { EventWindowCard, EventMessageCard, EventTeaseCard } from "./EventStages";
 import { balanceHeadline } from "./eventStage";
 import { parseInline, RichText, alignOf } from "./richText";
@@ -992,6 +994,110 @@ function InstagramStory({
   );
 }
 
+/* ── NOW PLAYING (cross-promo from the movie screen — 0054/0055) ───────────────
+ * A PORTRAIT-first slide on the ad screens advertising the film currently on a landscape MEDIA
+ * screen. Reads that screen's now_playing_* (fields.source_slug, default "landscape-bar") + the
+ * media_files row (title/poster). The poster is the hero (contain, never cropped) using the tall
+ * 9:16-frame geometry precedent from InstagramStory; poster_path → thumb_path → text placeholder
+ * (never a broken image). The whole card AUTO-HIDES at resolveRotation when the source's stamp is
+ * stale (>15 min) or absent — this fallback state renders only in the editor preview / hub, where
+ * there is no live-source gate, so a manager building the card always sees something sensible.
+ * Data polls at 60s inside useNowPlayingSource (now_playing_* are OUT of realtime by design).
+ */
+export function NowPlaying({ item, orientation }: TemplateProps) {
+  const slug = nowPlayingSourceSlug(item);
+  const showPlaylist = item.fields?.show_playlist === true;
+  const { state } = useNowPlayingSource(slug);
+  const port = orientation === "portrait";
+  const z = SIZES[orientation];
+
+  const header = (
+    <div style={{ flexShrink: 0 }}>
+      <Eyebrow text="NOW SHOWING — ON THE BAR SCREEN" orientation={orientation} />
+    </div>
+  );
+
+  const fresh = isNowPlayingFresh(state?.at);
+  const file = fresh ? state?.file ?? null : null;
+
+  // No fresh film → graceful STANDBY (editor-preview / hub only; the TV auto-hides the card).
+  if (!file) {
+    return (
+      <div style={{ height: "100%", display: "flex", flexDirection: "column", gap: z.gap }}>
+        {header}
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", gap: 18 }}>
+          <div style={{ fontSize: port ? 84 : 68, fontWeight: 700, letterSpacing: 3, opacity: 0.75, textShadow: "0 0 16px var(--terminal-glow)" }}>STANDBY</div>
+          <div className="sig-live" style={{ fontSize: SUPPORT_TEXT[orientation], letterSpacing: 4, opacity: 0.85 }}>◊ NOTHING ON THE BIG SCREEN RIGHT NOW</div>
+        </div>
+      </div>
+    );
+  }
+
+  const raw = (file.title && file.title.trim()) || file.filename.replace(/\.[^.]+$/, "");
+  const { title, year } = parseTitleYear(raw);
+  const balanced = balanceHeadline(title, port ? 3 : 2, (len) => headlineFontByLen(len, orientation));
+  const longest = Math.max(1, ...balanced.split("\n").map((l) => l.trim().length));
+  // The POSTER is the hero — the title is a supporting line beneath, so it is sized moderately
+  // (well below the hero-headline scale) and wraps into the balanced lines.
+  const titleFont = port
+    ? longest <= 10 ? 108 : longest <= 16 ? 88 : longest <= 24 ? 70 : longest <= 34 ? 56 : 46
+    : longest <= 10 ? 88 : longest <= 16 ? 70 : longest <= 24 ? 56 : longest <= 34 ? 46 : 40;
+
+  // Poster hero: a 2:3 frame sized by HEIGHT (contain-fit → never cropped). posterUrl already
+  // resolves poster_path → thumb_path; only when BOTH are null do we show a text placeholder.
+  const poster = (
+    <div className="sig-viewport sig-contain" style={{ height: "100%", aspectRatio: "2 / 3", maxWidth: "100%", flexShrink: 0 }}>
+      <span className="sig-feedcap sig-live" style={{ fontSize: SUPPORT_TEXT[orientation] }}>◉ LIVE ON THE BIG SCREEN</span>
+      {file.posterUrl
+        ? <img src={file.posterUrl} alt="" />
+        : <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", fontSize: port ? 44 : 36, opacity: 0.45, letterSpacing: 3 }}>NO ARTWORK</div>}
+    </div>
+  );
+
+  const titleBlock = (
+    <div style={{ display: "flex", flexDirection: "column", gap: port ? 10 : 8, minWidth: 0, textAlign: port ? "center" : "left" }}>
+      <div style={{ fontSize: titleFont, fontWeight: 700, lineHeight: 1.02, letterSpacing: 1, whiteSpace: "pre-line", textShadow: "0 0 16px var(--terminal-glow)" }}>{balanced}</div>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 16, flexWrap: "wrap", justifyContent: port ? "center" : "flex-start" }}>
+        {year && <span className="sig-live" style={{ fontSize: SUPPORT_TEXT[orientation], letterSpacing: 3, opacity: 0.9 }}>{year}</span>}
+        {file.hasSubtitles && <span style={{ fontSize: SUPPORT_TEXT[orientation], letterSpacing: 2, border: "2px solid var(--terminal-green)", padding: "2px 10px", opacity: 0.85 }}>SUBTITLED</span>}
+        {showPlaylist && state?.playlistName && (
+          <span style={{ fontSize: SUPPORT_TEXT[orientation], letterSpacing: 2, opacity: 0.7 }}>FROM {state.playlistName.toUpperCase()}</span>
+        )}
+      </div>
+      {/* TMDB attribution (their API terms): a short credit shown ONLY when a real sourced poster
+          is on screen (hasPoster). Once the owner re-sources from TMDB, every poster is TMDB; the
+          full "not endorsed or certified by TMDB" disclaimer lives in the qsys-media-control runbook.
+          Rendered at the shared SUPPORT_TEXT floor, dim, so it credits without competing with the title. */}
+      {file.hasPoster && (
+        <div style={{ fontSize: SUPPORT_TEXT[orientation], letterSpacing: 2, opacity: 0.45 }}>POSTERS: TMDB</div>
+      )}
+    </div>
+  );
+
+  if (port) {
+    return (
+      <div style={{ height: "100%", display: "flex", flexDirection: "column", gap: z.gap }}>
+        {header}
+        <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", gap: 24 }}>
+          <div style={{ flex: 1, minHeight: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>{poster}</div>
+          <div style={{ flexShrink: 0 }}>{titleBlock}</div>
+        </div>
+      </div>
+    );
+  }
+
+  // Landscape: poster column on the left, title block centered in the wider right column.
+  return (
+    <div style={{ height: "100%", display: "flex", flexDirection: "column", gap: z.gap }}>
+      {header}
+      <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "row", gap: 48, alignItems: "stretch" }}>
+        <div style={{ flexShrink: 0, height: "100%", display: "flex", justifyContent: "center" }}>{poster}</div>
+        <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", justifyContent: "center", gap: 24 }}>{titleBlock}</div>
+      </div>
+    </div>
+  );
+}
+
 /* ── SMART TOAST (data-driven live slide from sales_history — 0043) ──────────── */
 /**
  * Two owner-asked modes, both distance-first and one-slide-per-pass (no sub-rotation, finite
@@ -1383,6 +1489,7 @@ export function TemplateView(props: TemplateProps) {
     case "top_sellers": return <TopSellers {...props} />;
     case "instagram": return <InstagramCard {...props} />;
     case "smart_toast": return <SmartToast {...props} />;
+    case "now_playing": return <NowPlaying {...props} />;
     // Phase 7 rotation-level event cards (docs/13) — materialized from a live event.
     case "event_window": return <EventWindowCard item={props.item} toast={props.toast} orientation={props.orientation} />;
     case "event_message": return <EventMessageCard item={props.item} toast={props.toast} orientation={props.orientation} />;

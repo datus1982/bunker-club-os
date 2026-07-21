@@ -135,7 +135,8 @@ UCI can show the truth — e.g. dim the picker's active playlist, or light a "SC
   "nowPlaying": {                // present only when a playlist is up AND the TV reported a film ≤15 min ago
     "title": "Labyrinth",        // film name (trailing "(YYYY)" split out), from the TV's NOW SHOWING label
     "year": "1986",              // parsed year, or null
-    "thumbUrl": "https://…/signage/media-thumbs/…jpg",  // public poster (≈480px JPEG), or null when no thumb
+    "posterUrl": "https://…/signage/media-posters/…jpg", // best art: real one-sheet when sourced, else frame-grab (v6)
+    "thumbUrl": "https://…/signage/media-thumbs/…jpg",   // frame-grab JPEG (unchanged; kept for compatibility)
     "reportedAt": "2026-07-20T23:31:35.290Z"            // when the TV last reported this file
   }
 } }
@@ -147,6 +148,20 @@ server doesn't otherwise know which clip is up. The TV pings the current file on
 - the effective program is a **playlist** (a capture/rotation/multiview program never carries it), and
 - the TV's last report is **fresh (≤ 15 min)** — a TV that stopped reporting (off, program changed,
   trivia took over) drops `nowPlaying` within 15 minutes, so the UCI never shows a stale film.
+
+**Poster art (v6, one-word change).** We now source real movie posters for the library (migration
+0055), so `nowPlaying` carries **`posterUrl`** alongside the existing `thumbUrl`. To show the good
+art, read **`posterUrl` instead of `thumbUrl`** — nothing else changes. `posterUrl` always carries
+the best available image (the real one-sheet when we've sourced it, the frame-grab otherwise), with
+the same public-JPEG mechanics as `thumbUrl` (public bucket, no auth header). `thumbUrl` is
+**unchanged**, so an existing plugin keeps working with zero changes; swap the field whenever
+convenient.
+
+> **Poster attribution (TMDB).** Posters are sourced from **TMDB** (`scripts/fetch-movie-posters.ts`;
+> a keyless Wikipedia fallback fills TMDB misses). Per the TMDB API terms of use:
+> **"This product uses the TMDB API but is not endorsed or certified by TMDB."** The `now_playing`
+> signage slide carries a short "POSTERS: TMDB" credit whenever a real poster is displayed; this is
+> the full disclaimer of record. TMDB is not otherwise affiliated with this project.
 
 When `nowPlaying` is **absent**, fall back to `playlistName` (and clear any poster art on the UCI).
 It is **advisory / display-only** — spoofable-harmless, like the screen-health heartbeat; nothing is

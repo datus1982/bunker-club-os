@@ -52,6 +52,11 @@ const READ_CMDS = new Set(["status"]);
 // v5: a `status` on a playlist screen enriches with the film ON SCREEN (title/year/poster) when the
 // TV has reported it (report_now_playing, 0054) within this window. Older ⇒ omit nowPlaying (the UCI
 // falls back to the playlist name), so a TV that stopped reporting never shows a stale film.
+// v6: nowPlaying also carries `posterUrl` — the media_files.poster_path (a real one-sheet, 0055)
+// preferred, falling back to the frame-thumb; `thumbUrl` is retained UNCHANGED for compatibility, so
+// the Q-SYS plugin upgrades its art with a one-word change (read posterUrl instead of thumbUrl) and
+// no other change. posterUrl always carries the best available image (real poster when sourced,
+// frame-grab otherwise) — same public-JPEG mechanics as thumbUrl.
 const NOW_PLAYING_FRESH_MS = 15 * 60_000;
 
 /** The NOW SHOWING name + year for a reported file, mirroring mediaProgram.ts's
@@ -229,7 +234,7 @@ Deno.serve(async (req) => {
     const status: {
       kind: string; source: string; hold: string | null;
       playlistId?: string; playlistName?: string | null;
-      nowPlaying?: { title: string; year: string | null; thumbUrl: string | null; reportedAt: string };
+      nowPlaying?: { title: string; year: string | null; posterUrl: string | null; thumbUrl: string | null; reportedAt: string };
     } = { kind, source, hold: activeHold };
     if (program && program.kind === "playlist") {
       status.playlistId = program.playlist_id;
@@ -245,15 +250,17 @@ Deno.serve(async (req) => {
       const fileId = slot.now_playing_file_id as string | null;
       if (reportedAt && fileId && Date.now() - new Date(reportedAt).getTime() <= NOW_PLAYING_FRESH_MS) {
         const { data: file } = await admin
-          .from("media_files").select("title, filename, thumb_path").eq("id", fileId).maybeSingle();
+          .from("media_files").select("title, filename, poster_path, thumb_path").eq("id", fileId).maybeSingle();
         if (file) {
           const parts = nowPlayingParts((file.title as string | null) ?? null, (file.filename as string) ?? "");
           if (parts) {
-            const thumbPath = file.thumb_path as string | null;
-            const thumbUrl = thumbPath
-              ? admin.storage.from("signage").getPublicUrl(thumbPath).data.publicUrl ?? null
-              : null;
-            status.nowPlaying = { title: parts.title, year: parts.year, thumbUrl, reportedAt };
+            const pub = (path: string | null) =>
+              path ? admin.storage.from("signage").getPublicUrl(path).data.publicUrl ?? null : null;
+            const thumbUrl = pub(file.thumb_path as string | null);
+            // v6: poster_path (real one-sheet, 0055) preferred, frame-thumb fallback. thumbUrl kept
+            // unchanged so the Q-SYS plugin can migrate to posterUrl whenever, with no other change.
+            const posterUrl = pub(file.poster_path as string | null) ?? thumbUrl;
+            status.nowPlaying = { title: parts.title, year: parts.year, posterUrl, thumbUrl, reportedAt };
           }
         }
       }
