@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react"
 import { useMutation } from "@tanstack/react-query";
 import { Modal, Field, input as inputStyle, btnGhost } from "@/modules/trivia/ui";
 import type { Orientation, SignageItem, Template, ToastCacheRow } from "./useSignage";
+import { DEFAULT_NOW_PLAYING_SOURCE } from "./useSignage";
 import {
   type AdminItem, type AdminSlot, type ItemDraft, type Recurrence,
   saveItem, deleteItem, uploadCustomImage, linkedMoment, saveMoment, toastMap,
@@ -42,6 +43,7 @@ export const ITEM_TEMPLATES: { key: Template; label: string; blurb: string; icon
   { key: "top_sellers", label: "TOP SELLERS", blurb: "Live top-5 from the POS", icon: "📊" },
   { key: "instagram", label: "INSTAGRAM", blurb: "Recent @posts — caption + QR", icon: "▦" },
   { key: "smart_toast", label: "SMART TOAST", blurb: "Underdogs or the champion — auto", icon: "🎯" },
+  { key: "now_playing", label: "NOW PLAYING", blurb: "Cross-promo from the movie screen", icon: "🎬" },
 ];
 
 const SKINS = ["birthday", "bachelor", "bachelorette", "anniversary", "congrats"] as const;
@@ -309,6 +311,7 @@ function ItemForm({
       {template === "top_sellers" && <TopSellersFields fields={fields} setField={setField} />}
       {template === "instagram" && <InstagramFields fields={fields} setField={setField} />}
       {template === "smart_toast" && <SmartToastFields fields={fields} setField={setField} toastRows={toastRows} />}
+      {template === "now_playing" && <NowPlayingFields fields={fields} setField={setField} slots={slots} />}
       {template === "celebration" && (
         <CelebrationFields
           fields={fields}
@@ -579,6 +582,46 @@ function InstagramFields({ fields, setField }: FieldProps) {
       </label>
       <div style={{ fontSize: 14, opacity: 0.6 }}>
         Tip: give it a longer duration than a quick promo so guests can read the caption and scan the code.
+      </div>
+    </div>
+  );
+}
+
+/* ── now_playing ────────────────────────────────────────────────────────────── */
+function NowPlayingFields({ fields, setField, slots }: FieldProps & { slots: AdminSlot[] }) {
+  const source = str(fields.source_slug) ?? DEFAULT_NOW_PLAYING_SOURCE;
+  const showPlaylist = fields.show_playlist === true;
+  // The source is a landscape MEDIA screen. Offer every landscape slot; keep the current value
+  // selectable even if it isn't a current landscape slug (so an edited card never loses it).
+  const landscape = slots.filter((s) => s.orientation === "landscape");
+  const options = landscape.some((s) => s.slug === source) ? landscape : [{ slug: source, name: source } as AdminSlot, ...landscape];
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <div className="terminal-border" style={{ padding: "12px 14px", display: "flex", flexDirection: "column", gap: 6, fontSize: 15, lineHeight: 1.5 }}>
+        <div style={{ fontSize: 17, fontWeight: 700, letterSpacing: 1 }}>🎬 SHOWS WHAT'S ON THE MOVIE SCREEN</div>
+        <div style={{ opacity: 0.75 }}>
+          Advertises the film currently playing on a landscape screen — with its real poster.
+          It <b>hides itself</b> automatically when nothing is playing (the movie ends, or trivia takes the screen).
+        </div>
+      </div>
+      <Field label="READS FROM WHICH SCREEN">
+        <select value={source} onChange={(e) => setField("source_slug", e.target.value)} style={sel}>
+          {options.map((s) => (
+            <option key={s.slug} value={s.slug} style={opt}>{s.name} ({s.slug})</option>
+          ))}
+        </select>
+      </Field>
+      <label style={{ ...checkLabel, alignItems: "flex-start" }}>
+        <input type="checkbox" checked={showPlaylist} onChange={(e) => setField("show_playlist", e.target.checked ? true : "")} style={{ ...checkbox, marginTop: 2 }} />
+        <span>
+          SHOW THE PLAYLIST NAME
+          <span style={{ display: "block", fontSize: 14, opacity: 0.55, letterSpacing: 0 }}>
+            Adds a small "FROM …" line when that screen is pinned to a named playlist.
+          </span>
+        </span>
+      </label>
+      <div style={{ fontSize: 14, opacity: 0.6 }}>
+        Best on a portrait ad screen. Give it a longer duration so guests can read the title and see the poster.
       </div>
     </div>
   );

@@ -4,6 +4,7 @@ import { supabase, VENUE_ID } from "@/shared/supabaseClient";
 import { fetchSlotQueuePublic } from "./slotQueue";
 import { eventStage, isTakeoverStage, type LiveEvent } from "./eventStage";
 import type { SlotProgram } from "./mediaProgram";
+import { thumbUrl } from "./mediaProgram";
 import type { ScheduleRow, ProgramHold, ScheduleProgram } from "./scheduleResolve";
 import { slotRenderFieldsUnchanged, TV_SLOT_RENDER_FIELDS } from "./slotRealtime";
 
@@ -75,6 +76,11 @@ export type Template =
   // time. fields.smart_mode = "underdogs" (bottom N of a menu group over `days`) | "champion"
   // (top item over `days` + tonight's top 3). Carries fields.menu_group / days / count.
   | "smart_toast"
+  // NOW PLAYING (0054/0055): a portrait cross-promo slide advertising the film currently on a
+  // landscape MEDIA screen. Reads that screen's now_playing_* (fields.source_slug, default
+  // "landscape-bar") + the media_files row (title/poster). AUTO-HIDES at resolveRotation when the
+  // source's now_playing stamp is stale (>15 min) or absent — the movie ended / trivia took over.
+  | "now_playing"
   // Phase 7 (docs/13): rotation-level cards materialized from a live scheduled_event.
   // Never authored, never DB rows — only produced by resolveRotation at render time.
   | "event_window"  // an active WINDOW promo card (title/body/cta + optional live price)
@@ -199,6 +205,123 @@ const SCREENS_GROUP = "★ SCREENS";
  */
 export function compareRotation(a: { sort_order: number; id: string }, b: { sort_order: number; id: string }): number {
   return a.sort_order - b.sort_order || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+}
+
+/* ── NOW PLAYING cross-promo (0054/0055) ──────────────────────────────────────── */
+
+/** The landscape MEDIA screen a NOW PLAYING slide reads by default (the bar's movie TV). */
+export const DEFAULT_NOW_PLAYING_SOURCE = "landscape-bar";
+/** Freshness window for a source's now_playing stamp — MIRRORS media-control's NOW_PLAYING_FRESH_MS
+ *  (0054). Older ⇒ the film is treated as gone (movie ended / trivia took the screen) and the
+ *  slide auto-hides. Kept in sync with the fn's literal by hand (a Deno fn can't import this). */
+export const NOW_PLAYING_FRESH_MS = 15 * 60_000;
+
+/** The source slug a now_playing item reads (fields.source_slug), defaulting to the movie TV. */
+export function nowPlayingSourceSlug(item: SignageItem): string {
+  const v = item.fields?.source_slug;
+  return typeof v === "string" && v.trim() ? v.trim() : DEFAULT_NOW_PLAYING_SOURCE;
+}
+
+/** The current-film state of one source screen: the reported file (with resolved poster/thumb URLs)
+ *  + when it was reported. `fresh` is computed by the caller against a live clock (not baked here),
+ *  so the 30s render tick re-evaluates the gate between the 60s polls. */
+export interface NowPlayingState {
+  fileId: string | null;
+  at: string | null;
+  file: {
+    title: string | null;
+    filename: string;
+    posterUrl: string | null; // poster_path preferred, thumb_path fallback (0055) — never a broken image
+    thumbUrl: string | null;
+    hasSubtitles: boolean;
+  } | null;
+  /** The name of the playlist the source screen is PINNED to (slot.program.kind==='playlist'), for
+   *  the slide's optional "FROM …" line. Null when the screen is on a schedule/capture/rotation
+   *  (no manual playlist override) — the line is simply omitted then. */
+  playlistName: string | null;
+}
+
+/** Is a source's now_playing stamp fresh right now? (absent/older-than-window ⇒ false). */
+export function isNowPlayingFresh(at: string | null | undefined, now: Date = new Date()): boolean {
+  if (!at) return false;
+  const t = new Date(at).getTime();
+  return Number.isFinite(t) && now.getTime() - t <= NOW_PLAYING_FRESH_MS;
+}
+
+/**
+ * Poll the now_playing state of one or more source screens (anon-readable signage_slots +
+ * media_files, 0047/0054/0055). ONE query keyed by the sorted slug set, so the TV's rotation
+ * GATE (SlotDisplay derives the set from its now_playing items) and the template's own render
+ * (it calls useNowPlayingSource([slug])) share a request when the sets match. 60s poll — matches
+ * the IG card cadence and the display rule (≥30s); now_playing_* are deliberately OUT of the
+ * realtime whitelist (they'd churn every stamp), so this poll is the update path.
+ */
+export function useNowPlayingSources(slugs: string[]) {
+  const key = [...new Set(slugs)].sort();
+  return useQuery({
+    queryKey: ["signage", "now-playing", key.join(",")],
+    enabled: key.length > 0,
+    refetchInterval: 60_000,
+    staleTime: 60_000,
+    queryFn: async (): Promise<Map<string, NowPlayingState>> => {
+      const { data: slotRows, error: sErr } = await supabase
+        .from("signage_slots")
+        .select("slug, now_playing_file_id, now_playing_at, program")
+        .in("slug", key);
+      if (sErr) throw sErr;
+      const rows = (slotRows ?? []) as { slug: string; now_playing_file_id: string | null; now_playing_at: string | null; program: SlotProgram | null }[];
+      const fileIds = [...new Set(rows.map((r) => r.now_playing_file_id).filter((v): v is string => !!v))];
+
+      // The playlist name for any source pinned to a playlist program (optional "FROM …" line).
+      const playlistIds = [...new Set(
+        rows.map((r) => (r.program?.kind === "playlist" ? r.program.playlist_id : null)).filter((v): v is string => !!v),
+      )];
+      const playlistNames = new Map<string, string>();
+      if (playlistIds.length > 0) {
+        const { data: plRows } = await supabase.from("media_playlists").select("id, name").in("id", playlistIds);
+        for (const p of (plRows ?? []) as { id: string; name: string }[]) playlistNames.set(p.id, p.name);
+      }
+      const files = new Map<string, { title: string | null; filename: string; poster_path: string | null; thumb_path: string | null; has_subtitles: boolean }>();
+      if (fileIds.length > 0) {
+        const { data: fileRows, error: fErr } = await supabase
+          .from("media_files")
+          .select("id, title, filename, poster_path, thumb_path, has_subtitles")
+          .in("id", fileIds);
+        if (fErr) throw fErr;
+        for (const f of (fileRows ?? []) as { id: string; title: string | null; filename: string; poster_path: string | null; thumb_path: string | null; has_subtitles: boolean }[]) {
+          files.set(f.id, f);
+        }
+      }
+      const out = new Map<string, NowPlayingState>();
+      for (const slug of key) {
+        const row = rows.find((r) => r.slug === slug) ?? null;
+        const f = row?.now_playing_file_id ? files.get(row.now_playing_file_id) ?? null : null;
+        const plId = row?.program?.kind === "playlist" ? row.program.playlist_id : null;
+        out.set(slug, {
+          fileId: row?.now_playing_file_id ?? null,
+          at: row?.now_playing_at ?? null,
+          file: f
+            ? {
+                title: f.title,
+                filename: f.filename,
+                // poster_path preferred (real one-sheet), thumb_path fallback (frame grab), else null.
+                posterUrl: thumbUrl(f.poster_path) ?? thumbUrl(f.thumb_path),
+                thumbUrl: thumbUrl(f.thumb_path),
+                hasSubtitles: !!f.has_subtitles,
+              }
+            : null,
+          playlistName: plId ? playlistNames.get(plId) ?? null : null,
+        });
+      }
+      return out;
+    },
+  });
+}
+
+/** Single-source convenience: the now_playing state of one screen (or null when slug is null). */
+export function useNowPlayingSource(slug: string | null) {
+  const q = useNowPlayingSources(slug ? [slug] : []);
+  return { ...q, state: slug ? q.data?.get(slug) ?? null : null };
 }
 
 /** Venue name/timezone — shared cache key so the board and the admin preview agree and
@@ -521,11 +644,25 @@ export function resolveRotation(
   toast: Map<string, ToastCacheRow>,
   now: Date = new Date(),
   events: LiveEvent[] = [],
+  // The set of source slugs whose now_playing is FRESH right now (SlotDisplay computes it from
+  // useNowPlayingSources + the live clock). A now_playing item auto-hides — like the OOS/POS gate
+  // — when its source is NOT in this set. UNDEFINED = don't gate (the hub/editor/queue views have
+  // no live source data and should show what's queued); the TV always passes a set.
+  liveNowPlayingSlugs?: Set<string>,
 ): SignageItem[] {
   const t = now.getTime();
   const inWindow = (it: SignageItem) =>
     (!it.starts_at || new Date(it.starts_at).getTime() <= t) &&
     (!it.ends_at || new Date(it.ends_at).getTime() > t);
+
+  // NOW PLAYING auto-hide (0054): a now_playing card only survives when its source screen has a
+  // FRESH film (resolveRotation-level skip, so a dead movie screen leaves no blank dwell). Only
+  // enforced when the caller supplied the live-source set (the TV); undefined ⇒ keep the card.
+  const nowPlayingLive = (it: SignageItem) => {
+    if (it.template !== "now_playing") return true;
+    if (!liveNowPlayingSlugs) return true;
+    return liveNowPlayingSlugs.has(nowPlayingSourceSlug(it));
+  };
 
   // Auto-hide rule (docs/09 + 0034): skip any item sourced from a Toast item that is
   // out-of-stock OR not POS-visible. The owner's principle — never advertise what
@@ -538,7 +675,7 @@ export function resolveRotation(
     return !row.out_of_stock && row.pos_visible;
   };
 
-  const scheduled = items.filter((it) => inWindow(it) && notHidden(it));
+  const scheduled = items.filter((it) => inWindow(it) && notHidden(it) && nowPlayingLive(it));
 
   // Active WINDOW/MESSAGE event cards (docs/13) join the rotation exactly like ★ SCREENS
   // — presentation-layer only, never DB rows. A toast-linked card obeys the same 86'd /

@@ -6,6 +6,7 @@ import { LeaderboardBoard } from "@/modules/trivia/Leaderboard";
 import { GameDisplayBoard } from "@/modules/trivia/GameDisplay";
 import {
   useSlot, useLiveEvents, resolveRotation, resolveSlotMode, activeMoment, teaseMoment,
+  useNowPlayingSources, nowPlayingSourceSlug, isNowPlayingFresh,
   type SignageItem, type Slot, type SlotMode, type Takeover, type ToastCacheRow, type LiveEvent, type Orientation,
 } from "./useSignage";
 import { useTicker, type TickerLine } from "./useTicker";
@@ -99,6 +100,22 @@ function SlotScreen({
   }, []);
   const now = useMemo(() => new Date(nowTick), [nowTick]);
 
+  // NOW PLAYING gate (0054): the source screens any now_playing card reads, and which of them have
+  // a FRESH film right now. resolveRotation auto-hides a now_playing card whose source is not live
+  // (movie ended / trivia took the landscape). The template renders its own copy of this data; the
+  // shared query key dedupes the request when there is a single source (the common case).
+  const npSlugs = useMemo(() => {
+    const set = new Set<string>();
+    for (const it of items) if (it.template === "now_playing") set.add(nowPlayingSourceSlug(it));
+    return [...set];
+  }, [items]);
+  const nowPlayingSources = useNowPlayingSources(npSlugs);
+  const liveNowPlayingSlugs = useMemo(() => {
+    const s = new Set<string>();
+    nowPlayingSources.data?.forEach((v, slug) => { if (isNowPlayingFresh(v.at, now)) s.add(slug); });
+    return s;
+  }, [nowPlayingSources.data, now]);
+
   // M3 (D3/D4): precise re-render at the next schedule boundary / hold expiry, so a daypart flip
   // or an override yielding is crisp (not up to 30s late). The 30s tick above is the safety net.
   useEffect(() => {
@@ -115,8 +132,8 @@ function SlotScreen({
   }, [nowTick, schedule, timezone, rolloverHour, slot.program, slot.program_hold, slot.program_set_at]);
 
   const rotation = useMemo(
-    () => resolveRotation(items, toast, now, liveEvents),
-    [items, toast, now, liveEvents],
+    () => resolveRotation(items, toast, now, liveEvents, liveNowPlayingSlugs),
+    [items, toast, now, liveEvents, liveNowPlayingSlugs],
   );
 
   // MOMENT in a takeover-level stage (alert/moment/event/allclear) + the tease lead-in.
