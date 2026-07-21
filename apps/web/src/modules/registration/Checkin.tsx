@@ -113,6 +113,12 @@ export function Checkin() {
     }
   };
 
+  // Resend the 6-digit code without leaving the OTP screen. The Otp component owns
+  // the cooldown; this just re-fires the send (iCloud is a known junker — see the hint).
+  const resendOtp = useCallback(async () => {
+    await sendEmailOtp(email.trim());
+  }, [email]);
+
   const submitOtp = useCallback(
     async (code: string) => {
       setBusy(true);
@@ -196,7 +202,7 @@ export function Checkin() {
         )}
 
         {screen === "otp" && (
-          <Otp email={email} otp={otp} setOtp={setOtp} busy={busy} error={error} onComplete={submitOtp} onBack={() => go("identify")} />
+          <Otp email={email} otp={otp} setOtp={setOtp} busy={busy} error={error} onComplete={submitOtp} onResend={resendOtp} onBack={() => go("identify")} />
         )}
 
         {screen === "returning" && (
@@ -313,12 +319,46 @@ function Identify({ email, setEmail, busy, error, onSubmit }: {
   );
 }
 
-function Otp({ email, otp, setOtp, busy, error, onComplete, onBack }: {
+const RESEND_COOLDOWN = 40; // seconds — protects the email send-rate limit
+
+function Otp({ email, otp, setOtp, busy, error, onComplete, onResend, onBack }: {
   email: string; otp: string[]; setOtp: (v: string[]) => void; busy: boolean; error: string | null;
-  onComplete: (code: string) => void; onBack: () => void;
+  onComplete: (code: string) => void; onResend: () => Promise<void>; onBack: () => void;
 }) {
   const refs = useRef<Array<HTMLInputElement | null>>([]);
   const submittedRef = useRef(false);
+
+  // Resend cooldown: a code was just sent when we landed here, so start the timer
+  // full. The button only re-enables at zero.
+  const [cooldown, setCooldown] = useState(RESEND_COOLDOWN);
+  const [resending, setResending] = useState(false);
+  const [resent, setResent] = useState(false);
+  const [resendErr, setResendErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (cooldown <= 0) return;
+    const t = setTimeout(() => setCooldown((n) => n - 1), 1000);
+    return () => clearTimeout(t);
+  }, [cooldown]);
+
+  const resend = async () => {
+    if (cooldown > 0 || resending || busy) return;
+    setResending(true);
+    setResendErr(null);
+    setResent(false);
+    try {
+      await onResend();
+      setResent(true);
+      setOtp(Array(6).fill(""));
+      submittedRef.current = false;
+      setCooldown(RESEND_COOLDOWN);
+      refs.current[0]?.focus();
+    } catch (e) {
+      setResendErr(e instanceof Error ? e.message : "Could not resend the code.");
+    } finally {
+      setResending(false);
+    }
+  };
 
   const setDigit = (i: number, v: string) => {
     const d = v.replace(/\D/g, "").slice(-1);
@@ -371,7 +411,15 @@ function Otp({ email, otp, setOtp, busy, error, onComplete, onBack }: {
       </div>
       {busy && <p className="ck-sub">VERIFYING…</p>}
       {error && <div className="ck-error">⚠ {error}</div>}
-      <button className="ck-linkish" onClick={onBack}>Wrong email? Go back</button>
+      {resent && <p className="ck-note" style={{ color: "var(--phos)" }}>✓ New code sent — check your inbox.</p>}
+      {resendErr && <div className="ck-error">⚠ {resendErr}</div>}
+      <div className="ck-resend">
+        <button type="button" className="ck-linkish" onClick={resend} disabled={cooldown > 0 || resending || busy}>
+          {resending ? "Sending…" : cooldown > 0 ? `Resend code (${cooldown}s)` : "Resend code"}
+        </button>
+        <button type="button" className="ck-linkish" onClick={onBack}>Wrong email? Go back</button>
+      </div>
+      <p className="ck-note">Didn't get it? Check your spam/junk folder.</p>
     </>
   );
 }
