@@ -216,6 +216,16 @@
   padding: 4px 0;
 }
 .ck-linkish:hover { color: var(--phos); }
+.ck-linkish:disabled { color: var(--phos-dim); opacity: 0.5; text-decoration: none; cursor: default; }
+
+/* OTP resend + go-back row */
+.ck-resend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px;
+  margin: 4px 0 6px;
+}
 
 /* team rows */
 .ck-team-row .nm {
