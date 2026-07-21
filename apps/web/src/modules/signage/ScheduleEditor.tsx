@@ -10,6 +10,7 @@ import {
   rowCovers, venueLocalParts, minuteLabel, schedulePhrase,
   type ScheduleProgram,
 } from "./scheduleResolve";
+import { ALL_MEDIA_PLAYLIST_ID, ALL_MEDIA_NAME, isAllMedia, type CarouselOrder } from "./mediaProgram";
 import type { AdminSlot } from "./useSignageAdmin";
 
 /**
@@ -31,7 +32,7 @@ const DAYS: { tok: string; label: string }[] = [
   { tok: "TH", label: "THU" }, { tok: "FR", label: "FRI" }, { tok: "SA", label: "SAT" }, { tok: "SU", label: "SUN" },
 ];
 
-type ProgKind = "rotation" | "playlist" | "capture";
+type ProgKind = "rotation" | "playlist" | "capture" | "carousel";
 
 export function ScheduleEditor({ slot, timezone, onClose }: { slot: AdminSlot; timezone: string; onClose: () => void }) {
   const rowsQ = useSlotScheduleAdmin(slot.id);
@@ -48,12 +49,14 @@ export function ScheduleEditor({ slot, timezone, onClose }: { slot: AdminSlot; t
   const [end, setEnd] = useState(1320); // 10:00 PM (used when not till close)
   const [progKind, setProgKind] = useState<ProgKind>("playlist");
   const [playlistId, setPlaylistId] = useState<string>("");
+  const [carouselOrder, setCarouselOrder] = useState<CarouselOrder>("ordered");
 
   const effEnd = tillClose ? CLOSE_MINUTE : end;
   const draftDays = [...days];
   const draftProgram: ScheduleProgram =
     progKind === "rotation" ? { kind: "rotation" }
     : progKind === "capture" ? { kind: "capture" }
+    : progKind === "carousel" ? { kind: "carousel", order: carouselOrder }
     : { kind: "playlist", playlist_id: playlistId };
   const canSubmit = progKind !== "playlist" || !!playlistId;
 
@@ -70,6 +73,7 @@ export function ScheduleEditor({ slot, timezone, onClose }: { slot: AdminSlot; t
     setEnd(1320);
     setProgKind("playlist");
     setPlaylistId("");
+    setCarouselOrder("ordered");
   }, []);
 
   // Load an existing row into the form for editing (mirrors the events recurrence-builder feel:
@@ -85,8 +89,9 @@ export function ScheduleEditor({ slot, timezone, onClose }: { slot: AdminSlot; t
     // not leave A's end in state, so unchecking TILL CLOSE on B would show A's stale minute. A
     // TILL-CLOSE row seeds the sensible default (10:00 PM) so unchecking reveals a fresh value.
     setEnd(isClose ? 1320 : r.end_minute);
-    setProgKind(r.program.kind === "playlist" ? "playlist" : r.program.kind === "capture" ? "capture" : "rotation");
+    setProgKind(r.program.kind === "playlist" ? "playlist" : r.program.kind === "capture" ? "capture" : r.program.kind === "carousel" ? "carousel" : "rotation");
     setPlaylistId(r.program.kind === "playlist" ? r.program.playlist_id : "");
+    setCarouselOrder(r.program.kind === "carousel" ? r.program.order : "ordered");
   }, []);
 
   const add = useMutation({
@@ -141,7 +146,7 @@ export function ScheduleEditor({ slot, timezone, onClose }: { slot: AdminSlot; t
               // DECISION: a MULTIVIEW daypart isn't buildable in this editor (only rotation /
               // playlist / capture) — such a row (only creatable via media-control / a manual
               // multiview) stays REMOVE-only so editing can't silently downgrade it.
-              const editable = r.program.kind === "rotation" || r.program.kind === "playlist" || r.program.kind === "capture";
+              const editable = r.program.kind === "rotation" || r.program.kind === "playlist" || r.program.kind === "capture" || r.program.kind === "carousel";
               const isEditing = r.id === editingId;
               return (
                 <div key={r.id} className="terminal-border" style={{ padding: "9px 11px", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", ...(isEditing ? { borderColor: "var(--terminal-amber, #ffb000)" } : null) }}>
@@ -199,9 +204,9 @@ export function ScheduleEditor({ slot, timezone, onClose }: { slot: AdminSlot; t
         <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
           <label style={fl}>RUN THIS PROGRAM</label>
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-            {(["rotation", "playlist", "capture"] as ProgKind[]).map((k) => {
+            {(["rotation", "playlist", "carousel", "capture"] as ProgKind[]).map((k) => {
               const on = progKind === k;
-              const label = k === "rotation" ? "ROTATION" : k === "playlist" ? "PLAYLIST" : "LIVE INPUT";
+              const label = k === "rotation" ? "ROTATION" : k === "playlist" ? "PLAYLIST" : k === "carousel" ? "CAROUSEL" : "LIVE INPUT";
               return (
                 <button key={k} type="button" onClick={() => setProgKind(k)} className={on ? "u-fill u-ink" : ""}
                   style={{ ...seg, background: on ? "var(--terminal-green)" : "transparent", color: on ? "#000" : "var(--terminal-green)", fontWeight: on ? 700 : 400 }}>{label}</button>
@@ -211,14 +216,31 @@ export function ScheduleEditor({ slot, timezone, onClose }: { slot: AdminSlot; t
           {progKind === "playlist" && (
             <select value={playlistId} onChange={(e) => setPlaylistId(e.target.value)} style={{ ...timeInput, marginTop: 6 }}>
               <option value="">— pick a playlist —</option>
+              <option value={ALL_MEDIA_PLAYLIST_ID}>{ALL_MEDIA_NAME}</option>
               {playlists.map((p) => <option key={p.playlist.id} value={p.playlist.id}>{p.playlist.name}</option>)}
             </select>
+          )}
+          {progKind === "carousel" && (
+            <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+              {(["ordered", "random"] as CarouselOrder[]).map((o) => {
+                const on = carouselOrder === o;
+                return (
+                  <button key={o} type="button" onClick={() => setCarouselOrder(o)} className={on ? "u-fill u-ink" : ""}
+                    style={{ ...seg, flex: 1, background: on ? "var(--terminal-green)" : "transparent", color: on ? "#000" : "var(--terminal-green)", fontWeight: on ? 700 : 400 }}>{o === "ordered" ? "ORDERED (A→Z)" : "RANDOM"}</button>
+                );
+              })}
+            </div>
           )}
         </div>
 
         <div className="terminal-border" style={{ padding: "9px 12px", fontSize: 15, lineHeight: 1.5 }}>
           <span style={{ opacity: 0.6 }}>Reads as: </span>
-          <span className="u-amber">{phrase} → {progKind === "rotation" ? "ROTATION" : progKind === "capture" ? "LIVE INPUT" : playlistId ? (playlists.find((p) => p.playlist.id === playlistId)?.playlist.name ?? "PLAYLIST") : "PLAYLIST…"}</span>
+          <span className="u-amber">{phrase} → {
+            progKind === "rotation" ? "ROTATION"
+            : progKind === "capture" ? "LIVE INPUT"
+            : progKind === "carousel" ? `CAROUSEL (${carouselOrder === "random" ? "random" : "ordered"})`
+            : playlistId ? (isAllMedia(playlistId) ? ALL_MEDIA_NAME : (playlists.find((p) => p.playlist.id === playlistId)?.playlist.name ?? "PLAYLIST")) : "PLAYLIST…"
+          }</span>
         </div>
 
         <button type="button" disabled={!canSubmit || add.isPending || save.isPending} onClick={() => { editingId ? save.mutate() : add.mutate(); }} className="u-fill u-ink"
@@ -238,7 +260,8 @@ function programLabel(r: ScheduleRowRaw, playlists: { playlist: { id: string; na
   const p = r.program;
   if (p.kind === "rotation") return "ROTATION";
   if (p.kind === "capture") return "LIVE INPUT";
-  if (p.kind === "playlist") return `PLAYLIST '${playlists.find((x) => x.playlist.id === p.playlist_id)?.playlist.name ?? "…"}'`;
+  if (p.kind === "playlist") return isAllMedia(p.playlist_id) ? ALL_MEDIA_NAME : `PLAYLIST '${playlists.find((x) => x.playlist.id === p.playlist_id)?.playlist.name ?? "…"}'`;
+  if (p.kind === "carousel") return `CAROUSEL · ${p.order === "random" ? "random" : "ordered"}`;
   if (p.kind === "multiview") return "MULTIVIEW";
   return "PROGRAM";
 }

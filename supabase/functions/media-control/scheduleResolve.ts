@@ -16,7 +16,8 @@
 export type SlotProgram =
   | { kind: "playlist"; playlist_id: string }
   | { kind: "capture"; device_match?: string; presentation?: string; audio?: boolean }
-  | { kind: "multiview"; main: unknown; panel_slot_id: string };
+  | { kind: "multiview"; main: unknown; panel_slot_id: string }
+  | { kind: "carousel"; order: "ordered" | "random" };
 
 /** A schedule daypart row can run a normal program OR an explicit "back to rotation" daypart. */
 export type ScheduleProgram = SlotProgram | { kind: "rotation" };

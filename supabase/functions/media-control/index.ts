@@ -40,9 +40,17 @@ function transportTopic(slug: string): string {
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+// The virtual ALL-MEDIA playlist (owner beat 2026-07-20) — a `playlist` program pointed at this
+// sentinel plays every present media_file shuffled. Contract mirror of ALL_MEDIA_PLAYLIST_ID/NAME in
+// apps/web/src/modules/signage/mediaProgram.ts — keep the two literals in sync (like MEDIA_SHELL_PORT).
+const ALL_MEDIA_ID = "all-media";
+const ALL_MEDIA_NAME = "ALL MEDIA (SHUFFLE)";
+// Carousel step order (owner beat) — a `carousel` program plays each playlist through then hops.
+const CAROUSEL_ORDERS = new Set(["ordered", "random"]);
 // 'schedule' (M3, D5): clear the manual override so the slot follows its daypart schedule again
 // (alias 'rotation' kept from M2 — both clear the override; with no schedule that IS rotation).
-const PROGRAM_CMDS = new Set(["playlist", "rotation", "capture", "schedule"]);
+// 'carousel' (owner beat): set a carousel program (order param 'ordered'|'random', default ordered).
+const PROGRAM_CMDS = new Set(["playlist", "rotation", "capture", "schedule", "carousel"]);
 const TRANSPORT_CMDS = new Set(["pause", "resume", "next"]);
 // v3: discovery + status. `playlists` needs NO slug (a global picker feed); `status` reads a slug
 // but writes nothing and is orientation-agnostic (a UCI may report on any screen).
@@ -105,6 +113,28 @@ function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json", ...cors } });
 }
 
+interface NowPlaying { title: string; year: string | null; posterUrl: string | null; thumbUrl: string | null; reportedAt: string }
+
+/** The film ON SCREEN (title/year/poster) for a playlist-or-carousel slot, when the TV reported it
+ *  via report_now_playing (0054) within NOW_PLAYING_FRESH_MS — else undefined (the UCI falls back to
+ *  the playlist name / carousel label). Shared by the `status` cmd for both a playlist and a carousel
+ *  program (a carousel is a chain of playlists, so the same per-file stamp applies). */
+// deno-lint-ignore no-explicit-any
+async function enrichNowPlaying(admin: any, reportedAt: string | null, fileId: string | null): Promise<NowPlaying | undefined> {
+  if (!reportedAt || !fileId || Date.now() - new Date(reportedAt).getTime() > NOW_PLAYING_FRESH_MS) return undefined;
+  const { data: file } = await admin
+    .from("media_files").select("title, filename, poster_path, thumb_path").eq("id", fileId).maybeSingle();
+  if (!file) return undefined;
+  const parts = nowPlayingParts((file.title as string | null) ?? null, (file.filename as string) ?? "");
+  if (!parts) return undefined;
+  const pub = (path: string | null) =>
+    path ? admin.storage.from("signage").getPublicUrl(path).data.publicUrl ?? null : null;
+  const thumbUrl = pub(file.thumb_path as string | null);
+  // v6: poster_path (real one-sheet, 0055) preferred, frame-thumb fallback. thumbUrl kept unchanged.
+  const posterUrl = pub(file.poster_path as string | null) ?? thumbUrl;
+  return { title: parts.title, year: parts.year, posterUrl, thumbUrl, reportedAt };
+}
+
 /** Send a broadcast message server-side via the realtime REST endpoint (no socket needed). */
 async function broadcast(topic: string, event: string, payload: unknown): Promise<void> {
   const res = await fetch(`${SUPABASE_URL}/realtime/v1/api/broadcast`, {
@@ -128,7 +158,7 @@ Deno.serve(async (req) => {
     return json({ error: "unauthorized" }, 401);
   }
 
-  let body: { slug?: string; cmd?: string; playlist?: string; hold?: string };
+  let body: { slug?: string; cmd?: string; playlist?: string; hold?: string; order?: string };
   try {
     body = await req.json();
   } catch {
@@ -140,7 +170,7 @@ Deno.serve(async (req) => {
   if (!cmd) return json({ error: "cmd required" }, 400);
   const known = PROGRAM_CMDS.has(cmd) || TRANSPORT_CMDS.has(cmd) || NOSLUG_CMDS.has(cmd) || READ_CMDS.has(cmd);
   if (!known) {
-    return json({ error: `unknown cmd '${cmd}' (expected playlist|rotation|capture|schedule|pause|resume|next|playlists|status)` }, 400);
+    return json({ error: `unknown cmd '${cmd}' (expected playlist|rotation|capture|carousel|schedule|pause|resume|next|playlists|status)` }, 400);
   }
 
   const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
@@ -178,6 +208,9 @@ Deno.serve(async (req) => {
     const playlists = (pls ?? [])
       .map((p) => ({ id: p.id as string, name: p.name as string, fileCount: counts.get(p.id as string) ?? 0 }))
       .sort((a, b) => a.name.localeCompare(b.name));
+    // The virtual ALL-MEDIA playlist (owner beat) — every present file shuffled; fileCount = all
+    // present files. Prepended so a UCI list always offers it (and `playlist all-media` accepts it).
+    playlists.unshift({ id: ALL_MEDIA_ID, name: ALL_MEDIA_NAME, fileCount: liveIds.size });
     return json({ ok: true, playlists });
   }
 
@@ -186,7 +219,7 @@ Deno.serve(async (req) => {
 
   // Optional hold tier for a program write (D4/D5). Default 'event'. Ignored by rotation/schedule.
   const hold = (body.hold ?? "").trim() || DEFAULT_HOLD;
-  if ((cmd === "playlist" || cmd === "capture") && !HOLDS.has(hold)) {
+  if ((cmd === "playlist" || cmd === "capture" || cmd === "carousel") && !HOLDS.has(hold)) {
     return json({ error: `invalid hold '${hold}' (expected pin|boundary|event)` }, 400);
   }
 
@@ -233,38 +266,28 @@ Deno.serve(async (req) => {
 
     const status: {
       kind: string; source: string; hold: string | null;
-      playlistId?: string; playlistName?: string | null;
-      nowPlaying?: { title: string; year: string | null; posterUrl: string | null; thumbUrl: string | null; reportedAt: string };
+      playlistId?: string; playlistName?: string | null; order?: string;
+      nowPlaying?: NowPlaying;
     } = { kind, source, hold: activeHold };
+
+    // Now-playing enrichment (0054, v5/v6): the film ON SCREEN, when the TV reported it recently.
+    // The shuffle position lives only in the TV browser, so the TV pings report_now_playing on each
+    // advance; here we surface it iff fresh (≤15 min). Applies to a playlist AND a carousel program
+    // (a carousel is a chain of playlists — same per-file stamp); a capture/rotation program never
+    // reads it (guarded below), so a leftover stamp can't leak into the wrong kind.
+    if (program && (program.kind === "playlist" || program.kind === "carousel")) {
+      status.nowPlaying = await enrichNowPlaying(admin, slot.now_playing_at as string | null, slot.now_playing_file_id as string | null);
+    }
     if (program && program.kind === "playlist") {
       status.playlistId = program.playlist_id;
-      const { data: pl } = await admin.from("media_playlists").select("name").eq("id", program.playlist_id).maybeSingle();
-      status.playlistName = (pl?.name as string | undefined) ?? null;
-
-      // Now-playing enrichment (0054, v5): the film ON SCREEN, when the TV reported it recently.
-      // The shuffle position lives only in the TV browser, so the TV pings report_now_playing on
-      // each advance; here we surface it iff fresh (≤15 min). Stale/absent ⇒ omit (UCI falls back
-      // to the playlist name). Only meaningful for an EFFECTIVE playlist program — a capture/rotation
-      // program never reads this (guarded by kind === "playlist"), so a leftover stamp can't leak.
-      const reportedAt = slot.now_playing_at as string | null;
-      const fileId = slot.now_playing_file_id as string | null;
-      if (reportedAt && fileId && Date.now() - new Date(reportedAt).getTime() <= NOW_PLAYING_FRESH_MS) {
-        const { data: file } = await admin
-          .from("media_files").select("title, filename, poster_path, thumb_path").eq("id", fileId).maybeSingle();
-        if (file) {
-          const parts = nowPlayingParts((file.title as string | null) ?? null, (file.filename as string) ?? "");
-          if (parts) {
-            const pub = (path: string | null) =>
-              path ? admin.storage.from("signage").getPublicUrl(path).data.publicUrl ?? null : null;
-            const thumbUrl = pub(file.thumb_path as string | null);
-            // v6: poster_path (real one-sheet, 0055) preferred, frame-thumb fallback. thumbUrl kept
-            // unchanged so the Q-SYS plugin can migrate to posterUrl whenever, with no other change.
-            const posterUrl = pub(file.poster_path as string | null) ?? thumbUrl;
-            status.nowPlaying = { title: parts.title, year: parts.year, posterUrl, thumbUrl, reportedAt };
-          }
-        }
+      if (program.playlist_id === ALL_MEDIA_ID) {
+        status.playlistName = ALL_MEDIA_NAME; // virtual — no media_playlists row to name it
+      } else {
+        const { data: pl } = await admin.from("media_playlists").select("name").eq("id", program.playlist_id).maybeSingle();
+        status.playlistName = (pl?.name as string | undefined) ?? null;
       }
     }
+    if (program && program.kind === "carousel") status.order = program.order;
     return json({ ok: true, slug, status });
   }
 
@@ -285,7 +308,11 @@ Deno.serve(async (req) => {
   // Program commands: write signage_slots.program + the M3 hold pair (single source of truth; the
   // TV + hub follow live). rotation/schedule CLEAR the override (null program + null hold) so the
   // slot follows its daypart schedule; playlist/capture SET an override with a hold + set-at anchor.
-  let program: { kind: "playlist"; playlist_id: string } | { kind: "capture" } | null;
+  let program:
+    | { kind: "playlist"; playlist_id: string }
+    | { kind: "capture" }
+    | { kind: "carousel"; order: "ordered" | "random" }
+    | null;
   let update: Record<string, unknown>;
   if (cmd === "rotation" || cmd === "schedule") {
     program = null;
@@ -293,18 +320,28 @@ Deno.serve(async (req) => {
   } else {
     if (cmd === "capture") {
       program = { kind: "capture" };
+    } else if (cmd === "carousel") {
+      // carousel — order param (default 'ordered'); plays a whole playlist through then hops.
+      const order = (body.order ?? "").trim() || "ordered";
+      if (!CAROUSEL_ORDERS.has(order)) return json({ error: `invalid order '${order}' (expected ordered|random)` }, 400);
+      program = { kind: "carousel", order: order as "ordered" | "random" };
     } else {
-      // playlist — resolve by id (uuid) else case-insensitive name, scoped to the slot's venue.
+      // playlist — the virtual ALL-MEDIA sentinel (by id 'all-media' or its name), else resolve by
+      // id (uuid) or case-insensitive name, scoped to the slot's venue.
       const ref = (body.playlist ?? "").trim();
       if (!ref) return json({ error: "playlist required for cmd 'playlist'" }, 400);
-      let q = admin.from("media_playlists").select("id, name").eq("venue_id", slot.venue_id);
-      // NOTE-5 (PR #56 backlog): escape %/_ so a name with them matches literally, not as wildcards.
-      q = UUID_RE.test(ref) ? q.eq("id", ref) : q.ilike("name", escapeLike(ref));
-      const { data: pls, error: plErr } = await q.limit(2);
-      if (plErr) return json({ error: `playlist lookup failed: ${plErr.message}` }, 500);
-      if (!pls || pls.length === 0) return json({ error: `no playlist matching '${ref}'` }, 404);
-      if (pls.length > 1) return json({ error: `playlist '${ref}' is ambiguous (matches ${pls.length})` }, 409);
-      program = { kind: "playlist", playlist_id: pls[0].id as string };
+      if (ref.toLowerCase() === ALL_MEDIA_ID || ref.toLowerCase() === ALL_MEDIA_NAME.toLowerCase()) {
+        program = { kind: "playlist", playlist_id: ALL_MEDIA_ID };
+      } else {
+        let q = admin.from("media_playlists").select("id, name").eq("venue_id", slot.venue_id);
+        // NOTE-5 (PR #56 backlog): escape %/_ so a name with them matches literally, not as wildcards.
+        q = UUID_RE.test(ref) ? q.eq("id", ref) : q.ilike("name", escapeLike(ref));
+        const { data: pls, error: plErr } = await q.limit(2);
+        if (plErr) return json({ error: `playlist lookup failed: ${plErr.message}` }, 500);
+        if (!pls || pls.length === 0) return json({ error: `no playlist matching '${ref}'` }, 404);
+        if (pls.length > 1) return json({ error: `playlist '${ref}' is ambiguous (matches ${pls.length})` }, 409);
+        program = { kind: "playlist", playlist_id: pls[0].id as string };
+      }
     }
     update = { program, program_hold: hold, program_set_at: new Date().toISOString() };
   }

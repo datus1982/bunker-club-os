@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/shared/supabaseClient";
+import { supabase, VENUE_ID } from "@/shared/supabaseClient";
 import { collectPaged } from "./mediaPagination";
 
 /**
@@ -25,6 +25,9 @@ export type MultiviewMain =
   | { kind: "playlist"; playlist_id: string }
   | { kind: "capture"; device_match?: string };
 
+/** How a carousel steps between playlists (owner beat 2026-07-20). */
+export type CarouselOrder = "ordered" | "random";
+
 /** Slot program shapes (docs/15 §Concept: PROGRAMS). null slot.program = rotation. */
 export type SlotProgram =
   | { kind: "playlist"; playlist_id: string }
@@ -33,7 +36,29 @@ export type SlotProgram =
   | { kind: "capture"; device_match?: string; presentation?: Presentation; audio?: boolean }
   // Multiview (M3, D1/D8): a 16:9 main region (playlist|capture) + a portrait PANEL slot running
   // the existing rotation. Preempted whole by takeover/moment/game (D9 — resolveSlotMode unchanged).
-  | { kind: "multiview"; main: MultiviewMain; panel_slot_id: string };
+  | { kind: "multiview"; main: MultiviewMain; panel_slot_id: string }
+  // Carousel (owner beat 2026-07-20): play a whole playlist through, then hop to the next —
+  // 'ordered' walks the playlists alphabetically by name, 'random' picks a different one each
+  // hop (no immediate repeat). Each playlist keeps its OWN shuffle/presentation/subtitles while it
+  // plays. Preempted exactly like `playlist` (renders only at rotation-bottom; the <video> stops
+  // the instant a takeover/moment/game flips mode off 'rotation').
+  | { kind: "carousel"; order: CarouselOrder };
+
+/**
+ * The synthetic id of the virtual ALL-MEDIA playlist (owner beat 2026-07-20). Not a media_playlists
+ * row — a `playlist` program pointing at it resolves to EVERY present media_file for the venue,
+ * shuffled. A short non-uuid sentinel that can never collide with a real gen_random_uuid() id, and
+ * the ONE literal both the web player and the media-control edge fn key off. It appears in the hub
+ * playlist picker, in schedules, and in the Q-SYS `playlists` feed — but never in the MEDIA LIBRARY
+ * management grid (that lists only real media_playlists rows, so the sentinel is naturally excluded).
+ */
+export const ALL_MEDIA_PLAYLIST_ID = "all-media";
+/** Display name of the virtual ALL-MEDIA playlist (picker + Q-SYS listing). */
+export const ALL_MEDIA_NAME = "ALL MEDIA (SHUFFLE)";
+/** Is this id the virtual ALL-MEDIA playlist? */
+export function isAllMedia(playlistId: string | null | undefined): boolean {
+  return playlistId === ALL_MEDIA_PLAYLIST_ID;
+}
 
 /**
  * The default localhost port the Electron media shell serves video on. A `?mediahost=host:port`
@@ -131,6 +156,32 @@ export function usePlaylistProgram(playlistId: string | null) {
     enabled: !!playlistId,
     queryFn: async (): Promise<{ playlist: MediaPlaylist | null; files: MediaFile[] }> => {
       const pid = playlistId as string;
+
+      // ALL MEDIA (virtual): every present file for the venue, no media_playlist_items join.
+      // DECISION: the synthesized playlist is FRAMED (so the NOW SHOWING title shows — the owner-
+      // recommended default for ALL MEDIA) + shuffle (the whole point) + subtitles-on (mirrors
+      // 0053's per-playlist default). A movie-only fullbleed run is still available via a real
+      // folder/custom playlist toggle; ALL MEDIA is the library-wide mixed grab-bag, so it keeps chrome.
+      if (isAllMedia(pid)) {
+        const rows = await collectPaged<Omit<MediaFile, "thumb">>(async (from, to) => {
+          const { data, error } = await supabase
+            .from("media_files")
+            .select(FILE_COLS)
+            .eq("venue_id", VENUE_ID)
+            .eq("status", "present")
+            .order("filename")
+            .order("id") // stable tiebreak so a page window never dups/skips
+            .range(from, to);
+          if (error) throw error;
+          return (data ?? []) as unknown as Omit<MediaFile, "thumb">[];
+        });
+        const playlist: MediaPlaylist = {
+          id: ALL_MEDIA_PLAYLIST_ID, name: ALL_MEDIA_NAME, source: "custom", folder_path: null,
+          presentation: "framed", shuffle: true, subtitles: true,
+        };
+        return { playlist, files: rows.map((f) => ({ ...f, thumb: thumbUrl(f.thumb_path) })) };
+      }
+
       const [playlistRes, itemRows] = await Promise.all([
         supabase
           .from("media_playlists")
@@ -169,6 +220,75 @@ export function usePlaylistProgram(playlistId: string | null) {
         () => qc.invalidateQueries({ queryKey: ["media", "program"] }))
       .on("postgres_changes", { event: "*", schema: "public", table: "media_playlist_items" },
         () => qc.invalidateQueries({ queryKey: ["media", "program"] }))
+      .subscribe();
+    return () => { supabase.removeChannel(ch); };
+  }, [qc]);
+
+  return query;
+}
+
+/** One playlist a carousel can step through — id + name only (the video files load per-leg via
+ *  usePlaylistProgram when that playlist is the one playing). */
+export interface CarouselPlaylist {
+  id: string;
+  name: string;
+}
+
+/**
+ * The playlists a CAROUSEL program steps through: every real media_playlists row for the venue
+ * that has ≥1 present file, sorted by name (the 'ordered' walk order; 'random' ignores it). Empty
+ * playlists are excluded so the carousel never stalls on a playlist that would show only a
+ * MEDIA-HOST-empty card (and never `ended` to hop). The virtual ALL-MEDIA playlist is NOT included
+ * — it is a superset, redundant inside a carousel. Realtime on all three media tables so a new
+ * playlist, a deleted one, or a file going present/missing re-resolves the cycle without a reload.
+ * Anon-readable (TVs read anon), like usePlaylistProgram.
+ */
+export function useCarouselPlaylists() {
+  const qc = useQueryClient();
+  const query = useQuery({
+    queryKey: ["media", "carousel-playlists"],
+    queryFn: async (): Promise<CarouselPlaylist[]> => {
+      // playlists (id, name) + the set of playlist_ids that have at least one PRESENT file.
+      const [playlists, items] = await Promise.all([
+        collectPaged<{ id: string; name: string }>(async (from, to) => {
+          const { data, error } = await supabase
+            .from("media_playlists")
+            .select("id, name")
+            .eq("venue_id", VENUE_ID)
+            .order("name")
+            .order("id")
+            .range(from, to);
+          if (error) throw error;
+          return (data ?? []) as unknown as { id: string; name: string }[];
+        }),
+        collectPaged<{ playlist_id: string }>(async (from, to) => {
+          const { data, error } = await supabase
+            .from("media_playlist_items")
+            .select("playlist_id, file:media_files!inner(status)")
+            .eq("file.status", "present")
+            .order("playlist_id")
+            .order("file_id")
+            .range(from, to);
+          if (error) throw error;
+          return (data ?? []) as unknown as { playlist_id: string }[];
+        }),
+      ]);
+      const nonEmpty = new Set(items.map((r) => r.playlist_id));
+      return playlists
+        .filter((p) => nonEmpty.has(p.id))
+        .map((p) => ({ id: p.id, name: p.name }));
+    },
+  });
+
+  useEffect(() => {
+    const ch = supabase
+      .channel("media:carousel-playlists")
+      .on("postgres_changes", { event: "*", schema: "public", table: "media_files" },
+        () => qc.invalidateQueries({ queryKey: ["media", "carousel-playlists"] }))
+      .on("postgres_changes", { event: "*", schema: "public", table: "media_playlists" },
+        () => qc.invalidateQueries({ queryKey: ["media", "carousel-playlists"] }))
+      .on("postgres_changes", { event: "*", schema: "public", table: "media_playlist_items" },
+        () => qc.invalidateQueries({ queryKey: ["media", "carousel-playlists"] }))
       .subscribe();
     return () => { supabase.removeChannel(ch); };
   }, [qc]);
