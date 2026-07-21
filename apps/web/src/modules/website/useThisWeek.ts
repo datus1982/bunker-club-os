@@ -3,6 +3,13 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase, VENUE_ID } from "@/shared/supabaseClient";
 import { todayKey } from "./useSiteCopy";
 import { fetchPromoMenu, fieldStr, priceLine } from "./promoResolve";
+import {
+  DYNAMIC_TEMPLATES,
+  resolveNowPlayingCard,
+  resolveTopSellersCard,
+  resolveInstagramCard,
+  type DynamicItem,
+} from "./dynamicCards";
 
 /**
  * The home page's "What's On" feed (docs/14): auto-assembled from data the OS
@@ -21,7 +28,9 @@ import { fetchPromoMenu, fieldStr, priceLine } from "./promoResolve";
 
 export type StripCard = {
   key: string;
-  kind: "trivia" | "karaoke" | "event" | "promo" | "screen";
+  // "media" = the NOW PLAYING hero (a dynamic signage card). TerminalFeed styles off live/image/
+  // badge, not kind, so kind stays a semantic tag (no exhaustive switch keys off it).
+  kind: "trivia" | "karaoke" | "event" | "promo" | "screen" | "media";
   kicker: string;
   title: string;
   body?: string;
@@ -29,6 +38,9 @@ export type StripCard = {
   image?: string;
   /** Small kind tag rendered beside the kicker (live screen events: WINDOW / MESSAGE). */
   badge?: string;
+  /** Attribution credit shown as a dim caption on this card only (e.g. "POSTERS: TMDB" on the
+   *  NOW PLAYING hero when a real sourced poster is on screen — a TMDB API terms obligation). */
+  credit?: string;
   live?: boolean;
 };
 
@@ -180,6 +192,11 @@ export function useThisWeek() {
       let shown = 0;
       for (const p of inWindow) {
         if (shown >= 12) break;
+        // Dynamic templates (now_playing / top_sellers / instagram) carry no title in their own
+        // fields — they're resolved live below, not on the manual-promo path. Skip them here so
+        // they never count toward the promo cap or fall through as contentless. (They'd skip for
+        // lack of a title anyway; this is explicit.)
+        if (DYNAMIC_TEMPLATES.has(p.template)) continue;
         const guid = fieldStr(p.fields, ["source_toast_guid"]);
         // Toast-sourced but off-POS / 86'd (absent from public_menu) → skip entirely.
         const src = guid ? menu.get(guid) : undefined;
@@ -207,6 +224,34 @@ export function useThisWeek() {
         });
       }
 
+      // ── 2b) DYNAMIC SIGNAGE CARDS (now_playing / top_sellers / instagram) ──
+      // These templates carry no authored copy — the TVs build them live at render time — so the
+      // feed resolves each the SAME anon-safe way the /signage board does (dynamicCards.ts). Each
+      // 🌐-flagged item flows through to the website only when its live source has content:
+      //   • now_playing → THE HERO: the film currently on the bar's landscape screen (skips when
+      //     nothing fresh is playing — correct, matches the card's absence today).
+      //   • top_sellers / instagram → grouped with the promos (current "what's on" content).
+      // DECISION: render at most ONE card per dynamic template (they're singleton concepts — a
+      // second now_playing/top_sellers/instagram item would be redundant), so multiple flagged
+      // items of the same template never crowd the feed. Cap: the three dynamic cards are bounded
+      // by construction (≤1 each), so they don't need to draw down the 12-promo cap.
+      const firstOf = (tpl: string): DynamicItem | undefined => {
+        const p = inWindow.find((x) => x.template === tpl);
+        return p ? { id: p.id, template: p.template, fields: p.fields } : undefined;
+      };
+      const npItem = firstOf("now_playing");
+      const tsItem = firstOf("top_sellers");
+      const igItem = firstOf("instagram");
+      const [nowPlayingCard, topSellersCard, instagramCard] = await Promise.all([
+        npItem ? resolveNowPlayingCard(npItem) : Promise.resolve(null),
+        tsItem ? resolveTopSellersCard(tsItem) : Promise.resolve(null),
+        igItem ? resolveInstagramCard(igItem) : Promise.resolve(null),
+      ]);
+      // top_sellers + instagram sit with the promos (before upcoming events); now_playing leads
+      // the whole feed as the hero (prepended at the return, ahead of even ON THE SCREENS NOW).
+      if (topSellersCard) cards.push(topSellersCard);
+      if (instagramCard) cards.push(instagramCard);
+
       // ── 3) UPCOMING EVENTS (public_events, future only, de-duped) ─────────
       const nowIso = new Date().toISOString();
       const { data: events } = await supabase
@@ -228,8 +273,8 @@ export function useThisWeek() {
         });
       }
 
-      // ON THE SCREENS NOW leads the rotation.
-      return [...screenCards, ...cards];
+      // NOW PLAYING is the hero (leads), then ON THE SCREENS NOW, then the rest.
+      return [...(nowPlayingCard ? [nowPlayingCard] : []), ...screenCards, ...cards];
     },
   });
 }

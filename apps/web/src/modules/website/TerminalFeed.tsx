@@ -112,6 +112,7 @@ function FeedGrid({ cards }: { cards: StripCard[] }) {
             </div>
             <p className="site-card__title">{c.title}</p>
             {c.body && <p className="site-card__body">{c.body}</p>}
+            {c.credit && <p className="site-card__credit">{c.credit}</p>}
           </div>
         </article>
       ))}
@@ -203,6 +204,9 @@ export function TerminalFeed({ cards }: { cards: StripCard[] }) {
               {type.cursor === "body" && <Cursor />}
             </p>
           )}
+          {/* Attribution — shown once the card has fully typed on (finite), so it never streams
+              character-by-character like content; it's a static credit, not part of the message. */}
+          {active.credit && type.done && <p className="site-feed__credit">{active.credit}</p>}
         </div>
       </div>
 
