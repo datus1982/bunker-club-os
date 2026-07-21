@@ -1064,6 +1064,13 @@ export function NowPlaying({ item, orientation }: TemplateProps) {
           <span style={{ fontSize: SUPPORT_TEXT[orientation], letterSpacing: 2, opacity: 0.7 }}>FROM {state.playlistName.toUpperCase()}</span>
         )}
       </div>
+      {/* TMDB attribution (their API terms): a short credit shown ONLY when a real sourced poster
+          is on screen (hasPoster). Once the owner re-sources from TMDB, every poster is TMDB; the
+          full "not endorsed or certified by TMDB" disclaimer lives in the qsys-media-control runbook.
+          Rendered at the shared SUPPORT_TEXT floor, dim, so it credits without competing with the title. */}
+      {file.hasPoster && (
+        <div style={{ fontSize: SUPPORT_TEXT[orientation], letterSpacing: 2, opacity: 0.45 }}>POSTERS: TMDB</div>
+      )}
     </div>
   );
 

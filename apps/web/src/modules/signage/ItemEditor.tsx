@@ -591,9 +591,10 @@ function InstagramFields({ fields, setField }: FieldProps) {
 function NowPlayingFields({ fields, setField, slots }: FieldProps & { slots: AdminSlot[] }) {
   const source = str(fields.source_slug) ?? DEFAULT_NOW_PLAYING_SOURCE;
   const showPlaylist = fields.show_playlist === true;
-  // The source is a landscape MEDIA screen. Offer every landscape slot; keep the current value
-  // selectable even if it isn't a current landscape slug (so an edited card never loses it).
-  const landscape = slots.filter((s) => s.orientation === "landscape");
+  // The source is a landscape MEDIA screen. Offer every landscape SCREEN (panels never stamp
+  // now_playing — they have no TV of their own, NOTE-1); keep the current value selectable even if
+  // it isn't a current landscape slug (so an edited card never loses it).
+  const landscape = slots.filter((s) => s.orientation === "landscape" && s.kind !== "panel");
   const options = landscape.some((s) => s.slug === source) ? landscape : [{ slug: source, name: source } as AdminSlot, ...landscape];
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>

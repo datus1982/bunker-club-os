@@ -3,10 +3,12 @@
 --
 -- The media library's only artwork today is the shell's frame-thumb (media_files.thumb_path —
 -- a grabbed video frame). That reads as a muddy still on a NOW PLAYING cross-promo slide. This
--- adds a proper poster path, sourced out-of-band by scripts/fetch-movie-posters.ts (keyless
--- iTunes Search API → mirrored into the PUBLIC `signage` bucket at media-posters/{venue}/{hash}.jpg,
--- image/jpeg, well within 0037's 5 MB/jpeg bucket caps) and read by the Q-SYS nowPlaying API
--- (media-control v6) + the new `now_playing` signage template.
+-- adds a proper poster path, sourced out-of-band by scripts/fetch-movie-posters.ts (TMDB when a
+-- TMDB_API_KEY is present, else the keyless Wikipedia/Wikimedia pageimages API — see that script's
+-- header for why iTunes is not usable) → mirrored into the PUBLIC `signage` bucket at
+-- media-posters/{venue}/{hash}.{jpg|png} (posters are jpg or png — the first Wikipedia pass stored
+-- 259 jpg + 66 png; all well within 0037's 5 MB image bucket caps), and read by the Q-SYS
+-- nowPlaying API (media-control v6) + the new `now_playing` signage template.
 --
 --   • media_files.poster_path — signage-bucket path to the poster, or NULL when none was found.
 --     Consumers PREFER poster_path and FALL BACK to the existing thumb_path, so a null poster

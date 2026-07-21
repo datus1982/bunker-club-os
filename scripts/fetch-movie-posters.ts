@@ -5,26 +5,32 @@
  * template PREFER poster_path and fall back to the frame-thumb (thumb_path) — so a miss never
  * breaks a card.
  *
- * ── Source: keyless Wikipedia / Wikimedia (NOT iTunes) ──────────────────────────────────────
- * The task specified the keyless iTunes Search API, but as of 2025 Apple has emptied the movie
- * AND tv catalogs from that API — `media=movie` / `media=tvShow` return resultCount:0 for every
- * storefront (US/GB/AU/CA/DE and no-country all verified 0). TMDB and OMDb both require an API
- * key (401 without one). So this uses the MediaWiki Action API, which IS keyless and returns the
- * real theatrical one-sheet: `generator=search` finds the film/show article, `prop=pageimages&
- * piprop=original&pilicense=any` returns its lead image (for a film article that lead image is
- * the poster; `pilicense=any` is REQUIRED because posters are fair-use/non-free and pageimages
- * hides non-free images by default). Trade-off: Wikipedia keeps non-free posters at fair-use
- * low resolution (~250–260 px wide), so posters are real but soft — still far better than a
- * grabbed video frame, and contain-fit on the slide never crops them. // DECISION reported up.
+ * ── Two-source poster fetch: TMDB (preferred) → keyless Wikipedia (fallback) ─────────────────
+ * TMDB (when env TMDB_API_KEY is set) is the primary source: crisp real one-sheets at w780. The
+ * v3 API is a simple api_key query — `search/movie?query=<title>&year=<year>` / `search/tv?query=
+ * <show>` → `results[0].poster_path` → https://image.tmdb.org/t/p/w780{poster_path}.
+ * ATTRIBUTION: using the TMDB API obliges the credit "This product uses the TMDB API but is not
+ * endorsed or certified by TMDB." — carried as the full sentence in docs/runbooks/qsys-media-control.md
+ * and a short "POSTERS: TMDB" credit on the now_playing slide (shown only when a real poster is up).
+ *
+ * If TMDB_API_KEY is ABSENT, it falls back to the keyless MediaWiki Action API. (The task first
+ * specified the keyless iTunes Search API, but as of 2025 Apple has emptied the movie AND tv
+ * catalogs from it — `media=movie`/`media=tvShow` return resultCount:0 for every storefront,
+ * verified.) MediaWiki: `generator=search` finds the film/show article, `prop=pageimages&
+ * piprop=original&pilicense=any` returns its lead image — the poster for a film article
+ * (`pilicense=any` is REQUIRED: posters are fair-use/non-free and pageimages hides those by
+ * default). Trade-off: Wikipedia keeps non-free posters at fair-use low resolution (~250–260 px
+ * wide) — real but soft; TMDB's w780 is the upgrade. // DECISION reported up.
  *
  * Parsing mirrors mediaProgram.parseTitleYear: "Name (YYYY)" → movie; "Show - SxxEyy - Ep" → the
- * SHOW name searched as a TV series. TV artwork on Wikipedia is inconsistent (some shows have a
- * title-card or logo rather than a 2:3 poster, and SVG logos are skipped) — that's fine, the bar
- * plays mostly movies and any real raster art beats a frame grab; a miss just leaves the thumb.
+ * SHOW name searched as a TV series. TV artwork on Wikipedia is inconsistent (title-card/logo
+ * rather than a 2:3 poster, SVG logos skipped); TMDB has proper TV posters. A miss NEVER nulls an
+ * existing poster_path (posters are only ever upgraded or left, never downgraded to null).
  *
  * Idempotent: rows that already have a poster_path are skipped, so re-runs only fill new/failed
- * files. `--force` re-fetches everything, `--dry` fetches + logs without uploading/writing,
- * `--limit N` caps the run for a smoke test.
+ * files. `--force` re-fetches everything — with TMDB present this is how the soft Wikipedia
+ * posters get REPLACED by TMDB (a TMDB miss on a --force row keeps its existing poster, never
+ * nulled). `--dry` fetches + logs without uploading/writing; `--limit N` caps for a smoke test.
  *
  * Run: `npx tsx scripts/fetch-movie-posters.ts [--dry] [--force] [--limit N]`
  */
@@ -34,8 +40,12 @@ const WIKI = "https://en.wikipedia.org/w/api.php";
 const UA = "bunker-club-os/1.0 (signage movie-poster fetch; contact datus@mac.com)";
 const BUCKET = "signage";
 const VENUE = requireEnv("VENUE_ID");
-const DELAY_MS = 250; // polite gap between Wikipedia queries
+const DELAY_MS = 250; // polite gap between source queries
 const MAX_BYTES = 5 * 1024 * 1024; // signage bucket cap (0037)
+
+// Source selection: TMDB when a key is present (crisp w780 one-sheets), else keyless Wikipedia.
+const TMDB_KEY = process.env.TMDB_API_KEY?.trim() || "";
+const SOURCE: "tmdb" | "wikipedia" = TMDB_KEY ? "tmdb" : "wikipedia";
 
 const argv = process.argv.slice(2);
 const DRY = argv.includes("--dry");
@@ -74,6 +84,15 @@ const norm = (s: string) => s.toLowerCase().replace(/\(.*?\)/g, "").replace(/[^a
 
 interface Hit { pageTitle: string; source: string; width: number; height: number }
 
+/** A resolved poster from either source: the image URL, a label for logging, and whether the match
+ *  is confident (the resolved title contains the searched name). Null = nothing found. */
+interface Sourced { imageUrl: string; label: string; confident: boolean }
+
+const isConfident = (name: string, matched: string): boolean => {
+  const a = norm(name), b = norm(matched);
+  return !!a && (b.includes(a) || (a.length >= 6 && a.includes(b)));
+};
+
 /** One MediaWiki request: search for the article + its non-free lead image (the poster). */
 async function wikiPoster(term: string): Promise<Hit | null> {
   const url = `${WIKI}?action=query&format=json&generator=search&gsrsearch=${encodeURIComponent(term)}` +
@@ -88,6 +107,46 @@ async function wikiPoster(term: string): Promise<Hit | null> {
   return { pageTitle: first.title, source: first.original.source, width: first.original.width, height: first.original.height };
 }
 
+/** Wikipedia source (keyless fallback). */
+async function wikiSourced(p: Parsed): Promise<Sourced | null> {
+  const hit = await wikiPoster(searchTerm(p));
+  if (!hit || !hit.source) return null;
+  return { imageUrl: hit.source, label: `${hit.pageTitle} (${hit.width}×${hit.height})`, confident: isConfident(p.name, hit.pageTitle) };
+}
+
+/** TMDB source (preferred when TMDB_API_KEY is set): search movie by title+year / tv by show name,
+ *  take the top result's poster_path at w780. Never nulls — returns null on no-poster (caller keeps
+ *  any existing poster_path). */
+async function tmdbSourced(p: Parsed): Promise<Sourced | null> {
+  const base = "https://api.themoviedb.org/3";
+  const url = p.kind === "movie"
+    ? `${base}/search/movie?api_key=${TMDB_KEY}&query=${encodeURIComponent(p.name)}${p.year ? `&year=${p.year}` : ""}`
+    : `${base}/search/tv?api_key=${TMDB_KEY}&query=${encodeURIComponent(p.name)}`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`tmdb ${res.status}`);
+  const j = (await res.json()) as { results?: Array<{ poster_path: string | null; title?: string; name?: string; release_date?: string }> };
+  const results = (j.results ?? []).filter((r) => r.poster_path);
+  if (results.length === 0) return null;
+  // Prefer a movie result whose release year matches ±1; else the top (relevance-ranked) result.
+  let pick = results[0];
+  if (p.kind === "movie" && p.year) {
+    const y = Number(p.year);
+    const match = results.find((r) => { const ry = Number((r.release_date ?? "").slice(0, 4)); return ry && Math.abs(ry - y) <= 1; });
+    if (match) pick = match;
+  }
+  const matchedTitle = pick.title ?? pick.name ?? "";
+  return {
+    imageUrl: `https://image.tmdb.org/t/p/w780${pick.poster_path}`,
+    label: matchedTitle || "(tmdb)",
+    confident: isConfident(p.name, matchedTitle),
+  };
+}
+
+/** Resolve a poster from the active source (TMDB when keyed, else Wikipedia). */
+function sourcePoster(p: Parsed): Promise<Sourced | null> {
+  return SOURCE === "tmdb" ? tmdbSourced(p) : wikiSourced(p);
+}
+
 /** Map a fetched image's content-type to an accepted (bucket) extension + type. Null = reject. */
 function imageKind(contentType: string | null, source: string): { ext: string; type: string } | null {
   const ct = (contentType ?? "").toLowerCase();
@@ -99,7 +158,7 @@ function imageKind(contentType: string | null, source: string): { ext: string; t
 
 async function main() {
   const admin = newServiceClient();
-  console.log(`\nfetch-movie-posters — ${DRY ? "DRY RUN (no upload/write)" : "LIVE"}${FORCE ? " · FORCE" : ""}${LIMIT !== Infinity ? ` · limit ${LIMIT}` : ""}\n`);
+  console.log(`\nfetch-movie-posters — source ${SOURCE.toUpperCase()}${SOURCE === "tmdb" ? " (w780)" : " (keyless)"} · ${DRY ? "DRY RUN (no upload/write)" : "LIVE"}${FORCE ? " · FORCE" : ""}${LIMIT !== Infinity ? ` · limit ${LIMIT}` : ""}\n`);
 
   const { data, error } = await admin
     .from("media_files")
@@ -121,21 +180,17 @@ async function main() {
     const parsed = parseEntry(row.title, row.filename);
     const label = (row.title ?? basename(row.filename)).slice(0, 60);
     try {
-      const hit = await wikiPoster(searchTerm(parsed));
-      await sleep(DELAY_MS); // polite between wiki calls (image fetch below is a different host)
+      const hit = await sourcePoster(parsed);
+      await sleep(DELAY_MS); // polite between source calls (the image fetch below is a different host)
 
-      if (!hit || !hit.source) { missed++; misses.push(label); console.log(`  ○ MISS  ${label}  (no article/image)`); continue; }
+      // A miss NEVER writes — an existing poster_path is left intact (never downgraded to null).
+      if (!hit) { missed++; misses.push(label); console.log(`  ○ MISS  ${label}  (no poster${row.poster_path ? ", kept existing" : ""})`); continue; }
+      if (!hit.confident) { lowConf++; lows.push(`${label}  →  ${hit.label}`); }
 
-      // Confidence: the resolved article title should contain the searched name (or vice-versa
-      // for very short names). A miss here still takes the image but is flagged for review.
-      const nName = norm(parsed.name), nPage = norm(hit.pageTitle);
-      const confident = !!nName && (nPage.includes(nName) || (nName.length >= 6 && nName.includes(nPage)));
-      if (!confident) { lowConf++; lows.push(`${label}  →  ${hit.pageTitle}`); }
-
-      const imgRes = await fetch(hit.source, { headers: { "User-Agent": UA } });
+      const imgRes = await fetch(hit.imageUrl, { headers: { "User-Agent": UA } });
       if (!imgRes.ok) { missed++; misses.push(label); console.log(`  ○ MISS  ${label}  (image ${imgRes.status})`); continue; }
-      const kind = imageKind(imgRes.headers.get("content-type"), hit.source);
-      if (!kind) { missed++; misses.push(label); console.log(`  ○ MISS  ${label}  (unsupported ${hit.source.split(".").pop()})`); continue; }
+      const kind = imageKind(imgRes.headers.get("content-type"), hit.imageUrl);
+      if (!kind) { missed++; misses.push(label); console.log(`  ○ MISS  ${label}  (unsupported ${hit.imageUrl.split(".").pop()})`); continue; }
       const bytes = new Uint8Array(await imgRes.arrayBuffer());
       if (bytes.length === 0 || bytes.length > MAX_BYTES) { missed++; misses.push(label); console.log(`  ○ MISS  ${label}  (bad size ${bytes.length})`); continue; }
 
@@ -147,8 +202,8 @@ async function main() {
         if (setErr) { missed++; misses.push(label); console.log(`  ✗ FAIL  ${label}  (db: ${setErr.message})`); continue; }
       }
       found++;
-      const flag = confident ? "" : "  ⚠ low-confidence";
-      console.log(`  ✔ ${parsed.kind === "tv" ? "TV " : "   "}${label}  ←  ${hit.pageTitle} (${hit.width}×${hit.height})${flag}`);
+      const flag = hit.confident ? "" : "  ⚠ low-confidence";
+      console.log(`  ✔ ${parsed.kind === "tv" ? "TV " : "   "}${label}  ←  ${hit.label}${flag}`);
     } catch (e) {
       missed++; misses.push(label);
       console.log(`  ✗ ERR   ${label}  (${e instanceof Error ? e.message : String(e)})`);

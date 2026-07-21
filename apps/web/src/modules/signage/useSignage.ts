@@ -233,6 +233,7 @@ export interface NowPlayingState {
     filename: string;
     posterUrl: string | null; // poster_path preferred, thumb_path fallback (0055) — never a broken image
     thumbUrl: string | null;
+    hasPoster: boolean; // a real sourced poster is on screen (poster_path set) — gates the TMDB credit
     hasSubtitles: boolean;
   } | null;
   /** The name of the playlist the source screen is PINNED to (slot.program.kind==='playlist'), for
@@ -307,6 +308,7 @@ export function useNowPlayingSources(slugs: string[]) {
                 // poster_path preferred (real one-sheet), thumb_path fallback (frame grab), else null.
                 posterUrl: thumbUrl(f.poster_path) ?? thumbUrl(f.thumb_path),
                 thumbUrl: thumbUrl(f.thumb_path),
+                hasPoster: !!f.poster_path,
                 hasSubtitles: !!f.has_subtitles,
               }
             : null,

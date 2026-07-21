@@ -157,6 +157,12 @@ the same public-JPEG mechanics as `thumbUrl` (public bucket, no auth header). `t
 **unchanged**, so an existing plugin keeps working with zero changes; swap the field whenever
 convenient.
 
+> **Poster attribution (TMDB).** Posters are sourced from **TMDB** (`scripts/fetch-movie-posters.ts`;
+> a keyless Wikipedia fallback fills TMDB misses). Per the TMDB API terms of use:
+> **"This product uses the TMDB API but is not endorsed or certified by TMDB."** The `now_playing`
+> signage slide carries a short "POSTERS: TMDB" credit whenever a real poster is displayed; this is
+> the full disclaimer of record. TMDB is not otherwise affiliated with this project.
+
 When `nowPlaying` is **absent**, fall back to `playlistName` (and clear any poster art on the UCI).
 It is **advisory / display-only** — spoofable-harmless, like the screen-health heartbeat; nothing is
 authorized off it. Use it to set a TITLE · YEAR text control and a poster image (§4c of the Hal brief).

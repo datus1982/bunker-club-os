@@ -5,6 +5,7 @@ import { RotationSurface } from "./SlotDisplay";
 import { NowShowing } from "./PlaylistProgram";
 import {
   usePanelSlot, resolveRotation, teaseMoment,
+  useNowPlayingSources, nowPlayingSourceSlug, isNowPlayingFresh,
   type ToastCacheRow, type LiveEvent,
 } from "./useSignage";
 import type { TickerLine } from "./useTicker";
@@ -57,9 +58,25 @@ export function MultiviewProgram({
   // a capture main reports nothing, so the label stays clear).
   const [mainFile, setMainFile] = useState<MediaFile | null>(null);
 
+  // NOW PLAYING auto-hide for the PANEL rotation (WARN-2): a now_playing card on a multiview panel
+  // must obey the same freshness gate the main SlotDisplay applies, or it would dead-dwell as
+  // STANDBY when its source screen's film goes stale. Mirror SlotDisplay's derivation: poll the
+  // source slugs the panel's now_playing cards reference, then pass the live set to resolveRotation.
+  const npSlugs = useMemo(() => {
+    const set = new Set<string>();
+    for (const it of panelItems) if (it.template === "now_playing") set.add(nowPlayingSourceSlug(it));
+    return [...set];
+  }, [panelItems]);
+  const nowPlayingSources = useNowPlayingSources(npSlugs);
+  const liveNowPlayingSlugs = useMemo(() => {
+    const s = new Set<string>();
+    nowPlayingSources.data?.forEach((v, slug) => { if (isNowPlayingFresh(v.at, now)) s.add(slug); });
+    return s;
+  }, [nowPlayingSources.data, now]);
+
   const panelRotation = useMemo(
-    () => resolveRotation(panelItems, toast, now, liveEvents),
-    [panelItems, toast, now, liveEvents],
+    () => resolveRotation(panelItems, toast, now, liveEvents, liveNowPlayingSlugs),
+    [panelItems, toast, now, liveEvents, liveNowPlayingSlugs],
   );
   const panelTease = useMemo(() => teaseMoment(liveEvents, now), [liveEvents, now]);
 
