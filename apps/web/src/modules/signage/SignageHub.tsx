@@ -34,6 +34,7 @@ import { useMediaPlaylists, useAllScheduleRows } from "./useMediaAdmin";
 import { isAllMedia, ALL_MEDIA_NAME } from "./mediaProgram";
 import { sendTransportCommand, type TransportCmd } from "./mediaTransport";
 import { useRole } from "@/shared/useRole";
+import { useIsMobile } from "@/shared/useIsMobile";
 import "./signage.css";
 
 /**
@@ -250,7 +251,11 @@ export function SignageHub({ openQueueSlug }: { openQueueSlug?: string }) {
         ) : slots.length === 0 ? (
           <div style={{ opacity: 0.6 }}>No screens provisioned. Seed one in signage_slots.</div>
         ) : (
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(min(100%,320px),1fr))", gap: 14 }}>
+          // Variant A (owner-ratified hub-layout-options.html): full-width control ROWS — a
+          // vertical stack of wide cards, not a narrow auto-fill grid, so the desktop width is
+          // used and each screen's controls sit on one legible row (collapses to a stacked column
+          // on his phone). Card max-width comes from the page's 1100px wrapper above.
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
             {slots.map((s) => {
               const takeover = activeTakeoverForSlot(takeovers, s.id);
               const mode = resolveSlotMode({
@@ -499,94 +504,132 @@ function ScreenCard({
   const summary = useMemo(() => rotationSummary(slotItems, tmap), [slotItems, tmap]);
   // In rotation mode a set program is what the TV actually plays — surface it (parity).
   const programActive = mode === "rotation" && !!programLabel;
+  // Variant A: below ~720px the wide control row degrades to the stacked column he has today
+  // (idcol / status / actions stack, sub-strip wraps). Same idiom as the other staff surfaces
+  // that flip an exact layout a CSS media query can't express.
+  const narrow = useIsMobile(720);
+  // Landscape (media-capable) screens get the PROGRAM/SCHEDULE/transport sub-strip. onProgram is
+  // only defined for landscape slots, so its presence is the gate (matches the old render).
+  const hasSubStrip = !!onProgram || !!onSchedule || transportPlaylist;
+
+  // Plain-language status — EXACT wording preserved from the per-mode branches; only the sizing
+  // and placement change (it now lives in the middle column at normal body size, no headline
+  // treatment / minHeight). The u-amber/u-red emphasis is part of the wording, kept. NOTE the
+  // global `.terminal-theme span{font-size:1.5rem}` rule hits any bare emphasis <span> directly
+  // (the parent div's inline 14px doesn't cascade to it) — that's the 24px "oversized blurb" the
+  // owner flagged. Pin the emphasis spans to inherit so they read at body size (this was already
+  // the bug in the old stacked card; the redesign fixes it).
+  const emph: CSSProperties = { fontSize: "inherit" };
+  const statusNode =
+    mode === "rotation" && programActive ? (
+      <><span className="u-amber" style={emph}>Playing {programLabel}.</span> Rotation resumes when the program is set back to ROTATION (a game/takeover still preempts it).</>
+    ) : mode === "rotation" ? (
+      <>{summary}</>
+    ) : mode === "event" ? (
+      <><span className="u-amber" style={emph}>Scheduled event holding the screens{eventLabel ? `: ${eventLabel}` : ""}.</span> Returns to rotation when the window ends.</>
+    ) : mode === "game" ? (
+      <><span className="u-amber" style={emph}>Showing the game display.</span> Returns to rotation automatically when the game ends.{staleGameDate ? <span className="u-amber" style={emph}> · game dated {staleGameDate}</span> : null}</>
+    ) : (
+      <><span className="u-red" style={emph}>Priority takeover on this screen</span>{takeoverMessage ? `: “${takeoverMessage}”` : ""}. Dismiss from TAKEOVER.</>
+    );
 
   // ── PANEL slot (D2): a portrait sidebar that runs inside a landscape multiview. No health dot
   //    (health belongs to the host screen), no takeover ("follows its host"), no program control. ──
   if (isPanel) {
+    // PANEL slots keep their reduced treatment (no health / takeover / program / schedule —
+    // "follows its host") but ride the same full-width row rhythm: identity + note on the left,
+    // status in the middle, the two allowed actions (+ ADD · QUEUE) on the right.
     return (
-      <div className="terminal-border" style={{ padding: "13px 14px", display: "flex", flexDirection: "column", gap: 8, minWidth: 0 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
-          <span style={{ fontSize: 24, fontWeight: 700, letterSpacing: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{slot.name}</span>
-          <span className="u-amber" style={{ fontSize: 11, letterSpacing: 2, border: "1px solid var(--terminal-amber, #ffb000)", color: "var(--terminal-amber, #ffb000)", padding: "2px 7px", flexShrink: 0 }}>PANEL</span>
+      <div className="terminal-border" style={{ padding: "14px 16px", display: "flex", gap: 20, alignItems: narrow ? "stretch" : "flex-start", flexWrap: "wrap", minWidth: 0 }}>
+        <div style={{ flex: narrow ? "1 1 100%" : "0 0 240px", minWidth: 0, display: "flex", flexDirection: "column", gap: 7 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 9, minWidth: 0 }}>
+            <span style={{ fontSize: 24, fontWeight: 700, letterSpacing: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{slot.name}</span>
+            <span className="u-amber" style={{ fontSize: 11, letterSpacing: 2, border: "1px solid var(--terminal-amber, #ffb000)", color: "var(--terminal-amber, #ffb000)", padding: "2px 7px", flexShrink: 0 }}>PANEL</span>
+          </div>
+          <div style={{ fontSize: 13, opacity: 0.55 }}>PORTRAIT PANEL · runs inside a landscape MULTIVIEW · no TV of its own</div>
+          <div style={{ fontSize: 12, opacity: 0.45, letterSpacing: 1 }}>no takeover — follows its host screen</div>
         </div>
-        <div style={{ fontSize: 13, opacity: 0.55 }}>PORTRAIT PANEL · runs inside a landscape MULTIVIEW · no TV of its own</div>
-        <div style={{ fontSize: 14, opacity: 0.75, lineHeight: 1.5, minHeight: 40 }}>{summary}</div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 7, marginTop: 2 }}>
-          <button type="button" onClick={onAdd} className="u-fill u-ink" style={{ ...cardBtn, background: "var(--terminal-green)", color: "#000", fontWeight: 700 }}>+ ADD</button>
-          <button type="button" onClick={onQueue} style={cardBtn}>QUEUE</button>
+        <div style={{ flex: "1 1 260px", minWidth: 0, alignSelf: narrow ? "auto" : "center", fontSize: 14, opacity: 0.75, lineHeight: 1.5 }}>{summary}</div>
+        <div style={{ flex: "0 0 auto", marginLeft: narrow ? 0 : "auto", width: narrow ? "100%" : undefined }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 7 }}>
+            <button type="button" onClick={onAdd} className="u-fill u-ink" style={{ ...cardBtn, background: "var(--terminal-green)", color: "#000", fontWeight: 700, padding: "9px 18px" }}>+ ADD</button>
+            <button type="button" onClick={onQueue} style={{ ...cardBtn, padding: "9px 18px" }}>QUEUE</button>
+          </div>
         </div>
-        <div style={{ fontSize: 12, opacity: 0.45, letterSpacing: 1 }}>no takeover — follows its host screen</div>
       </div>
     );
   }
 
   return (
-    <div className="terminal-border" style={{ padding: "13px 14px", display: "flex", flexDirection: "column", gap: 8, minWidth: 0 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
-        <span style={{ fontSize: 24, fontWeight: 700, letterSpacing: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{slot.name}</span>
-        <HealthDot health={health} />
-      </div>
-      <div style={{ fontSize: 13, opacity: 0.55 }}>
-        {slot.orientation.toUpperCase()} · TERMINAL {String(slot.terminal_number ?? 0).padStart(2, "0")}{slot.location_label ? ` — ${slot.location_label}` : ""}
-      </div>
+    <div className="terminal-border" style={{ padding: "14px 16px", display: "flex", flexDirection: "column", gap: 12, minWidth: 0 }}>
+      {/* ── TOP ROW: identity (left) · status (middle, grows) · actions (right) ── */}
+      <div style={{ display: "flex", gap: 20, alignItems: "flex-start", flexWrap: "wrap" }}>
+        {/* identity block — fixed on desktop, full-width on narrow */}
+        <div style={{ flex: narrow ? "1 1 100%" : "0 0 240px", minWidth: 0, display: "flex", flexDirection: "column", gap: 7 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 9, minWidth: 0 }}>
+            <span style={{ fontSize: 24, fontWeight: 700, letterSpacing: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{slot.name}</span>
+          </div>
+          <div style={{ fontSize: 13, opacity: 0.55 }}>
+            {slot.orientation.toUpperCase()} · TERMINAL {String(slot.terminal_number ?? 0).padStart(2, "0")}{slot.location_label ? ` — ${slot.location_label}` : ""}
+          </div>
+          <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+            <HealthDot health={health} />
+            <ModeChip mode={mode} eventLabel={eventLabel} programLabel={programActive ? programLabel : null} />
+            {scheduleCount > 0 && (
+              <span className={overrideHold ? "u-amber" : ""} style={{ fontSize: 11, letterSpacing: 1, border: "1px solid currentColor", padding: "2px 7px", opacity: 0.85, color: overrideHold ? "var(--terminal-amber, #ffb000)" : "var(--terminal-green)" }}>
+                {overrideHold ? (overrideHold === "event" ? "⧗ SPECIAL EVENT" : "⧗ OVERRIDE") : `⧗ ${scheduleCount} DAYPART${scheduleCount === 1 ? "" : "S"}`}
+              </span>
+            )}
+          </div>
+        </div>
 
-      <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
-        <ModeChip mode={mode} eventLabel={eventLabel} programLabel={programActive ? programLabel : null} />
-        {scheduleCount > 0 && (
-          <span className={overrideHold ? "u-amber" : ""} style={{ fontSize: 11, letterSpacing: 1, border: "1px solid currentColor", padding: "2px 7px", opacity: 0.85, color: overrideHold ? "var(--terminal-amber, #ffb000)" : "var(--terminal-green)" }}>
-            {overrideHold ? (overrideHold === "event" ? "⧗ SPECIAL EVENT" : "⧗ OVERRIDE") : `⧗ ${scheduleCount} DAYPART${scheduleCount === 1 ? "" : "S"}`}
-          </span>
-        )}
-      </div>
+        {/* status block — grows; compact body size, no headline treatment/minHeight */}
+        <div style={{ flex: "1 1 260px", minWidth: 0, alignSelf: narrow ? "auto" : "center", fontSize: 14, opacity: 0.75, lineHeight: 1.5 }}>
+          {statusNode}
+        </div>
 
-      {mode === "rotation" && programActive ? (
-        <div style={{ fontSize: 14, opacity: 0.75, lineHeight: 1.5, minHeight: 40 }}>
-          <span className="u-amber">Playing {programLabel}.</span> Rotation resumes when the program is set back to ROTATION (a game/takeover still preempts it).
+        {/* action block — the three clean buttons + ⋯ overflow (D1). Right-aligned cluster on
+            desktop; full-width grid on narrow (keeps ≥44px tap targets). */}
+        <div style={{ flex: "0 0 auto", marginLeft: narrow ? 0 : "auto", width: narrow ? "100%" : undefined }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr auto", gap: 7 }}>
+            {/* Roomier padding only on desktop (natural-width cluster); on narrow keep the tight
+                cardBtn padding so the 3-up + ⋯ grid fits within the card (no horizontal overflow). */}
+            <button type="button" onClick={onAdd} className="u-fill u-ink" style={{ ...cardBtn, background: "var(--terminal-green)", color: "#000", fontWeight: 700, ...(narrow ? null : { padding: "9px 14px" }) }}>+ ADD</button>
+            <button type="button" onClick={onQueue} style={{ ...cardBtn, ...(narrow ? null : { padding: "9px 14px" }) }}>QUEUE</button>
+            <button type="button" onClick={onTakeover} className="u-amber" style={{ ...cardBtn, color: "var(--terminal-amber, #ffb000)", borderColor: "var(--terminal-amber, #ffb000)", ...(narrow ? null : { padding: "9px 14px" }) }}>TAKEOVER</button>
+            <button type="button" onClick={onToggleOverflow} aria-label="More" title="KIOSK URL · PREVIEW · health" style={{ ...cardBtn, padding: "9px 10px", fontSize: 20, opacity: 0.75 }}>⋯</button>
+          </div>
         </div>
-      ) : mode === "rotation" ? (
-        <div style={{ fontSize: 14, opacity: 0.75, lineHeight: 1.5, minHeight: 40 }}>{summary}</div>
-      ) : mode === "event" ? (
-        <div style={{ fontSize: 14, opacity: 0.75, lineHeight: 1.5, minHeight: 40 }}>
-          <span className="u-amber">Scheduled event holding the screens{eventLabel ? `: ${eventLabel}` : ""}.</span> Returns to rotation when the window ends.
-        </div>
-      ) : mode === "game" ? (
-        <div style={{ fontSize: 14, opacity: 0.75, lineHeight: 1.5, minHeight: 40 }}>
-          <span className="u-amber">Showing the game display.</span> Returns to rotation automatically when the game ends.
-          {staleGameDate ? <span className="u-amber"> · game dated {staleGameDate}</span> : null}
-        </div>
-      ) : (
-        <div style={{ fontSize: 14, opacity: 0.75, lineHeight: 1.5, minHeight: 40 }}>
-          <span className="u-red">Priority takeover on this screen</span>{takeoverMessage ? `: “${takeoverMessage}”` : ""}. Dismiss from TAKEOVER.
-        </div>
-      )}
-
-      {/* the three clean buttons + ⋯ overflow (D1) */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr auto", gap: 7, marginTop: 2 }}>
-        <button type="button" onClick={onAdd} className="u-fill u-ink" style={{ ...cardBtn, background: "var(--terminal-green)", color: "#000", fontWeight: 700 }}>+ ADD</button>
-        <button type="button" onClick={onQueue} style={cardBtn}>QUEUE</button>
-        <button type="button" onClick={onTakeover} className="u-amber" style={{ ...cardBtn, color: "var(--terminal-amber, #ffb000)", borderColor: "var(--terminal-amber, #ffb000)" }}>TAKEOVER</button>
-        <button type="button" onClick={onToggleOverflow} aria-label="More" title="KIOSK URL · PREVIEW · health" style={{ ...cardBtn, padding: "9px 10px", fontSize: 20, opacity: 0.75 }}>⋯</button>
       </div>
 
-      {/* PROGRAM control — landscape (media-capable) screens only (docs/15). Shows the current
-          program + opens SWITCH PROGRAM. Portrait slots stay pure rotation (no control). */}
-      {onProgram && (
-        <button type="button" onClick={onProgram} className={programActive ? "u-amber" : ""} style={{ ...cardBtn, gridColumn: "1 / -1", justifyContent: "space-between", padding: "9px 12px", ...(programActive ? { color: "var(--terminal-amber, #ffb000)", borderColor: "var(--terminal-amber, #ffb000)" } : null) }}>
-          <span style={{ letterSpacing: 1 }}>▶ PROGRAM: {programActive ? programLabel : "ROTATION"}</span>
-          <span style={{ opacity: 0.7 }}>SWITCH ▸</span>
-        </button>
-      )}
+      {/* ── SUB-STRIP: media-capable (landscape) controls in a horizontal strip that wraps on
+          narrow. PROGRAM + SCHEDULE (landscape only) + the ⏸/▶/⏭ transport (only when the
+          EFFECTIVE program is a live playlist). Same handlers/gating as before. ── */}
+      {hasSubStrip && (
+        <div style={{ display: "flex", gap: 9, flexWrap: "wrap", alignItems: "stretch", borderTop: "1px solid rgba(0,255,65,0.2)", paddingTop: 11 }}>
+          {/* PROGRAM control — landscape (media-capable) screens only (docs/15). Shows the current
+              program + opens SWITCH PROGRAM. Portrait slots stay pure rotation (no control). */}
+          {onProgram && (
+            <button type="button" onClick={onProgram} className={programActive ? "u-amber" : ""} style={{ ...cardBtn, flex: "1 1 220px", justifyContent: "space-between", padding: "9px 12px", ...(programActive ? { color: "var(--terminal-amber, #ffb000)", borderColor: "var(--terminal-amber, #ffb000)" } : null) }}>
+              <span style={{ letterSpacing: 1 }}>▶ PROGRAM: {programActive ? programLabel : "ROTATION"}</span>
+              <span style={{ opacity: 0.7 }}>SWITCH ▸</span>
+            </button>
+          )}
 
-      {/* TRANSPORT — skip/pause a live playlist without curl/Q-SYS (Beat 4). Fire-and-forget
-          broadcast; no state tracking (transport is ephemeral by design). */}
-      {transportPlaylist && <TransportRow slug={slot.slug} />}
+          {/* SCHEDULE — dayparts that flip the program by time of day (M3, landscape only). */}
+          {onSchedule && (
+            <button type="button" onClick={onSchedule} style={{ ...cardBtn, flex: "1 1 220px", justifyContent: "space-between", padding: "9px 12px" }}>
+              <span style={{ letterSpacing: 1 }}>⧗ SCHEDULE{scheduleCount > 0 ? `: ${scheduleCount} DAYPART${scheduleCount === 1 ? "" : "S"}` : ""}</span>
+              <span style={{ opacity: 0.7 }}>{scheduleCount > 0 ? "EDIT ▸" : "SET UP ▸"}</span>
+            </button>
+          )}
 
-      {/* SCHEDULE — dayparts that flip the program by time of day (M3, landscape only). */}
-      {onSchedule && (
-        <button type="button" onClick={onSchedule} style={{ ...cardBtn, gridColumn: "1 / -1", justifyContent: "space-between", padding: "9px 12px" }}>
-          <span style={{ letterSpacing: 1 }}>⧗ SCHEDULE{scheduleCount > 0 ? `: ${scheduleCount} DAYPART${scheduleCount === 1 ? "" : "S"}` : ""}</span>
-          <span style={{ opacity: 0.7 }}>{scheduleCount > 0 ? "EDIT ▸" : "SET UP ▸"}</span>
-        </button>
+          {/* TRANSPORT — skip/pause a live playlist without curl/Q-SYS (Beat 4). Fire-and-forget
+              broadcast; no state tracking (transport is ephemeral by design). */}
+          {transportPlaylist && (
+            <div style={{ flex: "1 1 300px", minWidth: 0 }}><TransportRow slug={slot.slug} /></div>
+          )}
+        </div>
       )}
 
       {overflowOpen && (
