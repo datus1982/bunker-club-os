@@ -1,16 +1,21 @@
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { supabase, VENUE_ID } from "@/shared/supabaseClient";
+import { GameRecap } from "./GameRecap";
 
 /**
  * Game History — host tool (docs/01 route map, host+). A normal scrolling admin
  * page in the terminal theme (NOT a fixed display canvas).
  *
  * Ported from the legacy History.tsx. Kept to the READ-ONLY surface for this phase:
- * list past games and open any game's final board (reuses the ported Leaderboard via
- * ?game=<id>, which reads game_scoreboard). The legacy write actions — Load Game,
- * Duplicate, Delete — depend on Scoring/GameSetup (not yet ported) and are deferred
- * to the host-tools sub-phase.
+ * list past games and open any game's GAME RECAP — an in-app modal (GameRecap.tsx) with
+ * SUMMARY / QUESTIONS / VIDEOS tabs, so the host can browse standings, click through the
+ * Q&A, and see the videos WITHOUT navigating away to a display surface. This replaces the
+ * old "VIEW BOARD →" link (which pushed to /leaderboard?game=<id>); the recap's SUMMARY
+ * tab renders the same game_scoreboard() standings as a read-only board, subsuming it.
+ * The legacy write actions — Load Game, Duplicate, Delete — depend on Scoring/GameSetup
+ * (not yet ported) and are deferred to the host-tools sub-phase.
  *
  * DECISION: our games table (docs/02) dropped legacy-only name / num_rounds /
  * elapsed_time_seconds; the card is keyed on game_date + derived round/team counts.
@@ -27,6 +32,7 @@ interface HistoryGame {
 }
 
 export function History() {
+  const [recapGame, setRecapGame] = useState<HistoryGame | null>(null);
   const games = useQuery({
     queryKey: ["history", "games"],
     queryFn: async (): Promise<HistoryGame[]> => {
@@ -75,16 +81,19 @@ export function History() {
                 game={g}
                 teams={teamCounts.data?.[g.id] ?? null}
                 rounds={roundCounts.data?.[g.id] ?? null}
+                onOpen={() => setRecapGame(g)}
               />
             ))}
           </div>
         )}
       </div>
+
+      {recapGame && <GameRecap game={recapGame} onClose={() => setRecapGame(null)} />}
     </div>
   );
 }
 
-function GameCard({ game, teams, rounds }: { game: HistoryGame; teams: number | null; rounds: number | null }) {
+function GameCard({ game, teams, rounds, onOpen }: { game: HistoryGame; teams: number | null; rounds: number | null; onOpen: () => void }) {
   const active = game.status === "active";
   return (
     <div
@@ -100,13 +109,14 @@ function GameCard({ game, teams, rounds }: { game: HistoryGame; teams: number | 
         <span>{teams ?? "–"} TEAMS</span>
         {game.is_playoff && <span>★ PLAYOFF</span>}
       </div>
-      <Link
-        to={`/leaderboard?game=${game.id}`}
+      <button
+        type="button"
+        onClick={onOpen}
         className="terminal-border"
-        style={{ marginTop: 6, padding: "8px 12px", textAlign: "center", fontSize: 24, textDecoration: "none" }}
+        style={{ marginTop: 6, padding: "8px 12px", textAlign: "center", fontSize: 24, background: "transparent", cursor: "pointer", fontFamily: "inherit" }}
       >
-        VIEW BOARD →
-      </Link>
+        VIEW RECAP →
+      </button>
     </div>
   );
 }
