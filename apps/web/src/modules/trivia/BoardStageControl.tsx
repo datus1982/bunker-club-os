@@ -14,8 +14,8 @@ import { btnGhost, btnActive } from "./ui";
  *   STANDINGS    → 'standings' the live standings board
  *   FINAL REVEAL → 'final'     the FINAL SCORES / GAME OVER reveal
  *
- * The public board (trivia/Leaderboard.tsx — shared by /leaderboard AND the signage
- * portrait game-mode board) renders from board_stage in realtime, so a flip reaches
+ * The public board (trivia/Leaderboard.tsx — the signage portrait game-mode board, also
+ * mirrored in /game/preview) renders from board_stage in realtime, so a flip reaches
  * the TVs sub-second, like question nav.
  *
  * show_game_over is written alongside so legacy readers stay consistent: FINAL REVEAL

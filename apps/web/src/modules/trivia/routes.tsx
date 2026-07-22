@@ -11,12 +11,9 @@ export { Scoring } from "./Scoring";
 // Host tool (host+): regular-team roster (shares TeamEditorDialog with Scoring).
 export { Teams } from "./Teams";
 
-// Public display routes (docs/01 — rendered through DisplayCanvas, no auth).
-// Leaderboard + GameDisplay ported (docs/04).
-export { Leaderboard } from "./Leaderboard";
-export { GameDisplay } from "./GameDisplay";
-
 // Public dual-display screen preview (trivia-sandbox) — both boards side by side, no auth.
+// The reusable boards it embeds (LeaderboardBoard / GameDisplayBoard) also drive signage
+// game mode; the old standalone /leaderboard + /game-display TV routes are retired.
 export { GamePreview } from "./GamePreview";
 
 // Host tool (host+): read-only game history + view a game's final board.

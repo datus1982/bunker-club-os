@@ -12,10 +12,10 @@
 
 | TV | URL | What it is |
 |----|-----|-----------|
-| Big landscape | `/game-display` | Trivia questions / answers / picture rounds / videos (driven by the host) |
-| Standings | `/leaderboard` | Live team standings + the "scan to join" QR |
-| Drinks board | `/drinks` | Top-selling drinks board |
-| Signage slot | `/signage/s/<slug>` | A signage screen **(Phase 3)** |
+| Portrait screen | `/signage/s/portrait-main` | The rotation — specials, promos, media — plus the live trivia standings board when the host arms trivia |
+| Landscape screen | `/signage/s/landscape-bar` | The rotation / media, plus the live trivia question board when the host arms trivia |
+
+Each TV runs **one signage slot** — that single URL shows everything on that screen (rotation, takeovers, and the live trivia boards once the host **arms trivia** in Scoring). There are no separate trivia/standings/drinks TV URLs. `/game/preview` is the host's off-screen preview of the trivia boards — never point a TV at it.
 
 All screens run themselves and **reload nightly at ~4 AM**. There is nothing to click on a screen.
 
@@ -23,7 +23,7 @@ All screens run themselves and **reload nightly at ~4 AM**. There is nothing to 
 
 - **"A screen looks frozen / stuck / wrong."** Refresh that TV's browser (or power-cycle the TV). It reconnects and catches up on its own — you can't break anything by refreshing.
 - **A screen is cropped or off-center.** Set the TV's picture mode to **Just Scan / 1:1 / Screen Fit** (not "16:9 zoom"), then reload. If it's still off, add `?calibrate` to that screen's URL and follow the on-screen insets (see the Screen Install Checklist).
-- **Someone wants to join trivia.** Point them at the **SCAN TO JOIN** QR on the standings TV, or `os.bunkerokc.com/checkin`.
+- **Someone wants to join trivia.** Point them at the **SCAN TO JOIN** QR on the portrait screen (shown once the host arms trivia), or `os.bunkerokc.com/checkin`.
 
 ## Specials & takeovers **(Phase 3)**
 

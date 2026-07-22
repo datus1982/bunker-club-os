@@ -47,8 +47,6 @@ const GameTools = namedLazy(triviaRoutes, "GameTools");
 const Teams = namedLazy(triviaRoutes, "Teams");
 const History = namedLazy(triviaRoutes, "History");
 const Settings = namedLazy(triviaRoutes, "Settings");
-const Leaderboard = namedLazy(triviaRoutes, "Leaderboard");
-const GameDisplay = namedLazy(triviaRoutes, "GameDisplay");
 const GamePreview = namedLazy(triviaRoutes, "GamePreview");
 
 // Drinks display + admin.
@@ -198,9 +196,10 @@ export function App() {
         <Route path="/admin/users" element={<RequireRole role="admin"><Users /></RequireRole>} />
       </Route>
 
-      {/* Public display routes — no auth */}
-      <Route path="/leaderboard" element={<Leaderboard />} />
-      <Route path="/game-display" element={<GameDisplay />} />
+      {/* Public display routes — no auth. The bar TVs run on signage kiosk slugs
+          (/signage/s/:slug); trivia reaches a screen when the host ARMS it in Scoring
+          (signage game-mode takeover). The old auto-resolving /leaderboard + /game-display
+          TV routes are retired — /game/preview is the host's off-screen dual-board preview. */}
       {/* Dual-display screen preview (trivia-sandbox) — both boards side by side, no auth. */}
       <Route path="/game/preview" element={<GamePreview />} />
       <Route path="/drinks" element={<DrinksDisplay />} />

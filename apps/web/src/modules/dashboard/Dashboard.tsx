@@ -219,9 +219,9 @@ function DisplaysTile({ screens }: { screens: ScreenSlot[] }) {
   // Sellers now rotates INSIDE signage), so it's de-emphasized and clearly labelled legacy.
   const kiosk = [
     // Signage slot boards — clean kiosk URLs (no ?preview=1, so takeovers/game mode render).
+    // Trivia reaches these when the host ARMS it in Scoring; the retired /leaderboard +
+    // /game-display TV routes are gone (host previews the boards at /game/preview).
     ...screens.map((s) => ({ label: s.name.toUpperCase(), href: `/signage/s/${s.slug}` })),
-    { label: "LEADERBOARD", href: "/leaderboard" },
-    { label: "GAME DISPLAY", href: "/game-display" },
   ];
   return (
     <div style={{ ...tileBase, cursor: "default" }}>
