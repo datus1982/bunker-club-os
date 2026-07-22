@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase, VENUE_ID } from "@/shared/supabaseClient";
+import { TRIVIA_SCREENS_ARMED_KEY, parseArmed, isTriviaArmed } from "@/modules/signage/useSignage";
 
 // Data layer for the patron check-in flow (docs/05). Everything that mutates the
 // teams graph goes through the SECURITY DEFINER RPCs in migration 0019 / the
@@ -29,11 +30,34 @@ export interface MyTeam {
   seasonName: string | null;
 }
 
-/** Tonight's game (or null → "no game running" screen). */
+/** Tonight's game (or null → "no game running" screen).
+ *
+ *  Patron self-check-in is GATED on the trivia arm (0056): the /checkin flow is CLOSED
+ *  until the host arms trivia onto the screens ("PUT TRIVIA ON SCREENS" on the Scoring
+ *  console). While disarmed, this returns null so the flow falls through to its existing
+ *  "no game running — check-in opens on trivia night" state. The arm is the single switch
+ *  that both opens check-in AND raises the holding QR. NOTE: this does NOT gate the host
+ *  walk-up check-in (check_in_team RPC) — the host can still add teams from Scoring during
+ *  setup regardless of the arm. The flag is read anon-safe, the same key the resolver uses;
+ *  a patron scanning the (armed) QR loads fresh, and the flag also rides react-query refetch. */
 export function useTonightGame() {
   return useQuery({
     queryKey: ["checkin", "tonightGame"],
     queryFn: async (): Promise<TonightGame | null> => {
+      // Gate: check-in is closed unless trivia is EFFECTIVELY armed (default OFF, fail-closed, and
+      // a stale arm auto-expires nightly, 0057). Reuse the shared isTriviaArmed derivation so the
+      // check-in gate, the TV resolver, and the hub agree exactly. Read the venue TZ + closeout hour
+      // alongside the flag (all anon-safe) so the same rollover math applies.
+      const [{ data: armedRow }, { data: closeoutRow }, { data: venueRow }] = await Promise.all([
+        supabase.from("venue_settings").select("value").eq("venue_id", VENUE_ID).eq("key", TRIVIA_SCREENS_ARMED_KEY).maybeSingle(),
+        supabase.from("venue_settings").select("value").eq("venue_id", VENUE_ID).eq("key", "toast_closeout_hour").maybeSingle(),
+        supabase.from("venues").select("timezone").eq("id", VENUE_ID).maybeSingle(),
+      ]);
+      const tz = (venueRow as { timezone?: string } | null)?.timezone ?? "America/Chicago";
+      const closeoutN = Number((closeoutRow as { value?: unknown } | null)?.value);
+      const rollover = Number.isFinite(closeoutN) && closeoutN >= 0 && closeoutN <= 23 ? closeoutN : 4;
+      if (!isTriviaArmed(parseArmed((armedRow as { value?: unknown } | null)?.value), new Date(), tz, rollover)) return null;
+
       const { data, error } = await supabase
         .from("games")
         .select("id, game_date, status")

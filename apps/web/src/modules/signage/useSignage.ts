@@ -1,11 +1,11 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase, VENUE_ID } from "@/shared/supabaseClient";
 import { fetchSlotQueuePublic } from "./slotQueue";
 import { eventStage, isTakeoverStage, type LiveEvent } from "./eventStage";
 import type { SlotProgram } from "./mediaProgram";
 import { thumbUrl } from "./mediaProgram";
-import type { ScheduleRow, ProgramHold, ScheduleProgram } from "./scheduleResolve";
+import { nextRollover, type ScheduleRow, type ProgramHold, type ScheduleProgram } from "./scheduleResolve";
 import { slotRenderFieldsUnchanged, TV_SLOT_RENDER_FIELDS } from "./slotRealtime";
 
 // Re-export the pure events surface so the app imports it from one place. The pure
@@ -138,7 +138,8 @@ export interface PriceOption {
 
 export interface LiveGame {
   id: string;
-  status: "active" | "paused";
+  // `setup` = created but not started → the HOLDING screen when armed (0056); active/paused = live.
+  status: "setup" | "active" | "paused";
 }
 
 /** The modes a slot can resolve to, highest priority first. `event` = a MOMENT in a
@@ -326,6 +327,92 @@ export function useNowPlayingSource(slug: string | null) {
   return { ...q, state: slug ? q.data?.get(slug) ?? null : null };
 }
 
+/* ── "PUT TRIVIA ON SCREENS" arm gate (0056 / 0057) ───────────────────────────── */
+
+/** The venue_settings key the host arms to put trivia on the bar TVs. */
+export const TRIVIA_SCREENS_ARMED_KEY = "trivia_screens_armed";
+
+/** The stored arm shape (0057): whether armed + when it was armed (for nightly expiry). */
+export interface ArmedRaw {
+  armed: boolean;
+  at: string | null; // ISO timestamp of the arm; null when disarmed (or legacy bare-bool shape)
+}
+
+/** Parse the venue_settings value into {armed, at}. Backward-compatible with the 0056 bare
+ *  boolean (`true` ⇒ armed with no timestamp = no expiry basis; `false`/absent ⇒ off). */
+export function parseArmed(value: unknown): ArmedRaw {
+  if (value === true) return { armed: true, at: null };
+  if (value == null || value === false) return { armed: false, at: null };
+  if (typeof value === "object") {
+    const v = value as Record<string, unknown>;
+    return { armed: v.armed === true, at: typeof v.at === "string" ? v.at : null };
+  }
+  return { armed: false, at: null };
+}
+
+/**
+ * Is trivia EFFECTIVELY armed right now (0057 nightly-expiry derivation, the 0051 D4
+ * "never precompute an expiry" pattern)? Armed iff `armed === true` AND the arm timestamp
+ * `at` is still within the CURRENT venue business day — i.e. the next venue business-day
+ * rollover (04:00 closeout) AFTER `at` has not yet passed. A forgotten arm auto-dies at
+ * the next 4 AM. A legacy bare-boolean arm (at === null) or an unparseable timestamp is
+ * honored as armed (no expiry basis) — transient, since every write now stamps `at`.
+ * Pure — the TV resolver, the hub, and the check-in gate all call it with their own clock.
+ */
+export function isTriviaArmed(raw: ArmedRaw, now: Date, tz: string, rolloverHour: number): boolean {
+  if (!raw.armed) return false;
+  if (!raw.at) return true; // legacy / no timestamp → no expiry basis
+  const at = new Date(raw.at);
+  if (!Number.isFinite(at.getTime())) return true; // unparseable → don't suppress
+  return nextRollover(at, tz, rolloverHour).getTime() > now.getTime();
+}
+
+/**
+ * Raw stored arm state. The bar is a SANDBOX BY DEFAULT — a game can run for scoring
+ * without ever touching the screens; the host explicitly arms it (and it auto-expires
+ * nightly, 0057). DEFAULT OFF: absent / null / unreadable ⇒ {armed:false}. Read the SAME
+ * anon way the ticker reads signage_ticker_lines (venue_settings public_read, 0011) — one
+ * direct SELECT. Consumers derive the EFFECTIVE armed via isTriviaArmed()/useTriviaArmedEffective().
+ */
+export function useTriviaScreensArmed() {
+  return useQuery({
+    queryKey: ["signage", "triviaScreensArmed"],
+    staleTime: 30_000,
+    queryFn: async (): Promise<ArmedRaw> => {
+      const { data, error } = await supabase
+        .from("venue_settings")
+        .select("value")
+        .eq("venue_id", VENUE_ID)
+        .eq("key", TRIVIA_SCREENS_ARMED_KEY)
+        .maybeSingle();
+      if (error) return { armed: false, at: null }; // read failure ⇒ default OFF
+      return parseArmed((data as { value?: unknown } | null)?.value);
+    },
+  });
+}
+
+/**
+ * Convenience: the EFFECTIVE armed boolean (nightly-expiry applied) plus the raw state, for
+ * staff surfaces (Scoring control, SignageHub) that don't already carry a venue-TZ render
+ * clock. Combines useTriviaScreensArmed + useVenue (tz) + useCloseoutHour (rollover) with a
+ * 30s tick so the expiry re-evaluates without a reload. The TV (SlotDisplay) does NOT use
+ * this — it reuses its own 30s nowTick + tz + rolloverHour via isTriviaArmed directly.
+ */
+export function useTriviaArmedEffective(): { armed: boolean; raw: ArmedRaw; isPending: boolean } {
+  const rawQ = useTriviaScreensArmed();
+  const venue = useVenue();
+  const closeout = useCloseoutHour();
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  useEffect(() => {
+    const id = window.setInterval(() => setNowMs(Date.now()), 30_000);
+    return () => window.clearInterval(id);
+  }, []);
+  const raw = rawQ.data ?? { armed: false, at: null };
+  const tz = venue.data?.timezone ?? "America/Chicago";
+  const rollover = closeout.data ?? 4;
+  return { armed: isTriviaArmed(raw, new Date(nowMs), tz, rollover), raw, isPending: rawQ.isPending };
+}
+
 /** Venue name/timezone — shared cache key so the board and the admin preview agree and
  *  nothing hardcodes 'Bunker Club' outside the fallback (venue-scope rule). */
 export function useVenue() {
@@ -397,6 +484,10 @@ export function useSlot(slug: string) {
     refetchInterval: 30_000,
   });
 
+  // The venue's current trivia game for the screens. Includes `setup` (created but not
+  // started) now (0056): when armed, a setup game shows the HOLDING screen, and active/paused
+  // shows the live board. Resolve the SAME game the boards pick (STATUS_PRIORITY-style): prefer
+  // a started game (active/paused) over a not-yet-started setup one when several coexist.
   const liveGame = useQuery({
     queryKey: ["signage", "liveGame"],
     queryFn: async (): Promise<LiveGame | null> => {
@@ -404,11 +495,12 @@ export function useSlot(slug: string) {
         .from("games")
         .select("id, status")
         .eq("venue_id", VENUE_ID)
-        .in("status", ["active", "paused"])
-        .limit(1)
-        .maybeSingle();
+        .in("status", ["active", "paused", "setup"]);
       if (error) throw error;
-      return (data as LiveGame | null) ?? null;
+      const rows = (data ?? []) as LiveGame[];
+      const rank = (s: LiveGame["status"]) => (s === "active" ? 0 : s === "paused" ? 1 : 2);
+      rows.sort((a, b) => rank(a.status) - rank(b.status));
+      return rows[0] ?? null;
     },
   });
 
@@ -458,6 +550,8 @@ export function useSlot(slug: string) {
   const schedule = useSlotSchedule(slotId);
   // M3 (D4): the venue business-day rollover hour (04:00 closeout) that the 'event' hold expires at.
   const closeoutHour = useCloseoutHour();
+  // "PUT TRIVIA ON SCREENS" arm (0056): whether trivia is armed onto the bar TVs (default OFF).
+  const triviaScreensArmed = useTriviaScreensArmed();
 
   // ── Realtime: one channel, invalidate only the affected keys (ARCH-1) ───────
   useEffect(() => {
@@ -492,11 +586,16 @@ export function useSlot(slug: string) {
       // the junction (single-venue), so subscribe unfiltered and invalidate all schedule keys.
       .on("postgres_changes", { event: "*", schema: "public", table: "slot_program_schedule" },
         () => qc.invalidateQueries({ queryKey: ["signage", "schedule"] }))
+      // "PUT TRIVIA ON SCREENS" arm (0056): venue_settings is now in the realtime publication. Filter
+      // to the single key so arm/disarm propagates to the TVs within realtime latency (no poll) —
+      // WITHOUT waking on the minute-cadence signage_last_rung / ticker writes to other keys.
+      .on("postgres_changes", { event: "*", schema: "public", table: "venue_settings", filter: `key=eq.${TRIVIA_SCREENS_ARMED_KEY}` },
+        () => qc.invalidateQueries({ queryKey: ["signage", "triviaScreensArmed"] }))
       .subscribe();
     return () => { supabase.removeChannel(ch); };
   }, [qc, slug]);
 
-  return { venue, slot, items, takeover, liveGame, toast, schedule, closeoutHour };
+  return { venue, slot, items, takeover, liveGame, toast, schedule, closeoutHour, triviaScreensArmed };
 }
 
 /* ── M3: schedule rows / closeout hour / panel slot data ──────────────────────── */

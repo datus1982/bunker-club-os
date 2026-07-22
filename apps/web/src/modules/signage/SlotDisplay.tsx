@@ -6,9 +6,10 @@ import { LeaderboardBoard } from "@/modules/trivia/Leaderboard";
 import { GameDisplayBoard } from "@/modules/trivia/GameDisplay";
 import {
   useSlot, useLiveEvents, resolveRotation, resolveSlotMode, activeMoment, teaseMoment,
-  useNowPlayingSources, nowPlayingSourceSlug, isNowPlayingFresh,
-  type SignageItem, type Slot, type SlotMode, type Takeover, type ToastCacheRow, type LiveEvent, type Orientation,
+  useNowPlayingSources, nowPlayingSourceSlug, isNowPlayingFresh, isTriviaArmed,
+  type SignageItem, type Slot, type SlotMode, type Takeover, type ToastCacheRow, type LiveEvent, type Orientation, type LiveGame, type ArmedRaw,
 } from "./useSignage";
+import { TriviaHoldingBoard } from "@/modules/trivia/TriviaHoldingBoard";
 import { useTicker, type TickerLine } from "./useTicker";
 import { TemplateView } from "./SignageTemplates";
 import { EventStageView, EventTeaseCard } from "./EventStages";
@@ -42,7 +43,7 @@ type ToastMap = Map<string, ToastCacheRow>;
  */
 export function SlotDisplay() {
   const { slug = "" } = useParams();
-  const { venue, slot, items, takeover, liveGame, toast, schedule, closeoutHour } = useSlot(slug);
+  const { venue, slot, items, takeover, liveGame, toast, schedule, closeoutHour, triviaScreensArmed } = useSlot(slug);
   useHeartbeat(slug);
 
   if (slot.isPending || venue.isPending) {
@@ -61,10 +62,14 @@ export function SlotDisplay() {
         timezone={venue.data?.timezone ?? "America/Chicago"}
         items={items.data ?? []}
         takeover={takeover.data ?? null}
-        liveGameId={liveGame.data?.id ?? null}
+        liveGame={liveGame.data ?? null}
         toast={toast.data ?? new Map()}
         schedule={schedule.data ?? []}
         rolloverHour={closeoutHour.data ?? 4}
+        // DEFAULT OFF: pending/undefined ⇒ not armed. Trivia only reaches the bar TVs when the host
+        // has explicitly armed it (0056); the raw {armed,at} is derived to an EFFECTIVE boolean in
+        // SlotScreen against its own venue-TZ clock so a stale arm auto-expires nightly (0057).
+        armedRaw={triviaScreensArmed.data ?? { armed: false, at: null }}
       />
     </DisplayCanvas>
   );
@@ -73,17 +78,22 @@ export function SlotDisplay() {
 type Mode = SlotMode;
 
 function SlotScreen({
-  slot, venueName, timezone, items, takeover, liveGameId, toast, schedule, rolloverHour,
+  slot, venueName, timezone, items, takeover, liveGame, toast, schedule, rolloverHour, armedRaw,
 }: {
   slot: Slot;
   venueName: string;
   timezone: string;
   items: SignageItem[];
   takeover: Takeover | null;
-  liveGameId: string | null;
+  /** The venue's current game (setup/active/paused), or null. Only reaches the screens when armed. */
+  liveGame: LiveGame | null;
   toast: ToastMap;
   schedule: ScheduleRow[];
   rolloverHour: number;
+  /** "PUT TRIVIA ON SCREENS" arm (0056/0057), raw {armed,at}: trivia only reaches this screen when
+   *  EFFECTIVELY armed (default OFF; auto-expires at the nightly rollover). When armed, a setup game
+   *  shows the HOLDING board, active/paused shows the live board. */
+  armedRaw: ArmedRaw;
 }) {
   const [params] = useSearchParams();
   const preview = params.has("preview");
@@ -142,15 +152,26 @@ function SlotScreen({
   const tease = useMemo(() => teaseMoment(liveEvents, now), [liveEvents, now]);
 
   const activeTakeover = preview ? null : takeover;
-  const gameOn = preview ? false : !!liveGameId;
+  // "PUT TRIVIA ON SCREENS" arm gate (0056): trivia enters game mode ONLY when the host has armed
+  // it AND a game is present (setup/active/paused). Default OFF (armed false) ⇒ no trivia takeover,
+  // the screens stay on rotation/media exactly as if no game existed. Gates ONLY the game —
+  // takeover, moments, events, and rotation/media are untouched below. ?preview=1 stays rotation-only.
+  const gameId = liveGame?.id ?? null;
+  const gameStarted = liveGame?.status === "active" || liveGame?.status === "paused";
+  // Effective armed = the stored arm, minus a stale one (nightly expiry, 0057) — derived here
+  // against the same 30s `now` tick + venue TZ + rollover the rest of the resolver uses, so a
+  // forgotten arm auto-dies at 04:00 with no reload and no DB write.
+  const armed = isTriviaArmed(armedRaw, now, timezone, rolloverHour);
+  const gameOn = preview ? false : (armed && !!gameId);
   // Preview is rotation-only: zero the takeover-level moment (like takeover/game). Window
   // and message cards + the tease interstitial still show — they are rotation-level.
   const activeMomentOpt = preview || !moment ? null : { stage: moment.stage, interruptGame: moment.event.interrupt_game };
   const mode: Mode = resolveSlotMode({ takeover: !!activeTakeover, liveGame: gameOn, moment: activeMomentOpt });
 
-  // Ink: game → green; takeover inherits the ink underneath (green if a game is live,
-  // else amber); event stages + rotation → amber ambient with green live accents. (docs/09)
-  const ink: "green" | "amber" = mode === "game" ? "green" : mode === "takeover" && !!liveGameId ? "green" : "amber";
+  // Ink: game → green; takeover inherits the ink underneath (green if a game is ACTUALLY
+  // showing — gameOn, which respects the screens-live gate — else amber); event stages +
+  // rotation → amber ambient with green live accents. (docs/09)
+  const ink: "green" | "amber" = mode === "game" ? "green" : mode === "takeover" && gameOn ? "green" : "amber";
 
   // One-shot GAME MODE boot transition when entering game mode (docs/09).
   const prevMode = useRef<Mode>(mode);
@@ -209,13 +230,18 @@ function SlotScreen({
 
   return (
     <div className={`signage-slot signage-${ink}`} style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", color: "var(--terminal-green)", background: "#000" }}>
-      {/* Game mode replaces the surface with the reused trivia board (no chrome). */}
+      {/* Game mode replaces the surface with the reused trivia board (no chrome). Before the host
+          STARTS the game (status setup), armed screens show the pre-game HOLDING board on both
+          orientations; once active/paused, the live board (portrait leaderboard / landscape game
+          display). */}
       {mode === "game" ? (
         <div style={{ position: "absolute", inset: 0 }}>
-          {slot.orientation === "portrait" ? (
-            <LeaderboardBoard overrideGameId={liveGameId} holdInset={pipSurface} />
+          {!gameStarted ? (
+            <TriviaHoldingBoard gameId={gameId} orientation={slot.orientation} />
+          ) : slot.orientation === "portrait" ? (
+            <LeaderboardBoard overrideGameId={gameId} holdInset={pipSurface} />
           ) : (
-            <GameDisplayBoard overrideGameId={liveGameId} />
+            <GameDisplayBoard overrideGameId={gameId} />
           )}
           {showBoot && <BootOverlay />}
         </div>

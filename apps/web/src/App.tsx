@@ -49,6 +49,7 @@ const History = namedLazy(triviaRoutes, "History");
 const Settings = namedLazy(triviaRoutes, "Settings");
 const Leaderboard = namedLazy(triviaRoutes, "Leaderboard");
 const GameDisplay = namedLazy(triviaRoutes, "GameDisplay");
+const GamePreview = namedLazy(triviaRoutes, "GamePreview");
 
 // Drinks display + admin.
 const DrinksDisplay = namedLazy(leaderboardRoutes, "DrinksDisplay");
@@ -200,6 +201,8 @@ export function App() {
       {/* Public display routes — no auth */}
       <Route path="/leaderboard" element={<Leaderboard />} />
       <Route path="/game-display" element={<GameDisplay />} />
+      {/* Dual-display screen preview (trivia-sandbox) — both boards side by side, no auth. */}
+      <Route path="/game/preview" element={<GamePreview />} />
       <Route path="/drinks" element={<DrinksDisplay />} />
       <Route path="/signage/s/:slug" element={<SlotDisplay />} />
 

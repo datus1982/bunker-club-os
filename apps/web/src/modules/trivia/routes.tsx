@@ -16,6 +16,9 @@ export { Teams } from "./Teams";
 export { Leaderboard } from "./Leaderboard";
 export { GameDisplay } from "./GameDisplay";
 
+// Public dual-display screen preview (trivia-sandbox) — both boards side by side, no auth.
+export { GamePreview } from "./GamePreview";
+
 // Host tool (host+): read-only game history + view a game's final board.
 export { History } from "./History";
 
