@@ -58,7 +58,7 @@
   text-shadow: 0 0 8px var(--phos-dim);
 }
 .ck-sys {
-  font-size: 10px;
+  font-size: 13px;
   color: var(--phos-dim);
   text-align: right;
   line-height: 1.3;
@@ -79,7 +79,7 @@
 .ck-footer {
   border-top: 1px solid var(--ck-line);
   padding: 8px 18px;
-  font-size: 10px;
+  font-size: 13px;
   color: var(--phos-dim);
   display: flex;
   justify-content: space-between;
@@ -89,20 +89,20 @@
 /* type */
 .ck-title {
   font-family: "VT323", monospace;
-  font-size: 36px;
+  font-size: 40px;
   line-height: 1.05;
   text-shadow: 0 0 10px var(--phos-dim);
   margin-bottom: 8px;
   font-weight: normal;
 }
 .ck-eyebrow {
-  font-size: 11px;
+  font-size: 14px;
   letter-spacing: 3px;
   color: var(--phos-dim);
   margin-bottom: 12px;
 }
 .ck-sub {
-  font-size: 13px;
+  font-size: 16px;
   color: var(--phos-dim);
   line-height: 1.5;
   margin-bottom: 22px;
@@ -123,7 +123,7 @@
   color: var(--phos);
   border: 1px solid var(--ck-line);
   font-family: "Share Tech Mono", monospace;
-  font-size: 15px;
+  font-size: 16px;
   padding: 16px 14px;
   margin-bottom: 12px;
   cursor: pointer;
@@ -146,7 +146,7 @@
 .ck-btn.big small {
   display: block;
   font-family: "Share Tech Mono", monospace;
-  font-size: 12px;
+  font-size: 15px;
   color: var(--phos-dim);
   margin-top: 6px;
   text-shadow: none;
@@ -163,7 +163,7 @@
 .ck-field { margin-bottom: 18px; }
 .ck-field label {
   display: block;
-  font-size: 11px;
+  font-size: 14px;
   letter-spacing: 2px;
   color: var(--phos-dim);
   margin-bottom: 7px;
@@ -210,10 +210,10 @@
   border: none;
   color: var(--phos-dim);
   font-family: inherit;
-  font-size: 12px;
+  font-size: 15px;
   text-decoration: underline;
   cursor: pointer;
-  padding: 4px 0;
+  padding: 9px 0;
 }
 .ck-linkish:hover { color: var(--phos); }
 .ck-linkish:disabled { color: var(--phos-dim); opacity: 0.5; text-decoration: none; cursor: default; }
@@ -235,7 +235,7 @@
   display: block;
 }
 .ck-team-row .meta {
-  font-size: 11px;
+  font-size: 14px;
   color: var(--phos-dim);
   margin-top: 4px;
   display: flex;
@@ -252,7 +252,7 @@
   background: rgba(0, 255, 65, 0.04);
 }
 .ck-tk-head {
-  font-size: 10px;
+  font-size: 12px;
   letter-spacing: 3px;
   color: var(--phos-dim);
   display: flex;
@@ -264,7 +264,7 @@
   font-size: 32px;
   text-shadow: 0 0 10px var(--phos-dim);
 }
-.ck-tk-line { font-size: 12px; color: var(--phos-dim); margin-top: 8px; }
+.ck-tk-line { font-size: 15px; color: var(--phos-dim); margin-top: 8px; }
 .ck-tk-line b { color: var(--phos); font-weight: normal; }
 .ck-tk-edit {
   border-bottom: 1px dashed var(--phos-dim);
@@ -276,8 +276,8 @@
 .ck-tk-edit:focus { border-bottom-color: var(--phos); }
 
 .ck-divider { border: none; border-top: 1px solid var(--phos-faint); margin: 20px 0; }
-.ck-note { font-size: 11px; color: var(--phos-dim); line-height: 1.5; }
-.ck-error { color: var(--danger); font-size: 13px; margin-bottom: 14px; }
+.ck-note { font-size: 15px; color: var(--phos-dim); line-height: 1.5; }
+.ck-error { color: var(--danger); font-size: 15px; margin-bottom: 14px; }
 
 /* boot transition */
 .ck-boot {
@@ -286,7 +286,7 @@
   background: var(--ck-bg);
   z-index: 20;
   padding: 30px 22px;
-  font-size: 13px;
+  font-size: 15px;
   display: flex;
   flex-direction: column;
   gap: 8px;
