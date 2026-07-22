@@ -1,3 +1,4 @@
+import { useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { useSearchParams } from "react-router-dom";
 import { DisplayCanvas } from "@/shared/DisplayCanvas";
 import { VideoPlayer } from "./VideoPlayer";
@@ -15,9 +16,12 @@ import {
  * game_display_state; this screen renders whatever that row says (current round /
  * question, answer reveal, picture round, inter-round video, game over). Fixes:
  * ARCH-1 (realtime, one channel + 45s fallback — see useGameDisplay), QUAL-1
- * (DEV-gated log), PERF-1 (no flicker). The legacy's per-frame JS binary-search
- * font-fitting is dropped in favour of fixed sizes on the fixed 1920×1080 canvas
- * (docs/01 — design in absolute px, scale-to-fit does the rest).
+ * (DEV-gated log), PERF-1 (no flicker). The question/answer text FILLS its fixed box
+ * via a measure-based binary-search fit (FitBox below) — sized once before paint in a
+ * useLayoutEffect on the fixed 1920×1080 canvas (host note, Ronnie: "fill the box as
+ * much as possible"). This replaced the earlier length-tier sizes, which left dead
+ * room below shorter questions. The fit re-runs when the text OR the box changes (e.g.
+ * revealing the answer shrinks the question box → the question re-fits smaller).
  *
  * DECISION: our game_display_state (docs/02) has no current_video_url column; the
  * inter-round video is taken from the current round's rounds.video_url. If a
@@ -155,43 +159,39 @@ function QuestionView({
   return (
     <>
       <HeaderBar left={left} right={right} />
-      <div
-        className="terminal-border"
-        style={{
-          flex: 1,
-          margin: "20px 0",
-          display: "flex",
-          alignItems: "flex-start",
-          justifyContent: "center",
-          padding: 48,
-          overflow: "hidden",
-        }}
-      >
-        <p style={{ fontSize: fitQuestion(question?.question_text ?? ""), fontWeight: 400, textAlign: "center", lineHeight: 1.15, margin: 0 }}>
-          {question?.question_text ?? "LOADING QUESTION…"}
-        </p>
-      </div>
+      {/* Question FILLS the box: measured to the largest font that fits width+height
+          without clipping (wrapping allowed). The box is flex:1, so when the answer is
+          hidden it's the full height (Ronnie's "more room below") and the question grows
+          big; when the answer is shown the box loses the 200px answer strip and the
+          question re-fits smaller. Top-aligned (align="flex-start") keeps any slack below
+          a short question. 260px ceiling stops a 2-word question rendering absurdly huge. */}
+      <FitBox
+        text={question?.question_text ?? "LOADING QUESTION…"}
+        maxSize={260}
+        weight={400}
+        lineHeight={1.15}
+        align="flex-start"
+        boxClassName="terminal-border"
+        boxStyle={{ flex: 1, margin: "20px 0", padding: 48 }}
+      />
       {showAnswer && question?.answer_text && (
-        <div
-          style={{
+        // Answer FILLS the fixed 200px box, full width. Filling to fit naturally keeps a
+        // short/medium answer on ONE line (one line fills the width at a larger size than
+        // wrapping to two would), matching PR #74's single-line intent while scaling UP.
+        <FitBox
+          text={question.answer_text}
+          maxSize={190}
+          weight={700}
+          lineHeight={1.1}
+          align="center"
+          boxStyle={{
             height: 200,
             flexShrink: 0,
             border: "4px solid var(--terminal-green)",
             boxShadow: "0 0 24px var(--terminal-glow)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
             padding: "12px 16px",
-            overflow: "hidden",
           }}
-        >
-          {/* width:100% + slim horizontal padding lets the answer use the FULL display
-              width before wrapping, so medium answers stay on ONE line inside the fixed
-              200px box (host note) rather than wrapping and clipping. */}
-          <p style={{ width: "100%", fontSize: fitAnswer(question.answer_text), fontWeight: 700, textAlign: "center", margin: 0, lineHeight: 1.1 }}>
-            {question.answer_text}
-          </p>
-        </div>
+        />
       )}
     </>
   );
@@ -242,24 +242,99 @@ function roundLabel(round: Round): string {
   return label.toUpperCase();
 }
 
-/** Fixed size tiers by length — replaces the legacy JS font-fitting (fixed canvas).
- *  Sizes bumped ~15% (owner/host note: the question should read bigger) while keeping
- *  the same length breakpoints. Worst-case-per-tier verified on the 1920×1080 canvas WITH
- *  the 200px answer box shown (question box then ~570px tall × ~1744px wide) — max-length
- *  text for each tier still wraps within the box without clipping. */
-function fitQuestion(text: string): number {
-  const n = text.length;
-  if (n <= 60) return 138;
-  if (n <= 120) return 106;
-  if (n <= 220) return 82;
-  if (n <= 380) return 62;
-  return 50;
-}
-
-function fitAnswer(text: string): number {
-  const n = text.length;
-  if (n <= 40) return 96;
-  if (n <= 90) return 72;
-  if (n <= 160) return 52;
-  return 40;
+/**
+ * FitBox — text sized to FILL its fixed box, measure-based (host note, Ronnie: "make the
+ * question and answer boxes fixed to the size and just fill the box as much as possible").
+ * Replaces the old length-tier sizes (fitQuestion/fitAnswer), which left dead room below
+ * short/medium questions.
+ *
+ * A useLayoutEffect binary-searches the largest integer font in [minSize, maxSize] that
+ * fits the box on BOTH axes — width and height — with wrapping allowed. Because it runs
+ * before paint (layout effect, not effect), the correct size is applied before the frame
+ * is shown: no flicker on question change or answer reveal.
+ *
+ * Measurement reads the text node's intrinsic scrollWidth/scrollHeight (independent of how
+ * the flex box centers/top-aligns it) against the box's content area (clientWidth/Height
+ * minus padding). The 1920×1080 canvas is fixed (DisplayCanvas scales the whole surface),
+ * so the box's client size is a stable layout metric — same reason TickerReprint/FitText in
+ * SlotDisplay/SignageTemplates read client size with no resize listener.
+ *
+ * The effect has NO dependency array: it re-runs on every commit and only calls setSize when
+ * the best size actually changes, so it self-stabilises (one extra measure pass, then quiet)
+ * AND it re-fits whenever the box changes size — e.g. revealing the answer removes the 200px
+ * strip, shrinking the question box, and the question re-fits smaller on that re-render.
+ */
+function FitBox({
+  text,
+  maxSize,
+  minSize = 28,
+  weight = 400,
+  lineHeight = 1.15,
+  align = "center",
+  boxClassName,
+  boxStyle,
+}: {
+  text: string;
+  maxSize: number;
+  minSize?: number;
+  weight?: number;
+  lineHeight?: number;
+  align?: "center" | "flex-start";
+  boxClassName?: string;
+  boxStyle?: CSSProperties;
+}) {
+  const boxRef = useRef<HTMLDivElement>(null);
+  const txtRef = useRef<HTMLParagraphElement>(null);
+  const [size, setSize] = useState(maxSize);
+  useLayoutEffect(() => {
+    const box = boxRef.current;
+    const txt = txtRef.current;
+    if (!box || !txt) return;
+    const cs = getComputedStyle(box);
+    const availW = box.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+    const availH = box.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
+    if (availW <= 0 || availH <= 0) return;
+    const capW = Math.floor(availW);
+    const capH = Math.floor(availH);
+    const fits = (fs: number) => {
+      txt.style.fontSize = `${fs}px`;
+      return txt.scrollWidth <= capW && txt.scrollHeight <= capH;
+    };
+    let lo = minSize;
+    let hi = maxSize;
+    let best = minSize;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      if (fits(mid)) {
+        best = mid;
+        lo = mid + 1;
+      } else {
+        hi = mid - 1;
+      }
+    }
+    txt.style.fontSize = `${best}px`; // keep the DOM at the fitted size before paint
+    if (best !== size) setSize(best);
+  });
+  return (
+    <div
+      ref={boxRef}
+      className={boxClassName}
+      style={{ display: "flex", alignItems: align, justifyContent: "center", overflow: "hidden", ...boxStyle }}
+    >
+      <p
+        ref={txtRef}
+        style={{
+          width: "100%",
+          margin: 0,
+          fontSize: size,
+          fontWeight: weight,
+          textAlign: "center",
+          lineHeight,
+          overflowWrap: "break-word",
+        }}
+      >
+        {text}
+      </p>
+    </div>
+  );
 }
