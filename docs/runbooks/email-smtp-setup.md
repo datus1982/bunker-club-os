@@ -156,6 +156,28 @@ revert is cosmetic):
 - `recovery` / `invite` / `confirmation` keep `{{ .ConfirmationURL }}` (the link).
 - `email_change` keeps `{{ .ConfirmationURL }}` and `{{ .NewEmail }}`.
 
+### `magic_link` tuned for Apple Mail one-time-code detection (branch `phase-otp-autofill`, 2026-07-21)
+
+Paired with the six-box check-in OTP input gaining `autocomplete="one-time-code"` (so
+iOS offers the keyboard-suggestion autofill), the `magic_link` template body was tuned so
+Apple Mail confidently recognizes `{{ .Token }}` as a verification code:
+- Intro line now reads `Your Bunker Club verification code is {{ .Token }}` (the plain
+  "verification code" phrasing is the heuristic anchor).
+- Added a muted domain-bound line at the bottom: `@bunkerokc.com #{{ .Token }}` — the
+  standardized `@domain #code` format Apple reads to bind the code to os.bunkerokc.com.
+- Theme, layout, and the big amber code block are unchanged. Subject still carries the
+  code (`BUNKER OS ACCESS CODE: {{ .Token }}`). All three visible `{{ .Token }}` preserved.
+
+Applied via `pnpm apply:email-templates` and verified: live body byte-matches the git file,
+`{{ .Token }}` intact, and a fresh `generateLink` mint still returns a 6-digit numeric OTP.
+
+**Rollback for JUST this change:** the pre-change (themed, pre-autofill) `magic_link.html`
+lives in git history one commit back — `git checkout <prev> -- supabase/email-templates/magic_link.html`
+then re-run `pnpm apply:email-templates`. A full raw pre-change `GET /config/auth` dump was
+captured before applying (per the NOTE-1 guardrail) to the session scratchpad
+`config-auth-pre-otp-autofill-20260721.json` (session-local — it holds SMTP creds, so it is
+NOT committed; the git file itself is the durable rollback point since live==file was proven).
+
 ### Note on `invite-team-member`
 That edge fn sends NO email (it only creates a claimable auth user; the invitee gets in
 via their own OTP later), so there was nothing to restyle there. If it ever grows an
