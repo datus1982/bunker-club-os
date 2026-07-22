@@ -24,6 +24,13 @@ import { Modal, btnGhost, btnDanger } from "./ui";
  * game_teams/game_display_state). The control is trivia-module-gated in the UI; the RPC
  * enforces the same server-side regardless.
  *
+ * WORK GUARD (2026-07-22, migration 0059): a game that still holds work can no longer be
+ * deleted — the RPC allows it only when status = 'completed' OR the game is provably empty
+ * (zero questions, scores AND game_teams). This mirrors that condition in the UI so DELETE
+ * is never offered for a game the server would refuse; the reason shows inline on the card.
+ * Rounds are excluded from the emptiness test on both sides (GameSetup seeds them at
+ * creation, so counting them would make every new game undeletable).
+ *
  * DECISION: our games table (docs/02) dropped legacy-only name / num_rounds /
  * elapsed_time_seconds; the card is keyed on game_date + derived round/team counts.
  * There is no 'archived' status in our schema.
@@ -69,6 +76,27 @@ export function History() {
     queryFn: async () => tally("rounds"),
   });
 
+  const rows = games.data ?? [];
+
+  // Guard mirror (0059): only a non-completed game can be blocked, so the work reads are
+  // scoped to those ids — normally one or two rows, which also keeps the result well
+  // under PostgREST's row cap (a truncated read would misreport a game as empty).
+  const openIds = rows.filter((g) => g.status !== "completed").map((g) => g.id);
+  const openKey = openIds.join(",");
+  const hasWork = useQuery({
+    queryKey: ["history", "hasWork", openKey],
+    enabled: openIds.length > 0,
+    queryFn: async (): Promise<Record<string, boolean>> => {
+      const flags: Record<string, boolean> = {};
+      for (const table of ["questions", "scores", "game_teams"] as const) {
+        const { data, error } = await supabase.from(table).select("game_id").in("game_id", openIds);
+        if (error) throw error;
+        for (const row of (data ?? []) as { game_id: string }[]) flags[row.game_id] = true;
+      }
+      return flags;
+    },
+  });
+
   const del = useMutation({
     mutationFn: async (gameId: string) => {
       const { error } = await supabase.rpc("delete_game", { p_game_id: gameId });
@@ -81,7 +109,14 @@ export function History() {
     },
   });
 
-  const rows = games.data ?? [];
+  const workReady = openIds.length === 0 || hasWork.isSuccess;
+  /** null ⇒ delete_game will accept this game; otherwise the terse reason it won't. */
+  const deleteBlock = (g: HistoryGame): string | null => {
+    if (g.status === "completed") return null;
+    if (hasWork.isError) return "CAN'T CHECK — RELOAD";
+    if (!workReady) return "CHECKING…";
+    return hasWork.data?.[g.id] ? "END GAME TO DELETE" : null;
+  };
 
   return (
     <div className="terminal-theme" style={{ minHeight: "100vh", padding: "clamp(16px, 4vw, 40px)", fontFamily: "'VT323','Share Tech Mono',monospace" }}>
@@ -105,6 +140,7 @@ export function History() {
                 teams={teamCounts.data?.[g.id] ?? null}
                 rounds={roundCounts.data?.[g.id] ?? null}
                 canDelete={canDelete}
+                deleteBlocked={deleteBlock(g)}
                 onOpen={() => setRecapGame(g)}
                 onDelete={() => setPendingDelete(g)}
               />
@@ -121,7 +157,8 @@ export function History() {
           teams={teamCounts.data?.[pendingDelete.id] ?? null}
           rounds={roundCounts.data?.[pendingDelete.id] ?? null}
           pending={del.isPending}
-          error={del.isError ? (del.error as Error).message : null}
+          // The server's own message (e.g. the 0059 work guard) — never a generic failure.
+          error={del.isError ? (del.error as { message?: string })?.message ?? "UNKNOWN ERROR" : null}
           onCancel={() => {
             del.reset();
             setPendingDelete(null);
@@ -138,6 +175,7 @@ function GameCard({
   teams,
   rounds,
   canDelete,
+  deleteBlocked,
   onOpen,
   onDelete,
 }: {
@@ -145,6 +183,7 @@ function GameCard({
   teams: number | null;
   rounds: number | null;
   canDelete: boolean;
+  deleteBlocked: string | null;
   onOpen: () => void;
   onDelete: () => void;
 }) {
@@ -176,8 +215,9 @@ function GameCard({
           <button
             type="button"
             onClick={onDelete}
+            disabled={!!deleteBlocked}
             aria-label={`Delete game ${game.game_date}`}
-            title="Delete this game"
+            title={deleteBlocked ?? "Delete this game"}
             style={{
               ...btnDanger,
               flex: "0 0 auto",
@@ -185,12 +225,18 @@ function GameCard({
               minHeight: 0,
               fontSize: 22,
               fontFamily: "inherit",
+              opacity: deleteBlocked ? 0.35 : undefined,
+              cursor: deleteBlocked ? "not-allowed" : "pointer",
             }}
           >
             ✕
           </button>
         )}
       </div>
+      {/* Why DELETE is unavailable — the same condition the RPC enforces (0059). */}
+      {canDelete && deleteBlocked && (
+        <div style={{ fontSize: 20, opacity: 0.7, letterSpacing: 1 }}>{deleteBlocked}</div>
+      )}
     </div>
   );
 }
