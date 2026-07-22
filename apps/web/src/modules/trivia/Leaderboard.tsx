@@ -1,8 +1,6 @@
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
-import { useSearchParams } from "react-router-dom";
 import { QRCodeSVG } from "qrcode.react";
 import { Trophy, Zap, Star, AlertCircle } from "lucide-react";
-import { DisplayCanvas } from "@/shared/DisplayCanvas";
 import {
   useCurrentGame,
   useLeaderboardData,
@@ -16,7 +14,8 @@ import { useSeasonPanel, type SeasonStanding } from "./useSeasonPanel";
 import { SUPPORT_TEXT } from "@/modules/signage/supportText";
 
 /**
- * Trivia leaderboard — public display route (docs/04 port, docs/01 DisplayCanvas).
+ * Trivia leaderboard board (docs/04 port). Renders inside signage portrait game mode
+ * and the /game/preview screen preview; the standalone /leaderboard TV route is retired.
  *
  * Ported from the legacy Leaderboard.tsx (1056 lines). Behavior preserved; the ~40
  * light-theme knobs (theme_settings) are dropped in favour of the shared terminal
@@ -26,31 +25,20 @@ import { SUPPORT_TEXT } from "@/modules/signage/supportText";
  * is opt-in in the theme and never enabled here), and the join QR renders locally
  * (qrcode.react) instead of the legacy external api.qrserver.com image.
  *
- * DECISION (amended 0038): the legacy AUTO-derived "Scoring in Progress" interstitial
- * relied on a rounds.scoring_in_progress column our schema (docs/02) does not have and
- * remains unbuilt — SUPERSEDED by the manual board_stage 'scoring' stage (migration
- * 0038, host-driven reveal choreography; see ScoringInProgress below). Bonus-round
- * badges need per-round score detail and land with the Scoring/GameDisplay port.
+ * The manual board_stage 'scoring' stage (migration 0038, host-driven reveal
+ * choreography) hides scores during scoring — see ScoringInProgress / ScoringHold below.
+ * Bonus-round badges need per-round score detail and land with the Scoring/GameDisplay
+ * port.
  */
 
 const CANVAS_W = 1080;
 const CANVAS_H = 1920;
 
-export function Leaderboard() {
-  const [params] = useSearchParams();
-  const overrideGameId = params.get("game");
-  return (
-    <DisplayCanvas orientation="portrait">
-      <LeaderboardBoard overrideGameId={overrideGameId} />
-    </DisplayCanvas>
-  );
-}
-
 /**
- * The leaderboard board content WITHOUT its DisplayCanvas wrapper. The /leaderboard
- * route wraps this in DisplayCanvas exactly as before (behaviour-identical); the
- * signage slot page also embeds it in game mode so the two boards share one code
- * path (docs/09 — reuse, don't fork).
+ * The leaderboard board content, rendered at the fixed 1080×1920 portrait canvas. The
+ * signage slot page embeds it in game mode and /game/preview scales it into a pane, so
+ * the boards share one code path (docs/09 — reuse, don't fork). Callers own the canvas
+ * scaling (SlotDisplay via its slot surface, GamePreview via FixedCanvas).
  */
 export function LeaderboardBoard({
   overrideGameId,
@@ -62,8 +50,8 @@ export function LeaderboardBoard({
    * passes down so the HIDE-SCORES hold stage can split the canvas — the "scores sealed"
    * messaging up top, this inset (the slot's NORMAL rotation, a mini portrait screen)
    * framed as an ad panel below — so ads keep running while the host holds. Only the
-   * signage SlotDisplay passes it; the legacy /leaderboard route leaves it undefined and
-   * the hold stage renders full-screen ScoringInProgress exactly as before.
+   * signage SlotDisplay passes it; the /game/preview screen preview leaves it undefined
+   * and the hold stage renders full-screen ScoringInProgress.
    */
   holdInset?: React.ReactNode;
 }) {
@@ -125,7 +113,7 @@ export function LeaderboardBoard({
         <JoinScreen game={game} />
       ) : stage === "scoring" ? (
         // HIDE SCORES hold: signage passes a PiP inset → split the canvas so ads keep
-        // running (BEAT 2); the legacy /leaderboard route (no inset) keeps the full screen.
+        // running (BEAT 2); /game/preview (no inset) keeps the full screen.
         holdInset ? <ScoringHold inset={holdInset} /> : <ScoringInProgress />
       ) : game.status === "setup" || game.status === "stopped" ? (
         // Default STANDINGS stage before the host starts → the pre-game waiting screen
@@ -456,7 +444,7 @@ function HoldingScreen({ game, teams }: { game: Game; teams: ScoreboardRow[] }) 
 
 // Small supporting-label floor, single-sourced from the signage cards (owner beat
 // 2026-07-15) so the step/caption micro-copy reads at 20 feet. This board is always
-// portrait (the /leaderboard route + the signage portrait game-mode board — landscape
+// portrait (the signage portrait game-mode board + /game/preview — landscape
 // game mode uses GameDisplayBoard, which has no board stages), so the portrait floor
 // is the right constant.
 const QR_SUPPORT = SUPPORT_TEXT.portrait; // 40

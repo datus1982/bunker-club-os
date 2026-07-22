@@ -1,6 +1,4 @@
 import { useLayoutEffect, useRef, useState, type CSSProperties } from "react";
-import { useSearchParams } from "react-router-dom";
-import { DisplayCanvas } from "@/shared/DisplayCanvas";
 import { VideoPlayer } from "./VideoPlayer";
 import {
   useDisplayGame,
@@ -10,7 +8,8 @@ import {
 } from "./useGameDisplay";
 
 /**
- * Audience Q&A display — public landscape display route (docs/04 port, docs/01).
+ * Audience Q&A display board (docs/04 port). Renders inside signage landscape game mode
+ * and the /game/preview screen preview; the standalone /game-display TV route is retired.
  *
  * Ported from the legacy GameDisplay.tsx (702 lines). The host drives everything via
  * game_display_state; this screen renders whatever that row says (current round /
@@ -28,21 +27,11 @@ import {
  * persistent-across-rounds video is ever needed, add the column in a later migration.
  */
 
-export function GameDisplay() {
-  const [params] = useSearchParams();
-  const overrideGameId = params.get("game");
-  return (
-    <DisplayCanvas orientation="landscape">
-      <GameDisplayBoard overrideGameId={overrideGameId} />
-    </DisplayCanvas>
-  );
-}
-
 /**
- * The game-display board content WITHOUT its DisplayCanvas wrapper. The /game-display
- * route wraps this in DisplayCanvas exactly as before (behaviour-identical); the
- * signage slot page also embeds it in game mode for landscape slots (docs/09 — reuse,
- * don't fork). Returns the raw 1920×1080 content (video fill or the framed board).
+ * The game-display board content at the fixed 1920×1080 landscape canvas. The signage
+ * slot page embeds it in game mode for landscape slots and /game/preview scales it into
+ * a pane (docs/09 — reuse, don't fork); callers own the canvas scaling. Returns the raw
+ * 1920×1080 content (video fill or the framed board).
  */
 export function GameDisplayBoard({ overrideGameId }: { overrideGameId: string | null }) {
   const gameQuery = useDisplayGame(overrideGameId);

@@ -32,8 +32,8 @@ import { armAudio, installAudioAutoArm, isAudioUnlocked, markAudioUnlocked, subs
  * Lifecycle: this component only mounts while game_display_state.show_video is true
  * (GameDisplayBoard early-returns it), so every flip-on is a fresh mount and every flip-off
  * a full unmount — no stuck prompt, no double-play. A mid-video kiosk reload re-mounts with
- * show_video already true and autoplays again. Shared verbatim by the /game-display route
- * AND the signage landscape slot (GameDisplayBoard reuse).
+ * show_video already true and autoplays again. Shared verbatim by the signage landscape
+ * slot and /game/preview (GameDisplayBoard reuse).
  */
 
 const PLAYING = 1;
