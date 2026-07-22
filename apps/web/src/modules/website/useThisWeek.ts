@@ -41,6 +41,9 @@ export type StripCard = {
   /** Attribution credit shown as a dim caption on this card only (e.g. "POSTERS: TMDB" on the
    *  NOW PLAYING hero when a real sourced poster is on screen — a TMDB API terms obligation). */
   credit?: string;
+  /** This card's image is a movie one-sheet (true 2:3) — render the thumb at poster aspect
+   *  instead of the default square crop. Set only when a real sourced poster is the image. */
+  poster?: boolean;
   live?: boolean;
 };
 

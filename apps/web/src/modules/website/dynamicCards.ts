@@ -116,6 +116,9 @@ export async function resolveNowPlayingCard(item: DynamicItem): Promise<StripCar
     // resolved AND chosen) — NOT on a thumb-grab or text fallback. Mirrors the TV template's
     // hasPoster gate (SignageTemplates.tsx). Full disclaimer lives in the qsys-media-control runbook.
     credit: image && image === posterUrl ? "POSTERS: TMDB" : undefined,
+    // Render at true poster aspect (2:3) ONLY when the image IS the real one-sheet — a thumb
+    // frame-grab fallback is ~16:9 and stays square-cropped like the other cards.
+    poster: !!(image && image === posterUrl),
     live: true,
   };
 }
