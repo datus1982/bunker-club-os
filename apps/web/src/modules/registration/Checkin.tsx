@@ -321,6 +321,16 @@ function Identify({ email, setEmail, busy, error, onSubmit }: {
 
 const RESEND_COOLDOWN = 40; // seconds — protects the email send-rate limit
 
+// Spread a run of digits across the six OTP boxes starting at `start`, returning a
+// fresh array. Shared by paste (start=0) and multi-char input / iOS one-time-code
+// autofill (start = the box that received the dump) so both behave identically.
+function spreadDigits(current: string[], start: number, raw: string): string[] {
+  const digits = raw.replace(/\D/g, "").split("");
+  const next = [...current];
+  for (let k = 0; k < digits.length && start + k < 6; k++) next[start + k] = digits[k];
+  return next;
+}
+
 function Otp({ email, otp, setOtp, busy, error, onComplete, onResend, onBack }: {
   email: string; otp: string[]; setOtp: (v: string[]) => void; busy: boolean; error: string | null;
   onComplete: (code: string) => void; onResend: () => Promise<void>; onBack: () => void;
@@ -360,29 +370,44 @@ function Otp({ email, otp, setOtp, busy, error, onComplete, onResend, onBack }: 
     }
   };
 
-  const setDigit = (i: number, v: string) => {
-    const d = v.replace(/\D/g, "").slice(-1);
-    const next = [...otp];
-    next[i] = d;
-    setOtp(next);
-    if (d && i < 5) refs.current[i + 1]?.focus();
+  // Auto-submit once all six boxes are full — shared by every input path
+  // (typing, paste, and iOS one-time-code autofill) so they behave identically.
+  const commitIfComplete = (next: string[]) => {
     if (next.every((x) => x) && !submittedRef.current) {
       submittedRef.current = true;
       setTimeout(() => onComplete(next.join("")), 150);
     }
   };
 
-  // Allow paste of a full 6-digit code into the first box.
-  const onPaste = (e: React.ClipboardEvent) => {
-    const digits = e.clipboardData.getData("text").replace(/\D/g, "").slice(0, 6).split("");
-    if (digits.length) {
-      e.preventDefault();
-      const next = Array(6).fill("").map((_, i) => digits[i] ?? "");
+  const setDigit = (i: number, v: string) => {
+    const digits = v.replace(/\D/g, "");
+    // iOS autofill (or a paste that dumps the whole code into one field) hands us
+    // several digits at once — spread them across the boxes from here, exactly like
+    // a row-level paste, instead of throwing away all but the last.
+    if (digits.length > 1) {
+      const next = spreadDigits(otp, i, digits);
       setOtp(next);
-      if (next.every((x) => x) && !submittedRef.current) {
-        submittedRef.current = true;
-        setTimeout(() => onComplete(next.join("")), 150);
-      }
+      refs.current[Math.min(i + digits.length - 1, 5)]?.focus();
+      commitIfComplete(next);
+      return;
+    }
+    // Single-digit typing: keep the last char (handles the maxLength edge), advance.
+    const d = digits.slice(-1);
+    const next = [...otp];
+    next[i] = d;
+    setOtp(next);
+    if (d && i < 5) refs.current[i + 1]?.focus();
+    commitIfComplete(next);
+  };
+
+  // Allow paste of a full 6-digit code into the row (fills from the first box).
+  const onPaste = (e: React.ClipboardEvent) => {
+    const raw = e.clipboardData.getData("text");
+    if (/\d/.test(raw)) {
+      e.preventDefault();
+      const next = spreadDigits(Array(6).fill(""), 0, raw);
+      setOtp(next);
+      commitIfComplete(next);
     }
   };
 
@@ -398,8 +423,11 @@ function Otp({ email, otp, setOtp, busy, error, onComplete, onResend, onBack }: 
           <input
             key={i}
             ref={(el) => { refs.current[i] = el; }}
-            maxLength={1}
+            maxLength={i === 0 ? 6 : 1}
             inputMode="numeric"
+            // iOS surfaces the one-time-code keyboard suggestion on the first box;
+            // when tapped it dumps all six digits here, which setDigit distributes.
+            autoComplete={i === 0 ? "one-time-code" : "off"}
             aria-label={`digit ${i + 1}`}
             autoFocus={i === 0}
             value={d}

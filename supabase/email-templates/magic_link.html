@@ -13,13 +13,16 @@
       <tr><td style="padding:0 30px"><div style="border-top:1px solid #1f2630;margin:14px 0"></div></td></tr>
       <tr><td style="padding:4px 30px 26px">
         <h1 style="margin:0 0 16px;font-size:20px;letter-spacing:1px;color:#ffb000;font-family:'Courier New',Courier,monospace">ACCESS CODE</h1>
-        <p style="margin:0 0 14px;font-size:15px;line-height:1.55;color:#c8ccd0;font-family:'Courier New',Courier,monospace">Enter this code on the terminal to sign in. No passwords, ever.</p>
+        <p style="margin:0 0 14px;font-size:15px;line-height:1.55;color:#c8ccd0;font-family:'Courier New',Courier,monospace">Your Bunker Club verification code is {{ .Token }}</p>
         <div style="margin:20px 0;padding:16px;background:#000000;border:1px solid #1f2630;text-align:center">
           <div style="font-size:32px;letter-spacing:8px;color:#ffb000;font-family:'Courier New',Courier,monospace;font-weight:bold">{{ .Token }}</div>
         </div>
-        <p style="margin:0 0 14px;font-size:13px;line-height:1.5;color:#6b7280;font-family:'Courier New',Courier,monospace">It expires shortly and can only be used once.</p>
+        <p style="margin:0 0 14px;font-size:13px;line-height:1.5;color:#6b7280;font-family:'Courier New',Courier,monospace">Enter it on the terminal to sign in. It expires shortly and can only be used once. No passwords, ever.</p>
         <div style="border-top:1px solid #1f2630;margin:22px 0 14px"></div>
-        <p style="margin:0;font-size:12px;line-height:1.5;color:#6b7280;font-family:'Courier New',Courier,monospace">Didn't request this code? You can safely ignore this email.</p>
+        <p style="margin:0 0 10px;font-size:12px;line-height:1.5;color:#6b7280;font-family:'Courier New',Courier,monospace">Didn't request this code? You can safely ignore this email.</p>
+        <!-- Domain-bound one-time-code line — the standardized format Apple Mail reads to
+             confidently surface {{ .Token }} as a verification code for os.bunkerokc.com. -->
+        <p style="margin:0;font-size:11px;line-height:1.4;color:#3a4250;font-family:'Courier New',Courier,monospace">@bunkerokc.com #{{ .Token }}</p>
       </td></tr>
     </table>
     <div style="max-width:480px;margin:14px auto 0;font-size:11px;color:#6b7280;font-family:'Courier New',Courier,monospace;text-align:center">Bunker Club · 433 NW 23rd St · Oklahoma City</div>
