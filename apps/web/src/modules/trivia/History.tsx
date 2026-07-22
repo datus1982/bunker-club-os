@@ -1,21 +1,28 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase, VENUE_ID } from "@/shared/supabaseClient";
+import { useRole } from "@/shared/useRole";
 import { GameRecap } from "./GameRecap";
+import { Modal, btnGhost, btnDanger } from "./ui";
 
 /**
  * Game History — host tool (docs/01 route map, host+). A normal scrolling admin
  * page in the terminal theme (NOT a fixed display canvas).
  *
- * Ported from the legacy History.tsx. Kept to the READ-ONLY surface for this phase:
- * list past games and open any game's GAME RECAP — an in-app modal (GameRecap.tsx) with
- * SUMMARY / QUESTIONS / VIDEOS tabs, so the host can browse standings, click through the
- * Q&A, and see the videos WITHOUT navigating away to a display surface. This replaces the
- * old "VIEW BOARD →" link (which pushed to /leaderboard?game=<id>); the recap's SUMMARY
- * tab renders the same game_scoreboard() standings as a read-only board, subsuming it.
- * The legacy write actions — Load Game, Duplicate, Delete — depend on Scoring/GameSetup
- * (not yet ported) and are deferred to the host-tools sub-phase.
+ * Ported from the legacy History.tsx. List past games and open any game's GAME RECAP —
+ * an in-app modal (GameRecap.tsx) with SUMMARY / QUESTIONS / VIDEOS tabs, so the host can
+ * browse standings, click through the Q&A, and see the videos WITHOUT navigating away to a
+ * display surface. This replaces the old "VIEW BOARD →" link; the recap's SUMMARY tab
+ * renders the same game_scoreboard() standings as a read-only board, subsuming it.
+ *
+ * DELETE (2026-07-21): the old system loaded historical games into an active state, leaving
+ * junk/test rows in history with no way to remove them. Each card gets a secondary, hard-to-
+ * misfire ✕ DELETE that opens a destructive confirm (game details + irreversible warning),
+ * then calls delete_game(uuid) (migration 0058, SECURITY DEFINER, has_module('trivia')
+ * gated) which hard-deletes the game and cascades every child (rounds/questions/scores/
+ * game_teams/game_display_state). The control is trivia-module-gated in the UI; the RPC
+ * enforces the same server-side regardless.
  *
  * DECISION: our games table (docs/02) dropped legacy-only name / num_rounds /
  * elapsed_time_seconds; the card is keyed on game_date + derived round/team counts.
@@ -32,7 +39,11 @@ interface HistoryGame {
 }
 
 export function History() {
+  const qc = useQueryClient();
+  const { can } = useRole();
+  const canDelete = can("trivia");
   const [recapGame, setRecapGame] = useState<HistoryGame | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<HistoryGame | null>(null);
   const games = useQuery({
     queryKey: ["history", "games"],
     queryFn: async (): Promise<HistoryGame[]> => {
@@ -58,6 +69,18 @@ export function History() {
     queryFn: async () => tally("rounds"),
   });
 
+  const del = useMutation({
+    mutationFn: async (gameId: string) => {
+      const { error } = await supabase.rpc("delete_game", { p_game_id: gameId });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      // The game + its rows are gone; refresh the list and both count reads.
+      qc.invalidateQueries({ queryKey: ["history"] });
+      setPendingDelete(null);
+    },
+  });
+
   const rows = games.data ?? [];
 
   return (
@@ -81,7 +104,9 @@ export function History() {
                 game={g}
                 teams={teamCounts.data?.[g.id] ?? null}
                 rounds={roundCounts.data?.[g.id] ?? null}
+                canDelete={canDelete}
                 onOpen={() => setRecapGame(g)}
+                onDelete={() => setPendingDelete(g)}
               />
             ))}
           </div>
@@ -89,11 +114,40 @@ export function History() {
       </div>
 
       {recapGame && <GameRecap game={recapGame} onClose={() => setRecapGame(null)} />}
+
+      {pendingDelete && (
+        <DeleteConfirm
+          game={pendingDelete}
+          teams={teamCounts.data?.[pendingDelete.id] ?? null}
+          rounds={roundCounts.data?.[pendingDelete.id] ?? null}
+          pending={del.isPending}
+          error={del.isError ? (del.error as Error).message : null}
+          onCancel={() => {
+            del.reset();
+            setPendingDelete(null);
+          }}
+          onConfirm={() => del.mutate(pendingDelete.id)}
+        />
+      )}
     </div>
   );
 }
 
-function GameCard({ game, teams, rounds, onOpen }: { game: HistoryGame; teams: number | null; rounds: number | null; onOpen: () => void }) {
+function GameCard({
+  game,
+  teams,
+  rounds,
+  canDelete,
+  onOpen,
+  onDelete,
+}: {
+  game: HistoryGame;
+  teams: number | null;
+  rounds: number | null;
+  canDelete: boolean;
+  onOpen: () => void;
+  onDelete: () => void;
+}) {
   const active = game.status === "active";
   return (
     <div
@@ -109,15 +163,87 @@ function GameCard({ game, teams, rounds, onOpen }: { game: HistoryGame; teams: n
         <span>{teams ?? "–"} TEAMS</span>
         {game.is_playoff && <span>★ PLAYOFF</span>}
       </div>
-      <button
-        type="button"
-        onClick={onOpen}
-        className="terminal-border"
-        style={{ marginTop: 6, padding: "8px 12px", textAlign: "center", fontSize: 24, background: "transparent", cursor: "pointer", fontFamily: "inherit" }}
-      >
-        VIEW RECAP →
-      </button>
+      <div style={{ display: "flex", alignItems: "stretch", gap: 8, marginTop: 6 }}>
+        <button
+          type="button"
+          onClick={onOpen}
+          className="terminal-border"
+          style={{ flex: "1 1 auto", padding: "8px 12px", textAlign: "center", fontSize: 24, background: "transparent", cursor: "pointer", fontFamily: "inherit" }}
+        >
+          VIEW RECAP →
+        </button>
+        {canDelete && (
+          <button
+            type="button"
+            onClick={onDelete}
+            aria-label={`Delete game ${game.game_date}`}
+            title="Delete this game"
+            style={{
+              ...btnDanger,
+              flex: "0 0 auto",
+              padding: "8px 14px",
+              minHeight: 0,
+              fontSize: 22,
+              fontFamily: "inherit",
+            }}
+          >
+            ✕
+          </button>
+        )}
+      </div>
     </div>
+  );
+}
+
+function DeleteConfirm({
+  game,
+  teams,
+  rounds,
+  pending,
+  error,
+  onCancel,
+  onConfirm,
+}: {
+  game: HistoryGame;
+  teams: number | null;
+  rounds: number | null;
+  pending: boolean;
+  error: string | null;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <Modal
+      title="DELETE GAME"
+      onClose={onCancel}
+      footer={
+        <>
+          <button type="button" onClick={onCancel} style={{ ...btnGhost, fontFamily: "inherit" }} disabled={pending}>
+            CANCEL
+          </button>
+          <button type="button" onClick={onConfirm} style={{ ...btnDanger, fontFamily: "inherit" }} disabled={pending}>
+            {pending ? "DELETING…" : "DELETE"}
+          </button>
+        </>
+      }
+    >
+      <div style={{ fontSize: 26, fontWeight: 700, letterSpacing: 1 }}>{formatGameDate(game.game_date)}</div>
+      <div style={{ fontSize: 22, opacity: 0.8, display: "flex", flexWrap: "wrap", gap: 16 }}>
+        <span>[{game.status.toUpperCase()}]</span>
+        <span>{rounds ?? "–"} ROUNDS</span>
+        <span>{teams ?? "–"} TEAMS</span>
+        {game.is_playoff && <span>★ PLAYOFF</span>}
+      </div>
+      <p style={{ fontSize: 22, lineHeight: 1.4, color: "var(--terminal-amber, #ffb000)" }}>
+        This permanently deletes the game and all its rounds, scores, and questions. This can't be
+        undone.
+      </p>
+      {error && (
+        <p style={{ fontSize: 20, color: "var(--terminal-amber, #ffb000)", opacity: 0.9 }}>
+          DELETE FAILED: {error}
+        </p>
+      )}
+    </Modal>
   );
 }
 
