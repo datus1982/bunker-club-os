@@ -17,7 +17,7 @@ import { BoardStageControl } from "./BoardStageControl";
 import { TeamEditorDialog, type EditableTeam } from "./TeamEditorDialog";
 import { Modal, Field, input, btnGhost, btnPrimary, btnActive, btnDanger } from "./ui";
 import { searchTeams, type TeamHit } from "../registration/useCheckin";
-import { useTriviaScreensArmed } from "../signage/useSignage";
+import { useTriviaArmedEffective } from "../signage/useSignage";
 import { supabase, VENUE_ID } from "@/shared/supabaseClient";
 
 /**
@@ -32,6 +32,7 @@ import { supabase, VENUE_ID } from "@/shared/supabaseClient";
 export function Scoring() {
   const [params] = useSearchParams();
   const override = params.get("game");
+  const qc = useQueryClient();
 
   const { query: gameQuery, game, setStatus } = useActiveGame(override);
   const scores = useGameScores(game?.id ?? null);
@@ -201,6 +202,11 @@ export function Scoring() {
                 type="button"
                 onClick={() => {
                   setStatus.mutate("completed" as GameStatus);
+                  // Trivia's over → un-arm the bar TVs so they return to rotation/media (WARN-1 #3).
+                  // Fire-and-forget; the arm also auto-expires nightly, so a failed disarm self-heals.
+                  supabase.rpc("set_trivia_screens_armed", { p_venue_id: VENUE_ID, p_armed: false }).then(undefined, () => {});
+                  qc.setQueryData(["signage", "triviaScreensArmed"], { armed: false, at: null });
+                  qc.invalidateQueries({ queryKey: ["signage", "triviaScreensArmed"] });
                   display.write.mutate({ show_game_over: true, is_display_active: false }, { onSuccess: () => setConfirmEnd(false) });
                 }}
                 style={btnDanger}
@@ -315,14 +321,16 @@ function AddTeamPicker({
  * side) that ALWAYS shows the game regardless of the arm flag — "what would come out"
  * (holding while not started, live once active).
  */
-function TriviaScreensBar({ gameStatus }: { gameStatus: GameStatus }) {
+function TriviaScreensBar({ gameStatus }: { gameStatus?: GameStatus | null }) {
   const qc = useQueryClient();
-  const q = useTriviaScreensArmed();
-  const armed = q.data ?? false; // default OFF while loading / on any read miss
+  const eff = useTriviaArmedEffective();
+  const armed = eff.armed; // EFFECTIVE (nightly-expiry applied) — a stale arm auto-reads OFF
   const started = gameStatus === "active" || gameStatus === "paused";
 
-  // The three states.
-  const state: "off" | "holding" | "live" = !armed ? "off" : started ? "live" : "holding";
+  // The four visible states — including "armed but no game loaded" so the arm is NEVER invisible
+  // (WARN-1 #4). A setup game → holding; active/paused → live; armed with no game → armed-idle.
+  const state: "off" | "holding" | "live" | "armed-nogame" =
+    !armed ? "off" : started ? "live" : gameStatus === "setup" ? "holding" : "armed-nogame";
 
   const setArmed = useMutation({
     mutationFn: async (next: boolean) => {
@@ -330,14 +338,21 @@ function TriviaScreensBar({ gameStatus }: { gameStatus: GameStatus }) {
       if (error) throw error;
       return next;
     },
-    // Optimistic flip so the control feels instant; the realtime invalidation confirms it.
-    onSuccess: (next) => { qc.setQueryData(["signage", "triviaScreensArmed"], next); qc.invalidateQueries({ queryKey: ["signage", "triviaScreensArmed"] }); },
+    // Optimistic flip so the control feels instant; the realtime invalidation confirms it. Write the
+    // object shape (0057) so the optimistic value matches what the RPC stores.
+    onSuccess: (next) => {
+      qc.setQueryData(["signage", "triviaScreensArmed"], { armed: next, at: next ? new Date().toISOString() : null });
+      qc.invalidateQueries({ queryKey: ["signage", "triviaScreensArmed"] });
+    },
   });
 
-  // Green when trivia is on the screens (holding or live); amber warning when OFF.
+  // Green when trivia is on the screens (holding, live, or armed-idle); amber warning when OFF.
   const onScreens = armed;
   const label =
-    state === "live" ? "● LIVE ON SCREENS" : state === "holding" ? "◐ ARMED · HOLDING (PRE-GAME)" : "○ OFF — NOT ON SCREENS";
+    state === "live" ? "● LIVE ON SCREENS"
+    : state === "holding" ? "◐ ARMED · HOLDING (PRE-GAME)"
+    : state === "armed-nogame" ? "◐ ARMED · NO GAME LOADED"
+    : "○ OFF — NOT ON SCREENS";
 
   return (
     <div
@@ -354,12 +369,12 @@ function TriviaScreensBar({ gameStatus }: { gameStatus: GameStatus }) {
       <button
         type="button"
         onClick={() => setArmed.mutate(!armed)}
-        disabled={setArmed.isPending || q.isPending}
+        disabled={setArmed.isPending || eff.isPending}
         title={armed ? "Take trivia off the bar TVs — they return to normal rotation/media." : "Put trivia on the bar TVs — shows the SCAN-TO-JOIN board until the game starts, then the live board."}
         style={{
           ...(armed ? btnDanger : btnPrimary),
           minHeight: 44, fontSize: 22, fontWeight: 700, letterSpacing: 1,
-          opacity: setArmed.isPending || q.isPending ? 0.5 : 1,
+          opacity: setArmed.isPending || eff.isPending ? 0.5 : 1,
         }}
       >
         {armed ? "TAKE TRIVIA OFF SCREENS" : "PUT TRIVIA ON SCREENS"}
@@ -397,6 +412,9 @@ function NoGame() {
   return (
     <div className="terminal-theme" style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: "clamp(16px, 4vw, 32px)", fontFamily: "'VT323','Share Tech Mono',monospace" }}>
       <div className="terminal-border" style={{ width: "min(560px, 100%)", padding: "28px 28px 32px", display: "flex", flexDirection: "column", gap: 18 }}>
+        {/* Persistent armed indicator (WARN-1 #4): even with no game loaded, a stale arm must be
+            visible + disarmable. Shows OFF / ARMED · NO GAME LOADED (auto-expires nightly). */}
+        <TriviaScreensBar gameStatus={null} />
         <div>
           <div style={{ fontSize: 40, fontWeight: 700, letterSpacing: 2, lineHeight: 1 }}>NO GAME TONIGHT</div>
           <div style={{ fontSize: 22, opacity: 0.7, marginTop: 6 }}>No game is set up to score. Here's how to get one running:</div>

@@ -9,7 +9,7 @@ import {
 } from "./useSignageAdmin";
 import {
   resolveRotation, resolveSlotMode, useLiveEvents, activeMoment, useVenue,
-  useCloseoutHour, mapScheduleRow, useTriviaScreensArmed,
+  useCloseoutHour, mapScheduleRow, useTriviaArmedEffective,
   type SlotMode, type SignageItem, type ToastCacheRow, type Template,
 } from "./useSignage";
 import { resolveEffectiveProgramWithSource, type ProgramHold } from "./scheduleResolve";
@@ -162,10 +162,11 @@ export function SignageHub({ openQueueSlug }: { openQueueSlug?: string }) {
     return source === "override" || source === "pinned" ? (slot.program_hold ?? "pin") : null;
   };
 
-  // "PUT TRIVIA ON SCREENS" arm (0056): DEFAULT OFF. Trivia only reaches the bar TVs when armed,
-  // so the hub must show ROTATION for an un-armed game (hub/TV parity) — but staff still need to
-  // SEE that a game exists and is NOT on the screens, so we surface a banner below.
-  const armed = useTriviaScreensArmed().data ?? false;
+  // "PUT TRIVIA ON SCREENS" arm (0056/0057): DEFAULT OFF, auto-expires nightly. Trivia only reaches
+  // the bar TVs when EFFECTIVELY armed, so the hub must show ROTATION for an un-armed game (hub/TV
+  // parity) — but staff still need to SEE the armed state, even with no game loaded, so we surface
+  // banners below. useTriviaArmedEffective applies the nightly expiry the same way the TV does.
+  const armed = useTriviaArmedEffective().armed;
 
   // Venue-wide mode inputs (a live game + a moment each hold EVERY screen); the takeover is now
   // per-screen (0045), resolved per card. Same ladder the public SlotDisplay renders.
@@ -174,6 +175,7 @@ export function SignageHub({ openQueueSlug }: { openQueueSlug?: string }) {
   // An un-armed game still exists (liveGame != null) but must not drive game mode here.
   const gameOnScreens = !!liveGame && armed;
   const gameOffScreens = !!liveGame && !armed;
+  const armedNoGame = armed && !liveGame; // armed but nothing to show yet — must stay visible (WARN-1)
   const moment = activeMoment(liveEvents);
   const eventLabel = moment ? `${moment.event.name.toUpperCase()} · ${moment.stage.toUpperCase()}` : null;
   const staleGameDate =
@@ -261,6 +263,15 @@ export function SignageHub({ openQueueSlug }: { openQueueSlug?: string }) {
           <div className="u-amber" style={{ border: "1px solid var(--terminal-amber, #ffb000)", padding: "10px 14px", marginBottom: 12, fontSize: 16, lineHeight: 1.4 }}>
             ⚠ TRIVIA IS <strong>NOT ON THE SCREENS</strong> — a game exists but hasn't been armed. The bar TVs are on rotation.
             Arm it with “PUT TRIVIA ON SCREENS” from the Scoring page before game night.
+          </div>
+        )}
+        {armedNoGame && (
+          // Persistent armed indicator (WARN-1 #4): armed with NO game loaded must never be invisible.
+          // The arm auto-expires at the nightly 04:00 rollover; until then the bar shows the holding
+          // board the moment a game is created.
+          <div style={{ border: "1px solid var(--terminal-green)", padding: "10px 14px", marginBottom: 12, fontSize: 16, lineHeight: 1.4 }}>
+            ◐ TRIVIA IS <strong>ARMED</strong> — no game loaded yet. The bar TVs show the SCAN-TO-JOIN holding board
+            as soon as a game is created, then the live board once it starts. Auto-clears at the nightly rollover.
           </div>
         )}
         {slotsQ.isLoading ? (

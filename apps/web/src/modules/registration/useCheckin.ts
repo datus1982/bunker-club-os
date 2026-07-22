@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase, VENUE_ID } from "@/shared/supabaseClient";
-import { TRIVIA_SCREENS_ARMED_KEY } from "@/modules/signage/useSignage";
+import { TRIVIA_SCREENS_ARMED_KEY, parseArmed, isTriviaArmed } from "@/modules/signage/useSignage";
 
 // Data layer for the patron check-in flow (docs/05). Everything that mutates the
 // teams graph goes through the SECURITY DEFINER RPCs in migration 0019 / the
@@ -44,14 +44,19 @@ export function useTonightGame() {
   return useQuery({
     queryKey: ["checkin", "tonightGame"],
     queryFn: async (): Promise<TonightGame | null> => {
-      // Gate: check-in is closed unless trivia is explicitly armed (default OFF, fail-closed).
-      const { data: armedRow } = await supabase
-        .from("venue_settings")
-        .select("value")
-        .eq("venue_id", VENUE_ID)
-        .eq("key", TRIVIA_SCREENS_ARMED_KEY)
-        .maybeSingle();
-      if ((armedRow as { value?: unknown } | null)?.value !== true) return null;
+      // Gate: check-in is closed unless trivia is EFFECTIVELY armed (default OFF, fail-closed, and
+      // a stale arm auto-expires nightly, 0057). Reuse the shared isTriviaArmed derivation so the
+      // check-in gate, the TV resolver, and the hub agree exactly. Read the venue TZ + closeout hour
+      // alongside the flag (all anon-safe) so the same rollover math applies.
+      const [{ data: armedRow }, { data: closeoutRow }, { data: venueRow }] = await Promise.all([
+        supabase.from("venue_settings").select("value").eq("venue_id", VENUE_ID).eq("key", TRIVIA_SCREENS_ARMED_KEY).maybeSingle(),
+        supabase.from("venue_settings").select("value").eq("venue_id", VENUE_ID).eq("key", "toast_closeout_hour").maybeSingle(),
+        supabase.from("venues").select("timezone").eq("id", VENUE_ID).maybeSingle(),
+      ]);
+      const tz = (venueRow as { timezone?: string } | null)?.timezone ?? "America/Chicago";
+      const closeoutN = Number((closeoutRow as { value?: unknown } | null)?.value);
+      const rollover = Number.isFinite(closeoutN) && closeoutN >= 0 && closeoutN <= 23 ? closeoutN : 4;
+      if (!isTriviaArmed(parseArmed((armedRow as { value?: unknown } | null)?.value), new Date(), tz, rollover)) return null;
 
       const { data, error } = await supabase
         .from("games")

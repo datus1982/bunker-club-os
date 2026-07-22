@@ -26,8 +26,13 @@ supersedes its steps 4–6 with the two ratified decisions below.
 - Apply SQL via the Management API: `POST https://api.supabase.com/v1/projects/ysrqvdutayirpoibdlbf/database/query`
   with `Authorization: Bearer $SUPABASE_ACCESS_TOKEN` (root `.env`), body `{"query":"…"}`.
 - TV kiosk slugs (already live on the bar TVs): `/signage/s/portrait-main`, `/signage/s/landscape-bar`.
-  During a live game the signage auto-takes-over to game mode both orientations (Phase 5).
-- Host tools: `/game/setup` (create game), `/scoring` (run the night), `/leaderboard` (standings board).
+  **The bar TVs do NOT auto-take-over on a live game.** The host explicitly ARMS trivia onto the
+  screens from `/scoring` (the **PUT TRIVIA ON SCREENS** control) — arming puts up the SCAN-TO-JOIN
+  holding board AND opens patron check-in; starting the game then flips both TVs to the live boards
+  (portrait leaderboard / landscape game display). Un-armed, the TVs stay on their normal
+  rotation/media. The arm auto-clears on **END GAME** and at the nightly 04:00 rollover.
+- Host tools: `/game/setup` (create game), `/scoring` (run the night — includes the arm control +
+  **⧉ OPEN SCREEN PREVIEW**, a pop-out window showing both boards, previewable from anywhere).
 - Legacy OptiDev is untouched by all of this and keeps running until we deliberately repoint. **Rollback = repoint OptiSigns URLs back.**
 
 ---
@@ -41,10 +46,13 @@ supersedes its steps 4–6 with the two ratified decisions below.
       add a couple of teams via **+ CREATE NEW TEAM**, score a round, walk the board stages
       (JOIN QR → hide scores → per-round reveal → final), a video round, a picture round.
       Goal: no surprises for his hands on the night.
-- [ ] **Confirm the TVs enter game mode from NEW game data.** Start a throwaway game while a
-      TV is on its kiosk slug; verify portrait → LeaderboardBoard and landscape → GameDisplayBoard
-      take over, and that they return to rotation when the game is set `completed`. (Heartbeat-first
-      if verifying remotely: `signage_slots.last_seen` fresh.)
+- [ ] **Confirm the ARM flow drives the TVs.** With a throwaway game created (status `setup`) and a
+      TV on its kiosk slug: on `/scoring`, click **PUT TRIVIA ON SCREENS** → verify the SCAN-TO-JOIN
+      **holding board** goes up both orientations (with the live checked-in count). Then **▶ START**
+      → verify portrait → LeaderboardBoard and landscape → GameDisplayBoard. Then **END GAME** →
+      verify the arm clears and the TVs return to rotation. (Heartbeat-first if verifying remotely:
+      `signage_slots.last_seen` fresh. Don't need a TV in front of you — **⧉ OPEN SCREEN PREVIEW**
+      shows both boards in a pop-out window.) Note: an arm you forget also auto-expires at 04:00.
 - [ ] **Email deliverability sanity** (only matters for the self-serve opt-in path, not the
       host path): confirm Resend rate limit has headroom for a pre-game rush (currently 100/hr;
       ~one OTP per self-serving team) and that a test OTP lands (check junk). SPF/DKIM/DMARC
@@ -58,7 +66,8 @@ supersedes its steps 4–6 with the two ratified decisions below.
 Score one real night in BOTH systems (or score legacy for real, shadow-score the new one):
 - [ ] OptiSigns keeps pointing at OptiDev URLs (production unchanged).
 - [ ] Ronnie also opens the new `/scoring` on a second tab and shadow-scores the night.
-- [ ] Watch a new `/game-display` / `/leaderboard` on a spare screen.
+- [ ] Watch the new boards on a spare screen — either **⧉ OPEN SCREEN PREVIEW** from `/scoring`
+      (both boards, no kiosk needed) or an armed kiosk slug.
 - [ ] Confirm scoring math, wildcards/bonuses, board stages, and standings match his expectation.
 - If clean → schedule the real cutover. If not → fix, re-rehearse.
 
@@ -68,10 +77,13 @@ Run in this order:
 
 1. [ ] **Archive the board** (makes it pristine — see the SQL block below). Do this shortly
       before doors, once, from the Management API. Verify the count.
-2. [ ] **Host creates the game** on `/game/setup` FIRST (nothing can check in until a game
-      exists). Enter/import the deck.
-3. [ ] **Point the TVs' game mode at the new game** — they auto-take-over once the game is
-      active (no manual repoint of the kiosk slugs needed; they're already on the new platform).
+2. [ ] **Host creates the game** on `/game/setup` FIRST. (Nothing can check in until a game
+      exists AND trivia is armed — see the next step.) Enter/import the deck.
+3. [ ] **ARM trivia onto the screens** — on `/scoring`, click **PUT TRIVIA ON SCREENS**. This puts
+      the SCAN-TO-JOIN holding board on the bar TVs AND opens patron self-check-in. No repoint of the
+      kiosk slugs needed (they're already on the new platform). When you **▶ START** the game the TVs
+      flip to the live boards automatically. (Leaving it un-armed keeps the bar on rotation — that's
+      the sandbox default, so you can build/test a game earlier in the day without hijacking the room.)
 4. [ ] **Check crews in — host-primary:** as each crew calls out its name, host does
       `/scoring` → ADD TEAM → **+ CREATE NEW TEAM** (name it, ADD) → they're in. Phoneless
       crews never touch a phone. (Zero-fill handles late arrivals automatically.)

@@ -6,8 +6,8 @@ import { LeaderboardBoard } from "@/modules/trivia/Leaderboard";
 import { GameDisplayBoard } from "@/modules/trivia/GameDisplay";
 import {
   useSlot, useLiveEvents, resolveRotation, resolveSlotMode, activeMoment, teaseMoment,
-  useNowPlayingSources, nowPlayingSourceSlug, isNowPlayingFresh,
-  type SignageItem, type Slot, type SlotMode, type Takeover, type ToastCacheRow, type LiveEvent, type Orientation, type LiveGame,
+  useNowPlayingSources, nowPlayingSourceSlug, isNowPlayingFresh, isTriviaArmed,
+  type SignageItem, type Slot, type SlotMode, type Takeover, type ToastCacheRow, type LiveEvent, type Orientation, type LiveGame, type ArmedRaw,
 } from "./useSignage";
 import { TriviaHoldingBoard } from "@/modules/trivia/TriviaHoldingBoard";
 import { useTicker, type TickerLine } from "./useTicker";
@@ -66,9 +66,10 @@ export function SlotDisplay() {
         toast={toast.data ?? new Map()}
         schedule={schedule.data ?? []}
         rolloverHour={closeoutHour.data ?? 4}
-        // DEFAULT OFF: pending/undefined ⇒ false. Trivia only reaches the bar TVs when the host
-        // has explicitly armed it (0056). A setup game shows the HOLDING screen, active/paused live.
-        armed={triviaScreensArmed.data ?? false}
+        // DEFAULT OFF: pending/undefined ⇒ not armed. Trivia only reaches the bar TVs when the host
+        // has explicitly armed it (0056); the raw {armed,at} is derived to an EFFECTIVE boolean in
+        // SlotScreen against its own venue-TZ clock so a stale arm auto-expires nightly (0057).
+        armedRaw={triviaScreensArmed.data ?? { armed: false, at: null }}
       />
     </DisplayCanvas>
   );
@@ -77,7 +78,7 @@ export function SlotDisplay() {
 type Mode = SlotMode;
 
 function SlotScreen({
-  slot, venueName, timezone, items, takeover, liveGame, toast, schedule, rolloverHour, armed,
+  slot, venueName, timezone, items, takeover, liveGame, toast, schedule, rolloverHour, armedRaw,
 }: {
   slot: Slot;
   venueName: string;
@@ -89,9 +90,10 @@ function SlotScreen({
   toast: ToastMap;
   schedule: ScheduleRow[];
   rolloverHour: number;
-  /** "PUT TRIVIA ON SCREENS" arm (0056): trivia only reaches this screen when true (default OFF).
-   *  When armed, a setup game shows the HOLDING board, active/paused shows the live board. */
-  armed: boolean;
+  /** "PUT TRIVIA ON SCREENS" arm (0056/0057), raw {armed,at}: trivia only reaches this screen when
+   *  EFFECTIVELY armed (default OFF; auto-expires at the nightly rollover). When armed, a setup game
+   *  shows the HOLDING board, active/paused shows the live board. */
+  armedRaw: ArmedRaw;
 }) {
   const [params] = useSearchParams();
   const preview = params.has("preview");
@@ -156,6 +158,10 @@ function SlotScreen({
   // takeover, moments, events, and rotation/media are untouched below. ?preview=1 stays rotation-only.
   const gameId = liveGame?.id ?? null;
   const gameStarted = liveGame?.status === "active" || liveGame?.status === "paused";
+  // Effective armed = the stored arm, minus a stale one (nightly expiry, 0057) — derived here
+  // against the same 30s `now` tick + venue TZ + rollover the rest of the resolver uses, so a
+  // forgotten arm auto-dies at 04:00 with no reload and no DB write.
+  const armed = isTriviaArmed(armedRaw, now, timezone, rolloverHour);
   const gameOn = preview ? false : (armed && !!gameId);
   // Preview is rotation-only: zero the takeover-level moment (like takeover/game). Window
   // and message cards + the tease interstitial still show — they are rotation-level.
