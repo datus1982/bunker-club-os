@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase, VENUE_ID } from "@/shared/supabaseClient";
+import { TRIVIA_SCREENS_ARMED_KEY } from "@/modules/signage/useSignage";
 
 // Data layer for the patron check-in flow (docs/05). Everything that mutates the
 // teams graph goes through the SECURITY DEFINER RPCs in migration 0019 / the
@@ -29,11 +30,29 @@ export interface MyTeam {
   seasonName: string | null;
 }
 
-/** Tonight's game (or null → "no game running" screen). */
+/** Tonight's game (or null → "no game running" screen).
+ *
+ *  Patron self-check-in is GATED on the trivia arm (0056): the /checkin flow is CLOSED
+ *  until the host arms trivia onto the screens ("PUT TRIVIA ON SCREENS" on the Scoring
+ *  console). While disarmed, this returns null so the flow falls through to its existing
+ *  "no game running — check-in opens on trivia night" state. The arm is the single switch
+ *  that both opens check-in AND raises the holding QR. NOTE: this does NOT gate the host
+ *  walk-up check-in (check_in_team RPC) — the host can still add teams from Scoring during
+ *  setup regardless of the arm. The flag is read anon-safe, the same key the resolver uses;
+ *  a patron scanning the (armed) QR loads fresh, and the flag also rides react-query refetch. */
 export function useTonightGame() {
   return useQuery({
     queryKey: ["checkin", "tonightGame"],
     queryFn: async (): Promise<TonightGame | null> => {
+      // Gate: check-in is closed unless trivia is explicitly armed (default OFF, fail-closed).
+      const { data: armedRow } = await supabase
+        .from("venue_settings")
+        .select("value")
+        .eq("venue_id", VENUE_ID)
+        .eq("key", TRIVIA_SCREENS_ARMED_KEY)
+        .maybeSingle();
+      if ((armedRow as { value?: unknown } | null)?.value !== true) return null;
+
       const { data, error } = await supabase
         .from("games")
         .select("id, game_date, status")

@@ -9,7 +9,7 @@ import {
 } from "./useSignageAdmin";
 import {
   resolveRotation, resolveSlotMode, useLiveEvents, activeMoment, useVenue,
-  useCloseoutHour, mapScheduleRow,
+  useCloseoutHour, mapScheduleRow, useTriviaScreensArmed,
   type SlotMode, type SignageItem, type ToastCacheRow, type Template,
 } from "./useSignage";
 import { resolveEffectiveProgramWithSource, type ProgramHold } from "./scheduleResolve";
@@ -162,9 +162,18 @@ export function SignageHub({ openQueueSlug }: { openQueueSlug?: string }) {
     return source === "override" || source === "pinned" ? (slot.program_hold ?? "pin") : null;
   };
 
+  // "PUT TRIVIA ON SCREENS" arm (0056): DEFAULT OFF. Trivia only reaches the bar TVs when armed,
+  // so the hub must show ROTATION for an un-armed game (hub/TV parity) — but staff still need to
+  // SEE that a game exists and is NOT on the screens, so we surface a banner below.
+  const armed = useTriviaScreensArmed().data ?? false;
+
   // Venue-wide mode inputs (a live game + a moment each hold EVERY screen); the takeover is now
   // per-screen (0045), resolved per card. Same ladder the public SlotDisplay renders.
   const liveGame = liveGameQ.data ?? null;
+  // The game the TVs ACTUALLY show (respects the arm gate) — parity with SlotDisplay's `gameOn`.
+  // An un-armed game still exists (liveGame != null) but must not drive game mode here.
+  const gameOnScreens = !!liveGame && armed;
+  const gameOffScreens = !!liveGame && !armed;
   const moment = activeMoment(liveEvents);
   const eventLabel = moment ? `${moment.event.name.toUpperCase()} · ${moment.stage.toUpperCase()}` : null;
   const staleGameDate =
@@ -246,6 +255,14 @@ export function SignageHub({ openQueueSlug }: { openQueueSlug?: string }) {
 
         {/* ── A · ON AIR NOW ─────────────────────────────────────────────── */}
         <SectionLabel>◉ ON AIR NOW · what each screen is showing this second</SectionLabel>
+        {gameOffScreens && (
+          // A game exists but trivia is NOT armed onto the screens (0056, default OFF) — the TVs are
+          // on rotation/media, NOT the game. Tell staff so the cards reading ROTATION make sense.
+          <div className="u-amber" style={{ border: "1px solid var(--terminal-amber, #ffb000)", padding: "10px 14px", marginBottom: 12, fontSize: 16, lineHeight: 1.4 }}>
+            ⚠ TRIVIA IS <strong>NOT ON THE SCREENS</strong> — a game exists but hasn't been armed. The bar TVs are on rotation.
+            Arm it with “PUT TRIVIA ON SCREENS” from the Scoring page before game night.
+          </div>
+        )}
         {slotsQ.isLoading ? (
           <div style={{ fontSize: 20 }}>LOADING SCREENS…</div>
         ) : slots.length === 0 ? (
@@ -260,7 +277,7 @@ export function SignageHub({ openQueueSlug }: { openQueueSlug?: string }) {
               const takeover = activeTakeoverForSlot(takeovers, s.id);
               const mode = resolveSlotMode({
                 takeover: !!takeover,
-                liveGame: !!liveGame,
+                liveGame: gameOnScreens, // respects the screens-live gate (parity with the TV)
                 moment: moment ? { stage: moment.stage, interruptGame: moment.event.interrupt_game } : null,
               });
               return (

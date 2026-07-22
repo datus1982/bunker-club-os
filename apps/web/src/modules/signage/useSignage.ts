@@ -138,7 +138,8 @@ export interface PriceOption {
 
 export interface LiveGame {
   id: string;
-  status: "active" | "paused";
+  // `setup` = created but not started → the HOLDING screen when armed (0056); active/paused = live.
+  status: "setup" | "active" | "paused";
 }
 
 /** The modes a slot can resolve to, highest priority first. `event` = a MOMENT in a
@@ -326,6 +327,44 @@ export function useNowPlayingSource(slug: string | null) {
   return { ...q, state: slug ? q.data?.get(slug) ?? null : null };
 }
 
+/* ── "PUT TRIVIA ON SCREENS" arm gate (0056) ──────────────────────────────────── */
+
+/** The venue_settings key the host arms to put trivia on the bar TVs. */
+export const TRIVIA_SCREENS_ARMED_KEY = "trivia_screens_armed";
+
+/**
+ * Is trivia ARMED onto the bar TVs right now? The bar is a SANDBOX BY DEFAULT — a game
+ * can run for scoring without ever touching the screens. The host explicitly arms it.
+ *
+ * DEFAULT OFF. Absent / null / unreadable ⇒ FALSE (not armed = the bar doesn't show
+ * trivia). ONLY an explicit stored `true` arms it. (With the explicit-arm model a
+ * failed read means "not on the screens"; the host sees that on the Scoring console and
+ * re-arms, and realtime corrects it — the accepted tradeoff of explicit arming, not a
+ * silent suppression of a running night.)
+ *
+ * Read the SAME anon way the ticker reads signage_ticker_lines / signage_last_rung
+ * (venue_settings public_read, 0011) — one direct SELECT of the single row. No new
+ * grant, nothing else on venue_settings exposed.
+ */
+export function useTriviaScreensArmed() {
+  return useQuery({
+    queryKey: ["signage", "triviaScreensArmed"],
+    staleTime: 30_000,
+    queryFn: async (): Promise<boolean> => {
+      const { data, error } = await supabase
+        .from("venue_settings")
+        .select("value")
+        .eq("venue_id", VENUE_ID)
+        .eq("key", TRIVIA_SCREENS_ARMED_KEY)
+        .maybeSingle();
+      // Any read failure ⇒ NOT armed (default OFF). Only an explicit stored `true` arms.
+      if (error) return false;
+      const v = (data as { value?: unknown } | null)?.value;
+      return v === true;
+    },
+  });
+}
+
 /** Venue name/timezone — shared cache key so the board and the admin preview agree and
  *  nothing hardcodes 'Bunker Club' outside the fallback (venue-scope rule). */
 export function useVenue() {
@@ -397,6 +436,10 @@ export function useSlot(slug: string) {
     refetchInterval: 30_000,
   });
 
+  // The venue's current trivia game for the screens. Includes `setup` (created but not
+  // started) now (0056): when armed, a setup game shows the HOLDING screen, and active/paused
+  // shows the live board. Resolve the SAME game the boards pick (STATUS_PRIORITY-style): prefer
+  // a started game (active/paused) over a not-yet-started setup one when several coexist.
   const liveGame = useQuery({
     queryKey: ["signage", "liveGame"],
     queryFn: async (): Promise<LiveGame | null> => {
@@ -404,11 +447,12 @@ export function useSlot(slug: string) {
         .from("games")
         .select("id, status")
         .eq("venue_id", VENUE_ID)
-        .in("status", ["active", "paused"])
-        .limit(1)
-        .maybeSingle();
+        .in("status", ["active", "paused", "setup"]);
       if (error) throw error;
-      return (data as LiveGame | null) ?? null;
+      const rows = (data ?? []) as LiveGame[];
+      const rank = (s: LiveGame["status"]) => (s === "active" ? 0 : s === "paused" ? 1 : 2);
+      rows.sort((a, b) => rank(a.status) - rank(b.status));
+      return rows[0] ?? null;
     },
   });
 
@@ -458,6 +502,8 @@ export function useSlot(slug: string) {
   const schedule = useSlotSchedule(slotId);
   // M3 (D4): the venue business-day rollover hour (04:00 closeout) that the 'event' hold expires at.
   const closeoutHour = useCloseoutHour();
+  // "PUT TRIVIA ON SCREENS" arm (0056): whether trivia is armed onto the bar TVs (default OFF).
+  const triviaScreensArmed = useTriviaScreensArmed();
 
   // ── Realtime: one channel, invalidate only the affected keys (ARCH-1) ───────
   useEffect(() => {
@@ -492,11 +538,16 @@ export function useSlot(slug: string) {
       // the junction (single-venue), so subscribe unfiltered and invalidate all schedule keys.
       .on("postgres_changes", { event: "*", schema: "public", table: "slot_program_schedule" },
         () => qc.invalidateQueries({ queryKey: ["signage", "schedule"] }))
+      // "PUT TRIVIA ON SCREENS" arm (0056): venue_settings is now in the realtime publication. Filter
+      // to the single key so arm/disarm propagates to the TVs within realtime latency (no poll) —
+      // WITHOUT waking on the minute-cadence signage_last_rung / ticker writes to other keys.
+      .on("postgres_changes", { event: "*", schema: "public", table: "venue_settings", filter: `key=eq.${TRIVIA_SCREENS_ARMED_KEY}` },
+        () => qc.invalidateQueries({ queryKey: ["signage", "triviaScreensArmed"] }))
       .subscribe();
     return () => { supabase.removeChannel(ch); };
   }, [qc, slug]);
 
-  return { venue, slot, items, takeover, liveGame, toast, schedule, closeoutHour };
+  return { venue, slot, items, takeover, liveGame, toast, schedule, closeoutHour, triviaScreensArmed };
 }
 
 /* ── M3: schedule rows / closeout hour / panel slot data ──────────────────────── */

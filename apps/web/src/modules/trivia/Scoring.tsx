@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   useActiveGame,
   useGameScores,
@@ -16,6 +17,8 @@ import { BoardStageControl } from "./BoardStageControl";
 import { TeamEditorDialog, type EditableTeam } from "./TeamEditorDialog";
 import { Modal, Field, input, btnGhost, btnPrimary, btnActive, btnDanger } from "./ui";
 import { searchTeams, type TeamHit } from "../registration/useCheckin";
+import { useTriviaScreensArmed } from "../signage/useSignage";
+import { supabase, VENUE_ID } from "@/shared/supabaseClient";
 
 /**
  * Scoring console — host tool (docs/01 /scoring, host+). Ported from the legacy
@@ -76,10 +79,17 @@ export function Scoring() {
             <Link to={`/game/${game.id}/bulk-import`} className="u-btn" style={linkBtn}>IMPORT</Link>
             <Link to="/teams" className="u-btn" style={linkBtn}>TEAMS</Link>
             <Link to="/game/history" className="u-btn" style={linkBtn}>HISTORY</Link>
-            <button type="button" onClick={() => window.open(`/game-display?game=${game.id}`, "_blank")} style={btnGhost}>⧉ DISPLAY</button>
+            {/* The bar landscape TV IS the audience display (driven by the signage game-mode
+                resolver when armed) — the old "open the raw /game-display" button is redundant.
+                OPEN SCREEN PREVIEW replaces it: a dual-board window of what the screens would show. */}
+            <button type="button" onClick={() => window.open(`/game/preview?game=${game.id}`, "bunker-screen-preview", "width=1600,height=900")} style={btnGhost}>⧉ OPEN SCREEN PREVIEW</button>
           </nav>
         </div>
         <div className="terminal-separator" style={{ margin: 0 }} />
+
+        {/* PUT TRIVIA ON SCREENS — 3-state arm control + screen preview (trivia-sandbox).
+            Unmissable so nobody forgets to arm trivia onto the bar TVs on a real night. */}
+        <TriviaScreensBar gameStatus={game.status} />
 
         {/* Game status controls */}
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
@@ -287,6 +297,79 @@ function AddTeamPicker({
         )}
       </Field>
     </Modal>
+  );
+}
+
+/* ── PUT TRIVIA ON SCREENS — 3-state arm control + screen preview (trivia-sandbox) ──
+ *
+ * The bar TVs are a SANDBOX BY DEFAULT (0056): a game runs for scoring without touching
+ * the screens. The host EXPLICITLY ARMS trivia to put it on the bar TVs; the state is
+ * then automatic:
+ *   OFF              — not armed → the bar TVs are on their normal rotation/media.
+ *   ARMED · HOLDING  — armed, game not yet started → the pre-game SCAN-TO-JOIN board.
+ *   LIVE ON SCREENS  — armed, game started (active/paused) → the live trivia board.
+ * Arm/disarm writes via set_trivia_screens_armed (has_module('trivia')-gated); state is
+ * realtime. Made prominent so nobody forgets to arm on a real night.
+ *
+ * OPEN SCREEN PREVIEW pops a self-contained /game/preview window (both boards side by
+ * side) that ALWAYS shows the game regardless of the arm flag — "what would come out"
+ * (holding while not started, live once active).
+ */
+function TriviaScreensBar({ gameStatus }: { gameStatus: GameStatus }) {
+  const qc = useQueryClient();
+  const q = useTriviaScreensArmed();
+  const armed = q.data ?? false; // default OFF while loading / on any read miss
+  const started = gameStatus === "active" || gameStatus === "paused";
+
+  // The three states.
+  const state: "off" | "holding" | "live" = !armed ? "off" : started ? "live" : "holding";
+
+  const setArmed = useMutation({
+    mutationFn: async (next: boolean) => {
+      const { error } = await supabase.rpc("set_trivia_screens_armed", { p_venue_id: VENUE_ID, p_armed: next });
+      if (error) throw error;
+      return next;
+    },
+    // Optimistic flip so the control feels instant; the realtime invalidation confirms it.
+    onSuccess: (next) => { qc.setQueryData(["signage", "triviaScreensArmed"], next); qc.invalidateQueries({ queryKey: ["signage", "triviaScreensArmed"] }); },
+  });
+
+  // Green when trivia is on the screens (holding or live); amber warning when OFF.
+  const onScreens = armed;
+  const label =
+    state === "live" ? "● LIVE ON SCREENS" : state === "holding" ? "◐ ARMED · HOLDING (PRE-GAME)" : "○ OFF — NOT ON SCREENS";
+
+  return (
+    <div
+      className={onScreens ? undefined : "u-amber"}
+      style={{
+        display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center",
+        padding: "10px 14px",
+        border: `2px solid ${onScreens ? "var(--terminal-green)" : "var(--terminal-amber, #ffb000)"}`,
+        background: onScreens ? "transparent" : "rgba(255,176,0,0.08)",
+      }}
+    >
+      <span style={{ fontSize: 20, letterSpacing: 1, opacity: 0.85 }}>BAR SCREENS:</span>
+      <span style={{ fontSize: 24, fontWeight: 700, letterSpacing: 1 }} className={onScreens ? undefined : "u-amber"}>{label}</span>
+      <button
+        type="button"
+        onClick={() => setArmed.mutate(!armed)}
+        disabled={setArmed.isPending || q.isPending}
+        title={armed ? "Take trivia off the bar TVs — they return to normal rotation/media." : "Put trivia on the bar TVs — shows the SCAN-TO-JOIN board until the game starts, then the live board."}
+        style={{
+          ...(armed ? btnDanger : btnPrimary),
+          minHeight: 44, fontSize: 22, fontWeight: 700, letterSpacing: 1,
+          opacity: setArmed.isPending || q.isPending ? 0.5 : 1,
+        }}
+      >
+        {armed ? "TAKE TRIVIA OFF SCREENS" : "PUT TRIVIA ON SCREENS"}
+      </button>
+      {!armed && (
+        <span className="u-amber" style={{ fontSize: 18, fontWeight: 700 }}>
+          ⚠ Trivia is NOT on the bar TVs — arm it before game night.
+        </span>
+      )}
+    </div>
   );
 }
 

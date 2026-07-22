@@ -117,16 +117,18 @@ export function useSlotsRealtime() {
 
 export interface LiveGameRow {
   id: string;
-  status: "active" | "paused";
+  // `setup` = created but not started → the HOLDING screen when armed (0056); active/paused = live.
+  status: "setup" | "active" | "paused";
   game_date: string | null;
 }
 
-/** The venue's live game resolved EXACTLY as the public SlotDisplay resolves it
- *  (useSignage.ts liveGame query): status active/paused, venue-wide, date IGNORED.
- *  The hub MUST source game-mode from this — NOT useTonight() (which is tonight-only by
- *  venue date) — so the MODE chip can never disagree with what the screens actually show.
- *  A stale `active` game left over from a past date (this venue has hit exactly that) still
- *  pins every screen into game mode; the hub surfaces that date rather than hiding it. */
+/** The venue's current game resolved EXACTLY as the public SlotDisplay resolves it
+ *  (useSignage.ts liveGame query): status setup/active/paused, venue-wide, date IGNORED, a
+ *  started game preferred over a not-yet-started one. The hub MUST source game-mode from this —
+ *  NOT useTonight() (which is tonight-only by venue date) — so the MODE chip can never disagree
+ *  with what the screens actually show. A stale `active` game left over from a past date (this
+ *  venue has hit exactly that) still pins every screen into game mode; the hub surfaces that date
+ *  rather than hiding it. Whether it REACHES the screens is gated by the trivia arm (0056). */
 export function useLiveGame() {
   return useQuery({
     queryKey: ["signage-admin", "live-game"],
@@ -138,11 +140,12 @@ export function useLiveGame() {
         .from("games")
         .select("id, status, game_date")
         .eq("venue_id", VENUE_ID)
-        .in("status", ["active", "paused"])
-        .limit(1)
-        .maybeSingle();
+        .in("status", ["active", "paused", "setup"]);
       if (error) throw error;
-      return (data as LiveGameRow | null) ?? null;
+      const rows = (data ?? []) as LiveGameRow[];
+      const rank = (s: LiveGameRow["status"]) => (s === "active" ? 0 : s === "paused" ? 1 : 2);
+      rows.sort((a, b) => rank(a.status) - rank(b.status));
+      return rows[0] ?? null;
     },
   });
 }
