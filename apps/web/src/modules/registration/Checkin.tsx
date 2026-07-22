@@ -628,7 +628,7 @@ function Confirm({ game, teamName, setTableName, playerName, busy, error, onConf
           >
             {teamName}
           </b>{" "}
-          <span style={{ fontSize: 10 }}>(tap to edit)</span>
+          <span style={{ fontSize: 13 }}>(tap to edit)</span>
         </div>
       </div>
       <p className="ck-note" style={{ marginBottom: 12 }}>Your team stays <b style={{ color: "var(--phos)" }}>{teamName}</b> — this is just what tonight's board shows.</p>
