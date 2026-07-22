@@ -58,6 +58,7 @@ const BLURB: Record<View, string> = {
 };
 
 const PAGE = 1000;
+const MAX_PAGES = 50;
 
 /**
  * PostgREST caps a select at 1000 rows and truncates SILENTLY (the PR #38 mis-ranked
@@ -68,15 +69,17 @@ async function fetchAllPages<T>(
   page: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>,
 ): Promise<T[]> {
   const out: T[] = [];
-  for (let i = 0; i < 50; i++) {
+  for (let i = 0; i < MAX_PAGES; i++) {
     const from = i * PAGE;
     const { data, error } = await page(from, from + PAGE - 1);
     if (error) throw new Error(error.message);
     const rows = data ?? [];
     out.push(...rows);
-    if (rows.length < PAGE) break;
+    if (rows.length < PAGE) return out;
   }
-  return out;
+  // Exhausting the cap means the read IS truncated — the same silent truncation this
+  // helper exists to prevent. Fail loudly rather than hand back a partial roster.
+  throw new Error(`fetchAllPages: hit the ${MAX_PAGES}-page cap at ${out.length} rows — result would be truncated`);
 }
 
 /** "2026-07-08" → "JUL 8, 2026" without constructing a Date (no TZ shift on date-only values). */
@@ -250,6 +253,12 @@ export function Teams() {
                   <div style={{ fontSize: 19, opacity: 0.75, display: "flex", flexDirection: "column", gap: 2 }}>
                     {stats.isPending ? (
                       <span>PLAY HISTORY…</span>
+                    ) : stats.isError ? (
+                      // A failed stats read must never read as a verdict: without this every
+                      // card falls through to played === 0 and wears the loud NEVER PLAYED
+                      // chip — the exact signal that invites archiving, false for the whole
+                      // roster. Neutral, dimmed, clearly not an answer.
+                      <span style={{ opacity: 0.7 }}>PLAY HISTORY UNAVAILABLE</span>
                     ) : played === 0 ? (
                       <span className="u-amber" style={{ fontWeight: 700, opacity: 1 }}>NEVER PLAYED</span>
                     ) : (
