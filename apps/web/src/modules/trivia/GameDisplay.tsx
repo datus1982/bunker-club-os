@@ -161,7 +161,7 @@ function QuestionView({
           flex: 1,
           margin: "20px 0",
           display: "flex",
-          alignItems: "center",
+          alignItems: "flex-start",
           justifyContent: "center",
           padding: 48,
           overflow: "hidden",
@@ -181,11 +181,14 @@ function QuestionView({
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            padding: 24,
+            padding: "12px 16px",
             overflow: "hidden",
           }}
         >
-          <p style={{ fontSize: fitAnswer(question.answer_text), fontWeight: 700, textAlign: "center", margin: 0, lineHeight: 1.1 }}>
+          {/* width:100% + slim horizontal padding lets the answer use the FULL display
+              width before wrapping, so medium answers stay on ONE line inside the fixed
+              200px box (host note) rather than wrapping and clipping. */}
+          <p style={{ width: "100%", fontSize: fitAnswer(question.answer_text), fontWeight: 700, textAlign: "center", margin: 0, lineHeight: 1.1 }}>
             {question.answer_text}
           </p>
         </div>
@@ -210,7 +213,10 @@ function PictureRound({ round, questions, showAnswer }: { round: Round; question
         {showAnswer && answers.length > 0 && (
           <div className="terminal-border" style={{ width: "50%", padding: 24, display: "flex", flexDirection: "column", minHeight: 0 }}>
             <div style={{ fontSize: 56, fontWeight: 700, textAlign: "center", marginBottom: 16, textTransform: "uppercase", flexShrink: 0 }}>ANSWERS</div>
-            <div style={{ flex: 1, display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px 24px", overflow: "hidden", alignContent: "space-evenly" }}>
+            {/* Column-major fill (matches the host answer key): answers descend the first
+                column to ceil(n/2), then continue down the second column (1–5 / 6–10 for a
+                full 10). grid-auto-flow:column + a fixed ceil(n/2) row count does the split. */}
+            <div style={{ flex: 1, display: "grid", gridTemplateColumns: "1fr 1fr", gridTemplateRows: `repeat(${Math.ceil(answers.length / 2)}, auto)`, gridAutoFlow: "column", gap: "8px 24px", overflow: "hidden", alignContent: "space-evenly" }}>
               {answers.map((q) => (
                 <div key={q.id} style={{ display: "flex", gap: 10, alignItems: "baseline", fontSize: 40, lineHeight: 1.1 }}>
                   <span style={{ fontWeight: 700, flexShrink: 0 }}>{q.question_number}.</span>
@@ -236,14 +242,18 @@ function roundLabel(round: Round): string {
   return label.toUpperCase();
 }
 
-/** Fixed size tiers by length — replaces the legacy JS font-fitting (fixed canvas). */
+/** Fixed size tiers by length — replaces the legacy JS font-fitting (fixed canvas).
+ *  Sizes bumped ~15% (owner/host note: the question should read bigger) while keeping
+ *  the same length breakpoints. Worst-case-per-tier verified on the 1920×1080 canvas WITH
+ *  the 200px answer box shown (question box then ~570px tall × ~1744px wide) — max-length
+ *  text for each tier still wraps within the box without clipping. */
 function fitQuestion(text: string): number {
   const n = text.length;
-  if (n <= 60) return 120;
-  if (n <= 120) return 92;
-  if (n <= 220) return 72;
-  if (n <= 380) return 54;
-  return 44;
+  if (n <= 60) return 138;
+  if (n <= 120) return 106;
+  if (n <= 220) return 82;
+  if (n <= 380) return 62;
+  return 50;
 }
 
 function fitAnswer(text: string): number {

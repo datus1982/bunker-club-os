@@ -122,7 +122,20 @@ export function QuestionPanel({
           <div className="terminal-separator" style={{ margin: 0 }} />
           <div style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
             {answerKeyRound && answers.length > 0 ? (
-              <div style={{ display: "grid", gridTemplateColumns: stack ? "minmax(0, 1fr)" : "minmax(0, 1fr) minmax(0, 1fr)", gap: "2px 16px" }}>
+              // Column-major fill (host note, Ronnie): answers descend the FIRST column to
+              // the halfway point, then the rest continue down the second column (1–5 / 6–10
+              // for 10 answers; odd counts put the extra in the first column, e.g. 7 → 1–4 /
+              // 5–7). grid-auto-flow:column + a fixed row count of ceil(n/2) does the split;
+              // the stack (narrow) mode stays a single row-flowed column, order 1..n.
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: stack ? "minmax(0, 1fr)" : "minmax(0, 1fr) minmax(0, 1fr)",
+                  gridTemplateRows: stack ? undefined : `repeat(${Math.ceil(answers.length / 2)}, auto)`,
+                  gridAutoFlow: stack ? "row" : "column",
+                  gap: "2px 16px",
+                }}
+              >
                 {answers.map((a) => (
                   <div key={a.id} style={{ display: "flex", gap: 8, fontSize: 20, lineHeight: 1.2 }}>
                     <span style={{ fontWeight: 700, flexShrink: 0 }}>{a.question_number > 10 ? "B" : a.question_number}:</span>
