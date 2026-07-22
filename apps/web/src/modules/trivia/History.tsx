@@ -26,10 +26,13 @@ import { Modal, btnGhost, btnDanger } from "./ui";
  *
  * WORK GUARD (2026-07-22, migration 0059): a game that still holds work can no longer be
  * deleted — the RPC allows it only when status = 'completed' OR the game is provably empty
- * (zero questions, scores AND game_teams). This mirrors that condition in the UI so DELETE
- * is never offered for a game the server would refuse; the reason shows inline on the card.
- * Rounds are excluded from the emptiness test on both sides (GameSetup seeds them at
- * creation, so counting them would make every new game undeletable).
+ * (zero questions, zero scores, zero game_teams AND no round carrying an attached
+ * video_url / picture_url). This mirrors that condition in the UI so DELETE is never
+ * offered for a game the server would refuse; the reason shows inline on the card.
+ * The EXISTENCE of rounds is excluded on both sides (GameSetup seeds them at creation, so
+ * counting rows would make every new game undeletable) — but a round video or picture-round
+ * image is real host work (the prep order is create → attach videos → import the deck), so
+ * those two columns count. round_name is deliberately not counted; see 0059's header.
  *
  * DECISION: our games table (docs/02) dropped legacy-only name / num_rounds /
  * elapsed_time_seconds; the card is keyed on game_date + derived round/team counts.
@@ -93,6 +96,15 @@ export function History() {
         if (error) throw error;
         for (const row of (data ?? []) as { game_id: string }[]) flags[row.game_id] = true;
       }
+      // Rounds count only when they carry attached work — an inter-round video or a
+      // picture-round image. Column-aware, so the seeded-at-creation rows stay invisible.
+      const { data: workRounds, error: roundsError } = await supabase
+        .from("rounds")
+        .select("game_id")
+        .in("game_id", openIds)
+        .or("video_url.not.is.null,picture_url.not.is.null");
+      if (roundsError) throw roundsError;
+      for (const row of (workRounds ?? []) as { game_id: string }[]) flags[row.game_id] = true;
       return flags;
     },
   });
