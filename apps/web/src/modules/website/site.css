@@ -374,6 +374,13 @@
   flex-shrink: 0;
   background: var(--site-bg-raised);
 }
+/* Movie one-sheet (NOW PLAYING) renders at true 2:3 poster shape — the source is 2:3 so
+   object-fit:cover shows the whole poster with no crop. Only the .--poster card gets this. */
+.site-card__thumb--poster {
+  width: 60px;
+  height: auto;
+  aspect-ratio: 2 / 3;
+}
 .site-dot {
   width: 8px; height: 8px; border-radius: 50%;
   background: currentColor;
@@ -483,6 +490,13 @@
   border: 1px solid var(--site-line-strong);
   flex-shrink: 0;
   background: var(--site-bg-sunk);
+}
+/* NOW PLAYING hero: the TMDB one-sheet (true 2:3) shown at poster shape, not square-cropped.
+   width chosen so the taller poster still sits within the screen block's 196px min-height. */
+.site-feed__thumb--poster {
+  width: 122px;
+  height: auto;
+  aspect-ratio: 2 / 3;
 }
 .site-feed__text { flex: 1; min-width: 0; }
 .site-feed__kicker {
@@ -605,6 +619,7 @@
 @media (max-width: 480px) {
   .site-feed__screen { padding: 1.25rem 1.1rem; min-height: 176px; }
   .site-feed__thumb { width: 96px; height: 96px; }
+  .site-feed__thumb--poster { width: 92px; height: auto; aspect-ratio: 2 / 3; }
 }
 
 /* ── Hours table ─────────────────────────────────────────────────────────── */

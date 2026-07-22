@@ -1328,12 +1328,16 @@ function SmartChampion({
   // The count is a BOXED, ambient-AMBER two-compartment counter (number | SOLD) — deliberately
   // NOT the promo's signature huge GREEN price, and it carries NO "$" anywhere. The boxed unit
   // makes it unmissable as a tally, not a price.
-  // The window line is reframed from "MOST POURED — LAST N DAYS" to "CALCULATED OVER THE LAST N
-  // DAYS" and moved below the name; trueDays keeps it honest on shallow history (suppressed at 0),
-  // and the group-filter variant is preserved.
-  // DECISION: kept the literal Toast group name rather than singularizing ("Signature Cocktail") —
-  // the owner's Toast group names are the source of truth and read fine as a banner.
-  const windowLine = `◊ ${menuGroup ? `${menuGroup.toUpperCase()} · ` : ""}CALCULATED OVER THE LAST ${trueDays} DAY${trueDays === 1 ? "" : "S"}`;
+  // The window sub-line sits below the name; trueDays keeps it honest on shallow history
+  // (suppressed at 0), and the group-filter variant is preserved.
+  // DECISION (2026-07-21, owner beat): shortened "CALCULATED OVER THE LAST N DAYS" → "LAST N DAYS"
+  // and forced it to ONE line (whiteSpace:nowrap on windowEl). The old copy wrapped to two lines
+  // (whole-menu ~34 chars, group-filtered ~54), eating vertical room and squeezing the top-3 strip
+  // into a bottom clip. The tighter copy fits one line at the SUPPORT_TEXT floor (P40/L32) even with
+  // the longest real group prefix ("SIGNATURE COCKTAILS · LAST 30 DAYS"); the honest trueDays number
+  // and the group variant are unchanged. Floor is never crossed (owner-ratified min), so we shorten
+  // the copy rather than shrink the font.
+  const windowLine = `◊ ${menuGroup ? `${menuGroup.toUpperCase()} · ` : ""}LAST ${trueDays} DAY${trueDays === 1 ? "" : "S"}`;
   // Header CENTERED on the champion slide (owner round-3 2026-07-15: "i also feel like the
   // header should be centered on this one … i like the occasional left justification for
   // some things but this one in particular [centered]"). Champion-only — no other slide's
@@ -1363,8 +1367,11 @@ function SmartChampion({
 
   const balName = balanceHeadline(champ.name);
   // Name is now SECONDARY to the count (which is the hero) — cap it below the promo-hero scale
-  // so the slide doesn't re-acquire the promo silhouette (big name over a photo).
-  const nameSize = Math.min(headlineFont(balName, orientation), port ? 116 : 84);
+  // so the slide doesn't re-acquire the promo silhouette (big name over a photo). Portrait cap
+  // trimmed 116→108 (2026-07-21) as part of the top-3-clip rebalance: a 2-line champion name
+  // (e.g. "MANHATTAN PROJECT") is the biggest variable eater of vertical room, and 108 keeps it
+  // bold-secondary while freeing ~15px so all three live rows stay on-canvas beside a photo.
+  const nameSize = Math.min(headlineFont(balName, orientation), port ? 108 : 84);
 
   // ODOMETER count block: boxed STACKED counter — big number over a "SOLD" caption, split by a
   // rule. Owner round-3 2026-07-15: "i dont like the sold in a box next to the number, maybe make
@@ -1393,8 +1400,14 @@ function SmartChampion({
   // the image absorbs the freed space instead of leaving dead air at the bottom. With a ranking
   // present the image stays moderate so the (flex-filled) strip below has room to grow.
   const hasTop3 = top3.length > 0;
+  // Portrait image width when a live top-3 is present: 540→440 (2026-07-21). With the count box
+  // (owner-ratified hero, untouched), a 2-line name, and the window line, a 540px square left the
+  // three-row strip below-budget and the last row(s) clipped by the overflow:hidden guard. 440 is
+  // the cheap lever (the task-sanctioned trim) that, with the one-line window + tighter gaps + the
+  // 108 name cap, gives the strip ~370px (needs ~344 for 3 rows) — full 3-row visibility with
+  // headroom. The no-top3 branch (760) is unchanged: the photo still absorbs the freed space.
   const imageEl = champ.photo && (
-    <div className="sig-viewport sig-sq" style={{ width: port ? (hasTop3 ? "min(540px, 100%)" : "min(760px, 100%)") : undefined, height: port ? undefined : Math.round(z.photoH * 0.9), aspectRatio: port ? undefined : "1 / 1", flexShrink: 0 }}>
+    <div className="sig-viewport sig-sq" style={{ width: port ? (hasTop3 ? "min(440px, 100%)" : "min(760px, 100%)") : undefined, height: port ? undefined : Math.round(z.photoH * 0.9), aspectRatio: port ? undefined : "1 / 1", flexShrink: 0 }}>
       <span className="sig-feedcap sig-live" style={{ fontSize: SUPPORT_TEXT[orientation] }}>◉ CHART LEADER</span>
       <img src={champ.photo} alt="" />
     </div>
@@ -1407,7 +1420,7 @@ function SmartChampion({
   );
 
   const windowEl = trueDays > 0 && (
-    <div style={{ fontSize: SUPPORT_TEXT[orientation], letterSpacing: 4, opacity: 0.7, textAlign: port ? "center" : "left" }}>{windowLine}</div>
+    <div style={{ fontSize: SUPPORT_TEXT[orientation], letterSpacing: 4, opacity: 0.7, textAlign: port ? "center" : "left", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "100%" }}>{windowLine}</div>
   );
 
   // Owner round-3: grow image AND ranking to fill the canvas. In portrait the strip takes
@@ -1415,7 +1428,7 @@ function SmartChampion({
   // space out with justify-content:space-around and the fonts step up. overflow:hidden keeps a
   // pathological long-name reign from ever pushing the strip off-canvas (graceful clip, WARN-2).
   const top3El = top3.length > 0 && (
-    <div style={{ minWidth: 0, minHeight: 0, flex: port ? "1 1 0" : undefined, alignSelf: port ? "stretch" : undefined, overflow: "hidden", display: "flex", flexDirection: "column", justifyContent: port ? "space-around" : "center", gap: port ? 6 : 12, borderTop: port ? "1px solid var(--sig-rule)" : "none", borderLeft: port ? "none" : "1px solid var(--sig-rule)", paddingTop: port ? 16 : 0, paddingLeft: port ? 0 : 36 }}>
+    <div style={{ minWidth: 0, minHeight: 0, flex: port ? "1 1 0" : undefined, alignSelf: port ? "stretch" : undefined, overflow: "hidden", display: "flex", flexDirection: "column", justifyContent: port ? "space-around" : "center", gap: port ? 6 : 12, borderTop: port ? "1px solid var(--sig-rule)" : "none", borderLeft: port ? "none" : "1px solid var(--sig-rule)", paddingTop: port ? 14 : 0, paddingLeft: port ? 0 : 36 }}>
       <div style={{ fontSize: SUPPORT_TEXT[orientation], letterSpacing: 4, opacity: 0.7 }}>◉ RIGHT NOW — TONIGHT'S TOP 3</div>
       {top3.map((it) => (
         <div key={it.rank} style={{ display: "flex", alignItems: "baseline", gap: port ? 20 : 14 }}>
@@ -1440,7 +1453,9 @@ function SmartChampion({
     // absorbs the slack at the bottom so the canvas stays full when a live ranking is present.
     return (
       <SmartFrame header={header}>
-        <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "flex-start", gap: 14 }}>
+        {/* gap 14→12 (2026-07-21): part of the top-3-clip rebalance — four inter-element gaps,
+            so 8px reclaimed toward keeping all three live rows on-canvas beside a photo. */}
+        <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "flex-start", gap: 12 }}>
           {countBlock}
           {imageEl}
           {nameEl}

@@ -103,7 +103,13 @@ function FeedGrid({ cards }: { cards: StripCard[] }) {
           className={`site-card${c.live ? " site-card--live" : ""}${c.image ? " site-card--media" : ""}`}
         >
           {c.image && (
-            <img className="site-card__thumb" src={c.image} alt="" loading="lazy" decoding="async" />
+            <img
+              className={`site-card__thumb${c.poster ? " site-card__thumb--poster" : ""}`}
+              src={c.image}
+              alt=""
+              loading="lazy"
+              decoding="async"
+            />
           )}
           <div className="site-card__main">
             <div className="site-card__kicker">
@@ -180,7 +186,7 @@ export function TerminalFeed({ cards }: { cards: StripCard[] }) {
       <div className="site-feed__screen" aria-hidden="true">
         {active.image && (
           <img
-            className="site-feed__thumb"
+            className={`site-feed__thumb${active.poster ? " site-feed__thumb--poster" : ""}`}
             src={active.image}
             alt=""
             loading="lazy"
