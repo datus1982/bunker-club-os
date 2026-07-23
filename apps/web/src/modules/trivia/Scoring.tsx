@@ -79,6 +79,20 @@ export function Scoring() {
             <div style={{ fontSize: 20, opacity: 0.7 }}>{game.game_date} · [{game.status.toUpperCase()}]{game.is_playoff ? " · ★ PLAYOFF" : ""}</div>
           </div>
           <nav style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+            {/* Clock + START lead the nav row (owner refinement 2026-07-22 — "an obvious spot
+                to slot it in"). START = start the clock + mark active (scoring + arm resolver
+                need it); it does NOT touch the screens — arming is manual. Disabled once active. */}
+            <GameClock startedAt={display.state?.clock_started_at ?? null} running={game.status === "active" || game.status === "paused"} />
+            <StatusButton
+              label="▶ START"
+              active={game.status === "active"}
+              disabled={game.status === "active"}
+              onClick={() => {
+                setStatus.mutate("active");
+                display.write.mutate({ clock_started_at: new Date().toISOString() });
+              }}
+            />
+            <div style={{ width: 1, alignSelf: "stretch", background: "var(--terminal-green)", opacity: 0.3, margin: "0 4px" }} />
             <Link to={`/game/${game.id}/questions`} className="u-btn" style={linkBtn}>QUESTIONS</Link>
             <Link to={`/game/${game.id}/videos`} className="u-btn" style={linkBtn}>VIDEOS</Link>
             <Link to={`/game/${game.id}/bulk-import`} className="u-btn" style={linkBtn}>IMPORT</Link>
@@ -95,25 +109,9 @@ export function Scoring() {
             Unmissable so nobody forgets to arm trivia onto the bar TVs on a real night. */}
         <TriviaScreensBar gameStatus={game.status} onEndGame={() => setConfirmEnd(true)} />
 
-        {/* Clock + START at the far top-left (owner rebuild 2026-07-22). No PAUSE/STOP;
-            END GAME lives in the arm box above. */}
-        <div style={{ display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap" }}>
-          <GameClock startedAt={display.state?.clock_started_at ?? null} running={game.status === "active" || game.status === "paused"} />
-          {/* START = start the clock + mark active (so scoring + the arm resolver work). It does
-              NOT touch the screens — arming is manual (TriviaScreensBar). Disabled once active. */}
-          <StatusButton
-            label="▶ START"
-            active={game.status === "active"}
-            disabled={game.status === "active"}
-            onClick={() => {
-              setStatus.mutate("active");
-              display.write.mutate({ clock_started_at: new Date().toISOString() });
-            }}
-          />
-        </div>
-
         {/* Control line: the two INDEPENDENT single-select controls — DISPLAY (landscape) on
-            the left, BOARD (portrait) shifted right. Wraps on narrow. */}
+            the left, BOARD (portrait) shifted right. Wraps on narrow. (Clock + START moved up
+            into the nav row.) */}
         <div className="terminal-border" style={{ padding: 12, display: "flex", gap: 16, alignItems: "center", justifyContent: "space-between", flexWrap: "wrap" }}>
           {display.state && <DisplayStageControl state={display.state} write={display.write} videoRound={playRound} />}
           {display.state && <BoardStageControl state={display.state} write={display.write} />}

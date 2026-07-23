@@ -94,13 +94,15 @@ export function RoundGrid({
                 </div>
               </Th>
             ))}
-            {/* CLEAR sits immediately to the right of the TOTAL label (owner rebuild
-                2026-07-22) — it moved off the old DISPLAY row. Same confirm + clearAllScores
-                behavior; onClearAll opens the confirm modal that stays in Scoring. */}
+            {/* TOTAL stays CENTERED over the total column with CLEAR tucked immediately to its
+                right (owner refinement 2026-07-22 — CLEAR must not push TOTAL off-center). The
+                1fr auto 1fr grid centers the TOTAL label; CLEAR sits in the right cell justified
+                to its start. Same confirm + clearAllScores behavior (modal stays in Scoring). */}
             <Th>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", alignItems: "center", gap: 8 }}>
+                <span />
                 <span>TOTAL</span>
-                <button type="button" onClick={onClearAll} style={{ ...btnDanger, padding: "2px 8px", minHeight: 0, fontSize: 14 }} title="Clear every score in this game">CLEAR</button>
+                <button type="button" onClick={onClearAll} style={{ ...btnDanger, justifySelf: "start", padding: "2px 8px", minHeight: 0, fontSize: 14 }} title="Clear every score in this game">CLEAR</button>
               </div>
             </Th>
             {ties.hasTies && <Th>TIE</Th>}

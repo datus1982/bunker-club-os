@@ -112,76 +112,83 @@ export function QuestionPanel({
       {/* Answer key + question projector — FIXED-height boxes (BOX_H). The dimensions must
           not change as the host steps through questions (owner note): question / answer
           content scrolls INSIDE the fixed box rather than reflowing it. */}
+      {/* Answer key + question projector — FIXED-height boxes with the projector controls
+          aligned UNDER their respective columns (owner refinement 2026-07-22): each box's
+          controls sit directly beneath it, one row of height, positioned edge/center. */}
       <div style={{ display: "grid", gridTemplateColumns: stack ? "minmax(0, 1fr)" : "minmax(0, 1fr) minmax(0, 1fr)", gap: 16 }}>
-        {/* Answer key — previous completed round */}
-        <div className="terminal-border" style={{ padding: 16, display: "flex", flexDirection: "column", gap: 8, height: BOX_H }}>
-          <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8 }}>
-            <h3 style={{ fontSize: 24, fontWeight: 700, flexShrink: 0 }}>ANSWER KEY</h3>
-            <span style={{ fontSize: 18, opacity: 0.8, textAlign: "right" }}>{answerKeyRound ? roundLabel(answerKeyRound) : "—"}</span>
+        {/* Answer-key column: box + [ SHOW/HIDE ANSWER centered · BACK TO Q1 right ] */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 12, minWidth: 0 }}>
+          <div className="terminal-border" style={{ padding: 16, display: "flex", flexDirection: "column", gap: 8, height: BOX_H }}>
+            <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8 }}>
+              <h3 style={{ fontSize: 24, fontWeight: 700, flexShrink: 0 }}>ANSWER KEY</h3>
+              <span style={{ fontSize: 18, opacity: 0.8, textAlign: "right" }}>{answerKeyRound ? roundLabel(answerKeyRound) : "—"}</span>
+            </div>
+            <div className="terminal-separator" style={{ margin: 0 }} />
+            <div style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
+              {answerKeyRound && answers.length > 0 ? (
+                // Column-major fill (host note, Ronnie): answers descend the FIRST column to
+                // the halfway point, then the rest continue down the second column (1–5 / 6–10
+                // for 10 answers; odd counts put the extra in the first column, e.g. 7 → 1–4 /
+                // 5–7). grid-auto-flow:column + a fixed row count of ceil(n/2) does the split;
+                // the stack (narrow) mode stays a single row-flowed column, order 1..n.
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: stack ? "minmax(0, 1fr)" : "minmax(0, 1fr) minmax(0, 1fr)",
+                    gridTemplateRows: stack ? undefined : `repeat(${Math.ceil(answers.length / 2)}, auto)`,
+                    gridAutoFlow: stack ? "row" : "column",
+                    gap: "2px 16px",
+                  }}
+                >
+                  {answers.map((a) => (
+                    <div key={a.id} style={{ display: "flex", gap: 8, fontSize: 20, lineHeight: 1.2 }}>
+                      <span style={{ fontWeight: 700, flexShrink: 0 }}>{a.question_number > 10 ? "B" : a.question_number}:</span>
+                      <span>{a.answer_text}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div style={{ opacity: 0.5, fontSize: 20 }}>No previous round to show yet.</div>
+              )}
+            </div>
           </div>
-          <div className="terminal-separator" style={{ margin: 0 }} />
-          <div style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
-            {answerKeyRound && answers.length > 0 ? (
-              // Column-major fill (host note, Ronnie): answers descend the FIRST column to
-              // the halfway point, then the rest continue down the second column (1–5 / 6–10
-              // for 10 answers; odd counts put the extra in the first column, e.g. 7 → 1–4 /
-              // 5–7). grid-auto-flow:column + a fixed row count of ceil(n/2) does the split;
-              // the stack (narrow) mode stays a single row-flowed column, order 1..n.
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: stack ? "minmax(0, 1fr)" : "minmax(0, 1fr) minmax(0, 1fr)",
-                  gridTemplateRows: stack ? undefined : `repeat(${Math.ceil(answers.length / 2)}, auto)`,
-                  gridAutoFlow: stack ? "row" : "column",
-                  gap: "2px 16px",
-                }}
-              >
-                {answers.map((a) => (
-                  <div key={a.id} style={{ display: "flex", gap: 8, fontSize: 20, lineHeight: 1.2 }}>
-                    <span style={{ fontWeight: 700, flexShrink: 0 }}>{a.question_number > 10 ? "B" : a.question_number}:</span>
-                    <span>{a.answer_text}</span>
-                  </div>
-                ))}
+          {/* Under the ANSWER box: SHOW/HIDE ANSWER centered under the field, BACK TO Q1 pinned
+              right (the answer-review loop: reveal + jump back to Q1). 1fr auto 1fr keeps the
+              toggle centered over the column regardless of the BACK TO Q1 width. */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", alignItems: "center", gap: 8 }}>
+            <span />
+            <button type="button" onClick={toggleAnswer} style={{ ...(showAns ? btnActive : btnGhost), justifySelf: "center" }}>{showAns ? "◉ HIDE ANSWER" : "◎ SHOW ANSWER"}</button>
+            <button type="button" onClick={backToQ1} disabled={index === 0 || total === 0} style={{ ...btnGhost, justifySelf: "end", opacity: index === 0 || total === 0 ? 0.4 : 1 }}>↩ BACK TO Q1</button>
+          </div>
+        </div>
+
+        {/* Question column: box + [ PREV left · SHOW/HIDE QUESTION centered · NEXT right ] */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 12, minWidth: 0 }}>
+          <div className="terminal-border" style={{ padding: 16, display: "flex", flexDirection: "column", gap: 10, height: BOX_H }}>
+            {currentRound.round_type === "final" && currentRound.picture_url ? (
+              <div style={{ flex: 1, minHeight: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <img src={currentRound.picture_url} alt="Picture round" style={{ maxHeight: "100%", maxWidth: "100%", objectFit: "contain", border: "1px solid var(--terminal-green)" }} />
               </div>
+            ) : total === 0 ? (
+              <div style={{ flex: 1, minHeight: 0, display: "flex", alignItems: "center", justifyContent: "center", opacity: 0.5, fontSize: 20 }}>No questions entered.</div>
             ) : (
-              <div style={{ opacity: 0.5, fontSize: 20 }}>No previous round to show yet.</div>
+              <>
+                <div style={{ fontSize: 20, opacity: 0.8, flexShrink: 0 }}>
+                  {q && q.question_number > 10 ? "BONUS" : `QUESTION ${index + 1} OF ${total}`}
+                </div>
+                <div style={{ flex: 1, minHeight: 0, fontSize: 24, lineHeight: 1.3, overflowY: "auto" }}>{q?.question_text ?? "—"}</div>
+                {showAns && <div style={{ flexShrink: 0, fontSize: 22, fontWeight: 700, color: "var(--terminal-green)", borderTop: "1px solid var(--terminal-green)", paddingTop: 6 }}>▸ {q?.answer_text ?? "—"}</div>}
+              </>
             )}
           </div>
+          {/* Under the QUESTION box: PREV pinned left edge, SHOW/HIDE QUESTION centered under the
+              field, NEXT pinned right edge. 1fr auto 1fr centers the toggle over the column. */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", alignItems: "center", gap: 8 }}>
+            <button type="button" onClick={prev} disabled={index === 0} style={{ ...btnGhost, justifySelf: "start", opacity: index === 0 ? 0.4 : 1 }}>◀ PREV</button>
+            <button type="button" onClick={toggleActive} style={{ ...(active ? btnActive : btnGhost), justifySelf: "center" }}>{active ? "▣ HIDE QUESTION" : "▢ SHOW QUESTION"}</button>
+            <button type="button" onClick={next} disabled={index >= total - 1} style={{ ...btnGhost, justifySelf: "end", opacity: index >= total - 1 ? 0.4 : 1 }}>NEXT ▶</button>
+          </div>
         </div>
-
-        {/* Question projector — current round. FIXED box holds only the question so a long
-            question always gets the full height. The control bar no longer lives here — it
-            moved to a single full-width row BELOW the grid (owner rebuild 2026-07-22) so it
-            reclaims vertical space and the five buttons sit on one row. */}
-        <div className="terminal-border" style={{ padding: 16, display: "flex", flexDirection: "column", gap: 10, height: BOX_H }}>
-          {currentRound.round_type === "final" && currentRound.picture_url ? (
-            <div style={{ flex: 1, minHeight: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
-              <img src={currentRound.picture_url} alt="Picture round" style={{ maxHeight: "100%", maxWidth: "100%", objectFit: "contain", border: "1px solid var(--terminal-green)" }} />
-            </div>
-          ) : total === 0 ? (
-            <div style={{ flex: 1, minHeight: 0, display: "flex", alignItems: "center", justifyContent: "center", opacity: 0.5, fontSize: 20 }}>No questions entered.</div>
-          ) : (
-            <>
-              <div style={{ fontSize: 20, opacity: 0.8, flexShrink: 0 }}>
-                {q && q.question_number > 10 ? "BONUS" : `QUESTION ${index + 1} OF ${total}`}
-              </div>
-              <div style={{ flex: 1, minHeight: 0, fontSize: 24, lineHeight: 1.3, overflowY: "auto" }}>{q?.question_text ?? "—"}</div>
-              {showAns && <div style={{ flexShrink: 0, fontSize: 22, fontWeight: 700, color: "var(--terminal-green)", borderTop: "1px solid var(--terminal-green)", paddingTop: 6 }}>▸ {q?.answer_text ?? "—"}</div>}
-            </>
-          )}
-        </div>
-      </div>
-
-      {/* Projector controls — one full-width row below both boxes (owner rebuild
-          2026-07-22). Wraps only if truly necessary (narrow / 390px). */}
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
-        <button type="button" onClick={prev} disabled={index === 0} style={{ ...btnGhost, opacity: index === 0 ? 0.4 : 1 }}>◀ PREV</button>
-        <button type="button" onClick={next} disabled={index >= total - 1} style={{ ...btnGhost, opacity: index >= total - 1 ? 0.4 : 1 }}>NEXT ▶</button>
-        <button type="button" onClick={toggleActive} style={active ? btnActive : btnGhost}>{active ? "▣ HIDE QUESTION" : "▢ SHOW QUESTION"}</button>
-        {/* Answer-review loop: jump straight back to Q1, then reveal forward. */}
-        <button type="button" onClick={backToQ1} disabled={index === 0 || total === 0} style={{ ...btnGhost, opacity: index === 0 || total === 0 ? 0.4 : 1 }}>↩ BACK TO Q1</button>
-        <div style={{ flex: 1 }} />
-        <button type="button" onClick={toggleAnswer} style={showAns ? btnActive : btnGhost}>{showAns ? "◉ HIDE ANSWER" : "◎ SHOW ANSWER"}</button>
       </div>
     </div>
   );
