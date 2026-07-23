@@ -142,20 +142,15 @@ export function useGameDisplayData(gameId: string | null) {
     };
   }, [gameId, qc]);
 
+  // The LOADED round = the round current_round_id points at (manually selected in the
+  // Scoring console). It is the single source for the Q&A question, the VIDEO source, and
+  // the UP NEXT card — is_complete no longer drives round/video selection anywhere (owner
+  // rewire 2026-07-22).
   const currentRound = useMemo(() => {
     const rid = displayState.data?.current_round_id;
     if (!rid) return null;
     return rounds.data?.find((r) => r.id === rid) ?? null;
   }, [displayState.data?.current_round_id, rounds.data]);
-
-  // The next-incomplete non-bonus round (else the last non-bonus round) — the same
-  // "play round" the Scoring console computes. The VIDEO and UP NEXT landscape stages
-  // resolve from THIS, never from current_round_id/current_question_index, so stepping
-  // the question index can't change what the video/up-next stage shows (0060 decouple).
-  const nextRound = useMemo<Round | null>(() => {
-    const scoring = (rounds.data ?? []).filter((r) => r.round_type !== "bonus").sort((a, b) => a.round_number - b.round_number);
-    return scoring.find((r) => !r.is_complete) ?? scoring[scoring.length - 1] ?? null;
-  }, [rounds.data]);
 
   // Main-round questions followed by any applicable bonus-round questions.
   // Ported verbatim from legacy GameDisplay: a 'standard' bonus attaches to the round
@@ -188,7 +183,6 @@ export function useGameDisplayData(gameId: string | null) {
     displayState: displayState.data ?? null,
     rounds: rounds.data ?? [],
     currentRound,
-    nextRound,
     questions: displayQuestions,
     isPending: displayState.isPending,
   };

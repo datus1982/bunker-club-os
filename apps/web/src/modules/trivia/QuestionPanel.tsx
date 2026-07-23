@@ -4,20 +4,21 @@ import { btnGhost, btnActive } from "./ui";
 import { useIsMobile } from "@/shared/useIsMobile";
 
 /**
- * Host question projector + answer key (docs/04 ARCH-2 — wraps the legacy QuestionDisplay
- * + AnswerKey). The host picks a round to project; nav / reveal-answer / show-question
- * write game_display_state (current_round_id, current_question_index, show_answer,
- * is_display_active) which the audience GameDisplay renders. The answer key shows the
- * PREVIOUS completed round so the host can read answers aloud while the next round's
- * questions are already on deck (parity checklist: "round complete → answer key shows
- * previous round"). Showing a question never steals the screen from a playing video, and
- * background navigation leaves show_video untouched (legacy invariants).
+ * Host question projector + answer key (docs/04 ARCH-2, rewired 2026-07-22). The host
+ * manually LOADS a round with the selector (dropdown) — that writes current_round_id, the
+ * single source that drives the Q&A question, the landscape VIDEO, and the UP NEXT card.
+ * nav / reveal-answer / show-question write game_display_state (current_question_index,
+ * show_answer, is_display_active) which the audience GameDisplay renders.
+ *
+ * SCORE ROUND (owner rewire): reveals the LOADED round's answers in the host ANSWER KEY box
+ * for grading — on demand, host-only. It does NOT lock, zero-fill, advance, or touch the
+ * audience (the audience answer reveal stays on SHOW/HIDE ANSWER = show_answer). This
+ * replaces the old "answer key = previous completed round" logic (is_complete is gone).
  */
 export function QuestionPanel({
   gameId,
   rounds,
   currentRound,
-  answerKeyRound,
   onSelectRound,
   state,
   write,
@@ -25,26 +26,25 @@ export function QuestionPanel({
   gameId: string;
   rounds: Round[];
   currentRound: Round | null;
-  answerKeyRound: Round | null;
   onSelectRound: (roundId: string) => void;
   state: DisplayState | null;
   write: ReturnType<typeof useDisplayState>["write"];
 }) {
   const questions = useRoundQuestions(gameId, currentRound, rounds);
-  const answers = useRoundQuestions(gameId, answerKeyRound, rounds);
-  // Below ~700px the two side-by-side panels (346px select + 4-button row) can't
-  // share a row without clipping — stack to one column. minmax(0,1fr) keeps the
-  // columns from expanding past the viewport at any width (root cause 1).
+  // Below ~700px the two side-by-side panels can't share a row without clipping — stack.
   const stack = useIsMobile(700);
 
   const [index, setIndex] = useState(0);
   const [showAns, setShowAns] = useState(false);
   const [active, setActive] = useState(false);
+  // SCORE ROUND reveal (host answer-key box only). Reset whenever the loaded round changes.
+  const [scoreRevealed, setScoreRevealed] = useState(false);
 
   // Adopt the live display state when it already points at this round; otherwise reset to
   // the top (keeping the display's active flag). Keyed on the round id only — the host is
   // the driver, so we don't re-sync on every realtime tick (would clobber local nav).
   useEffect(() => {
+    setScoreRevealed(false); // new round loaded → host must press SCORE ROUND again
     if (!currentRound) return;
     if (state?.current_round_id === currentRound.id) {
       setIndex(state.current_question_index ?? 0);
@@ -61,6 +61,13 @@ export function QuestionPanel({
   if (!currentRound) {
     return <div className="terminal-border" style={{ padding: 20, opacity: 0.6, fontSize: 22 }}>No round to project.</div>;
   }
+
+  // Load a round = pin current_round_id (the single source for Q&A / Video / Up Next) and
+  // reset the projected question. is_display_active is left as-is.
+  const loadRound = (id: string) => {
+    onSelectRound(id);
+    write.mutate({ current_round_id: id, current_question_index: 0, show_answer: false });
+  };
 
   const sync = (i: number, ans: boolean, act: boolean, killVideo: boolean) => {
     setIndex(i);
@@ -100,7 +107,7 @@ export function QuestionPanel({
         <span style={{ fontSize: 18, opacity: 0.7, letterSpacing: 1, flexShrink: 0 }}>ROUND</span>
         <select
           value={currentRound.id}
-          onChange={(e) => onSelectRound(e.target.value)}
+          onChange={(e) => loadRound(e.target.value)}
           style={{ ...btnGhost, padding: "6px 12px", fontWeight: 700, flex: 1, minWidth: 0 }}
         >
           {rounds.map((r) => (
@@ -121,26 +128,25 @@ export function QuestionPanel({
           <div className="terminal-border" style={{ padding: 16, display: "flex", flexDirection: "column", gap: 8, height: BOX_H }}>
             <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8 }}>
               <h3 style={{ fontSize: 24, fontWeight: 700, flexShrink: 0 }}>ANSWER KEY</h3>
-              <span style={{ fontSize: 18, opacity: 0.8, textAlign: "right" }}>{answerKeyRound ? roundLabel(answerKeyRound) : "—"}</span>
+              <span style={{ fontSize: 18, opacity: 0.8, textAlign: "right" }}>{roundLabel(currentRound)}</span>
             </div>
             <div className="terminal-separator" style={{ margin: 0 }} />
             <div style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
-              {answerKeyRound && answers.length > 0 ? (
+              {/* SCORE ROUND reveals the LOADED round's answers here for grading (host-only). */}
+              {scoreRevealed && questions.length > 0 ? (
                 // Column-major fill (host note, Ronnie): answers descend the FIRST column to
-                // the halfway point, then the rest continue down the second column (1–5 / 6–10
-                // for 10 answers; odd counts put the extra in the first column, e.g. 7 → 1–4 /
-                // 5–7). grid-auto-flow:column + a fixed row count of ceil(n/2) does the split;
-                // the stack (narrow) mode stays a single row-flowed column, order 1..n.
+                // the halfway point, then continue down the second (1–5 / 6–10 for 10; odd
+                // counts put the extra in the first column). Stack mode stays one column.
                 <div
                   style={{
                     display: "grid",
                     gridTemplateColumns: stack ? "minmax(0, 1fr)" : "minmax(0, 1fr) minmax(0, 1fr)",
-                    gridTemplateRows: stack ? undefined : `repeat(${Math.ceil(answers.length / 2)}, auto)`,
+                    gridTemplateRows: stack ? undefined : `repeat(${Math.ceil(questions.length / 2)}, auto)`,
                     gridAutoFlow: stack ? "row" : "column",
                     gap: "2px 16px",
                   }}
                 >
-                  {answers.map((a) => (
+                  {questions.map((a) => (
                     <div key={a.id} style={{ display: "flex", gap: 8, fontSize: 20, lineHeight: 1.2 }}>
                       <span style={{ fontWeight: 700, flexShrink: 0 }}>{a.question_number > 10 ? "B" : a.question_number}:</span>
                       <span>{a.answer_text}</span>
@@ -148,15 +154,17 @@ export function QuestionPanel({
                   ))}
                 </div>
               ) : (
-                <div style={{ opacity: 0.5, fontSize: 20 }}>No previous round to show yet.</div>
+                <div style={{ opacity: 0.5, fontSize: 20 }}>
+                  {questions.length === 0 ? "No questions in this round." : "Press SCORE ROUND to reveal this round's answers for grading."}
+                </div>
               )}
             </div>
           </div>
-          {/* Under the ANSWER box: SHOW/HIDE ANSWER centered under the field, BACK TO Q1 pinned
-              right (the answer-review loop: reveal + jump back to Q1). 1fr auto 1fr keeps the
-              toggle centered over the column regardless of the BACK TO Q1 width. */}
+          {/* Under the ANSWER box: SCORE ROUND (left, host answer-key reveal — grades the
+              LOADED round), SHOW/HIDE ANSWER (center, AUDIENCE reveal = show_answer), BACK TO
+              Q1 (right, answer-review loop). 1fr auto 1fr keeps SHOW ANSWER centered. */}
           <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", alignItems: "center", gap: 8 }}>
-            <span />
+            <button type="button" onClick={() => setScoreRevealed((v) => !v)} style={{ ...(scoreRevealed ? btnActive : btnGhost), justifySelf: "start" }} title="Reveal this round's answers in the host answer key for grading">{scoreRevealed ? "⊟ HIDE ANSWERS" : "⊞ SCORE ROUND"}</button>
             <button type="button" onClick={toggleAnswer} style={{ ...(showAns ? btnActive : btnGhost), justifySelf: "center" }}>{showAns ? "◉ HIDE ANSWER" : "◎ SHOW ANSWER"}</button>
             <button type="button" onClick={backToQ1} disabled={index === 0 || total === 0} style={{ ...btnGhost, justifySelf: "end", opacity: index === 0 || total === 0 ? 0.4 : 1 }}>↩ BACK TO Q1</button>
           </div>

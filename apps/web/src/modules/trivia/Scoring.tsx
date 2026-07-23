@@ -52,19 +52,18 @@ export function Scoring() {
 
   const cols = useMemo(() => scoringRounds(scores.rounds), [scores.rounds]);
 
-  // The round being played = first incomplete non-bonus round, else the last one.
-  const playRound = useMemo(() => cols.find((r) => !r.is_complete) ?? cols[cols.length - 1] ?? null, [cols]);
+  // The LOADED round = the round the host selected in QuestionPanel; defaults to the FIRST
+  // round until the host picks one (is_complete no longer drives this — owner rewire
+  // 2026-07-22). It is the single source for the Q&A question, the VIDEO, and UP NEXT.
   const selectedRound: Round | null = useMemo(() => {
     const byId = selectedRoundId ? scores.rounds.find((r) => r.id === selectedRoundId) : null;
-    return byId ?? playRound;
-  }, [selectedRoundId, scores.rounds, playRound]);
-
-  // Answer key = the most recent completed non-bonus round before the selected one.
-  const answerKeyRound = useMemo(() => {
-    if (!selectedRound) return null;
-    const before = cols.filter((r) => r.round_number < selectedRound.round_number && r.is_complete);
-    return before[before.length - 1] ?? null;
-  }, [cols, selectedRound]);
+    // On a console reload (selectedRoundId is local state, so it resets), adopt the round
+    // the DB currently has loaded (current_round_id) instead of snapping to round 1 — else
+    // the host's next VIDEO / UP NEXT / question-nav press would pin the display back to
+    // round 1 (WARN-1, reviewer 2026-07-22).
+    const fromDb = scores.rounds.find((r) => r.id === display.state?.current_round_id);
+    return byId ?? fromDb ?? cols[0] ?? null;
+  }, [selectedRoundId, scores.rounds, cols, display.state?.current_round_id]);
 
   if (gameQuery.isPending) return <Centered text="LOADING GAME…" />;
   if (!game) return <NoGame />;
@@ -113,16 +112,15 @@ export function Scoring() {
             the left, BOARD (portrait) shifted right. Wraps on narrow. (Clock + START moved up
             into the nav row.) */}
         <div className="terminal-border" style={{ padding: 12, display: "flex", gap: 16, alignItems: "center", justifyContent: "space-between", flexWrap: "wrap" }}>
-          {display.state && <DisplayStageControl state={display.state} write={display.write} videoRound={playRound} />}
+          {display.state && <DisplayStageControl state={display.state} write={display.write} loadedRound={selectedRound} />}
           {display.state && <BoardStageControl state={display.state} write={display.write} />}
         </div>
 
-        {/* Question projector + answer key */}
+        {/* Question projector + answer key (SCORE ROUND reveals the loaded round's answers) */}
         <QuestionPanel
           gameId={game.id}
           rounds={scores.rounds}
           currentRound={selectedRound}
-          answerKeyRound={answerKeyRound}
           onSelectRound={setSelectedRoundId}
           state={display.state}
           write={display.write}

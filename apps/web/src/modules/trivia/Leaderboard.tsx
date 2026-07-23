@@ -93,6 +93,7 @@ export function LeaderboardBoard({
       game={game}
       rows={rows}
       rounds={roundList}
+      currentRoundId={displayState.data?.current_round_id ?? null}
       tieInfo={tieInfo}
       hasAnyScores={hasAnyScores}
       gameOverFlag={gameOverFlag}
@@ -197,6 +198,7 @@ function Standings({
   game,
   rows,
   rounds,
+  currentRoundId,
   tieInfo,
   hasAnyScores,
   gameOverFlag,
@@ -205,13 +207,14 @@ function Standings({
   game: Game;
   rows: ScoreboardRow[];
   rounds: Round[];
+  currentRoundId: string | null;
   tieInfo: Map<string, number>;
   hasAnyScores: boolean;
   gameOverFlag: boolean;
   forceFinal?: boolean;
 }) {
-  const label = currentRoundLabel(game, rounds, tieInfo);
-  const isFinal = forceFinal || gameOverFlag || game.status === "completed" || label === "FINAL SCORES";
+  const isFinal = forceFinal || gameOverFlag || game.status === "completed";
+  const label = currentRoundLabel(currentRoundId, rounds, game);
 
   // Fit all rows into the body. Header ~250px, footer ~64px, 40px padding each side.
   const bodyH = CANVAS_H - 80 - 250 - 64;
@@ -684,25 +687,14 @@ function computeTieInfo(rows: ScoreboardRow[]): Map<string, number> {
   return tied;
 }
 
-/** Round label shown under the title (mirrors legacy getCurrentRound). */
-function currentRoundLabel(game: Game, rounds: Round[], tied: Map<string, number>): string | null {
+/** Sub-label under LIVE STANDINGS. With manual round selection (owner rewire 2026-07-22) it
+ *  reflects the LOADED round (current_round_id) rather than deriving "current round" from
+ *  is_complete (retired). Only shown when NOT final (the Header shows FINAL SCORES then). */
+function currentRoundLabel(currentRoundId: string | null, rounds: Round[], game: Game): string | null {
   if (game.status === "paused") return "GAME PAUSED";
-  if (rounds.length === 0) return null;
-
-  const finalRound = rounds.find((r) => r.round_type === "final");
-  const regular = rounds
-    .filter((r) => r.round_type === "regular")
-    .sort((a, b) => a.round_number - b.round_number);
-  const lastRegular = finalRound ?? regular[regular.length - 1];
-  const finalComplete = lastRegular?.is_complete ?? false;
-
-  const unresolvedTop3 = [...tied.values()].some((pos) => pos <= 3);
-  if (finalComplete && unresolvedTop3) return "TIE BREAKER ROUND";
-  if (finalComplete) return "FINAL SCORES";
-
-  for (const r of regular) if (!r.is_complete) return `ROUND ${r.round_number}`;
-  if (finalRound && !finalRound.is_complete) return "FINAL ROUND";
-  return "FINAL SCORES";
+  const loaded = currentRoundId ? rounds.find((r) => r.id === currentRoundId) : null;
+  if (!loaded) return null;
+  return loaded.round_type === "final" ? "FINAL ROUND" : `ROUND ${loaded.round_number}`;
 }
 
 /** Minute-resolution countdown to start_time (updates every 60s — perf rule). */
