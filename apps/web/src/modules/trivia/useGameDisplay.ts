@@ -179,10 +179,23 @@ export function useGameDisplayData(gameId: string | null) {
     return [...main, ...bonus];
   }, [currentRound, rounds.data, questions.data]);
 
+  // The UP NEXT card previews the NEXT scorable round AFTER the loaded one (owner: on round 1,
+  // UP NEXT should say round 2). Nothing loaded yet → the first round is up next; on the last
+  // round → null (the card shows STAND BY; the host uses the THANKS stage at the end).
+  const upNextRound = useMemo(() => {
+    const scorable = (rounds.data ?? [])
+      .filter((r) => r.round_type !== "bonus")
+      .sort((a, b) => a.round_number - b.round_number);
+    if (scorable.length === 0) return null;
+    if (!currentRound) return scorable[0];
+    return scorable.find((r) => r.round_number > currentRound.round_number) ?? null;
+  }, [rounds.data, currentRound]);
+
   return {
     displayState: displayState.data ?? null,
     rounds: rounds.data ?? [],
     currentRound,
+    upNextRound,
     questions: displayQuestions,
     isPending: displayState.isPending,
   };
