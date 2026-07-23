@@ -35,6 +35,7 @@ export function RoundGrid({
   onAddTeam,
   onEditTeam,
   onRemoveTeam,
+  onClearAll,
 }: {
   teams: Team[];
   rounds: Round[];
@@ -43,10 +44,23 @@ export function RoundGrid({
   onAddTeam: () => void;
   onEditTeam: (team: Team) => void;
   onRemoveTeam: (team: Team) => void;
+  /** Opens the CLEAR-ALL-SCORES confirm (the modal stays in Scoring). Rendered beside TOTAL. */
+  onClearAll: () => void;
 }) {
   const cols = useMemo(() => scoringRounds(rounds), [rounds]);
   const ranked = useMemo(() => getTeamRankings(teams, rounds, scores), [teams, rounds, scores]);
   const ties = useMemo(() => getTop3Ties(ranked), [ranked]);
+  // Rank source, keyed by team — the RANK column still shows each team's live place even
+  // though the ROWS no longer sort by it.
+  const rankById = useMemo(() => new Map(ranked.map((r) => [r.team.id, r])), [ranked]);
+  // ROW ORDER = STATIC ALPHABETICAL by team name (host note, Ronnie 2026-07-22): teams
+  // jumped around as scores changed and he couldn't find one mid-entry. Rows now stay put
+  // all night (case-insensitive name sort, id tiebreak for stability). Only the host entry
+  // grid changes — the audience boards (Leaderboard/GameDisplay) still rank by score.
+  const orderedTeams = useMemo(
+    () => [...teams].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),
+    [teams],
+  );
   const narrow = useIsMobile();
 
   const [cell, setCell] = useState<{ team: Team; round: Round } | null>(null);
@@ -80,13 +94,26 @@ export function RoundGrid({
                 </div>
               </Th>
             ))}
-            <Th>TOTAL</Th>
+            {/* TOTAL stays CENTERED over the total column with CLEAR tucked immediately to its
+                right (owner refinement 2026-07-22 — CLEAR must not push TOTAL off-center). The
+                1fr auto 1fr grid centers the TOTAL label; CLEAR sits in the right cell justified
+                to its start. Same confirm + clearAllScores behavior (modal stays in Scoring). */}
+            <Th>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", alignItems: "center", gap: 8 }}>
+                <span />
+                <span>TOTAL</span>
+                <button type="button" onClick={onClearAll} style={{ ...btnDanger, justifySelf: "start", padding: "2px 8px", minHeight: 0, fontSize: 14 }} title="Clear every score in this game">CLEAR</button>
+              </div>
+            </Th>
             {ties.hasTies && <Th>TIE</Th>}
             <Th> </Th>
           </tr>
         </thead>
         <tbody>
-          {ranked.map(({ team, total, rank }) => {
+          {orderedTeams.map((team) => {
+            const rk = rankById.get(team.id);
+            const total = rk?.total ?? 0;
+            const rank = rk?.rank ?? 0;
             const tiedPos = ties.tiedPosition.get(team.id);
             return (
               <tr key={team.id} style={{ borderTop: "1px solid var(--terminal-dim, #0f3)" }}>

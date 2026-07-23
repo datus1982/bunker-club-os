@@ -1,8 +1,10 @@
 import { useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { VideoPlayer } from "./VideoPlayer";
+import { TriviaHoldingBoard } from "./TriviaHoldingBoard";
 import {
   useDisplayGame,
   useGameDisplayData,
+  type DisplayStage,
   type Question,
   type Round,
 } from "./useGameDisplay";
@@ -36,47 +38,95 @@ import {
 export function GameDisplayBoard({ overrideGameId }: { overrideGameId: string | null }) {
   const gameQuery = useDisplayGame(overrideGameId);
   const game = gameQuery.data ?? null;
-  const { displayState, currentRound, questions, isPending } = useGameDisplayData(game?.id ?? null);
+  const { displayState, currentRound, nextRound, questions, isPending } = useGameDisplayData(game?.id ?? null);
 
   const currentQuestion: Question | undefined = questions[displayState?.current_question_index ?? 0];
   const showAnswer = displayState?.show_answer ?? false;
+  // Manual LANDSCAPE stage (0060). Default 'qa' = today's behavior (question projector
+  // gated by is_display_active). The host DISPLAY control writes this; it is only ever
+  // read once the arm model has already put the game on this TV (SlotDisplay gate).
+  const stage: DisplayStage = displayState?.display_stage ?? "qa";
 
-  let body: React.ReactNode;
+  // Early, stage-independent frames.
+  if (gameQuery.isPending) return <Frame><Centered title="SYNCING" subtitle="◊ SHELTER AUTHORITY UPLINK" /></Frame>;
+  if (!game) return <Frame><Centered title="NO ACTIVE GAME" subtitle="STANDBY" /></Frame>;
+  // GAME OVER stays a top-level override: the auto GAME-OVER-on-final-round-complete
+  // safety net + END GAME both raise show_game_over, and it must win over any stage.
+  if (displayState?.show_game_over) return <Frame><Centered title="GAME OVER" subtitle="THANK YOU FOR PLAYING" /></Frame>;
+  if (isPending) return <Frame><Centered title="SYNCING" subtitle="◊ SHELTER AUTHORITY UPLINK" /></Frame>;
 
-  if (gameQuery.isPending) {
-    body = <Centered title="SYNCING" subtitle="◊ SHELTER AUTHORITY UPLINK" />;
-  } else if (!game) {
-    body = <Centered title="NO ACTIVE GAME" subtitle="STANDBY" />;
-  } else if (displayState?.show_game_over) {
-    body = <Centered title="GAME OVER" subtitle="THANK YOU FOR PLAYING" />;
-  } else if (displayState?.show_video && currentRound?.video_url) {
-    // Video fills the whole canvas (no frame).
+  // VIDEO — fills the whole canvas (no frame). Sourced ONLY from the next-incomplete
+  // round's video_url (nextRound), never current_round_id/current_question_index, so
+  // question nav can't stop or advance it (owner bug 2026-07-22, decoupled in 0060).
+  if (stage === "video") {
+    if (nextRound?.video_url) {
+      return (
+        <div style={{ width: 1920, height: 1080, background: "#000" }}>
+          <VideoPlayer videoUrl={nextRound.video_url} autoplay />
+        </div>
+      );
+    }
+    return <Frame><Centered title="STAND BY" subtitle="NO VIDEO FOR THIS ROUND" /></Frame>;
+  }
+
+  // JOIN QR — reuse the SCAN-TO-JOIN holding board (landscape). It renders absolute
+  // inset:0, so give it a positioned 1920×1080 parent (same size the Frame produces).
+  if (stage === "qr") {
     return (
-      <div style={{ width: 1920, height: 1080, background: "#000" }}>
-        <VideoPlayer videoUrl={currentRound.video_url} autoplay />
+      <div style={{ position: "relative", width: 1920, height: 1080, background: "#000" }}>
+        <TriviaHoldingBoard gameId={game.id} orientation="landscape" />
       </div>
-    );
-  } else if (isPending) {
-    body = <Centered title="SYNCING" subtitle="◊ SHELTER AUTHORITY UPLINK" />;
-  } else if (!currentRound || !displayState?.is_display_active) {
-    body = <Centered title="ATOMIC PUB TRIVIA" subtitle="WAITING FOR ROUND TO BEGIN…" />;
-  } else if (currentRound.round_type === "final" && currentRound.picture_url) {
-    body = <PictureRound round={currentRound} questions={questions} showAnswer={showAnswer} />;
-  } else if (questions.length === 0) {
-    body = <Centered title={roundLabel(currentRound)} subtitle="NO QUESTIONS AVAILABLE" />;
-  } else {
-    body = (
-      <QuestionView
-        round={currentRound}
-        question={currentQuestion}
-        questions={questions}
-        questionIndex={displayState?.current_question_index ?? 0}
-        showAnswer={showAnswer}
-      />
     );
   }
 
+  let body: React.ReactNode;
+  if (stage === "upnext") {
+    body = <UpNext round={nextRound} />;
+  } else if (stage === "thanks") {
+    body = <Centered title="THANK YOU FOR PLAYING" subtitle="ATOMIC PUB TRIVIA" />;
+  } else {
+    // 'qa' (default) — the question/answer projector, keeping is_display_active semantics
+    // (the projector's SHOW QUESTION gates the question) and current_question_index/
+    // show_answer from the host's nav/reveal.
+    if (!currentRound || !displayState?.is_display_active) {
+      body = <Centered title="ATOMIC PUB TRIVIA" subtitle="WAITING FOR ROUND TO BEGIN…" />;
+    } else if (currentRound.round_type === "final" && currentRound.picture_url) {
+      body = <PictureRound round={currentRound} questions={questions} showAnswer={showAnswer} />;
+    } else if (questions.length === 0) {
+      body = <Centered title={roundLabel(currentRound)} subtitle="NO QUESTIONS AVAILABLE" />;
+    } else {
+      body = (
+        <QuestionView
+          round={currentRound}
+          question={currentQuestion}
+          questions={questions}
+          questionIndex={displayState?.current_question_index ?? 0}
+          showAnswer={showAnswer}
+        />
+      );
+    }
+  }
+
   return <Frame>{body}</Frame>;
+}
+
+/* ── UP NEXT stage ─────────────────────────────────────────────────────────── */
+
+/** "UP NEXT — ROUND X · <category>" card, auto-filled from the next-incomplete round. */
+function UpNext({ round }: { round: Round | null }) {
+  if (!round) {
+    return <Centered title="STAND BY" subtitle="NEXT ROUND LOADING…" />;
+  }
+  const num = round.round_type === "final" ? "FINAL ROUND" : `ROUND ${round.round_number}`;
+  return (
+    <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", gap: 40 }}>
+      <div style={{ fontSize: 72, opacity: 0.7, letterSpacing: 10 }}>UP NEXT</div>
+      <div style={{ fontSize: 200, fontWeight: 700, letterSpacing: 4, lineHeight: 0.95, textShadow: "0 0 28px var(--terminal-glow)" }}>{num}</div>
+      {round.round_name && (
+        <div style={{ fontSize: 84, fontWeight: 700, opacity: 0.9, textTransform: "uppercase", letterSpacing: 2 }}>{round.round_name}</div>
+      )}
+    </div>
+  );
 }
 
 /* ── Chrome ────────────────────────────────────────────────────────────────── */

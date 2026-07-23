@@ -7,7 +7,7 @@ import { log } from "@/shared/log";
  * Scoring console data layer (docs/04 ARCH-2 decomposition). The legacy Scoring.tsx
  * held 30 useState + 29 inline queries/mutations in a 3,285-line god component. This
  * splits its data + behaviour into three hooks — useActiveGame, useGameScores,
- * useDisplayState — that the decomposed UI (RoundGrid / QuestionPanel / VideoControls /
+ * useDisplayState — that the decomposed UI (RoundGrid / QuestionPanel / DisplayStageControl /
  * BoardStageControl / TeamEditorDialog) composes. Behaviour is preserved to the extent
  * our greenfield schema (docs/02) carries it; the DECISIONs below record the drops.
  *
@@ -31,10 +31,16 @@ import { log } from "@/shared/log";
 
 export type GameStatus = "setup" | "active" | "paused" | "stopped" | "completed";
 
-/** Manual public-leaderboard stage (migration 0038), driven ONLY by the Scoring
- *  segmented control. The public board (trivia/Leaderboard.tsx — also the signage
+/** Manual public-leaderboard stage (migration 0038), driven ONLY by the Scoring BOARD
+ *  segmented control. The PORTRAIT board (trivia/Leaderboard.tsx — also the signage
  *  portrait game-mode board) renders from this. */
 export type BoardStage = "qr" | "scoring" | "standings" | "final";
+
+/** Manual LANDSCAPE audience-board stage (migration 0060), driven ONLY by the Scoring
+ *  DISPLAY segmented control — independent of BoardStage. The landscape board
+ *  (trivia/GameDisplay) renders from this. 'video' plays the next-incomplete round's
+ *  video decoupled from current_round_id so question nav never interrupts it. */
+export type DisplayStage = "qr" | "qa" | "video" | "upnext" | "thanks";
 
 export interface Game {
   id: string;
@@ -93,6 +99,10 @@ export interface DisplayState {
   show_video: boolean;
   show_game_over: boolean;
   board_stage: BoardStage;
+  /** Manual LANDSCAPE stage (0060) — the DISPLAY control writes it; GameDisplay renders it. */
+  display_stage: DisplayStage;
+  /** When START was pressed (0060) — the host game clock ticks from this. null = stopped. */
+  clock_started_at: string | null;
 }
 
 /* ── useActiveGame ─────────────────────────────────────────────────────────────
@@ -565,7 +575,7 @@ export function useDisplayState(gameId: string | null) {
     queryFn: async (): Promise<DisplayState | null> => {
       const { data, error } = await supabase
         .from("game_display_state")
-        .select("game_id, current_round_id, current_question_index, show_answer, is_display_active, show_video, show_game_over, board_stage")
+        .select("game_id, current_round_id, current_question_index, show_answer, is_display_active, show_video, show_game_over, board_stage, display_stage, clock_started_at")
         .eq("game_id", gameId)
         .maybeSingle();
       if (error) throw error;
@@ -610,30 +620,11 @@ export function useDisplayState(gameId: string | null) {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["scoring", "display", gameId] }),
   });
 
-  /** Show/hide the inter-round video. GameDisplay reads the round's own video_url, so we
-   *  only flip show_video + point current_round_id at the round whose video plays. */
-  const toggleVideo = useMutation({
-    mutationFn: async (args: { show: boolean; roundId: string | null }) => {
-      if (!gameId) return;
-      const { error } = await supabase
-        .from("game_display_state")
-        .upsert(
-          {
-            game_id: gameId,
-            show_video: args.show,
-            is_display_active: args.show,
-            show_answer: false,
-            current_round_id: args.show ? args.roundId : state?.current_round_id ?? null,
-            updated_at: new Date().toISOString(),
-          },
-          { onConflict: "game_id" },
-        );
-      if (error) throw error;
-    },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["scoring", "display", gameId] }),
-  });
+  // (The old toggleVideo mutation was retired in the 2026-07-22 rebuild: video is now a
+  // LANDSCAPE display_stage — the DISPLAY control writes display_stage='video' via `write`,
+  // and GameDisplay resolves the round's video itself, decoupled from current_round_id.)
 
-  return { query, state, write, toggleVideo };
+  return { query, state, write };
 }
 
 /** Load a round's projected questions (main + attached bonuses) for QuestionPanel —
