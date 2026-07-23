@@ -57,8 +57,13 @@ export function Scoring() {
   // 2026-07-22). It is the single source for the Q&A question, the VIDEO, and UP NEXT.
   const selectedRound: Round | null = useMemo(() => {
     const byId = selectedRoundId ? scores.rounds.find((r) => r.id === selectedRoundId) : null;
-    return byId ?? cols[0] ?? null;
-  }, [selectedRoundId, scores.rounds, cols]);
+    // On a console reload (selectedRoundId is local state, so it resets), adopt the round
+    // the DB currently has loaded (current_round_id) instead of snapping to round 1 — else
+    // the host's next VIDEO / UP NEXT / question-nav press would pin the display back to
+    // round 1 (WARN-1, reviewer 2026-07-22).
+    const fromDb = scores.rounds.find((r) => r.id === display.state?.current_round_id);
+    return byId ?? fromDb ?? cols[0] ?? null;
+  }, [selectedRoundId, scores.rounds, cols, display.state?.current_round_id]);
 
   if (gameQuery.isPending) return <Centered text="LOADING GAME…" />;
   if (!game) return <NoGame />;
