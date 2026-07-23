@@ -6,7 +6,6 @@ import {
   getTeamRankings,
   getTop3Ties,
   getOrdinal,
-  isRoundLocked,
   scoringRounds,
   threeChanceAnsweredRound,
   type Round,
@@ -14,18 +13,23 @@ import {
   type Team,
   type useGameScores,
 } from "./useScoring";
-import { Modal, Field, input, btnGhost, btnPrimary, btnActive, btnDanger, checkRow } from "./ui";
+import { Modal, Field, input, btnGhost, btnPrimary, btnDanger, checkRow } from "./ui";
 import { useIsMobile } from "@/shared/useIsMobile";
 
 type Scores = ReturnType<typeof useGameScores>;
 
+/** The small CLEAR button geometry, shared by the real button and its invisible mirror. */
+const clearBtnStyle = { ...btnDanger, padding: "2px 8px", minHeight: 0, fontSize: 14 } as const;
+
 /**
  * The scoring grid (docs/04 ARCH-2 — the heart of the legacy Scoring god component).
- * One row per team (in standings order), one column per non-bonus round, plus Total and
- * (only when the podium is tied) a Tiebreaker column. Clicking a cell opens the score
- * dialog: main points, the one-per-team wildcard (×2), and any bonus rounds attached to
- * that round (standard + three-chance). Round headers toggle completion (zero-filling
- * missing scores). All scoring math is client-side and identical to legacy (no RPC).
+ * One row per team (alphabetical), one column per non-bonus round, plus Total and (only
+ * when the podium is tied) a Tiebreaker column. Clicking a cell opens the score dialog:
+ * main points, the one-per-team wildcard (×2), and any bonus rounds attached to that round
+ * (standard + three-chance). Round selection / locking / zero-fill were RETIRED (owner
+ * rewire 2026-07-22): rounds are chosen manually in QuestionPanel, cells are always
+ * editable, and totals treat a MISSING score as 0 directly (getScore(...) ?? 0 — no written
+ * zero rows). All scoring math is client-side (no RPC), matching game_scoreboard.
  */
 export function RoundGrid({
   teams,
@@ -40,7 +44,7 @@ export function RoundGrid({
   teams: Team[];
   rounds: Round[];
   scores: ScoreRow[];
-  mutations: Pick<Scores, "saveScore" | "deleteScore" | "setTiebreaker" | "toggleRoundComplete">;
+  mutations: Pick<Scores, "saveScore" | "deleteScore" | "setTiebreaker">;
   onAddTeam: () => void;
   onEditTeam: (team: Team) => void;
   onRemoveTeam: (team: Team) => void;
@@ -65,9 +69,8 @@ export function RoundGrid({
 
   const [cell, setCell] = useState<{ team: Team; round: Round } | null>(null);
 
-  // Phone-only: expand the small in-grid controls to ≥44px tap targets. Desktop keeps
+  // Phone-only: expand the small in-grid icon controls to ≥44px tap targets. Desktop keeps
   // its dense layout (the host runs the grid on a laptop — density must not regress).
-  const roundBtnPad = narrow ? "8px 12px" : "1px 8px";
   const iconBtn = narrow ? { padding: "6px", minWidth: 44, minHeight: 44 } : { padding: "2px 8px" };
 
   return (
@@ -79,30 +82,23 @@ export function RoundGrid({
           <tr>
             <Th>RANK</Th>
             <Th align="left">TEAM</Th>
+            {/* Round headers are labels only now — the DONE/OPEN completion toggle was retired
+                (owner rewire 2026-07-22). Rounds are selected manually in QuestionPanel. */}
             {cols.map((r) => (
-              <Th key={r.id}>
-                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-                  <span>{r.round_type === "final" ? "FINAL" : `R${r.round_number}`}</span>
-                  <button
-                    type="button"
-                    title={r.is_complete ? "Mark round incomplete" : "Mark round complete"}
-                    onClick={() => mutations.toggleRoundComplete.mutate(r)}
-                    style={{ ...(r.is_complete ? btnActive : btnGhost), padding: roundBtnPad, fontSize: 16 }}
-                  >
-                    {r.is_complete ? "✓ DONE" : "OPEN"}
-                  </button>
-                </div>
-              </Th>
+              <Th key={r.id}>{r.round_type === "final" ? "FINAL" : `R${r.round_number}`}</Th>
             ))}
-            {/* TOTAL stays CENTERED over the total column with CLEAR tucked immediately to its
-                right (owner refinement 2026-07-22 — CLEAR must not push TOTAL off-center). The
-                1fr auto 1fr grid centers the TOTAL label; CLEAR sits in the right cell justified
-                to its start. Same confirm + clearAllScores behavior (modal stays in Scoring). */}
+            {/* ITEM A (owner 2026-07-22): TOTAL must be CENTERED over the total column with CLEAR
+                tucked to its right WITHOUT shifting TOTAL. An INVISIBLE mirror of the CLEAR button
+                on the LEFT reserves the identical width, so the 1fr auto 1fr grid stays symmetric
+                around TOTAL at any cell width (the old empty-left-cell collapsed at min-content and
+                pushed TOTAL left). CLEAR keeps the same confirm + clearAllScores (modal in Scoring). */}
             <Th>
               <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", alignItems: "center", gap: 8 }}>
-                <span />
-                <span>TOTAL</span>
-                <button type="button" onClick={onClearAll} style={{ ...btnDanger, justifySelf: "start", padding: "2px 8px", minHeight: 0, fontSize: 14 }} title="Clear every score in this game">CLEAR</button>
+                {/* Mirror is the SAME element type (button) so it renders the identical width
+                    under the terminal theme — a <span> got a different global font size. */}
+                <button type="button" aria-hidden tabIndex={-1} style={{ ...clearBtnStyle, justifySelf: "end", visibility: "hidden", pointerEvents: "none" }}>CLEAR</button>
+                <span style={{ justifySelf: "center" }}>TOTAL</span>
+                <button type="button" onClick={onClearAll} style={{ ...clearBtnStyle, justifySelf: "start" }} title="Clear every score in this game">CLEAR</button>
               </div>
             </Th>
             {ties.hasTies && <Th>TIE</Th>}
@@ -128,25 +124,22 @@ export function RoundGrid({
                   </div>
                 </Td>
                 {cols.map((r) => {
-                  const locked = isRoundLocked(r, teams, rounds, scores);
                   const s = getScore(scores, team.id, r.id);
                   const bonus = getTeamBonusForRound(team, r, rounds, scores);
                   const isWild = team.wildcard_used_on_round === r.round_number;
                   return (
                     <Td key={r.id}>
+                      {/* Cells are ALWAYS editable now — round locking retired (owner rewire). */}
                       <button
                         type="button"
-                        disabled={locked}
                         onClick={() => setCell({ team, round: r })}
                         style={{
                           ...btnGhost,
                           width: "100%",
                           padding: "4px 6px",
-                          opacity: locked ? 0.35 : 1,
-                          cursor: locked ? "not-allowed" : "pointer",
+                          cursor: "pointer",
                           borderColor: s ? "var(--terminal-green)" : "rgba(0,255,65,0.3)",
                         }}
-                        title={locked ? "Finish the previous round for all teams first" : undefined}
                       >
                         {s ? (
                           <span>

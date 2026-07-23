@@ -231,21 +231,10 @@ export function lastScoringRound(rounds: Round[]): Round | null {
   return final ?? sr[sr.length - 1] ?? null;
 }
 
-/** Every team has a score in the final (or last regular) round → game is decided. */
-export function isFinalRoundComplete(teams: Team[], rounds: Round[], scores: ScoreRow[]): boolean {
-  const last = lastScoringRound(rounds);
-  if (!last || teams.length === 0) return false;
-  return teams.every((t) => getScore(scores, t.id, last.id) !== undefined);
-}
-
-/** Round N (>first) is locked until every team has a score in the previous scoring round. */
-export function isRoundLocked(round: Round, teams: Team[], rounds: Round[], scores: ScoreRow[]): boolean {
-  const sr = scoringRounds(rounds);
-  const idx = sr.findIndex((r) => r.id === round.id);
-  if (idx <= 0) return false;
-  const prev = sr[idx - 1];
-  return !teams.every((t) => getScore(scores, t.id, prev.id) !== undefined);
-}
+// Round LOCKING + "final round complete" detection were retired in the 2026-07-22 rewire:
+// rounds are selected manually, cells are always editable, and totals treat a missing score
+// as 0 directly (getTeamTotal → roundPoints → getScore(...) ?? 0), so nothing needs a
+// per-round "is everyone scored" gate anymore.
 
 export interface Ranked {
   team: Team;
@@ -489,40 +478,17 @@ export function useGameScores(gameId: string | null) {
     onSuccess: invalidateAll,
   });
 
-  /** Toggle rounds.is_complete. Marking complete zero-fills missing team scores and, on
-   *  the final round, raises game_display_state.show_game_over (audience GAME OVER). */
-  const toggleRoundComplete = useMutation({
-    mutationFn: async (round: Round) => {
-      if (!gameId) return;
-      const nextComplete = !round.is_complete;
-      if (nextComplete) {
-        const existing = new Set((scores.data ?? []).filter((s) => s.round_id === round.id).map((s) => s.team_id));
-        const fill = (teams.data ?? []).filter((t) => !existing.has(t.id)).map((t) => ({ game_id: gameId, team_id: t.id, round_id: round.id, points: 0 }));
-        if (fill.length > 0) {
-          const { error } = await supabase.from("scores").insert(fill);
-          if (error) throw error;
-        }
-      }
-      const { error } = await supabase.from("rounds").update({ is_complete: nextComplete }).eq("id", round.id);
-      if (error) throw error;
+  // toggleRoundComplete (round DONE/OPEN + zero-fill + auto GAME OVER on final) was RETIRED
+  // in the 2026-07-22 rewire — rounds are chosen manually, totals treat blanks as 0, and the
+  // final board is raised by the host (BOARD → FINAL, or END GAME which sets show_game_over).
 
-      if (round.round_type === "final") {
-        // Completing the final round raises GAME OVER + drops the question display;
-        // un-completing it just clears GAME OVER (leaves the display where it was).
-        const patch = nextComplete ? { show_game_over: true, is_display_active: false } : { show_game_over: false };
-        await supabase.from("game_display_state").update(patch).eq("game_id", gameId);
-      }
-    },
-    onSuccess: invalidateAll,
-  });
-
-  /** Add an existing regular team to the game, zero-filling already-complete rounds. */
+  /** Add an existing regular team to the game. No zero-fill — a team with no score entered
+   *  for a round counts as 0 directly in every total (client math + game_scoreboard). */
   const addExistingTeam = useMutation({
     mutationFn: async (args: { teamId: string; displayName: string | null }) => {
       if (!gameId) return;
       const { error } = await supabase.from("game_teams").insert({ game_id: gameId, team_id: args.teamId, display_name: args.displayName });
       if (error) throw error;
-      await zeroFillCompletedRounds(gameId, args.teamId, rounds.data ?? [], scores.data ?? []);
     },
     onSuccess: invalidateAll,
   });
@@ -548,18 +514,10 @@ export function useGameScores(gameId: string | null) {
     deleteScore,
     clearAllScores,
     setTiebreaker,
-    toggleRoundComplete,
     addExistingTeam,
     removeTeam,
     invalidateAll,
   };
-}
-
-async function zeroFillCompletedRounds(gameId: string, teamId: string, rounds: Round[], scores: ScoreRow[]) {
-  const done = rounds.filter((r) => r.round_type !== "bonus" && r.is_complete);
-  const has = new Set(scores.filter((s) => s.team_id === teamId).map((s) => s.round_id));
-  const fill = done.filter((r) => !has.has(r.id)).map((r) => ({ game_id: gameId, team_id: teamId, round_id: r.id, points: 0 }));
-  if (fill.length > 0) await supabase.from("scores").insert(fill);
 }
 
 /* ── useDisplayState ───────────────────────────────────────────────────────────

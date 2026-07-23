@@ -38,35 +38,27 @@ import {
 export function GameDisplayBoard({ overrideGameId }: { overrideGameId: string | null }) {
   const gameQuery = useDisplayGame(overrideGameId);
   const game = gameQuery.data ?? null;
-  const { displayState, currentRound, nextRound, questions, isPending } = useGameDisplayData(game?.id ?? null);
+  const { displayState, currentRound, questions, isPending } = useGameDisplayData(game?.id ?? null);
 
   const currentQuestion: Question | undefined = questions[displayState?.current_question_index ?? 0];
   const showAnswer = displayState?.show_answer ?? false;
-  // Manual LANDSCAPE stage (0060). Default 'qa' = today's behavior (question projector
-  // gated by is_display_active). The host DISPLAY control writes this; it is only ever
-  // read once the arm model has already put the game on this TV (SlotDisplay gate).
+  const isActive = displayState?.is_display_active ?? false;
+  // Manual LANDSCAPE stage (0060). current_round_id (the LOADED round, manually selected in
+  // the Scoring console) is the single source for the Q&A question, the VIDEO, and the UP
+  // NEXT card (owner rewire 2026-07-22). is_complete drives nothing here.
   const stage: DisplayStage = displayState?.display_stage ?? "qa";
 
   // Early, stage-independent frames.
   if (gameQuery.isPending) return <Frame><Centered title="SYNCING" subtitle="◊ SHELTER AUTHORITY UPLINK" /></Frame>;
   if (!game) return <Frame><Centered title="NO ACTIVE GAME" subtitle="STANDBY" /></Frame>;
-  // GAME OVER stays a top-level override: the auto GAME-OVER-on-final-round-complete
-  // safety net + END GAME both raise show_game_over, and it must win over any stage.
+  // GAME OVER override: END GAME raises show_game_over; it wins over any stage.
   if (displayState?.show_game_over) return <Frame><Centered title="GAME OVER" subtitle="THANK YOU FOR PLAYING" /></Frame>;
   if (isPending) return <Frame><Centered title="SYNCING" subtitle="◊ SHELTER AUTHORITY UPLINK" /></Frame>;
 
-  // VIDEO — fills the whole canvas (no frame). Sourced ONLY from the next-incomplete
-  // round's video_url (nextRound), never current_round_id/current_question_index, so
-  // question nav can't stop or advance it (owner bug 2026-07-22, decoupled in 0060).
+  // VIDEO — plays the LOADED round's video, SEALED on start (round/question changes never
+  // swap or stop it); at the video's natural end the board auto-returns to UP NEXT.
   if (stage === "video") {
-    if (nextRound?.video_url) {
-      return (
-        <div style={{ width: 1920, height: 1080, background: "#000" }}>
-          <VideoPlayer videoUrl={nextRound.video_url} autoplay />
-        </div>
-      );
-    }
-    return <Frame><Centered title="STAND BY" subtitle="NO VIDEO FOR THIS ROUND" /></Frame>;
+    return <VideoStage round={currentRound} />;
   }
 
   // JOIN QR — reuse the SCAN-TO-JOIN holding board (landscape). It renders absolute
@@ -79,23 +71,21 @@ export function GameDisplayBoard({ overrideGameId }: { overrideGameId: string | 
     );
   }
 
+  // Q&A shows the question ONLY when the host has it active AND there's a question/picture to
+  // show; otherwise 'qa' (idle) AND 'upnext' both render the UP NEXT card — the new idle
+  // screen that REPLACES "WAITING FOR ROUND TO BEGIN".
+  const showQuestion =
+    stage === "qa" && isActive && !!currentRound &&
+    (questions.length > 0 || (currentRound.round_type === "final" && !!currentRound.picture_url));
+
   let body: React.ReactNode;
-  if (stage === "upnext") {
-    body = <UpNext round={nextRound} />;
-  } else if (stage === "thanks") {
+  if (stage === "thanks") {
     body = <Centered title="THANK YOU FOR PLAYING" subtitle="ATOMIC PUB TRIVIA" />;
-  } else {
-    // 'qa' (default) — the question/answer projector, keeping is_display_active semantics
-    // (the projector's SHOW QUESTION gates the question) and current_question_index/
-    // show_answer from the host's nav/reveal.
-    if (!currentRound || !displayState?.is_display_active) {
-      body = <Centered title="ATOMIC PUB TRIVIA" subtitle="WAITING FOR ROUND TO BEGIN…" />;
-    } else if (currentRound.round_type === "final" && currentRound.picture_url) {
-      body = <PictureRound round={currentRound} questions={questions} showAnswer={showAnswer} />;
-    } else if (questions.length === 0) {
-      body = <Centered title={roundLabel(currentRound)} subtitle="NO QUESTIONS AVAILABLE" />;
-    } else {
-      body = (
+  } else if (showQuestion && currentRound) {
+    body =
+      currentRound.round_type === "final" && currentRound.picture_url ? (
+        <PictureRound round={currentRound} questions={questions} showAnswer={showAnswer} />
+      ) : (
         <QuestionView
           round={currentRound}
           question={currentQuestion}
@@ -104,15 +94,53 @@ export function GameDisplayBoard({ overrideGameId }: { overrideGameId: string | 
           showAnswer={showAnswer}
         />
       );
-    }
+  } else {
+    body = <UpNext round={currentRound} />;
   }
 
   return <Frame>{body}</Frame>;
 }
 
-/* ── UP NEXT stage ─────────────────────────────────────────────────────────── */
+/* ── VIDEO stage (sealed once started) ─────────────────────────────────────── */
 
-/** "UP NEXT — ROUND X · <category>" card, auto-filled from the next-incomplete round. */
+/**
+ * Plays the LOADED round's video, SEALED on start: the URL is captured on the FIRST render
+ * (a ref), so changing the loaded round or stepping the question index never swaps or stops
+ * the playing video (owner rewire 2026-07-22) — it plays to its natural end. At natural end
+ * the board auto-returns to the UP NEXT card for the LIVE loaded round.
+ *
+ * ⚠ FLAGGED: the natural-end auto-return is LOCAL to the board — it does NOT write
+ * display_stage='upnext' to the DB, because this board runs ANONYMOUSLY on the bar TV and
+ * /game/preview (RLS blocks writes; only the host console can write display state). The
+ * host's EXPLICIT stop (DISPLAY→Video toggled off) DOES write 'upnext' from the authenticated
+ * console, so the control reflects it then. A DB write on natural end would need a small
+ * anon-safe RPC (migration) — not added unprompted (see the report).
+ */
+function VideoStage({ round }: { round: Round | null }) {
+  const sealedUrl = useRef<string | null>(null);
+  // Capture the loaded round's video the FIRST time it's available (round may still be
+  // loading on a cold kiosk mount), then IGNORE every later round change — the playing video
+  // is sealed and runs to its natural end.
+  if (sealedUrl.current === null && round?.video_url) sealedUrl.current = round.video_url;
+  const [ended, setEnded] = useState(false);
+  if (!sealedUrl.current) {
+    return <Frame><Centered title="STAND BY" subtitle="NO VIDEO FOR THIS ROUND" /></Frame>;
+  }
+  if (ended) {
+    // Natural end → UP NEXT for the LIVE loaded round (the host may have advanced it).
+    return <Frame><UpNext round={round} /></Frame>;
+  }
+  return (
+    <div style={{ width: 1920, height: 1080, background: "#000" }}>
+      <VideoPlayer videoUrl={sealedUrl.current} autoplay onEnded={() => setEnded(true)} />
+    </div>
+  );
+}
+
+/* ── UP NEXT stage / idle ──────────────────────────────────────────────────── */
+
+/** "UP NEXT — ROUND X · <category>" card for the LOADED round (current_round_id). Also the
+ *  landscape idle screen (Q&A with nothing actively shown). */
 function UpNext({ round }: { round: Round | null }) {
   if (!round) {
     return <Centered title="STAND BY" subtitle="NEXT ROUND LOADING…" />;

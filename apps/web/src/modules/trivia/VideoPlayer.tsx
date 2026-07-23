@@ -36,15 +36,22 @@ import { armAudio, installAudioAutoArm, isAudioUnlocked, markAudioUnlocked, subs
  * slot and /game/preview (GameDisplayBoard reuse).
  */
 
+const ENDED = 0;
 const PLAYING = 1;
 const BUFFERING = 3;
 
-export function VideoPlayer({ videoUrl, autoplay = true }: { videoUrl: string; autoplay?: boolean }) {
+export function VideoPlayer({ videoUrl, autoplay = true, onEnded }: { videoUrl: string; autoplay?: boolean; onEnded?: () => void }) {
   const [showTitleCover, setShowTitleCover] = useState(true);
   const [sealed, setSealed] = useState(false); // audio prompt visible (muted, browser blocked sound)
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const lastState = useRef<number | null>(null);
   const probeTimer = useRef<number | null>(null);
+  // onEnded via a ref so the message-handler effect doesn't re-subscribe each render; fired
+  // ONCE when the YouTube player reaches ENDED (state 0). Reset per videoUrl.
+  const onEndedRef = useRef(onEnded);
+  onEndedRef.current = onEnded;
+  const endedFired = useRef(false);
+  useEffect(() => { endedFired.current = false; }, [videoUrl]);
 
   const yt = parseYouTubeUrl(videoUrl);
   const controllable = autoplay && !!yt;
@@ -120,6 +127,11 @@ export function VideoPlayer({ videoUrl, autoplay = true }: { videoUrl: string; a
       const msg = data as { event?: string; info?: { playerState?: number } };
       if (msg.event === "infoDelivery" && msg.info && typeof msg.info.playerState === "number") {
         lastState.current = msg.info.playerState;
+        // Natural end → fire onEnded once (the landscape auto-returns to UP NEXT).
+        if (msg.info.playerState === ENDED && !endedFired.current) {
+          endedFired.current = true;
+          onEndedRef.current?.();
+        }
       } else if (msg.event === "onReady") {
         if (bootMuted.current) {
           probe();
