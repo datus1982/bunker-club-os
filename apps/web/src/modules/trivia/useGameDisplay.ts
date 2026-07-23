@@ -10,6 +10,9 @@ import { log } from "@/shared/log";
  * action) and the 45s global safety-net poll. No sub-30s polling.
  */
 
+/** Manual LANDSCAPE stage (migration 0060), driven by the Scoring DISPLAY control. */
+export type DisplayStage = "qr" | "qa" | "video" | "upnext" | "thanks";
+
 export interface DisplayState {
   game_id: string;
   current_round_id: string | null;
@@ -18,6 +21,7 @@ export interface DisplayState {
   is_display_active: boolean;
   show_video: boolean;
   show_game_over: boolean;
+  display_stage: DisplayStage;
 }
 
 export interface Round {
@@ -25,6 +29,7 @@ export interface Round {
   round_number: number;
   round_type: string;
   round_name: string | null;
+  is_complete: boolean;
   picture_url: string | null;
   video_url: string | null;
   bonus_description: string | null;
@@ -82,7 +87,7 @@ export function useGameDisplayData(gameId: string | null) {
     queryFn: async (): Promise<DisplayState | null> => {
       const { data, error } = await supabase
         .from("game_display_state")
-        .select("game_id, current_round_id, current_question_index, show_answer, is_display_active, show_video, show_game_over")
+        .select("game_id, current_round_id, current_question_index, show_answer, is_display_active, show_video, show_game_over, display_stage")
         .eq("game_id", gameId)
         .maybeSingle();
       if (error) throw error;
@@ -96,7 +101,7 @@ export function useGameDisplayData(gameId: string | null) {
     queryFn: async (): Promise<Round[]> => {
       const { data, error } = await supabase
         .from("rounds")
-        .select("id, round_number, round_type, round_name, picture_url, video_url, bonus_description, bonus_type, bonus_round_numbers, after_round")
+        .select("id, round_number, round_type, round_name, is_complete, picture_url, video_url, bonus_description, bonus_type, bonus_round_numbers, after_round")
         .eq("game_id", gameId)
         .order("round_number");
       if (error) throw error;
@@ -143,6 +148,15 @@ export function useGameDisplayData(gameId: string | null) {
     return rounds.data?.find((r) => r.id === rid) ?? null;
   }, [displayState.data?.current_round_id, rounds.data]);
 
+  // The next-incomplete non-bonus round (else the last non-bonus round) — the same
+  // "play round" the Scoring console computes. The VIDEO and UP NEXT landscape stages
+  // resolve from THIS, never from current_round_id/current_question_index, so stepping
+  // the question index can't change what the video/up-next stage shows (0060 decouple).
+  const nextRound = useMemo<Round | null>(() => {
+    const scoring = (rounds.data ?? []).filter((r) => r.round_type !== "bonus").sort((a, b) => a.round_number - b.round_number);
+    return scoring.find((r) => !r.is_complete) ?? scoring[scoring.length - 1] ?? null;
+  }, [rounds.data]);
+
   // Main-round questions followed by any applicable bonus-round questions.
   // Ported verbatim from legacy GameDisplay: a 'standard' bonus attaches to the round
   // named by after_round; a 'three-chance' bonus contributes its one question that
@@ -174,6 +188,7 @@ export function useGameDisplayData(gameId: string | null) {
     displayState: displayState.data ?? null,
     rounds: rounds.data ?? [],
     currentRound,
+    nextRound,
     questions: displayQuestions,
     isPending: displayState.isPending,
   };

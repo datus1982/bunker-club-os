@@ -149,39 +149,39 @@ export function QuestionPanel({
           </div>
         </div>
 
-        {/* Question projector — current round. The FIXED box holds only the question so a
-            long question always gets the full height; the control bar lives BELOW the box
-            (its own wrap-free-to-grow row) so it never steals the question's space. */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          <div className="terminal-border" style={{ padding: 16, display: "flex", flexDirection: "column", gap: 10, height: BOX_H }}>
-            {currentRound.round_type === "final" && currentRound.picture_url ? (
-              <div style={{ flex: 1, minHeight: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                <img src={currentRound.picture_url} alt="Picture round" style={{ maxHeight: "100%", maxWidth: "100%", objectFit: "contain", border: "1px solid var(--terminal-green)" }} />
+        {/* Question projector — current round. FIXED box holds only the question so a long
+            question always gets the full height. The control bar no longer lives here — it
+            moved to a single full-width row BELOW the grid (owner rebuild 2026-07-22) so it
+            reclaims vertical space and the five buttons sit on one row. */}
+        <div className="terminal-border" style={{ padding: 16, display: "flex", flexDirection: "column", gap: 10, height: BOX_H }}>
+          {currentRound.round_type === "final" && currentRound.picture_url ? (
+            <div style={{ flex: 1, minHeight: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <img src={currentRound.picture_url} alt="Picture round" style={{ maxHeight: "100%", maxWidth: "100%", objectFit: "contain", border: "1px solid var(--terminal-green)" }} />
+            </div>
+          ) : total === 0 ? (
+            <div style={{ flex: 1, minHeight: 0, display: "flex", alignItems: "center", justifyContent: "center", opacity: 0.5, fontSize: 20 }}>No questions entered.</div>
+          ) : (
+            <>
+              <div style={{ fontSize: 20, opacity: 0.8, flexShrink: 0 }}>
+                {q && q.question_number > 10 ? "BONUS" : `QUESTION ${index + 1} OF ${total}`}
               </div>
-            ) : total === 0 ? (
-              <div style={{ flex: 1, minHeight: 0, display: "flex", alignItems: "center", justifyContent: "center", opacity: 0.5, fontSize: 20 }}>No questions entered.</div>
-            ) : (
-              <>
-                <div style={{ fontSize: 20, opacity: 0.8, flexShrink: 0 }}>
-                  {q && q.question_number > 10 ? "BONUS" : `QUESTION ${index + 1} OF ${total}`}
-                </div>
-                <div style={{ flex: 1, minHeight: 0, fontSize: 24, lineHeight: 1.3, overflowY: "auto" }}>{q?.question_text ?? "—"}</div>
-                {showAns && <div style={{ flexShrink: 0, fontSize: 22, fontWeight: 700, color: "var(--terminal-green)", borderTop: "1px solid var(--terminal-green)", paddingTop: 6 }}>▸ {q?.answer_text ?? "—"}</div>}
-              </>
-            )}
-          </div>
-
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
-            <button type="button" onClick={prev} disabled={index === 0} style={{ ...btnGhost, opacity: index === 0 ? 0.4 : 1 }}>◀ PREV</button>
-            <button type="button" onClick={next} disabled={index >= total - 1} style={{ ...btnGhost, opacity: index >= total - 1 ? 0.4 : 1 }}>NEXT ▶</button>
-            <div style={{ flex: 1 }} />
-            <button type="button" onClick={toggleActive} style={active ? btnActive : btnGhost}>{active ? "▣ HIDE QUESTION" : "▢ SHOW QUESTION"}</button>
-            {/* Answer-review loop: jump straight back to Q1, then reveal forward. Sits next
-                to SHOW ANSWER so the collect-sheets → reveal flow is one thumb's reach. */}
-            <button type="button" onClick={backToQ1} disabled={index === 0 || total === 0} style={{ ...btnGhost, opacity: index === 0 || total === 0 ? 0.4 : 1 }}>↩ BACK TO Q1</button>
-            <button type="button" onClick={toggleAnswer} style={showAns ? btnActive : btnGhost}>{showAns ? "◉ HIDE ANSWER" : "◎ SHOW ANSWER"}</button>
-          </div>
+              <div style={{ flex: 1, minHeight: 0, fontSize: 24, lineHeight: 1.3, overflowY: "auto" }}>{q?.question_text ?? "—"}</div>
+              {showAns && <div style={{ flexShrink: 0, fontSize: 22, fontWeight: 700, color: "var(--terminal-green)", borderTop: "1px solid var(--terminal-green)", paddingTop: 6 }}>▸ {q?.answer_text ?? "—"}</div>}
+            </>
+          )}
         </div>
+      </div>
+
+      {/* Projector controls — one full-width row below both boxes (owner rebuild
+          2026-07-22). Wraps only if truly necessary (narrow / 390px). */}
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+        <button type="button" onClick={prev} disabled={index === 0} style={{ ...btnGhost, opacity: index === 0 ? 0.4 : 1 }}>◀ PREV</button>
+        <button type="button" onClick={next} disabled={index >= total - 1} style={{ ...btnGhost, opacity: index >= total - 1 ? 0.4 : 1 }}>NEXT ▶</button>
+        <button type="button" onClick={toggleActive} style={active ? btnActive : btnGhost}>{active ? "▣ HIDE QUESTION" : "▢ SHOW QUESTION"}</button>
+        {/* Answer-review loop: jump straight back to Q1, then reveal forward. */}
+        <button type="button" onClick={backToQ1} disabled={index === 0 || total === 0} style={{ ...btnGhost, opacity: index === 0 || total === 0 ? 0.4 : 1 }}>↩ BACK TO Q1</button>
+        <div style={{ flex: 1 }} />
+        <button type="button" onClick={toggleAnswer} style={showAns ? btnActive : btnGhost}>{showAns ? "◉ HIDE ANSWER" : "◎ SHOW ANSWER"}</button>
       </div>
     </div>
   );

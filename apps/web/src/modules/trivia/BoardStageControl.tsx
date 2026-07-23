@@ -45,11 +45,14 @@ export function BoardStageControl({
     }
   };
 
+  // Labels per the 2026-07-22 owner rebuild: HIDE SCORES → TABULATE, FINAL REVEAL →
+  // FINAL. The underlying board_stage VALUES are unchanged (scoring / final) — only the
+  // button captions move, so the portrait renderer's behavior is byte-identical.
   const options: { key: BoardStage; label: string }[] = [
     { key: "qr", label: "JOIN QR" },
-    { key: "scoring", label: "HIDE SCORES" },
+    { key: "scoring", label: "TABULATE" },
     { key: "standings", label: "STANDINGS" },
-    { key: "final", label: "FINAL REVEAL" },
+    { key: "final", label: "FINAL" },
   ];
 
   return (

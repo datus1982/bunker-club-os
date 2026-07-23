@@ -12,7 +12,7 @@ import {
 } from "./useScoring";
 import { RoundGrid } from "./RoundGrid";
 import { QuestionPanel } from "./QuestionPanel";
-import { VideoControls } from "./VideoControls";
+import { DisplayStageControl } from "./DisplayStageControl";
 import { BoardStageControl } from "./BoardStageControl";
 import { TeamEditorDialog, type EditableTeam } from "./TeamEditorDialog";
 import { Modal, Field, input, btnGhost, btnPrimary, btnActive, btnDanger } from "./ui";
@@ -23,11 +23,16 @@ import { supabase, VENUE_ID } from "@/shared/supabaseClient";
 /**
  * Scoring console — host tool (docs/01 /scoring, host+). Ported from the legacy
  * 3,285-line Scoring.tsx and decomposed per docs/04 ARCH-2 into RoundGrid /
- * QuestionPanel / VideoControls / BoardStageControl / TeamEditorDialog + the hooks in
- * useScoring.ts. This file is just the composition + game-status controls + team-editor
- * plumbing. Behaviour matches legacy to the extent our schema carries it (see the
- * DECISIONs in useScoring.ts — no game clock; the scoring interstitial is the manual
- * board_stage 'scoring' stage per 0038, not the legacy auto-derived one).
+ * QuestionPanel / DisplayStageControl / BoardStageControl / TeamEditorDialog + the hooks
+ * in useScoring.ts. This file is just the composition + game controls + team-editor
+ * plumbing.
+ *
+ * Owner rebuild (2026-07-22): the two audience boards are driven by TWO independent,
+ * fully-manual single-select controls on the control line — DISPLAY (landscape, 0060
+ * display_stage) and BOARD (portrait, 0038 board_stage). A persisted game clock (0060
+ * clock_started_at) counts up from START; PAUSE/STOP are gone; END GAME lives in the arm
+ * box (it disarms too). START only starts the clock + marks the game active (so scoring /
+ * the arm resolver work); it does NOT touch the screens — arming is manual.
  */
 export function Scoring() {
   const [params] = useSearchParams();
@@ -74,36 +79,44 @@ export function Scoring() {
             <div style={{ fontSize: 20, opacity: 0.7 }}>{game.game_date} · [{game.status.toUpperCase()}]{game.is_playoff ? " · ★ PLAYOFF" : ""}</div>
           </div>
           <nav style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-            <Link to="/dashboard" className="u-btn" style={linkBtn}>DASHBOARD</Link>
             <Link to={`/game/${game.id}/questions`} className="u-btn" style={linkBtn}>QUESTIONS</Link>
             <Link to={`/game/${game.id}/videos`} className="u-btn" style={linkBtn}>VIDEOS</Link>
             <Link to={`/game/${game.id}/bulk-import`} className="u-btn" style={linkBtn}>IMPORT</Link>
             <Link to="/teams" className="u-btn" style={linkBtn}>TEAMS</Link>
             <Link to="/game/history" className="u-btn" style={linkBtn}>HISTORY</Link>
-            {/* The bar landscape TV IS the audience display (driven by the signage game-mode
-                resolver when armed) — the old "open the raw /game-display" button is redundant.
-                OPEN SCREEN PREVIEW replaces it: a dual-board window of what the screens would show. */}
-            <button type="button" onClick={() => window.open(`/game/preview?game=${game.id}`, "bunker-screen-preview", "width=1600,height=900")} style={btnGhost}>⧉ OPEN SCREEN PREVIEW</button>
+            {/* ⧉ PREVIEW pops the dual-board /game/preview window — what the two bar screens
+                would show (holding while not started, live once active), independent of the arm gate. */}
+            <button type="button" onClick={() => window.open(`/game/preview?game=${game.id}`, "bunker-screen-preview", "width=1600,height=900")} style={btnGhost}>⧉ PREVIEW</button>
           </nav>
         </div>
         <div className="terminal-separator" style={{ margin: 0 }} />
 
-        {/* PUT TRIVIA ON SCREENS — 3-state arm control + screen preview (trivia-sandbox).
+        {/* PUT TRIVIA ON SCREENS — 3-state arm control + END GAME (which also disarms).
             Unmissable so nobody forgets to arm trivia onto the bar TVs on a real night. */}
-        <TriviaScreensBar gameStatus={game.status} />
+        <TriviaScreensBar gameStatus={game.status} onEndGame={() => setConfirmEnd(true)} />
 
-        {/* Game status controls */}
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-          <StatusButton label="▶ START" active={game.status === "active"} onClick={() => setStatus.mutate("active")} disabled={game.status === "active"} />
-          {game.status === "active" ? (
-            <StatusButton label="▮▮ PAUSE" onClick={() => setStatus.mutate("paused")} />
-          ) : game.status === "paused" ? (
-            <StatusButton label="▶ RESUME" onClick={() => setStatus.mutate("active")} />
-          ) : null}
-          <StatusButton label="■ STOP" active={game.status === "stopped"} onClick={() => setStatus.mutate("stopped")} />
-          <div style={{ flex: 1 }} />
-          {display.state && game && <BoardStageControl state={display.state} write={display.write} />}
-          <button type="button" onClick={() => setConfirmEnd(true)} style={btnDanger}>END GAME</button>
+        {/* Clock + START at the far top-left (owner rebuild 2026-07-22). No PAUSE/STOP;
+            END GAME lives in the arm box above. */}
+        <div style={{ display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap" }}>
+          <GameClock startedAt={display.state?.clock_started_at ?? null} running={game.status === "active" || game.status === "paused"} />
+          {/* START = start the clock + mark active (so scoring + the arm resolver work). It does
+              NOT touch the screens — arming is manual (TriviaScreensBar). Disabled once active. */}
+          <StatusButton
+            label="▶ START"
+            active={game.status === "active"}
+            disabled={game.status === "active"}
+            onClick={() => {
+              setStatus.mutate("active");
+              display.write.mutate({ clock_started_at: new Date().toISOString() });
+            }}
+          />
+        </div>
+
+        {/* Control line: the two INDEPENDENT single-select controls — DISPLAY (landscape) on
+            the left, BOARD (portrait) shifted right. Wraps on narrow. */}
+        <div className="terminal-border" style={{ padding: 12, display: "flex", gap: 16, alignItems: "center", justifyContent: "space-between", flexWrap: "wrap" }}>
+          {display.state && <DisplayStageControl state={display.state} write={display.write} videoRound={playRound} />}
+          {display.state && <BoardStageControl state={display.state} write={display.write} />}
         </div>
 
         {/* Question projector + answer key */}
@@ -117,14 +130,6 @@ export function Scoring() {
           write={display.write}
         />
 
-        {/* Display controls row */}
-        <div className="terminal-border" style={{ padding: 12, display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
-          <span style={{ fontSize: 20, opacity: 0.7 }}>DISPLAY:</span>
-          <VideoControls currentRound={playRound} state={display.state} toggleVideo={display.toggleVideo} />
-          <div style={{ flex: 1 }} />
-          <button type="button" onClick={() => setConfirmClear(true)} style={btnDanger}>CLEAR ALL SCORES</button>
-        </div>
-
         {/* The grid */}
         {scores.isPending ? (
           <div style={{ opacity: 0.6, fontSize: 24 }}>LOADING SCORES…</div>
@@ -137,6 +142,7 @@ export function Scoring() {
             onAddTeam={() => setAddingTeam(true)}
             onEditTeam={(t) => setEditing({ id: t.id, name: t.name, is_regular: t.is_regular, logo_url: t.logo_url })}
             onRemoveTeam={setRemoving}
+            onClearAll={() => setConfirmClear(true)}
           />
         )}
       </div>
@@ -321,7 +327,7 @@ function AddTeamPicker({
  * side) that ALWAYS shows the game regardless of the arm flag — "what would come out"
  * (holding while not started, live once active).
  */
-function TriviaScreensBar({ gameStatus }: { gameStatus?: GameStatus | null }) {
+function TriviaScreensBar({ gameStatus, onEndGame }: { gameStatus?: GameStatus | null; onEndGame?: () => void }) {
   const qc = useQueryClient();
   const eff = useTriviaArmedEffective();
   const armed = eff.armed; // EFFECTIVE (nightly-expiry applied) — a stale arm auto-reads OFF
@@ -384,8 +390,53 @@ function TriviaScreensBar({ gameStatus }: { gameStatus?: GameStatus | null }) {
           ⚠ Trivia is NOT on the bar TVs — arm it before game night.
         </span>
       )}
+      {/* END GAME lives here (owner rebuild 2026-07-22) — ending the game also DISARMS the bar
+          TVs, so it belongs in the arm anchor. Only rendered when there is a game to end. */}
+      {onEndGame && (
+        <>
+          <div style={{ flex: 1, minWidth: 12 }} />
+          <button type="button" onClick={onEndGame} style={{ ...btnDanger, minHeight: 44, fontWeight: 700 }}>END GAME</button>
+        </>
+      )}
     </div>
   );
+}
+
+/* ── Game clock (host UI, 0060) ───────────────────────────────────────────────
+ * Counts UP from clock_started_at (persisted, so it survives a reload). Ticks on a
+ * local 1s timer — a HOST tool clock, not an audience display, so the display
+ * no-infinite-animation / no-sub-30s-poll rules (which govern the TVs) don't apply.
+ * `running` (game active/paused) drives the tick; a completed game freezes the last
+ * value rather than counting forever, and a null start shows 0:00. */
+function GameClock({ startedAt, running }: { startedAt: string | null; running: boolean }) {
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  useEffect(() => {
+    if (!running || !startedAt) return;
+    const id = window.setInterval(() => setNowMs(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, [running, startedAt]);
+
+  const startMs = startedAt ? new Date(startedAt).getTime() : null;
+  const elapsed = startMs != null && Number.isFinite(startMs) ? Math.max(0, nowMs - startMs) : null;
+
+  return (
+    <div style={{ display: "flex", alignItems: "baseline", gap: 8 }} title="Game clock — counts up from START">
+      <span style={{ fontSize: 16, opacity: 0.6, letterSpacing: 1 }}>CLOCK</span>
+      <span style={{ fontSize: 34, fontWeight: 700, letterSpacing: 2, fontVariantNumeric: "tabular-nums", minWidth: 96 }}>
+        {elapsed == null ? "0:00" : formatElapsed(elapsed)}
+      </span>
+    </div>
+  );
+}
+
+/** Elapsed ms → M:SS, rolling to H:MM:SS past an hour. */
+function formatElapsed(ms: number): string {
+  const total = Math.floor(ms / 1000);
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`;
 }
 
 /* ── small bits ──────────────────────────────────────────────────────────────── */
