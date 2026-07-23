@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import { Trophy, Zap, Star, AlertCircle } from "lucide-react";
 import {
@@ -564,22 +564,13 @@ function ScoringInProgress() {
 
 /* ── Stage: SCORING HOLD with ad PiP (signage game mode only — BEAT 2) ─────────── */
 
-// The PiP inset is the slot's NORMAL rotation surface, authored at the real portrait
-// canvas size (1080×1920) so every template renders identically to a live screen, then
-// scaled down to a mini portrait feed — the "multiview-panel trick" (nested fixed-px
-// scale). The panel is capped near 45% of canvas height (owner spec).
-const PIP_CANVAS_W = CANVAS_W;   // 1080 — the inset renders a full portrait surface…
-const PIP_CANVAS_H = CANVAS_H;   // 1920 …then transform-scales to fit the panel below.
-const PIP_MAX_H = Math.round(CANVAS_H * 0.45); // ≈ 864 — the ~45% budget (owner spec)
-const PIP_MAX_W = CANVAS_W - 120;              // leave side margins inside the padded frame
-const PIP_SCALE = Math.min(PIP_MAX_W / PIP_CANVAS_W, PIP_MAX_H / PIP_CANVAS_H);
-const PIP_W = Math.round(PIP_CANVAS_W * PIP_SCALE);
-const PIP_H = Math.round(PIP_CANVAS_H * PIP_SCALE);
-
 /**
- * HIDE-SCORES hold split: the "scores sealed" messaging up top, a framed ad panel below
- * that runs the slot's live rotation (the `inset` node — a 1080×1920 portrait surface).
- * The rotation inside advances on its own timers and obeys every gate (it IS the normal
+ * HIDE-SCORES / TABULATE hold: a SLIM "scores sealed" banner up top, then the SHELTER
+ * FEED (the `inset` — a full 1080×1920 portrait rotation surface) blown up to dominate the
+ * board (owner beat 2026-07-22 — the old layout wasted ~half the canvas on giant TABULATING
+ * text and ran a small ~45%-height feed). The banner is now a compact strip; the feed fills
+ * the full width and all remaining height, measured-scaled to fit (no distortion). The
+ * rotation inside advances on its own timers and obeys every gate (it IS the normal
  * rotation), so promos keep cycling mid-game while the host holds the room.
  */
 function ScoringHold({ inset }: { inset: React.ReactNode }) {
@@ -589,46 +580,69 @@ function ScoringHold({ inset }: { inset: React.ReactNode }) {
     return () => window.clearInterval(id);
   }, []);
   return (
-    <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
-      {/* Upper: compact "scores sealed" hold messaging. */}
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", gap: 22, minHeight: 0 }}>
+    <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, gap: 14 }}>
+      {/* Slim banner: eyebrow · TABULATING (blink) · SCORES SEALED — STAND BY, all tight and
+          on one/two lines. flexShrink:0 so it never steals the feed's space. */}
+      <div style={{ flexShrink: 0, display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
         <div style={{ fontSize: QR_SUPPORT, opacity: 0.7, letterSpacing: 6 }}>◊ SHELTER AUTHORITY · SCORING TERMINAL</div>
-        <div style={{ fontSize: 128, fontWeight: 700, letterSpacing: 4, lineHeight: 0.95, textShadow: "0 0 22px var(--terminal-glow)" }}>
-          TABULATING
-          <span style={{ opacity: blink ? 1 : 0.15 }}>▊</span>
+        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "center", flexWrap: "wrap", columnGap: 24, rowGap: 2 }}>
+          <div style={{ fontSize: 76, fontWeight: 700, letterSpacing: 3, lineHeight: 1, textShadow: "0 0 18px var(--terminal-glow)" }}>
+            TABULATING<span style={{ opacity: blink ? 1 : 0.15 }}>▊</span>
+          </div>
+          <div style={{ fontSize: 40, fontWeight: 700, letterSpacing: 2, opacity: 0.9 }}>SCORES SEALED — STAND BY</div>
         </div>
-        <div style={{ fontSize: 52, fontWeight: 700, letterSpacing: 2 }}>SCORES SEALED — STAND BY</div>
       </div>
 
-      {/* Lower: framed ad panel with the mini rotation feed (~45% of canvas height). */}
-      <div style={{ flexShrink: 0, display: "flex", flexDirection: "column", alignItems: "center", gap: 12 }}>
-        <div style={{ fontSize: QR_SUPPORT, opacity: 0.65, letterSpacing: 4 }}>◆ MEANWHILE, ON THE SHELTER FEED ◆</div>
-        <div
-          style={{
-            width: PIP_W,
-            height: PIP_H,
-            overflow: "hidden",
-            border: "4px solid var(--terminal-green)",
-            boxShadow: "0 0 22px var(--terminal-glow)",
-            background: "#000",
-            position: "relative",
-          }}
-        >
-          {/* Nested fixed-px canvas: render the surface at 1080×1920, scale to the panel. */}
+      {/* SHELTER FEED — dominant. Fills full width + all remaining height under the banner. */}
+      <ShelterFeed inset={inset} />
+    </div>
+  );
+}
+
+/**
+ * The maximized shelter-feed panel: a thin caption then the framed rotation surface scaled
+ * to FILL the remaining box (measured — like PreviewPane/FixedCanvas). The surface is a
+ * fixed 1080×1920 portrait canvas; the enclosing box is fixed too (the whole board is scaled
+ * by DisplayCanvas), so one layout measure + a ResizeObserver safety net gets an exact fit
+ * with no distortion (letterboxed by the small side margins only).
+ */
+function ShelterFeed({ inset }: { inset: React.ReactNode }) {
+  const boxRef = useRef<HTMLDivElement>(null);
+  const [box, setBox] = useState({ w: 0, h: 0 });
+  useLayoutEffect(() => {
+    const el = boxRef.current;
+    if (!el) return;
+    const measure = () => setBox({ w: el.clientWidth, h: el.clientHeight });
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  const scale = box.w > 0 && box.h > 0 ? Math.min(box.w / CANVAS_W, box.h / CANVAS_H) : 0;
+  const w = Math.round(CANVAS_W * scale);
+  const h = Math.round(CANVAS_H * scale);
+  return (
+    <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
+      <div style={{ flexShrink: 0, fontSize: QR_SUPPORT, opacity: 0.65, letterSpacing: 4 }}>◆ MEANWHILE, ON THE SHELTER FEED ◆</div>
+      <div ref={boxRef} style={{ flex: 1, minHeight: 0, width: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}>
+        {scale > 0 && (
           <div
             style={{
-              position: "absolute",
-              top: 0,
-              left: 0,
-              width: PIP_CANVAS_W,
-              height: PIP_CANVAS_H,
-              transform: `scale(${PIP_SCALE})`,
-              transformOrigin: "top left",
+              width: w,
+              height: h,
+              overflow: "hidden",
+              border: "4px solid var(--terminal-green)",
+              boxShadow: "0 0 26px var(--terminal-glow)",
+              background: "#000",
+              position: "relative",
             }}
           >
-            {inset}
+            {/* Nested fixed-px canvas: render the surface at 1080×1920, scale to the panel. */}
+            <div style={{ position: "absolute", top: 0, left: 0, width: CANVAS_W, height: CANVAS_H, transform: `scale(${scale})`, transformOrigin: "top left" }}>
+              {inset}
+            </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   );
