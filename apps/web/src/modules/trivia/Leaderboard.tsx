@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import { Trophy, Zap, Star, AlertCircle } from "lucide-react";
 import {
@@ -604,48 +604,37 @@ function ScoringHold({ inset }: { inset: React.ReactNode }) {
 
 /**
  * The maximized shelter-feed panel: a thin caption then the framed rotation surface scaled
- * to FILL the remaining box (measured — like PreviewPane/FixedCanvas). The surface is a
- * fixed 1080×1920 portrait canvas; the enclosing box is fixed too (the whole board is scaled
- * by DisplayCanvas), so one layout measure + a ResizeObserver safety net gets an exact fit
- * with no distortion (letterboxed by the small side margins only).
+ * to FILL the remaining space. The whole board is a FIXED 1080×1920 portrait canvas (scaled
+ * as a unit by DisplayCanvas), so we scale by a FIXED factor derived from a known banner
+ * allotment — no runtime measurement. (A prior measured version read clientHeight=0 on the
+ * real board and rendered nothing; a fixed scale always renders.) The surface is itself a
+ * fixed 1080×1920 portrait canvas, same aspect as the board, so height is the binding
+ * constraint — the small side margins are the only letterboxing.
  */
+const FEED_BANNER_H = 320; // fixed vertical allotment (of 1920) for the slim banner + caption + gaps
 function ShelterFeed({ inset }: { inset: React.ReactNode }) {
-  const boxRef = useRef<HTMLDivElement>(null);
-  const [box, setBox] = useState({ w: 0, h: 0 });
-  useLayoutEffect(() => {
-    const el = boxRef.current;
-    if (!el) return;
-    const measure = () => setBox({ w: el.clientWidth, h: el.clientHeight });
-    measure();
-    const ro = new ResizeObserver(measure);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
-  const scale = box.w > 0 && box.h > 0 ? Math.min(box.w / CANVAS_W, box.h / CANVAS_H) : 0;
+  const availH = CANVAS_H - FEED_BANNER_H;
+  const scale = Math.min((CANVAS_W - 48) / CANVAS_W, availH / CANVAS_H);
   const w = Math.round(CANVAS_W * scale);
   const h = Math.round(CANVAS_H * scale);
   return (
-    <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
+    <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8 }}>
       <div style={{ flexShrink: 0, fontSize: QR_SUPPORT, opacity: 0.65, letterSpacing: 4 }}>◆ MEANWHILE, ON THE SHELTER FEED ◆</div>
-      <div ref={boxRef} style={{ flex: 1, minHeight: 0, width: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}>
-        {scale > 0 && (
-          <div
-            style={{
-              width: w,
-              height: h,
-              overflow: "hidden",
-              border: "4px solid var(--terminal-green)",
-              boxShadow: "0 0 26px var(--terminal-glow)",
-              background: "#000",
-              position: "relative",
-            }}
-          >
-            {/* Nested fixed-px canvas: render the surface at 1080×1920, scale to the panel. */}
-            <div style={{ position: "absolute", top: 0, left: 0, width: CANVAS_W, height: CANVAS_H, transform: `scale(${scale})`, transformOrigin: "top left" }}>
-              {inset}
-            </div>
-          </div>
-        )}
+      <div
+        style={{
+          width: w,
+          height: h,
+          overflow: "hidden",
+          border: "4px solid var(--terminal-green)",
+          boxShadow: "0 0 26px var(--terminal-glow)",
+          background: "#000",
+          position: "relative",
+        }}
+      >
+        {/* Nested fixed-px canvas: render the surface at 1080×1920, scale to the panel. */}
+        <div style={{ position: "absolute", top: 0, left: 0, width: CANVAS_W, height: CANVAS_H, transform: `scale(${scale})`, transformOrigin: "top left" }}>
+          {inset}
+        </div>
       </div>
     </div>
   );

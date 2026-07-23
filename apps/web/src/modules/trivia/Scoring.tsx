@@ -84,9 +84,13 @@ export function Scoring() {
             <GameClock startedAt={display.state?.clock_started_at ?? null} running={game.status === "active" || game.status === "paused"} />
             <StatusButton
               label="▶ START"
-              active={game.status === "active"}
-              disabled={game.status === "active"}
+              active={!!display.state?.clock_started_at}
+              disabled={!!display.state?.clock_started_at}
               onClick={() => {
+                // START = start the game clock (its only job). Also mark the game active so
+                // scoring + the arm resolver work. Gated on the CLOCK, not game.status — a game
+                // can already be 'active' with the clock never started (a walk-back / a game
+                // started before this field existed), and the host must still be able to start it.
                 setStatus.mutate("active");
                 display.write.mutate({ clock_started_at: new Date().toISOString() });
               }}
@@ -394,11 +398,6 @@ function TriviaScreensBar({ gameStatus, onEndGame }: { gameStatus?: GameStatus |
       >
         {armed ? "TAKE TRIVIA OFF SCREENS" : "PUT TRIVIA ON SCREENS"}
       </button>
-      {!armed && (
-        <span className="u-amber" style={{ fontSize: 18, fontWeight: 700 }}>
-          ⚠ Trivia is NOT on the bar TVs — arm it before game night.
-        </span>
-      )}
       {/* END GAME lives here (owner rebuild 2026-07-22) — ending the game also DISARMS the bar
           TVs, so it belongs in the arm anchor. Only rendered when there is a game to end. */}
       {onEndGame && (
