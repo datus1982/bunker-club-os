@@ -1,7 +1,19 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { supabase, VENUE_ID } from "@/shared/supabaseClient";
 import { log } from "@/shared/log";
-import { Modal, Field, input, btnPrimary, btnGhost, checkRow } from "./ui";
+import { Modal, Field, input, btnPrimary, btnGhost, btnDanger, checkRow } from "./ui";
+
+/**
+ * Normalized team-name key for duplicate detection (owner beat 2026-07-22 — the live
+ * "Od-ussey" vs "Od - ussey" / "Scampus Oktober" vs "Scampus  Oktober" bug): lowercase +
+ * strip EVERY non-alphanumeric char, so case, spacing, and punctuation differences all
+ * collapse to the same key. "Od - ussey" → "odussey" === "Od-ussey" → "odussey".
+ */
+export function normalizeTeamName(s: string): string {
+  return s.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+type NamedTeam = { id: string; name: string };
 
 /**
  * Shared team editor (docs/04 ARCH-2). The legacy Scoring.tsx and Teams.tsx each carried
@@ -45,18 +57,33 @@ export function TeamEditorDialog({
   initial,
   onClose,
   onSaved,
+  onUseExisting,
 }: {
   mode: "add" | "edit";
   initial?: EditableTeam | null;
   onClose: () => void;
   onSaved: (teamId: string) => void;
+  /**
+   * Add-mode duplicate guard (owner beat 2026-07-22): when the typed name NORMALIZES to an
+   * existing ACTIVE venue team, the host is offered "USE EXISTING" instead of creating a
+   * duplicate. The caller reuses its existing add-existing path (Scoring adds that team to
+   * the current game). If omitted (e.g. the Teams roster, where the team already exists),
+   * USE EXISTING just closes — no duplicate is created.
+   */
+  onUseExisting?: (team: NamedTeam) => void;
 }) {
   const [name, setName] = useState(initial?.name ?? "");
   const [isRegular, setIsRegular] = useState(initial?.is_regular ?? false);
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [logoPreview, setLogoPreview] = useState<string | null>(initial?.logo_url ?? null);
   const [saving, setSaving] = useState(false);
+  const [checking, setChecking] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const nameRef = useRef<HTMLInputElement>(null);
+  // Add-mode duplicate confirm (owner beat 2026-07-22). Set when a submit normalizes to an
+  // existing team; the confirm offers USE EXISTING (active match) / CREATE ANYWAY (archived-
+  // only) / RENAME. null = no pending duplicate.
+  const [dup, setDup] = useState<{ active: NamedTeam | null; archived: NamedTeam | null } | null>(null);
 
   // SEC-1 extras (edit mode only).
   const [hasPin, setHasPin] = useState<boolean | null>(null);
@@ -133,9 +160,39 @@ export function TeamEditorDialog({
     return supabase.storage.from("logos").getPublicUrl(path).data.publicUrl;
   };
 
+  /** Entry point from the CREATE/SAVE button. Add mode runs the normalized duplicate guard
+   *  first; if it fires, the confirm handles the write (or bails). Edit mode saves directly. */
   const save = async () => {
     const trimmed = name.trim();
     if (!trimmed) return setError("Team name is required.");
+    setError(null);
+    if (mode === "add") {
+      // Duplicate guard — ONE venue read (id/name/archived), on submit only (never per
+      // keystroke). ~269 rows for this venue; cheap. Normalized match, not exact — that's
+      // the whole point (different strings, same crew).
+      setChecking(true);
+      const { data: existing, error: exErr } = await supabase
+        .from("teams")
+        .select("id, name, archived")
+        .eq("venue_id", VENUE_ID);
+      setChecking(false);
+      if (exErr) return setError(exErr.message);
+      const norm = normalizeTeamName(trimmed);
+      const matches = ((existing ?? []) as { id: string; name: string; archived: boolean }[])
+        .filter((t) => normalizeTeamName(t.name) === norm);
+      const active = matches.find((t) => !t.archived) ?? null;
+      const archived = matches.find((t) => t.archived) ?? null;
+      if (active || archived) {
+        setDup({ active: active ? { id: active.id, name: active.name } : null, archived: archived ? { id: archived.id, name: archived.name } : null });
+        return;
+      }
+    }
+    await doSave(trimmed);
+  };
+
+  /** The actual write (add insert / edit update). Add mode maps a still-colliding unique
+   *  violation to a readable message instead of a raw DB error. */
+  const doSave = async (trimmed: string) => {
     setSaving(true);
     setError(null);
     try {
@@ -162,27 +219,53 @@ export function TeamEditorDialog({
         onSaved(initial.id);
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to save team");
+      // A genuine still-colliding EXACT insert (unique(venue_id,name)) reads better as a
+      // plain sentence than a raw Postgres 23505 (owner beat 2026-07-22).
+      const err = e as { code?: string; message?: string };
+      if (mode === "add" && (err.code === "23505" || /duplicate key|already exists|unique constraint/i.test(err.message ?? ""))) {
+        setError(`A team named "${trimmed}" already exists.`);
+      } else {
+        setError(e instanceof Error ? e.message : "Failed to save team");
+      }
       setSaving(false);
     }
   };
 
+  /** Confirm actions. */
+  const useExisting = () => {
+    const active = dup?.active;
+    setDup(null);
+    if (!active) return;
+    if (onUseExisting) onUseExisting(active);
+    else onClose(); // Teams roster (no game to add to): the team already exists, just close.
+  };
+  const createAnyway = () => {
+    setDup(null);
+    void doSave(name.trim());
+  };
+  const renameEdit = () => {
+    setDup(null);
+    // Return focus to the name field so the host can tweak it.
+    setTimeout(() => nameRef.current?.focus(), 0);
+  };
+
   return (
+    <>
     <Modal
       title={mode === "add" ? "ADD TEAM" : "EDIT TEAM"}
       onClose={onClose}
       footer={
         <>
           <button type="button" onClick={onClose} style={btnGhost}>CANCEL</button>
-          <button type="button" onClick={save} disabled={saving || !name.trim()} style={btnPrimary}>
-            {saving ? "SAVING…" : mode === "add" ? "CREATE" : "SAVE"}
+          <button type="button" onClick={save} disabled={saving || checking || !name.trim()} style={btnPrimary}>
+            {saving ? "SAVING…" : checking ? "CHECKING…" : mode === "add" ? "CREATE" : "SAVE"}
           </button>
         </>
       }
     >
       <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
         <Field label="TEAM NAME *">
-          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Enter team name" style={input} autoFocus />
+          <input ref={nameRef} value={name} onChange={(e) => setName(e.target.value)} placeholder="Enter team name" style={input} autoFocus />
         </Field>
 
         <label style={checkRow}>
@@ -271,5 +354,42 @@ export function TeamEditorDialog({
         {error && <div className="terminal-border" style={{ padding: 10, fontSize: 20 }}>⚠ {error}</div>}
       </div>
     </Modal>
+
+    {/* Duplicate-name confirm (owner beat 2026-07-22). Rendered on top of the editor.
+        Backdrop / ✕ = RENAME (return to editing), never a silent create. */}
+    {dup && (
+      <Modal
+        title={dup.active ? "SIMILAR TEAM EXISTS" : "SIMILAR ARCHIVED TEAM"}
+        onClose={renameEdit}
+        footer={
+          <>
+            <button type="button" onClick={renameEdit} style={btnGhost}>RENAME / EDIT</button>
+            {dup.active ? (
+              <button type="button" onClick={useExisting} style={btnPrimary}>USE EXISTING</button>
+            ) : (
+              <button type="button" onClick={createAnyway} style={btnDanger}>CREATE ANYWAY</button>
+            )}
+          </>
+        }
+      >
+        {dup.active ? (
+          <p style={{ fontSize: 22, lineHeight: 1.35 }}>
+            A team like <strong>“{name.trim()}”</strong> already exists: <strong>{dup.active.name}</strong>.
+            {" "}Add that team to the game, or rename yours?
+            {dup.archived && (
+              <span style={{ display: "block", marginTop: 10, opacity: 0.7, fontSize: 18 }}>
+                (There's also a similar <em>archived</em> team: “{dup.archived.name}”.)
+              </span>
+            )}
+          </p>
+        ) : (
+          <p style={{ fontSize: 22, lineHeight: 1.35 }}>
+            A similar <strong>archived</strong> team exists: <strong>{dup.archived?.name}</strong>. It won't be
+            added automatically. Create a brand-new team anyway?
+          </p>
+        )}
+      </Modal>
+    )}
+    </>
   );
 }

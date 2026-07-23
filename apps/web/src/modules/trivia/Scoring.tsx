@@ -263,7 +263,20 @@ function AddTeamPicker({
   }, [q, teamsInGame]);
 
   if (creating) {
-    return <TeamEditorDialog mode="add" onClose={onClose} onSaved={onCreated} />;
+    return (
+      <TeamEditorDialog
+        mode="add"
+        onClose={onClose}
+        onSaved={onCreated}
+        // Duplicate-name guard (owner beat 2026-07-22): if the typed name normalizes to an
+        // existing ACTIVE team, USE EXISTING adds THAT team to the game (reusing the add-
+        // existing path) instead of creating a duplicate. Already in this game → just close.
+        onUseExisting={(t) => {
+          if (teamsInGame.has(t.id)) { onClose(); return; }
+          onAddExisting(t.id, t.name);
+        }}
+      />
+    );
   }
 
   return (
