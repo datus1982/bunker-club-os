@@ -38,7 +38,7 @@ import {
 export function GameDisplayBoard({ overrideGameId }: { overrideGameId: string | null }) {
   const gameQuery = useDisplayGame(overrideGameId);
   const game = gameQuery.data ?? null;
-  const { displayState, currentRound, questions, isPending } = useGameDisplayData(game?.id ?? null);
+  const { displayState, currentRound, upNextRound, questions, isPending } = useGameDisplayData(game?.id ?? null);
 
   const currentQuestion: Question | undefined = questions[displayState?.current_question_index ?? 0];
   const showAnswer = displayState?.show_answer ?? false;
@@ -58,7 +58,7 @@ export function GameDisplayBoard({ overrideGameId }: { overrideGameId: string | 
   // VIDEO — plays the LOADED round's video, SEALED on start (round/question changes never
   // swap or stop it); at the video's natural end the board auto-returns to UP NEXT.
   if (stage === "video") {
-    return <VideoStage round={currentRound} />;
+    return <VideoStage round={currentRound} upNext={upNextRound} />;
   }
 
   // JOIN QR — reuse the SCAN-TO-JOIN holding board (landscape). It renders absolute
@@ -95,7 +95,7 @@ export function GameDisplayBoard({ overrideGameId }: { overrideGameId: string | 
         />
       );
   } else {
-    body = <UpNext round={currentRound} />;
+    body = <UpNext round={upNextRound} />;
   }
 
   return <Frame>{body}</Frame>;
@@ -116,7 +116,7 @@ export function GameDisplayBoard({ overrideGameId }: { overrideGameId: string | 
  * console, so the control reflects it then. A DB write on natural end would need a small
  * anon-safe RPC (migration) — not added unprompted (see the report).
  */
-function VideoStage({ round }: { round: Round | null }) {
+function VideoStage({ round, upNext }: { round: Round | null; upNext: Round | null }) {
   const sealedUrl = useRef<string | null>(null);
   // Capture the loaded round's video the FIRST time it's available (round may still be
   // loading on a cold kiosk mount), then IGNORE every later round change — the playing video
@@ -127,8 +127,8 @@ function VideoStage({ round }: { round: Round | null }) {
     return <Frame><Centered title="STAND BY" subtitle="NO VIDEO FOR THIS ROUND" /></Frame>;
   }
   if (ended) {
-    // Natural end → UP NEXT for the LIVE loaded round (the host may have advanced it).
-    return <Frame><UpNext round={round} /></Frame>;
+    // Natural end → UP NEXT, previewing the NEXT round after the loaded one.
+    return <Frame><UpNext round={upNext} /></Frame>;
   }
   return (
     <div style={{ width: 1920, height: 1080, background: "#000" }}>
@@ -139,8 +139,8 @@ function VideoStage({ round }: { round: Round | null }) {
 
 /* ── UP NEXT stage / idle ──────────────────────────────────────────────────── */
 
-/** "UP NEXT — ROUND X · <category>" card for the LOADED round (current_round_id). Also the
- *  landscape idle screen (Q&A with nothing actively shown). */
+/** "UP NEXT — ROUND X · <category>" card previewing the NEXT scorable round (the round after
+ *  the loaded one). Also the landscape idle screen (Q&A with nothing actively shown). */
 function UpNext({ round }: { round: Round | null }) {
   if (!round) {
     return <Centered title="STAND BY" subtitle="NEXT ROUND LOADING…" />;
