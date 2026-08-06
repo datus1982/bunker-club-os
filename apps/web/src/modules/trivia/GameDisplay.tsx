@@ -268,28 +268,57 @@ function QuestionView({
 
 function PictureRound({ round, questions, showAnswer }: { round: Round; questions: Question[]; showAnswer: boolean }) {
   const answers = questions.filter((q) => q.question_number <= 10);
+  const boxRef = useRef<HTMLDivElement>(null);
+  const keyRef = useRef<HTMLDivElement>(null);
+  // The whole answer key (header + grid) is fitted as ONE block to ONE shared font size, so
+  // every row is the same size (ten rows at ten sizes would look broken) and the header
+  // scales with them. Everything inside is em-based, so the single fitted px on the wrapper
+  // drives the lot. Ceiling 120: a full 10-answer key is height-capped around ~100px in this
+  // panel, so 120 never binds on a real round — it only stops a 2-answer key from rendering
+  // absurdly huge. See useFitSize for the measure/binary-search.
+  const size = useFitSize(boxRef, keyRef, { minSize: 24, maxSize: 120 });
   return (
     <>
       <HeaderBar left={roundLabel(round)} right="PICTURE ROUND" />
       <div style={{ flex: 1, display: "flex", gap: 24, marginTop: 20, minHeight: 0 }}>
+        {/* The image KEEPS its half at full size when answers reveal (owner ruling: "we like
+            the image for reference") — the answer text gains room by FILLING its panel, never
+            by taking the image's. Do not change this split. */}
         <div style={{ width: showAnswer ? "50%" : "100%", display: "flex", alignItems: "center", justifyContent: showAnswer ? "flex-start" : "center", minHeight: 0 }}>
           {round.picture_url && (
             <img src={round.picture_url} alt="Picture round" style={{ maxHeight: "100%", maxWidth: "100%", objectFit: "contain", border: "2px solid var(--terminal-green)" }} />
           )}
         </div>
         {showAnswer && answers.length > 0 && (
-          <div className="terminal-border" style={{ width: "50%", padding: 24, display: "flex", flexDirection: "column", minHeight: 0 }}>
-            <div style={{ fontSize: 56, fontWeight: 700, textAlign: "center", marginBottom: 16, textTransform: "uppercase", flexShrink: 0 }}>ANSWERS</div>
-            {/* Column-major fill (matches the host answer key): answers descend the first
-                column to ceil(n/2), then continue down the second column (1–5 / 6–10 for a
-                full 10). grid-auto-flow:column + a fixed ceil(n/2) row count does the split. */}
-            <div style={{ flex: 1, display: "grid", gridTemplateColumns: "1fr 1fr", gridTemplateRows: `repeat(${Math.ceil(answers.length / 2)}, auto)`, gridAutoFlow: "column", gap: "8px 24px", overflow: "hidden", alignContent: "space-evenly" }}>
-              {answers.map((q) => (
-                <div key={q.id} style={{ display: "flex", gap: 10, alignItems: "baseline", fontSize: 40, lineHeight: 1.1 }}>
-                  <span style={{ fontWeight: 700, flexShrink: 0 }}>{q.question_number}.</span>
-                  <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{q.answer_text}</span>
-                </div>
-              ))}
+          <div
+            ref={boxRef}
+            className="terminal-border"
+            style={{ width: "50%", padding: 24, display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", minHeight: 0 }}
+          >
+            {/* ⚠ Every `fontSize: "1em"` below is LOAD-BEARING, not redundant. terminal-theme.css
+                carries `.terminal-theme * { font-size: 1.5rem }` (plus a `div`/`span` rule), so
+                EVERY descendant is class-styled to 24px — and a class rule beats plain
+                inheritance, which has no specificity. Without re-asserting 1em inline (inline
+                beats the class rule) the nested divs/spans silently snap back to 24px and only
+                this wrapper scales. Nothing inherits font-size under this theme; that is why the
+                pre-fix code hardcoded a px size on every row. Deleting these re-breaks the fit. */}
+            <div ref={keyRef} style={{ width: "100%", fontSize: size }}>
+              <div style={{ fontSize: "1.15em", fontWeight: 700, textAlign: "center", marginBottom: "0.3em", textTransform: "uppercase", lineHeight: 1.1 }}>ANSWERS</div>
+              {/* Column-major fill (matches the host answer key): answers descend the first
+                  column to ceil(n/2), then continue down the second column (1–5 / 6–10 for a
+                  full 10). grid-auto-flow:column + a fixed ceil(n/2) row count does the split.
+                  minmax(0,1fr) lets a long answer WRAP inside its column instead of forcing
+                  the grid wider (which would defeat the width half of the fit). */}
+              <div style={{ fontSize: "1em", display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(0,1fr)", gridTemplateRows: `repeat(${Math.ceil(answers.length / 2)}, auto)`, gridAutoFlow: "column", gap: "0.25em 0.6em" }}>
+                {answers.map((q) => (
+                  <div key={q.id} style={{ fontSize: "1em", display: "flex", gap: "0.25em", alignItems: "baseline", lineHeight: 1.15 }}>
+                    <span style={{ fontSize: "1em", fontWeight: 700, flexShrink: 0 }}>{q.question_number}.</span>
+                    {/* No overflow/ellipsis: an answer must never be silently shortened, and
+                        clipping here would hide the overflow the fit needs to measure. */}
+                    <span style={{ fontSize: "1em", minWidth: 0, overflowWrap: "break-word" }}>{q.answer_text}</span>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         )}
@@ -310,52 +339,39 @@ function roundLabel(round: Round): string {
 }
 
 /**
- * FitBox — text sized to FILL its fixed box, measure-based (host note, Ronnie: "make the
- * question and answer boxes fixed to the size and just fill the box as much as possible").
- * Replaces the old length-tier sizes (fitQuestion/fitAnswer), which left dead room below
- * short/medium questions.
+ * useFitSize — the shared measure-based fit. Binary-searches the largest integer font size in
+ * [minSize, maxSize] at which the CONTENT node fits inside the BOX on BOTH axes (width and
+ * height), wrapping allowed, and returns it.
  *
- * A useLayoutEffect binary-searches the largest integer font in [minSize, maxSize] that
- * fits the box on BOTH axes — width and height — with wrapping allowed. Because it runs
- * before paint (layout effect, not effect), the correct size is applied before the frame
- * is shown: no flicker on question change or answer reveal.
+ * Because it runs in a useLayoutEffect (before paint, not an effect), the correct size is
+ * applied before the frame is shown: no flicker on question change or answer reveal.
  *
- * Measurement reads the text node's intrinsic scrollWidth/scrollHeight (independent of how
+ * Measurement reads the content node's intrinsic scrollWidth/scrollHeight (independent of how
  * the flex box centers/top-aligns it) against the box's content area (clientWidth/Height
- * minus padding). The 1920×1080 canvas is fixed (DisplayCanvas scales the whole surface),
- * so the box's client size is a stable layout metric — same reason TickerReprint/FitText in
- * SlotDisplay/SignageTemplates read client size with no resize listener.
+ * minus computed padding). The 1920×1080 canvas is fixed (DisplayCanvas scales the whole
+ * surface), so the box's client size is a stable layout metric — same reason
+ * TickerReprint/FitText in SlotDisplay/SignageTemplates read client size with no resize
+ * listener.
  *
  * The effect has NO dependency array: it re-runs on every commit and only calls setSize when
  * the best size actually changes, so it self-stabilises (one extra measure pass, then quiet)
- * AND it re-fits whenever the box changes size — e.g. revealing the answer removes the 200px
- * strip, shrinking the question box, and the question re-fits smaller on that re-render.
+ * AND it re-fits whenever the box or its content changes — e.g. revealing the answer removes
+ * the 200px strip, shrinking the question box, and the question re-fits smaller on that
+ * re-render.
+ *
+ * The content node must be em-driven below its own font size (any nested sizes in `em`), so
+ * setting one px size on it scales the whole block — that is what lets the picture-round
+ * answer key fit header + all ten rows to ONE shared size in a single search.
  */
-function FitBox({
-  text,
-  maxSize,
-  minSize = 28,
-  weight = 400,
-  lineHeight = 1.15,
-  align = "center",
-  boxClassName,
-  boxStyle,
-}: {
-  text: string;
-  maxSize: number;
-  minSize?: number;
-  weight?: number;
-  lineHeight?: number;
-  align?: "center" | "flex-start";
-  boxClassName?: string;
-  boxStyle?: CSSProperties;
-}) {
-  const boxRef = useRef<HTMLDivElement>(null);
-  const txtRef = useRef<HTMLParagraphElement>(null);
+function useFitSize(
+  boxRef: React.RefObject<HTMLElement | null>,
+  contentRef: React.RefObject<HTMLElement | null>,
+  { minSize, maxSize }: { minSize: number; maxSize: number },
+): number {
   const [size, setSize] = useState(maxSize);
   useLayoutEffect(() => {
     const box = boxRef.current;
-    const txt = txtRef.current;
+    const txt = contentRef.current;
     if (!box || !txt) return;
     const cs = getComputedStyle(box);
     const availW = box.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
@@ -382,6 +398,38 @@ function FitBox({
     txt.style.fontSize = `${best}px`; // keep the DOM at the fitted size before paint
     if (best !== size) setSize(best);
   });
+  return size;
+}
+
+/**
+ * FitBox — a single text node sized to FILL its fixed box (host note, Ronnie: "make the
+ * question and answer boxes fixed to the size and just fill the box as much as possible").
+ * Replaces the old length-tier sizes (fitQuestion/fitAnswer), which left dead room below
+ * short/medium questions. The fit itself lives in useFitSize above (shared with the
+ * picture-round answer key).
+ */
+function FitBox({
+  text,
+  maxSize,
+  minSize = 28,
+  weight = 400,
+  lineHeight = 1.15,
+  align = "center",
+  boxClassName,
+  boxStyle,
+}: {
+  text: string;
+  maxSize: number;
+  minSize?: number;
+  weight?: number;
+  lineHeight?: number;
+  align?: "center" | "flex-start";
+  boxClassName?: string;
+  boxStyle?: CSSProperties;
+}) {
+  const boxRef = useRef<HTMLDivElement>(null);
+  const txtRef = useRef<HTMLParagraphElement>(null);
+  const size = useFitSize(boxRef, txtRef, { minSize, maxSize });
   return (
     <div
       ref={boxRef}
