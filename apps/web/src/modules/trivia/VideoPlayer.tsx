@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { armAudio, installAudioAutoArm, isAudioUnlocked, markAudioUnlocked, subscribeArmed } from "@/shared/videoAudio";
+import {
+  armAudio, installAudioAutoArm, isAudioUnlocked, isTrustedAutoplayEnv, markAudioUnlocked, subscribeArmed,
+} from "@/shared/videoAudio";
+import { evaluateProbe, PROBE_INTERVAL_MS, PROBE_WINDOW_MS } from "./audioVerdict";
 
 /**
  * Inter-round video (docs/04 port of VideoPlayer.tsx). YouTube URLs are normalised to an
@@ -14,11 +17,19 @@ import { armAudio, installAudioAutoArm, isAudioUnlocked, markAudioUnlocked, subs
  *     starts, which is the fix for the "video isn't autoplaying" report (the old embed set
  *     `autoplay=1` with no `mute`, so the browser blocked it and nothing played).
  *   • On the YouTube IFrame API `onReady`, "probe" for sound: send `unMute` + `playVideo`,
- *     then check the player state ~700ms later. If it is still PLAYING, the browser allows
- *     sound → keep it unmuted, hide the prompt, and mark the session audio-unlocked (so the
- *     next video boots unmuted directly). If it stalled/paused, the browser blocked it →
- *     revert to `mute` + `playVideo` (recovers muted playback with no visible hitch) and
- *     show an in-world "AUDIO CHANNEL SEALED — TAP TO OPEN COMMS" prompt.
+ *     then WAIT PATIENTLY — sample the player state every 300ms for up to 8s. PLAYING or
+ *     BUFFERING at any sample proves the browser allows sound → keep it unmuted, hide the
+ *     prompt, mark audio unlocked (persisted, so later videos boot unmuted directly).
+ *     `null`/UNSTARTED/CUED/PAUSED are "I don't know yet", NEVER a verdict. Only a fully
+ *     elapsed 8s window with no evidence of playback justifies `mute` + `playVideo`
+ *     (recovers muted playback with no visible hitch) and the in-world
+ *     "AUDIO CHANNEL SEALED — TAP TO OPEN COMMS" prompt. All of that decision logic is the
+ *     pure, unit-tested `audioVerdict.ts` (`pnpm test:audioverdict`).
+ *     ⚠ REGRESSION HISTORY: this used to be a single fixed 700ms read. `lastState` is fed
+ *     asynchronously by `infoDelivery`, so a slow start on a busy bar network read as
+ *     "blocked" and muted a perfectly good video — the 2026-08-05 trivia-night bug.
+ *   • Inside the BUNKER MEDIA SHELL (Electron, `autoplay-policy=no-user-gesture-required`)
+ *     there is nothing to probe: boot unmuted, never seal. Detected web-side via the UA.
  *   • A tap arms the session and re-probes (best-effort; some headful/webview browsers
  *     propagate the gesture) — and the safe revert guarantees the screen never freezes.
  *
@@ -37,26 +48,31 @@ import { armAudio, installAudioAutoArm, isAudioUnlocked, markAudioUnlocked, subs
  */
 
 const ENDED = 0;
-const PLAYING = 1;
-const BUFFERING = 3;
 
 export function VideoPlayer({ videoUrl, autoplay = true, onEnded }: { videoUrl: string; autoplay?: boolean; onEnded?: () => void }) {
   const [showTitleCover, setShowTitleCover] = useState(true);
   const [sealed, setSealed] = useState(false); // audio prompt visible (muted, browser blocked sound)
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const lastState = useRef<number | null>(null);
-  const probeTimer = useRef<number | null>(null);
+  const probeTimer = useRef<number | null>(null); // bounded poll interval id
+  const gotInfo = useRef(false); // first infoDelivery arrived → the `listening` handshake took
   // onEnded via a ref so the message-handler effect doesn't re-subscribe each render; fired
   // ONCE when the YouTube player reaches ENDED (state 0). Reset per videoUrl.
   const onEndedRef = useRef(onEnded);
   onEndedRef.current = onEnded;
   const endedFired = useRef(false);
-  useEffect(() => { endedFired.current = false; }, [videoUrl]);
+  useEffect(() => {
+    endedFired.current = false;
+    lastState.current = null; // a new clip's state is unknown again — never inherit the old one
+    gotInfo.current = false;
+  }, [videoUrl]);
 
   const yt = parseYouTubeUrl(videoUrl);
   const controllable = autoplay && !!yt;
-  // Boot unmuted only if a probe already proved sound works this session; else boot muted.
-  const bootMuted = useRef<boolean>(!isAudioUnlocked());
+  // The Electron media shell allows unmuted autoplay outright — nothing to probe, never seal.
+  const trusted = useRef<boolean>(isTrustedAutoplayEnv());
+  // Boot unmuted if the shell is trusted or a probe already proved sound works; else muted.
+  const bootMuted = useRef<boolean>(!(isAudioUnlocked() || trusted.current));
 
   // targetOrigin for IFrame-API messages: the embed's own origin (review N2). Derived,
   // not hardcoded — a pass-through embed URL may use a different YouTube host (no-www,
@@ -70,26 +86,63 @@ export function VideoPlayer({ videoUrl, autoplay = true, onEnded }: { videoUrl: 
     iframeRef.current?.contentWindow?.postMessage(JSON.stringify({ event: "command", func, args }), ytOrigin);
   }, [ytOrigin]);
 
-  // Attempt sound, then verify: keep it if the player is really playing, else revert to
-  // muted playback and raise the prompt. Self-corrects wherever the browser blocks sound.
-  const probe = useCallback(() => {
+  const stopProbe = useCallback(() => {
+    if (probeTimer.current) window.clearInterval(probeTimer.current);
+    probeTimer.current = null;
+  }, []);
+
+  /**
+   * Bounded, self-terminating audio poll (finite — display perf rule). `sendUnmute` is the
+   * difference between the two callers:
+   *   • true  — the muted-boot probe: ask for sound, then wait for proof.
+   *   • false — the unmuted-boot verification: it booted with sound already; this only exists
+   *             to recover a genuinely STALLED player, so it never sends `unMute`.
+   * Both share one rule: mute ONLY on positive absence of playback across the whole window.
+   */
+  const startProbe = useCallback((sendUnmute: boolean) => {
     if (!controllable) return;
-    command("unMute");
-    command("setVolume", [100]);
+    stopProbe();
+    if (sendUnmute) {
+      command("unMute");
+      command("setVolume", [100]);
+    }
     command("playVideo");
-    if (probeTimer.current) window.clearTimeout(probeTimer.current);
-    probeTimer.current = window.setTimeout(() => {
-      const st = lastState.current;
-      if (st === PLAYING || st === BUFFERING) {
+    // Trusted shell: unmuted autoplay is permitted process-wide. Do not poll, do not seal.
+    // DECISION: deliberately a hard short-circuit rather than a "poll but never prompt" safety
+    // net. On the bar TV the worst failure of a safety net is the exact bug this fix exists to
+    // kill — a lost `listening` handshake would make the poll conclude "blocked" and mute a
+    // video that is playing perfectly. The cost is that an Electron-based *browser* that does
+    // NOT set the autoplay switch would boot unmuted and may not start; that is a staff-preview
+    // inconvenience, never the room's audio.
+    if (trusted.current) {
+      markAudioUnlocked();
+      setSealed(false);
+      return;
+    }
+    const startedAt = Date.now();
+    probeTimer.current = window.setInterval(() => {
+      const verdict = evaluateProbe({
+        state: lastState.current,
+        elapsedMs: Date.now() - startedAt,
+        windowMs: PROBE_WINDOW_MS,
+      });
+      if (verdict === "unknown") return; // still no answer — keep waiting, touch nothing
+      stopProbe();
+      if (verdict === "unlocked") {
         markAudioUnlocked();
         setSealed(false);
-      } else {
+      } else if (verdict === "blocked") {
+        // The window fully elapsed with no evidence the video ever played. Only now.
         command("mute");
         command("playVideo");
         setSealed(true);
       }
-    }, 700);
-  }, [controllable, command]);
+      // "abandon" (the clip ended under us) → stop quietly; sealing an ended video is noise.
+    }, PROBE_INTERVAL_MS);
+  }, [controllable, command, stopProbe]);
+
+  /** Ask for sound and wait for proof (the muted-boot path, and every gesture re-probe). */
+  const probe = useCallback(() => startProbe(true), [startProbe]);
 
   // Black title-card cover for the first 7s (ported behaviour), re-armed per video.
   useEffect(() => {
@@ -126,6 +179,7 @@ export function VideoPlayer({ videoUrl, autoplay = true, onEnded }: { videoUrl: 
       }
       const msg = data as { event?: string; info?: { playerState?: number } };
       if (msg.event === "infoDelivery" && msg.info && typeof msg.info.playerState === "number") {
+        gotInfo.current = true; // the handshake took — stop re-kicking it
         lastState.current = msg.info.playerState;
         // Natural end → fire onEnded once (the landscape auto-returns to UP NEXT).
         if (msg.info.playerState === ENDED && !endedFired.current) {
@@ -133,35 +187,36 @@ export function VideoPlayer({ videoUrl, autoplay = true, onEnded }: { videoUrl: 
           onEndedRef.current?.();
         }
       } else if (msg.event === "onReady") {
-        if (bootMuted.current) {
-          probe();
-        } else {
-          // Booted unmuted on a proven session — verify it actually plays; if not, recover muted.
-          if (probeTimer.current) window.clearTimeout(probeTimer.current);
-          probeTimer.current = window.setTimeout(() => {
-            const st = lastState.current;
-            if (st !== PLAYING && st !== BUFFERING) {
-              command("mute");
-              command("playVideo");
-              setSealed(true);
-            }
-          }, 900);
-        }
+        // Muted boot → ask for sound. Unmuted boot → it already has sound; the poll exists only
+        // to recover a genuinely stalled player, and it waits just as patiently before muting.
+        startProbe(bootMuted.current);
       }
     };
 
     window.addEventListener("message", onMessage);
     const el = iframeRef.current;
     el?.addEventListener("load", listen);
-    const kick = window.setTimeout(listen, 500); // covers the already-loaded / mount-after-true case
+    // The `listening` handshake is what makes YouTube stream infoDelivery at all; without it
+    // lastState stays null FOREVER and the probe can only ever time out. One `load` listener
+    // plus a single 500ms kick both raced the iframe on slow mounts, so retry on a bounded
+    // schedule until the first infoDelivery answers (then stop). Finite: 20 × 500ms = 10s.
+    let kicks = 0;
+    listen();
+    const kick = window.setInterval(() => {
+      if (gotInfo.current || ++kicks >= 20) {
+        window.clearInterval(kick);
+        return;
+      }
+      listen();
+    }, 500);
 
     return () => {
       window.removeEventListener("message", onMessage);
       el?.removeEventListener("load", listen);
-      window.clearTimeout(kick);
-      if (probeTimer.current) window.clearTimeout(probeTimer.current);
+      window.clearInterval(kick);
+      stopProbe();
     };
-  }, [controllable, probe, command, ytOrigin]);
+  }, [controllable, startProbe, stopProbe, ytOrigin]);
 
   const handleTap = useCallback(() => {
     armAudio(); // arms every subsequent video this session; re-probes the live one

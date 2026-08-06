@@ -94,6 +94,14 @@ allow unmuted autoplay in the browser once: **Chrome** — launch with
 `--autoplay-policy=no-user-gesture-required`, or Site Settings → Sound → **Allow**
 for `os.bunkerokc.com`; **Firefox** — site permission **Autoplay → Allow Audio and
 Video**. Then videos play with sound and no prompt appears.
+The **BUNKER MEDIA SHELL** already sets that Chrome flag process-wide, so the bar TV is
+treated as a trusted autoplay environment: it boots unmuted and **never** raises the
+prompt. Everywhere else the player asks for sound and then waits patiently (samples the
+player state every 300ms for up to 8s) — it mutes and shows the prompt only if the video
+demonstrably never played in that whole window. It used to decide after a single fixed
+700ms read, which on a slow bar-network start muted videos that were about to play fine
+(the 2026-08-05 trivia-night bug). Once sound is proven, the answer is remembered in
+`localStorage` so the nightly 04:00 reload does not re-run the check.
 
 **★ SCREENS visibility caveat (Toast):** the featured drink rotation is driven by
 the **★ SCREENS** menu group in Toast, gated on POS visibility (0034). If you ever

@@ -24,7 +24,8 @@
     "test:eventcounter": "tsx scripts/test-event-counter.ts",
     "test:selectioncounts": "tsx scripts/test-selection-counts.ts",
     "test:scheduleresolve": "tsx scripts/test-schedule-resolve.ts",
-    "test:qsysstatus": "tsx scripts/test-qsys-status-resolve.ts"
+    "test:qsysstatus": "tsx scripts/test-qsys-status-resolve.ts",
+    "test:audioverdict": "tsx scripts/test-audio-verdict.ts"
   },
   "devDependencies": {
     "@supabase/supabase-js": "2.97.0",
