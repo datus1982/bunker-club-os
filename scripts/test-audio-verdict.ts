@@ -32,6 +32,19 @@ assert("UNSTARTED mid-window → unknown", evaluateProbe({ state: YT_UNSTARTED, 
 assert("CUED mid-window → unknown", evaluateProbe({ state: YT_CUED, elapsedMs: 700 }), "unknown");
 assert("PAUSED mid-window → unknown", evaluateProbe({ state: YT_PAUSED, elapsedMs: 700 }), "unknown");
 assert("ENDED → abandon (never seal a finished clip)", evaluateProbe({ state: YT_ENDED, elapsedMs: 700 }), "abandon");
+assert("PAUSED AFTER a PLAYING this probe → blocked immediately (Chrome pauses at unMute)",
+  evaluateProbe({ state: YT_PAUSED, elapsedMs: 300, sawPlaying: true }), "blocked");
+assert("PAUSED from cold (nothing ever played) → still unknown — the bug class stays patient",
+  evaluateProbe({ state: YT_PAUSED, elapsedMs: 300, sawPlaying: false }), "unknown");
+assert("sawPlaying does NOT make null impatient", evaluateProbe({ state: null, elapsedMs: 300, sawPlaying: true }), "unknown");
+assert("sawPlaying does NOT make UNSTARTED impatient",
+  evaluateProbe({ state: YT_UNSTARTED, elapsedMs: 300, sawPlaying: true }), "unknown");
+assert("sawPlaying does NOT make CUED impatient",
+  evaluateProbe({ state: YT_CUED, elapsedMs: 300, sawPlaying: true }), "unknown");
+assert("PLAYING still wins over sawPlaying bookkeeping",
+  evaluateProbe({ state: YT_PLAYING, elapsedMs: 300, sawPlaying: true }), "unlocked");
+assert("trusted env ignores sawPlaying + PAUSED (never seals)",
+  evaluateProbe({ state: YT_PAUSED, elapsedMs: 300, sawPlaying: true, trustedEnv: true }), "unlocked");
 assert("null at 1ms before the window closes → still unknown",
   evaluateProbe({ state: null, elapsedMs: PROBE_WINDOW_MS - 1 }), "unknown");
 assert("null exactly AT the window (inclusive) → blocked",
@@ -107,7 +120,26 @@ assert("PLAYING on the very last in-window sample → unlocked, not blocked",
   simulateProbe((ms) => (ms >= LAST_IN_WINDOW_TICK ? YT_PLAYING : null)),
   { verdict: "unlocked", elapsedMs: LAST_IN_WINDOW_TICK });
 
-// 9. Termination guarantee — a pathological sampler must not spin forever.
+// 9. WARN-3: a genuinely blocking browser pauses at `unMute`. The stream goes PLAYING → PAUSED
+//    between two samples, so the sampler only ever sees PAUSED; `sawPlayingAt` carries the
+//    stream evidence. Recovery must be immediate, not at the 8s edge.
+assert("PAUSED after a stream-level PLAYING → blocked fast (not at the window edge)",
+  simulateProbe((ms) => (ms < 600 ? null : YT_PAUSED), { sawPlayingAt: (ms) => ms >= 600 }),
+  { verdict: "blocked", elapsedMs: 600 });
+assert("…and that is dramatically faster than the patience window",
+  simulateProbe((ms) => (ms < 600 ? null : YT_PAUSED), { sawPlayingAt: (ms) => ms >= 600 }).elapsedMs < 1000, true);
+
+// 10. The same PAUSED shape WITHOUT any playing evidence must stay patient — this is the shape
+//     tonight's bug wrongly muted, and WARN-3 must not reopen it.
+assert("PAUSED from cold (no stream PLAYING ever) → still rides the full window",
+  simulateProbe((ms) => (ms < 600 ? null : YT_PAUSED)), { verdict: "blocked", elapsedMs: TIMEOUT_TICK });
+
+// 11. A stream PLAYING that STAYS playing is unlocked, not blocked — sawPlaying alone is inert.
+assert("stream saw PLAYING and the sampler agrees → unlocked",
+  simulateProbe(() => YT_PLAYING, { sawPlayingAt: () => true }),
+  { verdict: "unlocked", elapsedMs: PROBE_INTERVAL_MS });
+
+// 12. Termination guarantee — a pathological sampler must not spin forever.
 assert("poll always terminates (window is a hard stop)",
   simulateProbe(() => YT_PAUSED, { windowMs: 1000, intervalMs: 300 }).verdict, "blocked");
 

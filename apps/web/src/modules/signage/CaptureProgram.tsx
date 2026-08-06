@@ -95,7 +95,14 @@ export function CaptureVideo({
   const armAudio = useCallback(() => {
     const v = videoRef.current;
     if (!v) return;
-    if (isAudioUnlocked()) { v.muted = false; return; }
+    if (isAudioUnlocked()) {
+      // WARN-1 (mirrors PlaylistProgram): the persisted unlock flag can be true on a cold,
+      // gesture-less load, so unmuting alone can leave the feed paused with no path back.
+      // Always drive playback, and self-heal to muted if the browser refuses.
+      v.muted = false;
+      v.play().catch(() => { v.muted = true; v.play().catch(() => {}); });
+      return;
+    }
     v.muted = false;
     v.play().then(() => {
       if (!v.paused) markAudioUnlocked();

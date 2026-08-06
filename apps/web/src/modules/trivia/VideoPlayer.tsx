@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   armAudio, installAudioAutoArm, isAudioUnlocked, isTrustedAutoplayEnv, markAudioUnlocked, subscribeArmed,
 } from "@/shared/videoAudio";
-import { evaluateProbe, PROBE_INTERVAL_MS, PROBE_WINDOW_MS } from "./audioVerdict";
+import { evaluateProbe, PROBE_INTERVAL_MS, PROBE_WINDOW_MS, YT_BUFFERING, YT_PLAYING } from "./audioVerdict";
 
 /**
  * Inter-round video (docs/04 port of VideoPlayer.tsx). YouTube URLs are normalised to an
@@ -20,8 +20,11 @@ import { evaluateProbe, PROBE_INTERVAL_MS, PROBE_WINDOW_MS } from "./audioVerdic
  *     then WAIT PATIENTLY — sample the player state every 300ms for up to 8s. PLAYING or
  *     BUFFERING at any sample proves the browser allows sound → keep it unmuted, hide the
  *     prompt, mark audio unlocked (persisted, so later videos boot unmuted directly).
- *     `null`/UNSTARTED/CUED/PAUSED are "I don't know yet", NEVER a verdict. Only a fully
- *     elapsed 8s window with no evidence of playback justifies `mute` + `playVideo`
+ *     `null`/UNSTARTED/CUED — and PAUSED from cold — are "I don't know yet", NEVER a verdict.
+ *     The one fast exit is a PAUSED that FOLLOWS a PLAYING in the same probe: that is Chrome
+ *     pausing the clip at `unMute`, a real observation of the block, so it recovers at once
+ *     rather than holding a frozen frame. Otherwise only a fully elapsed 8s window with no
+ *     evidence of playback justifies `mute` + `playVideo`
  *     (recovers muted playback with no visible hitch) and the in-world
  *     "AUDIO CHANNEL SEALED — TAP TO OPEN COMMS" prompt. All of that decision logic is the
  *     pure, unit-tested `audioVerdict.ts` (`pnpm test:audioverdict`).
@@ -40,11 +43,13 @@ import { evaluateProbe, PROBE_INTERVAL_MS, PROBE_WINDOW_MS } from "./audioVerdic
  * Autoplay → Allow Audio and Video). With that set, the probe unmutes automatically and no
  * prompt ever appears. This is documented in the README "VIDEO SOUND ON TVs" note.
  *
- * Lifecycle: this component only mounts while game_display_state.show_video is true
- * (GameDisplayBoard early-returns it), so every flip-on is a fresh mount and every flip-off
- * a full unmount — no stuck prompt, no double-play. A mid-video kiosk reload re-mounts with
- * show_video already true and autoplays again. Shared verbatim by the signage landscape
- * slot and /game/preview (GameDisplayBoard reuse).
+ * Lifecycle: this component only mounts while `game_display_state.display_stage === 'video'`
+ * (GameDisplayBoard early-returns the VIDEO stage — the host's DISPLAY control writes it;
+ * migration 0060 / PR #84 replaced the old `show_video` boolean, which is now write-orphaned).
+ * Every flip-on is a fresh mount and every flip-off a full unmount — no stuck prompt, no
+ * double-play. A mid-video kiosk reload re-mounts with the stage already 'video' and autoplays
+ * again. Shared verbatim by the signage landscape slot and /game/preview (GameDisplayBoard
+ * reuse).
  */
 
 const ENDED = 0;
@@ -56,6 +61,12 @@ export function VideoPlayer({ videoUrl, autoplay = true, onEnded }: { videoUrl: 
   const lastState = useRef<number | null>(null);
   const probeTimer = useRef<number | null>(null); // bounded poll interval id
   const gotInfo = useRef(false); // first infoDelivery arrived → the `listening` handshake took
+  // WARN-3: a PLAYING/BUFFERING seen on the message STREAM since the current probe started.
+  // Tracked off the stream, not the 300ms sampler, because a blocked browser can go
+  // PLAYING → PAUSED entirely between two samples. Reset at the top of every probe so only
+  // post-`unMute` evidence ever counts (NOTE-4).
+  const sawPlaying = useRef(false);
+  const probing = useRef(false); // a probe is in flight → stream evidence is attributable to it
   // onEnded via a ref so the message-handler effect doesn't re-subscribe each render; fired
   // ONCE when the YouTube player reaches ENDED (state 0). Reset per videoUrl.
   const onEndedRef = useRef(onEnded);
@@ -89,6 +100,7 @@ export function VideoPlayer({ videoUrl, autoplay = true, onEnded }: { videoUrl: 
   const stopProbe = useCallback(() => {
     if (probeTimer.current) window.clearInterval(probeTimer.current);
     probeTimer.current = null;
+    probing.current = false;
   }, []);
 
   /**
@@ -102,7 +114,14 @@ export function VideoPlayer({ videoUrl, autoplay = true, onEnded }: { videoUrl: 
   const startProbe = useCallback((sendUnmute: boolean) => {
     if (!controllable) return;
     stopProbe();
+    sawPlaying.current = false;
     if (sendUnmute) {
+      // NOTE-4 — stale-PLAYING race: if the handshake lands late, `lastState` can still hold a
+      // PLAYING recorded while the clip was MUTED. The first 300ms sample would read it before
+      // Chrome's pause propagates and declare a false "unlocked" (now a PERSISTED flag). Wipe
+      // it: only evidence gathered after `unMute` may decide this probe. `sawPlaying` is reset
+      // alongside it and refills from the post-unMute stream, so WARN-3 still has its evidence.
+      lastState.current = null;
       command("unMute");
       command("setVolume", [100]);
     }
@@ -120,11 +139,13 @@ export function VideoPlayer({ videoUrl, autoplay = true, onEnded }: { videoUrl: 
       return;
     }
     const startedAt = Date.now();
+    probing.current = true;
     probeTimer.current = window.setInterval(() => {
       const verdict = evaluateProbe({
         state: lastState.current,
         elapsedMs: Date.now() - startedAt,
         windowMs: PROBE_WINDOW_MS,
+        sawPlaying: sawPlaying.current,
       });
       if (verdict === "unknown") return; // still no answer — keep waiting, touch nothing
       stopProbe();
@@ -181,6 +202,10 @@ export function VideoPlayer({ videoUrl, autoplay = true, onEnded }: { videoUrl: 
       if (msg.event === "infoDelivery" && msg.info && typeof msg.info.playerState === "number") {
         gotInfo.current = true; // the handshake took — stop re-kicking it
         lastState.current = msg.info.playerState;
+        // Stream-level evidence for WARN-3, attributable to the in-flight probe only.
+        if (probing.current && (msg.info.playerState === YT_PLAYING || msg.info.playerState === YT_BUFFERING)) {
+          sawPlaying.current = true;
+        }
         // Natural end → fire onEnded once (the landscape auto-returns to UP NEXT).
         if (msg.info.playerState === ENDED && !endedFired.current) {
           endedFired.current = true;

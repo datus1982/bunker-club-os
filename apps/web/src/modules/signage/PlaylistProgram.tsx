@@ -116,7 +116,10 @@ export function NowShowing({ file, orientation, compact }: { file: MediaFile | n
   );
 }
 
-const PLAYING_MIN_READY = 3; // HTMLMediaElement.readyState HAVE_FUTURE_DATA — actually playing
+// HTMLMediaElement.readyState HAVE_FUTURE_DATA — enough data buffered to play on. NOTE this
+// measures BUFFERING, not playback: a loaded-but-PAUSED video also passes, so the load watchdog
+// that uses it detects "never loaded", not "never started" (review WARN-1).
+const PLAYING_MIN_READY = 3;
 
 // How often a playing film re-reports itself (0054). A 2-hour movie would otherwise leave a stale
 // now_playing_at that the status fn's 15-min freshness gate drops — so we bump it every 5 min.
@@ -278,7 +281,16 @@ export function PlaylistVideo({
   const probe = useCallback(() => {
     const v = videoRef.current;
     if (!v) return;
-    if (isAudioUnlocked()) { v.muted = false; return; }
+    if (isAudioUnlocked()) {
+      // WARN-1: the unlock flag is PERSISTED now, so it can be true on a cold load that has had
+      // no user gesture — a browser that blocks unmuted autoplay then rejects play() and the clip
+      // sits paused on its poster forever (the readyState watchdog sees a loaded video and the
+      // `onPlaying` probe never fires, so nothing else recovers it). Always drive playback here,
+      // and fall back to muted rather than leaving the screen stranded.
+      v.muted = false;
+      v.play().catch(() => { v.muted = true; v.play().catch(() => {}); });
+      return;
+    }
     v.muted = false;
     v.play().then(() => {
       // Still playing after the unmute request → the browser allows sound this session.

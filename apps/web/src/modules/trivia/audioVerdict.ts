@@ -11,8 +11,15 @@
  * Electron media shell, which sets `autoplay-policy=no-user-gesture-required`.
  *
  * The rule encoded here: **only positive evidence decides.** PLAYING/BUFFERING proves sound
- * works. Nothing else ever proves it is blocked — we simply keep waiting, and only a fully
- * elapsed patience window (with no evidence of playback the whole time) justifies muting.
+ * works. The bug-class states (`null` / UNSTARTED / CUED) never prove anything — we simply
+ * keep waiting, and only a fully elapsed patience window justifies muting.
+ *
+ * ONE exception, and it is positive evidence too (review WARN-3): when a browser genuinely
+ * blocks sound, Chrome PAUSES the clip the moment `unMute` lands — PLAYING → PAUSED. A PAUSED
+ * sample that follows a PLAYING/BUFFERING sample *within the same probe* is therefore a real
+ * observation of the block, not an absence of information, and recovers immediately instead of
+ * freezing the frame for the whole window. PAUSED from cold (nothing ever played this probe)
+ * stays patient — that is the bug class, and it must not be weakened.
  *
  * No react, no supabase, no `@/` alias — imported directly by `scripts/test-audio-verdict.ts`
  * (`pnpm test:audioverdict`).
@@ -56,6 +63,15 @@ export interface ProbeObservation {
    * (the Electron media shell). Short-circuits to `unlocked` — we never seal there.
    */
   trustedEnv?: boolean;
+  /**
+   * True if a PLAYING/BUFFERING state was observed at any point SINCE THIS PROBE STARTED —
+   * i.e. after `unMute` was sent. Threaded in explicitly (this module stays pure and holds no
+   * state of its own); the caller tracks it off the raw `infoDelivery` stream, which moves
+   * faster than the poll and so can catch a PLAYING the sampler misses. Only post-unMute
+   * evidence may set it, or a stale pre-probe PLAYING would turn a cold PAUSED into a false
+   * block (review NOTE-4).
+   */
+  sawPlaying?: boolean;
 }
 
 /** Verdict for ONE sample of the player state. This is the whole decision. */
@@ -64,13 +80,17 @@ export function evaluateProbe({
   elapsedMs,
   windowMs = PROBE_WINDOW_MS,
   trustedEnv = false,
+  sawPlaying = false,
 }: ProbeObservation): ProbeVerdict {
   if (trustedEnv) return "unlocked";
   // Positive evidence — the only thing that ever proves sound works.
   if (state === YT_PLAYING || state === YT_BUFFERING) return "unlocked";
   // The clip finished under us; nothing to mute, nothing to prompt about.
   if (state === YT_ENDED) return "abandon";
-  // UNSTARTED / CUED / PAUSED / null are all "not yet" — never a verdict on their own.
+  // It WAS playing this probe and now it is not: that is the browser pausing at `unMute`.
+  // A real observation of the block — recover now instead of freezing the frame for 8s.
+  if (state === YT_PAUSED && sawPlaying) return "blocked";
+  // UNSTARTED / CUED / null — and PAUSED from cold — are all "not yet", never a verdict.
   if (elapsedMs >= windowMs) return "blocked";
   return "unknown";
 }
@@ -81,17 +101,29 @@ export function evaluateProbe({
  * script exercises the real loop shape, not just a single sample.
  *
  * @param sample returns the player state as it would be at `elapsedMs` (null = unknown).
+ * @param opts.sawPlayingAt models the `infoDelivery` STREAM rather than the sampler: it answers
+ *        "had a PLAYING/BUFFERING state arrived by this instant?". It exists because the stream
+ *        can go PLAYING → PAUSED entirely between two samples, so a PAUSED-after-playing is
+ *        invisible to `sample` alone — exactly the WARN-3 case.
  */
 export function simulateProbe(
   sample: (elapsedMs: number) => number | null,
-  opts: { windowMs?: number; intervalMs?: number; trustedEnv?: boolean } = {},
+  opts: {
+    windowMs?: number;
+    intervalMs?: number;
+    trustedEnv?: boolean;
+    sawPlayingAt?: (elapsedMs: number) => boolean;
+  } = {},
 ): { verdict: ProbeVerdict; elapsedMs: number } {
   const windowMs = opts.windowMs ?? PROBE_WINDOW_MS;
   const intervalMs = opts.intervalMs ?? PROBE_INTERVAL_MS;
   const trustedEnv = opts.trustedEnv ?? false;
+  const sawPlayingAt = opts.sawPlayingAt ?? (() => false);
   if (trustedEnv) return { verdict: "unlocked", elapsedMs: 0 };
   for (let elapsedMs = intervalMs; ; elapsedMs += intervalMs) {
-    const verdict = evaluateProbe({ state: sample(elapsedMs), elapsedMs, windowMs });
+    const verdict = evaluateProbe({
+      state: sample(elapsedMs), elapsedMs, windowMs, sawPlaying: sawPlayingAt(elapsedMs),
+    });
     if (verdict !== "unknown") return { verdict, elapsedMs };
     // Safety: the window check inside evaluateProbe guarantees termination, but if an interval
     // ever landed past the window without producing a verdict we must not spin.
