@@ -56,8 +56,24 @@ export function useMediaFiles() {
 
 /* ── playlists (with per-playlist stats) ─────────────────────────────────── */
 
+/**
+ * A playlist as the HUB sees it: the display shape plus the carousel-set flag (migration 0062).
+ *
+ * DECISION: `in_carousel` is deliberately NOT on the display-side `MediaPlaylist`. Only two places
+ * care about it — this admin layer (the CAROUSEL toggle) and useCarouselPlaylists' own row type
+ * (which selects id+name and filters server-side). Widening MediaPlaylist would force a value onto
+ * the synthetic ALL-MEDIA playlist object, where the flag is meaningless (ALL MEDIA is never part
+ * of a carousel set). AdminPlaylist extends MediaPlaylist, so every existing consumer of
+ * PlaylistWithStats.playlist is unaffected.
+ */
+export interface AdminPlaylist extends MediaPlaylist {
+  /** Participates in the CAROUSEL program's rotation set (0062, default true). Carousel-only —
+   *  manual selection, schedules, and ALL MEDIA ignore it. */
+  in_carousel: boolean;
+}
+
 export interface PlaylistWithStats {
-  playlist: MediaPlaylist;
+  playlist: AdminPlaylist;
   /** Every item, regardless of file status. */
   itemCount: number;
   /** Items whose file is present (what actually plays). */
@@ -73,17 +89,17 @@ export function useMediaPlaylists() {
     queryFn: async (): Promise<PlaylistWithStats[]> => {
       type ItemStatRow = { playlist_id: string; file: { duration_seconds: number | null; status: string } | null };
       const [playlists, items] = await Promise.all([
-        collectPaged<MediaPlaylist>(async (from, to) => {
+        collectPaged<AdminPlaylist>(async (from, to) => {
           const { data, error } = await supabase
             .from("media_playlists")
-            .select("id, name, source, folder_path, presentation, shuffle, subtitles")
+            .select("id, name, source, folder_path, presentation, shuffle, subtitles, in_carousel")
             .eq("venue_id", VENUE_ID)
             .order("source") // folder first? order name below
             .order("name")
             .order("id") // stable tiebreak for range paging
             .range(from, to);
           if (error) throw error;
-          return (data ?? []) as unknown as MediaPlaylist[];
+          return (data ?? []) as unknown as AdminPlaylist[];
         }),
         collectPaged<ItemStatRow>(async (from, to) => {
           const { data, error } = await supabase
@@ -193,6 +209,14 @@ export async function setPlaylistShuffle(id: string, shuffle: boolean): Promise<
 /** Per-playlist subtitle toggle — editable for BOTH sources (the sync never overwrites it). */
 export async function setPlaylistSubtitles(id: string, subtitles: boolean): Promise<void> {
   const { error } = await supabase.from("media_playlists").update({ subtitles }).eq("id", id);
+  if (error) throw error;
+}
+
+/** Per-playlist CAROUSEL-inclusion toggle (0062) — editable for BOTH sources. Governs ONLY the
+ *  carousel program's rotation set; manual selection + schedules ignore it (the sync never
+ *  overwrites the column, so an un-toggle survives every catalog sync). */
+export async function setPlaylistInCarousel(id: string, in_carousel: boolean): Promise<void> {
+  const { error } = await supabase.from("media_playlists").update({ in_carousel }).eq("id", id);
   if (error) throw error;
 }
 

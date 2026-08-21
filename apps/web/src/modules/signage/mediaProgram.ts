@@ -236,9 +236,12 @@ export interface CarouselPlaylist {
 
 /**
  * The playlists a CAROUSEL program steps through: every real media_playlists row for the venue
- * that has ≥1 present file, sorted by name (the 'ordered' walk order; 'random' ignores it). Empty
+ * that is flagged `in_carousel` (migration 0062 — the hub's CAROUSEL toggle; default on) AND has
+ * ≥1 present file, sorted by name (the 'ordered' walk order; 'random' ignores it). Empty
  * playlists are excluded so the carousel never stalls on a playlist that would show only a
- * MEDIA-HOST-empty card (and never `ended` to hop). The virtual ALL-MEDIA playlist is NOT included
+ * MEDIA-HOST-empty card (and never `ended` to hop). in_carousel governs ONLY this set — a playlist
+ * toggled off is still selectable by hand (hub/Q-SYS) and still schedulable as a daypart. The
+ * virtual ALL-MEDIA playlist is NOT included
  * — it is a superset, redundant inside a carousel. Realtime on all three media tables so a new
  * playlist, a deleted one, or a file going present/missing re-resolves the cycle without a reload.
  * Anon-readable (TVs read anon), like usePlaylistProgram.
@@ -255,6 +258,7 @@ export function useCarouselPlaylists() {
             .from("media_playlists")
             .select("id, name")
             .eq("venue_id", VENUE_ID)
+            .eq("in_carousel", true) // 0062 — the hub CAROUSEL toggle; carousel-only filter
             .order("name")
             .order("id")
             .range(from, to);
