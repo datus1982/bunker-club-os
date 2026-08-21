@@ -2,7 +2,7 @@ import { useMemo, useState, type CSSProperties } from "react";
 import { useMutation } from "@tanstack/react-query";
 import {
   useMediaFiles, useMediaPlaylists, usePlaylistDetail,
-  updateMediaTitle, setPlaylistPresentation, setPlaylistShuffle, setPlaylistSubtitles,
+  updateMediaTitle, setPlaylistPresentation, setPlaylistShuffle, setPlaylistSubtitles, setPlaylistInCarousel,
   createCustomPlaylist, renamePlaylist, deletePlaylist,
   addPlaylistItem, removePlaylistItem, swapPlaylistItems, statusChip,
   type MediaFile, type PlaylistWithStats, type PlaylistItemDetail,
@@ -145,6 +145,7 @@ function PlaylistRow({ p, onEdit }: { p: PlaylistWithStats; onEdit: () => void }
   const pres = useMutation({ mutationFn: () => setPlaylistPresentation(playlist.id, playlist.presentation === "fullbleed" ? "framed" : "fullbleed") });
   const shuf = useMutation({ mutationFn: () => setPlaylistShuffle(playlist.id, !playlist.shuffle) });
   const subs = useMutation({ mutationFn: () => setPlaylistSubtitles(playlist.id, !playlist.subtitles) });
+  const caro = useMutation({ mutationFn: () => setPlaylistInCarousel(playlist.id, !playlist.in_carousel) });
   const missing = p.itemCount - p.presentCount;
 
   return (
@@ -167,6 +168,9 @@ function PlaylistRow({ p, onEdit }: { p: PlaylistWithStats; onEdit: () => void }
       </button>
       <button type="button" onClick={() => subs.mutate()} disabled={subs.isPending} title="Show subtitles when a clip has a sidecar .srt" className={playlist.subtitles ? "u-fill u-ink" : ""} style={{ ...toggleBtn, ...(playlist.subtitles ? { fontWeight: 700, background: "var(--terminal-green)", color: "#000" } : null) }}>
         {playlist.subtitles ? "＂ SUBS ON" : "✕ SUBS OFF"}
+      </button>
+      <button type="button" onClick={() => caro.mutate()} disabled={caro.isPending} title="Include this playlist in the CAROUSEL program's rotation (manual selection and schedules are unaffected)" className={playlist.in_carousel ? "u-fill u-ink" : ""} style={{ ...toggleBtn, ...(playlist.in_carousel ? { fontWeight: 700, background: "var(--terminal-green)", color: "#000" } : null) }}>
+        {playlist.in_carousel ? "CAROUSEL ✓" : "CAROUSEL ✕"}
       </button>
       <button type="button" onClick={onEdit} style={toggleBtn}>{isFolder ? "VIEW" : "EDIT"}</button>
     </div>
