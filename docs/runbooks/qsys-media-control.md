@@ -81,7 +81,7 @@ is the "whole library, pick any movie" path a picker should use.
 { "slug": "landscape-bar", "cmd": "playlist", "playlist": "all-media",
   "file": "3f1b…-uuid" }
 { "slug": "landscape-bar", "cmd": "playlist", "playlist": "Atomic Age",
-  "file": "Labyrinth (1986)" }
+  "file": "The Truman Show (1998)" }
 ```
 
 Omitting `file` writes the byte-identical program it always did — every existing UCI button is
