@@ -126,14 +126,15 @@ Stephen, on the mini PC (via the TV + keyboard, or Remote Desktop):
    the legacy console executes line-by-line as it pastes.)
 3. A browser opens once for the **Tailscale login**. That is the only
    interactive step.
-4. The script finishes by printing a line starting `PC-DEVICE-ID:`.
-   **Send that line back.**
+4. The script finishes by printing three lines — `PC-DEVICE-ID:`,
+   `PC-TAILSCALE-IP:`, `PC-USERNAME:`. **Send all three back.**
 
 The script installs Syncthing to `C:\Syncthing`, registers a logon-triggered
 Scheduled Task (the PC auto-logs-in), discovers the media library from the media
 shell's own `config.json` (`mediaDir`), creates the folder with
-`type=sendreceive` + `ignoreDelete=true`, adds a firewall rule, and installs
-Tailscale. Re-running it is safe.
+`type=sendreceive` + `ignoreDelete=true`, adds a firewall rule, installs
+Tailscale, and provisions key-only SSH reachable only over the tailnet (§8).
+Re-running it is safe.
 
 > **First scan is heavy.** Syncthing has to hash the entire existing library off
 > the USB drive before it can sync anything. The script sets `hashers: 1` and a
@@ -271,3 +272,36 @@ It is idempotent and skips files that already have a poster.
 **The bar TV picks up nothing from a web deploy here.** This whole pipeline is
 files-on-disk; no migration, no edge function, no bundle. The only moving parts
 at the bar are Syncthing and the shell's existing watcher.
+
+---
+
+## 8. Claude remote access (SSH over Tailscale)
+
+Owner-requested: the PC setup script also enables Windows' built-in OpenSSH
+Server so Claude sessions on Stephen's Mac can run maintenance on the mini PC
+directly — shell log checks and restarts, media surgery (§6 without RDP),
+future shell upgrades — no more paste-blocks or drive trips.
+
+From the Mac:
+
+```bash
+ssh -i ~/.ssh/bunker_pc_ed25519 <PC-USERNAME>@<PC-TAILSCALE-IP>
+```
+
+(the last two values come from the setup script's final printout; commands run
+in `cmd` by default — prefix with `powershell -Command` as needed).
+
+Security posture:
+
+- **Key-only** — `PasswordAuthentication no`; the only authorized key is
+  `~/.ssh/bunker_pc_ed25519.pub` from Stephen's Mac, in
+  `C:\ProgramData\ssh\administrators_authorized_keys` (ACL-locked to
+  Administrators + SYSTEM, as sshd requires).
+- **Tailnet-only** — the default wide-open port-22 firewall rule is disabled and
+  replaced with one scoped to `100.64.0.0/10`. SSH is not reachable from the bar
+  LAN or the internet, only from devices on the tailnet.
+- The private key never leaves the Mac.
+
+⚠ This is the live bar appliance. Heartbeat-first discipline applies: check
+`signage_slots.last_seen` before and after anything that could disturb playback,
+and prefer quiet mornings for disruptive work.

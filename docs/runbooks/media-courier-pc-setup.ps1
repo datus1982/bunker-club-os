@@ -10,8 +10,10 @@
 #       type sendreceive with ignoreDelete = TRUE  (deletes NEVER apply here)
 #    4. a Windows Firewall allow rule for syncthing.exe
 #    5. Tailscale (for remote hands) - this one step opens a browser to log in
+#    6. OpenSSH Server, key-only, reachable ONLY over Tailscale - lets Claude
+#       run maintenance on this PC from Stephen's Mac (owner-requested)
 #
-#  It finishes by printing this PC's Syncthing device ID. SEND THAT LINE BACK.
+#  It finishes by printing three lines. SEND THOSE LINES BACK.
 #
 #  Re-running is safe: it reuses an existing install/config instead of
 #  duplicating anything.
@@ -72,7 +74,7 @@ if (-not $isAdmin) {
 # -----------------------------------------------------------------------------
 # 1. Install Syncthing
 # -----------------------------------------------------------------------------
-Head "1/6  Syncthing $SyncthingVersion"
+Head "1/7  Syncthing $SyncthingVersion"
 $exe = Join-Path $InstallDir 'syncthing.exe'
 
 $needInstall = $true
@@ -113,7 +115,7 @@ if (-not (Test-Path $exe)) { throw "syncthing.exe is missing after install: $exe
 # -----------------------------------------------------------------------------
 # 2. Find the media library folder
 # -----------------------------------------------------------------------------
-Head "2/6  Locating the media library"
+Head "2/7  Locating the media library"
 $mediaRoot = $null
 
 # (a) The media shell's own config.json is the authority. Its documented
@@ -168,7 +170,7 @@ Say ("playlist folders: " + (Get-ChildItem $mediaRoot -Directory -ErrorAction Si
 # -----------------------------------------------------------------------------
 # 3. Scheduled Task (starts at logon; this PC auto-logs-in)
 # -----------------------------------------------------------------------------
-Head "3/6  Autostart task"
+Head "3/7  Autostart task"
 # --no-console hides the console window (a Windows-only Syncthing flag);
 # --no-browser stops it opening the GUI on the kiosk screen.
 $action  = New-ScheduledTaskAction -Execute $exe -Argument 'serve --no-console --no-browser' -WorkingDirectory $InstallDir
@@ -191,7 +193,7 @@ if (-not (Get-Process syncthing -ErrorAction SilentlyContinue)) {
 # -----------------------------------------------------------------------------
 # 4. Read the API key, wait for the REST API
 # -----------------------------------------------------------------------------
-Head "4/6  Waiting for Syncthing's local API"
+Head "4/7  Waiting for Syncthing's local API"
 
 # `syncthing paths` prints the real config location; fall back to the usual spots.
 $cfgXml = $null
@@ -233,7 +235,7 @@ Say "API up. This PC's device ID: $myId"
 #    POST on a config collection adds a new entry OR replaces the one with the
 #    same ID, so this whole section is idempotent.
 # -----------------------------------------------------------------------------
-Head "5/6  Pairing config"
+Head "5/7  Pairing config"
 
 # --- the Mac ---
 $devJson = @"
@@ -298,7 +300,7 @@ if (-not (Get-NetFirewallRule -DisplayName $FwRuleName -ErrorAction SilentlyCont
 # -----------------------------------------------------------------------------
 # 6. Tailscale (remote hands)
 # -----------------------------------------------------------------------------
-Head "6/6  Tailscale"
+Head "6/7  Tailscale"
 $tsExe = 'C:\Program Files\Tailscale\tailscale.exe'
 if (-not (Test-Path $tsExe)) {
   $msi = Join-Path $env:TEMP 'tailscale-setup.msi'
@@ -323,6 +325,87 @@ if (Test-Path $tsExe) {
 }
 
 # -----------------------------------------------------------------------------
+# 7. OpenSSH Server - key-only, reachable ONLY over the tailnet
+#    Lets Claude (from Stephen's Mac) run maintenance on this PC without
+#    paste-blocks: shell log checks, restarts, media surgery. Owner-requested.
+# -----------------------------------------------------------------------------
+Head "7/7  Remote access (SSH over Tailscale)"
+
+$sshCap = Get-WindowsCapability -Online -Name 'OpenSSH.Server*' | Select-Object -First 1
+if (-not $sshCap) {
+  Warn "this Windows build has no OpenSSH.Server capability - skipping SSH setup"
+} else {
+  if ($sshCap.State -ne 'Installed') {
+    Say "installing OpenSSH Server (Windows capability)..."
+    Add-WindowsCapability -Online -Name $sshCap.Name | Out-Null
+  } else {
+    Say "OpenSSH Server already installed"
+  }
+
+  Set-Service -Name sshd -StartupType Automatic
+  Start-Service -Name sshd -ErrorAction SilentlyContinue
+
+  # --- key-only auth for administrators -------------------------------------
+  # This PC's user is an admin, so sshd reads administrators_authorized_keys
+  # (the default sshd_config's 'Match Group administrators' block), NOT the
+  # per-user file. The key pair lives on Stephen's Mac (~/.ssh/bunker_pc_ed25519).
+  $authKeys = 'C:\ProgramData\ssh\administrators_authorized_keys'
+  $pubKey   = 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINL+prAL9gscP9+ww6rbe1k5pn5Bjmk9DE45cq+OkKqF claude@stephens-mac-bunker'
+  if (-not (Test-Path $authKeys) -or -not (Select-String -Path $authKeys -SimpleMatch $pubKey -Quiet)) {
+    Add-Content -Path $authKeys -Value $pubKey -Encoding ascii
+    Say "authorized key added"
+  } else {
+    Say "authorized key already present"
+  }
+  # sshd REFUSES this file unless it is locked to Administrators + SYSTEM with
+  # inheritance off. SIDs (S-1-5-32-544 / S-1-5-18) are used so this works on
+  # any locale, not just English.
+  icacls $authKeys /inheritance:r /grant '*S-1-5-32-544:F' /grant '*S-1-5-18:F' | Out-Null
+  Say "ACLs set (Administrators + SYSTEM only)"
+
+  # --- key-only: no passwords ------------------------------------------------
+  $sshdCfgPath = 'C:\ProgramData\ssh\sshd_config'
+  $sshdCfg = Get-Content $sshdCfgPath -Raw
+  $orig = $sshdCfg
+  if ($sshdCfg -match '(?m)^#?\s*PasswordAuthentication\b.*$') {
+    $sshdCfg = $sshdCfg -replace '(?m)^#?\s*PasswordAuthentication\b.*$', 'PasswordAuthentication no'
+  } else {
+    $sshdCfg = $sshdCfg + "`r`nPasswordAuthentication no`r`n"
+  }
+  if ($sshdCfg -match '(?m)^#?\s*PubkeyAuthentication\b.*$') {
+    $sshdCfg = $sshdCfg -replace '(?m)^#?\s*PubkeyAuthentication\b.*$', 'PubkeyAuthentication yes'
+  } else {
+    $sshdCfg = $sshdCfg + "PubkeyAuthentication yes`r`n"
+  }
+  if ($sshdCfg -ne $orig) {
+    Set-Content -Path $sshdCfgPath -Value $sshdCfg -Encoding ascii
+    Say "sshd_config: PasswordAuthentication no / PubkeyAuthentication yes"
+  } else {
+    Say "sshd_config already key-only"
+  }
+  Restart-Service -Name sshd
+
+  # --- firewall: SSH is a tailnet-only door ----------------------------------
+  # The capability install creates a wide-open port-22 rule; kill it and allow
+  # only the Tailscale CGNAT range. SSH is NOT reachable from the bar LAN.
+  Get-NetFirewallRule -Name 'OpenSSH-Server-In-TCP' -ErrorAction SilentlyContinue |
+    Disable-NetFirewallRule -ErrorAction SilentlyContinue
+  $sshRule = 'SSH (Tailscale only)'
+  if (-not (Get-NetFirewallRule -DisplayName $sshRule -ErrorAction SilentlyContinue)) {
+    New-NetFirewallRule -DisplayName $sshRule -Direction Inbound -Protocol TCP -LocalPort 22 `
+      -RemoteAddress '100.64.0.0/10' -Action Allow | Out-Null
+    Say "firewall: port 22 allowed from the tailnet only"
+  } else {
+    Say "firewall rule already present"
+  }
+}
+
+$tsIp = 'unknown'
+if (Test-Path $tsExe) {
+  try { $tsIp = (& $tsExe ip -4 2>&1 | Select-Object -First 1 | Out-String).Trim() } catch { }
+}
+
+# -----------------------------------------------------------------------------
 # DONE
 # -----------------------------------------------------------------------------
 Write-Host ""
@@ -330,11 +413,13 @@ Write-Host "###############################################################" -Fo
 Write-Host "#                                                             #" -ForegroundColor Green
 Write-Host "#   SETUP COMPLETE.  ONE THING LEFT:                          #" -ForegroundColor Green
 Write-Host "#                                                             #" -ForegroundColor Green
-Write-Host "#   >>>>>  SEND THIS LINE BACK TO CLAUDE  <<<<<               #" -ForegroundColor Green
+Write-Host "#   >>>>>  SEND THESE LINES BACK TO CLAUDE  <<<<<             #" -ForegroundColor Green
 Write-Host "#                                                             #" -ForegroundColor Green
 Write-Host "###############################################################" -ForegroundColor Green
 Write-Host ""
 Write-Host "PC-DEVICE-ID: $myId" -ForegroundColor White -BackgroundColor DarkBlue
+Write-Host "PC-TAILSCALE-IP: $tsIp" -ForegroundColor White -BackgroundColor DarkBlue
+Write-Host "PC-USERNAME: $env:USERNAME" -ForegroundColor White -BackgroundColor DarkBlue
 Write-Host ""
 Write-Host "  Tailscale: $tsLine"
 Write-Host "  Media library: $mediaRoot"
