@@ -331,6 +331,12 @@ if (Test-Path $tsExe) {
 # -----------------------------------------------------------------------------
 Head "7/7  Remote access (SSH over Tailscale)"
 
+# The courier (steps 1-6) is already fully configured at this point. Nothing in
+# this section is allowed to kill the script - a failure here is warned and
+# skipped so the final SEND-BACK printout always appears. (Re-running the whole
+# script retries this section safely.)
+try {
+
 $sshCap = Get-WindowsCapability -Online -Name 'OpenSSH.Server*' | Select-Object -First 1
 if (-not $sshCap) {
   Warn "this Windows build has no OpenSSH.Server capability - skipping SSH setup"
@@ -344,6 +350,14 @@ if (-not $sshCap) {
 
   Set-Service -Name sshd -StartupType Automatic
   Start-Service -Name sshd -ErrorAction SilentlyContinue
+
+  # sshd generates C:\ProgramData\ssh\* on first start - give it a moment.
+  $sshDir = 'C:\ProgramData\ssh'
+  $waitUntil = (Get-Date).AddSeconds(30)
+  while (-not (Test-Path (Join-Path $sshDir 'sshd_config')) -and (Get-Date) -lt $waitUntil) {
+    Start-Sleep -Seconds 2
+  }
+  if (-not (Test-Path $sshDir)) { New-Item -ItemType Directory -Path $sshDir -Force | Out-Null }
 
   # --- key-only auth for administrators -------------------------------------
   # This PC's user is an admin, so sshd reads administrators_authorized_keys
@@ -364,7 +378,8 @@ if (-not $sshCap) {
   Say "ACLs set (Administrators + SYSTEM only)"
 
   # --- key-only: no passwords ------------------------------------------------
-  $sshdCfgPath = 'C:\ProgramData\ssh\sshd_config'
+  $sshdCfgPath = Join-Path $sshDir 'sshd_config'
+  if (-not (Test-Path $sshdCfgPath)) { throw "sshd never generated $sshdCfgPath - is the sshd service able to start?" }
   $sshdCfg = Get-Content $sshdCfgPath -Raw
   $orig = $sshdCfg
   if ($sshdCfg -match '(?m)^#?\s*PasswordAuthentication\b.*$') {
@@ -398,6 +413,12 @@ if (-not $sshCap) {
   } else {
     Say "firewall rule already present"
   }
+}
+
+} catch {
+  Warn "SSH setup did not complete: $_"
+  Warn "Everything else (Syncthing courier + Tailscale) is fully configured."
+  Warn "Re-run this same script any time to retry the SSH part."
 }
 
 $tsIp = 'unknown'
