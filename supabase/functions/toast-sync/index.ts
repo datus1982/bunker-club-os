@@ -28,10 +28,17 @@ import {
   type CountSelection,
   type NameMap,
 } from "./selectionCounts.ts";
+import {
+  computeLastRung,
+  excludedGuidsForGroups,
+  parseExcludedGroups,
+  type LastRung,
+} from "./lastRung.ts";
 
 // Version marker — bumped when the counting semantics change so a run's response proves
-// deployed==source. v8 = cross-ring (modifier-aware) counting.
-const TOAST_SYNC_VERSION = "v8-cross-ring";
+// deployed==source. v8 = cross-ring (modifier-aware) counting. v9 = NOW-POURING menu-group
+// exclusion (display semantics only; tallies unchanged from v8).
+const TOAST_SYNC_VERSION = "v9-rung-group-filter";
 
 // Item metadata resolved from toast_menu_cache, used to give a MODIFIER-credited item its
 // canonical name / price / menu group (rung items keep using the selection's own values).
@@ -276,34 +283,8 @@ function calculateTopItems(orders: ToastOrder[], menuGuid: string, ctx: CountCtx
 }
 
 // ── last item rung in (NOW POURING ticker source, owner design-beat) ──────────
-// Find the most recent non-voided selection by order openedDate for the business date, so the
-// signage ticker can say "◆ NOW POURING: {name}" = literally the last thing rung in. Respects
-// the POS-visibility principle (never advertise anything not active on the POS view): skip any
-// item explicitly pos_visible=false; fail-open otherwise (unknowns show; 86'd is fine — it was
-// just sold). Returns { name, at } (at = the order's openedDate ISO) or null when nothing
-// qualifies (caller then leaves the prior value untouched — the reader ages it out at 90 min).
-interface LastRung { name: string; at: string }
-function computeLastRung(orders: ToastOrder[], hiddenGuids: Set<string>, hiddenNames: Set<string>): LastRung | null {
-  let best: { openedMs: number; name: string; at: string } | null = null;
-  for (const order of orders) {
-    if (order.voided || order.excessFood) continue;
-    const at = order.openedDate ?? "";
-    const openedMs = at ? Date.parse(at) : NaN;
-    if (!Number.isFinite(openedMs)) continue;
-    for (const check of order.checks ?? []) {
-      if (check.voided) continue;
-      for (const sel of check.selections ?? []) {
-        if (sel.voided || !sel.item) continue;
-        const name = (sel.displayName ?? "").trim();
-        if (!name) continue;
-        if ((sel.item.guid && hiddenGuids.has(sel.item.guid)) || hiddenNames.has(name.toLowerCase())) continue;
-        // Latest order wins; within the same order (equal openedMs) the LAST selection wins.
-        if (!best || openedMs >= best.openedMs) best = { openedMs, name, at };
-      }
-    }
-  }
-  return best ? { name: best.name, at: best.at } : null;
-}
+// computeLastRung + its exclusion helpers moved to ./lastRung.ts (pure module, unit-tested via
+// `pnpm test:lastrung`). Behavior notes live there; the call site is below.
 
 // ── operating-hours gate ─────────────────────────────────────────────────────
 // venue_settings key 'drinks_sync_window' = { "open": "HH:MM", "close": "HH:MM" } in the
@@ -583,6 +564,18 @@ Deno.serve(async (req) => {
       const win = (winRow?.value as { open?: string; close?: string } | null) ?? null;
       const inWindow = force || withinWindow(new Date(), tz, win);
 
+      // NOW-POURING group exclusions — venue_settings.signage_rung_excluded_groups is a JSON
+      // array of menu_group NAMES (case-insensitive), seeded ["Food","Merch"]: a drinks ticker
+      // should never say "NOW POURING: Hot Dog". Missing/malformed ⇒ empty set = fail-open to
+      // the pre-v9 behavior. Display semantics ONLY (see the last-rung block below).
+      const { data: rungExRow } = await admin
+        .from("venue_settings")
+        .select("value")
+        .eq("venue_id", venue.id)
+        .eq("key", "signage_rung_excluded_groups")
+        .maybeSingle();
+      const rungExcludedGroups = parseExcludedGroups(rungExRow?.value);
+
       // CROSS-RING counting context — read the venue's whole menu cache ONCE. Feeds the shared
       // counting core (name→guid matching for modifiers + canonical name/price/group for modifier
       // credits) AND the NOW-POURING hidden gate below (pos_visible=false rows). Built before the
@@ -673,13 +666,20 @@ Deno.serve(async (req) => {
       // value in place (the display ages it out after 90 min).
       // NOTE: signage_last_rung KEEPS crediting the rung item only (display semantics — "the last
       // thing rung in" — not a tally). Cross-ring counting is deliberately NOT applied here.
+      // Likewise the group exclusion below is display-only: sales_cache / sales_history / event
+      // counters are UNTOUCHED by it — an excluded item still tallies everywhere it did before.
       let lastRung: LastRung | null = null;
       if (orders.length > 0) {
         const hidden = ((cacheRows ?? []) as { guid: string; name: string | null; pos_visible?: boolean | null }[])
           .filter((h) => h.pos_visible === false);
         const hiddenGuids = new Set(hidden.map((h) => h.guid));
         const hiddenNames = new Set(hidden.map((h) => String(h.name ?? "").trim().toLowerCase()));
-        lastRung = computeLastRung(orders, hiddenGuids, hiddenNames);
+        // Guids whose menu_group is excluded (Food/Merch). Cache miss ⇒ not excluded.
+        const rungExcludedGuids = excludedGuidsForGroups(
+          (cacheRows ?? []) as { guid: string; menu_group: string | null }[],
+          rungExcludedGroups,
+        );
+        lastRung = computeLastRung(orders, hiddenGuids, hiddenNames, rungExcludedGuids);
         if (lastRung) {
           const { error: rungErr } = await admin
             .from("venue_settings")
