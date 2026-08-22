@@ -1,0 +1,21 @@
+{
+  "version": "5",
+  "redirects": {
+    "https://esm.sh/@supabase/supabase-js@2": "https://esm.sh/@supabase/supabase-js@2.110.3"
+  },
+  "remote": {
+    "https://esm.sh/@supabase/supabase-js@2.110.3": "3d98c7276d7a5937f1562973e97ce458f8daaa38e2b63a084820702e53c1a358"
+  },
+  "workspace": {
+    "packageJson": {
+      "dependencies": [
+        "npm:@supabase/supabase-js@2.97.0",
+        "npm:@types/bcryptjs@^2.4.6",
+        "npm:bcryptjs@^2.4.3",
+        "npm:dotenv@^16.4.7",
+        "npm:tsx@^4.20.6",
+        "npm:typescript@~5.8.3"
+      ]
+    }
+  }
+}

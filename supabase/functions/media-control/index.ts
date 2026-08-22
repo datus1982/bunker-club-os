@@ -19,6 +19,11 @@ import {
   type ScheduleRow,
 } from "./scheduleResolve.ts";
 
+// Version marker (the toast-sync convention) — returned as `v` on every response so a deployed
+// build can be identified without reading the bundle. v8 = the optional `file` param on `playlist`
+// (start a specific film). Bump this string on every behavioural change to this fn.
+const FN_VERSION = "v8-start-file";
+
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const CONTROL_TOKEN = Deno.env.get("QSYS_CONTROL_TOKEN") ?? "";
@@ -50,6 +55,9 @@ const CAROUSEL_ORDERS = new Set(["ordered", "random"]);
 // 'schedule' (M3, D5): clear the manual override so the slot follows its daypart schedule again
 // (alias 'rotation' kept from M2 — both clear the override; with no schedule that IS rotation).
 // 'carousel' (owner beat): set a carousel program (order param 'ordered'|'random', default ordered).
+// v8: 'playlist' takes an OPTIONAL `file` (id — or a case-insensitive exact title) = start that film
+// first, then continue through the playlist as normal. Purely additive: every existing caller that
+// omits `file` writes the byte-identical program it always did.
 const PROGRAM_CMDS = new Set(["playlist", "rotation", "capture", "schedule", "carousel"]);
 const TRANSPORT_CMDS = new Set(["pause", "resume", "next"]);
 // v3: discovery + status. `playlists` needs NO slug (a global picker feed); `status` reads a slug
@@ -110,7 +118,11 @@ const HOLDS = new Set(["pin", "boundary", "event"]);
 const DEFAULT_HOLD = "event";
 
 function json(body: unknown, status = 200): Response {
-  return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json", ...cors } });
+  // `v` is additive on every response (existing callers read fields by name — nothing breaks).
+  const withV = body && typeof body === "object" && !Array.isArray(body)
+    ? { ...(body as Record<string, unknown>), v: FN_VERSION }
+    : body;
+  return new Response(JSON.stringify(withV), { status, headers: { "Content-Type": "application/json", ...cors } });
 }
 
 interface NowPlaying { title: string; year: string | null; posterUrl: string | null; thumbUrl: string | null; reportedAt: string }
@@ -158,7 +170,7 @@ Deno.serve(async (req) => {
     return json({ error: "unauthorized" }, 401);
   }
 
-  let body: { slug?: string; cmd?: string; playlist?: string; hold?: string; order?: string };
+  let body: { slug?: string; cmd?: string; playlist?: string; file?: string; hold?: string; order?: string };
   try {
     body = await req.json();
   } catch {
@@ -168,6 +180,12 @@ Deno.serve(async (req) => {
   const slug = (body.slug ?? "").trim();
   const cmd = (body.cmd ?? "").trim();
   if (!cmd) return json({ error: "cmd required" }, 400);
+  // v8: `file` (start a specific film) belongs to `playlist` only. Reject it elsewhere rather than
+  // silently dropping it, so a UCI wired to the wrong cmd fails loudly instead of playing at random.
+  const fileRef = (body.file ?? "").trim();
+  if (fileRef && cmd !== "playlist") {
+    return json({ error: `'file' is only valid with cmd 'playlist' (got '${cmd}')` }, 400);
+  }
   const known = PROGRAM_CMDS.has(cmd) || TRANSPORT_CMDS.has(cmd) || NOSLUG_CMDS.has(cmd) || READ_CMDS.has(cmd);
   if (!known) {
     return json({ error: `unknown cmd '${cmd}' (expected playlist|rotation|capture|carousel|schedule|pause|resume|next|playlists|status)` }, 400);
@@ -309,7 +327,7 @@ Deno.serve(async (req) => {
   // TV + hub follow live). rotation/schedule CLEAR the override (null program + null hold) so the
   // slot follows its daypart schedule; playlist/capture SET an override with a hold + set-at anchor.
   let program:
-    | { kind: "playlist"; playlist_id: string }
+    | { kind: "playlist"; playlist_id: string; start_file_id?: string }
     | { kind: "capture" }
     | { kind: "carousel"; order: "ordered" | "random" }
     | null;
@@ -330,8 +348,9 @@ Deno.serve(async (req) => {
       // id (uuid) or case-insensitive name, scoped to the slot's venue.
       const ref = (body.playlist ?? "").trim();
       if (!ref) return json({ error: "playlist required for cmd 'playlist'" }, 400);
+      let playlistId: string;
       if (ref.toLowerCase() === ALL_MEDIA_ID || ref.toLowerCase() === ALL_MEDIA_NAME.toLowerCase()) {
-        program = { kind: "playlist", playlist_id: ALL_MEDIA_ID };
+        playlistId = ALL_MEDIA_ID;
       } else {
         let q = admin.from("media_playlists").select("id, name").eq("venue_id", slot.venue_id);
         // NOTE-5 (PR #56 backlog): escape %/_ so a name with them matches literally, not as wildcards.
@@ -340,8 +359,43 @@ Deno.serve(async (req) => {
         if (plErr) return json({ error: `playlist lookup failed: ${plErr.message}` }, 500);
         if (!pls || pls.length === 0) return json({ error: `no playlist matching '${ref}'` }, 404);
         if (pls.length > 1) return json({ error: `playlist '${ref}' is ambiguous (matches ${pls.length})` }, 409);
-        program = { kind: "playlist", playlist_id: pls[0].id as string };
+        playlistId = pls[0].id as string;
       }
+
+      // v8 — START A SPECIFIC FILM (optional `file`). The id is the contract; a case-insensitive
+      // EXACT title is also accepted (the same convenience the playlist ref has), so a UCI can pass
+      // what it displays. Resolved + validated HERE rather than left to the TV, because the display
+      // side deliberately degrades silently (playlistOrder.ts) — a bad id would otherwise look like
+      // a successful press that plays something else.
+      let startFileId: string | undefined;
+      if (fileRef) {
+        let fq = admin.from("media_files").select("id, title, filename, status").eq("venue_id", slot.venue_id);
+        fq = UUID_RE.test(fileRef) ? fq.eq("id", fileRef) : fq.ilike("title", escapeLike(fileRef));
+        const { data: fls, error: fErr } = await fq.limit(2);
+        if (fErr) return json({ error: `file lookup failed: ${fErr.message}` }, 500);
+        if (!fls || fls.length === 0) return json({ error: `no media file matching '${fileRef}'` }, 404);
+        if (fls.length > 1) return json({ error: `file '${fileRef}' is ambiguous (matches ${fls.length})` }, 409);
+        const f = fls[0] as { id: string; status: string };
+        // Only a PRESENT file can play — 'missing'/'unsupported' rows are library-known but the
+        // shell will not serve them, and the TV filters them out of the loop entirely.
+        if (f.status !== "present") {
+          return json({ error: `file '${fileRef}' is not present on the media host (status '${f.status}')` }, 409);
+        }
+        // MEMBERSHIP (decided + documented): the file must belong to the target playlist, because
+        // the TV only ever plays that playlist's files — a non-member start id would be silently
+        // ignored and the screen would open on some other film, i.e. a "successful" press that lies.
+        // For the virtual ALL-MEDIA playlist membership IS "any present file of this venue", which
+        // the two checks above already established, so no join is needed there.
+        if (playlistId !== ALL_MEDIA_ID) {
+          const { data: mem, error: mErr } = await admin
+            .from("media_playlist_items").select("file_id")
+            .eq("playlist_id", playlistId).eq("file_id", f.id).maybeSingle();
+          if (mErr) return json({ error: `playlist membership lookup failed: ${mErr.message}` }, 500);
+          if (!mem) return json({ error: `file '${fileRef}' is not in playlist '${ref}'` }, 409);
+        }
+        startFileId = f.id;
+      }
+      program = { kind: "playlist", playlist_id: playlistId, ...(startFileId ? { start_file_id: startFileId } : {}) };
     }
     update = { program, program_hold: hold, program_set_at: new Date().toISOString() };
   }
