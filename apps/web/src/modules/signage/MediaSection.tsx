@@ -1,13 +1,14 @@
 import { useMemo, useState, type CSSProperties } from "react";
 import { useMutation } from "@tanstack/react-query";
 import {
-  useMediaFiles, useMediaPlaylists, usePlaylistDetail,
+  useMediaFiles, useMediaPlaylists, usePlaylistDetail, useAllScheduleRows,
   updateMediaTitle, setPlaylistPresentation, setPlaylistShuffle, setPlaylistSubtitles, setPlaylistInCarousel,
   createCustomPlaylist, renamePlaylist, deletePlaylist,
-  addPlaylistItem, removePlaylistItem, swapPlaylistItems, statusChip,
+  addPlaylistItem, removePlaylistItem, swapPlaylistItems, statusChip, setSlotProgram,
   type MediaFile, type PlaylistWithStats, type PlaylistItemDetail,
 } from "./useMediaAdmin";
-import { formatDuration } from "./mediaProgram";
+import { useAdminSlots, type AdminSlot } from "./useSignageAdmin";
+import { formatDuration, ALL_MEDIA_PLAYLIST_ID } from "./mediaProgram";
 import { MONO, CollapsibleSection, ghost } from "./signageAdminShared";
 import { SlideOver } from "./SlideOver";
 
@@ -29,6 +30,21 @@ export function MediaSection() {
   const playlistsQ = useMediaPlaylists();
   const files = useMemo(() => filesQ.data ?? [], [filesQ.data]);
   const playlists = useMemo(() => playlistsQ.data ?? [], [playlistsQ.data]);
+
+  // PLAY ON (owner beat: "start a specific film") — the media-capable screens a library card can
+  // send a film to. Same gate as the PROGRAM control: landscape, real screens (a multiview PANEL is
+  // not a TV). Both queries are the hub's existing shared query keys, so this adds no new fetches
+  // when the section renders inside SignageHub.
+  const slotsQ = useAdminSlots();
+  const schedulesQ = useAllScheduleRows();
+  const screens = useMemo(
+    () => (slotsQ.data ?? []).filter((s) => s.orientation === "landscape" && s.kind !== "panel"),
+    [slotsQ.data],
+  );
+  // A slot with dayparts gets a plain 'boundary' flip (yields at the next daypart) exactly like a
+  // hub PROGRAM flip; a slot with no schedule gets the permanent 'pin'. (A Q-SYS press defaults to
+  // the stickier SPECIAL EVENT hold — that asymmetry is deliberate and predates this beat.)
+  const hasSchedule = (slotId: string) => ((schedulesQ.data?.get(slotId)?.length ?? 0) > 0);
 
   // editing = an existing playlist; "new" = the create flow; null = closed.
   const [editing, setEditing] = useState<PlaylistWithStats | "new" | null>(null);
@@ -54,7 +70,7 @@ export function MediaSection() {
           </div>
         ) : (
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(min(100%,200px),1fr))", gap: 12 }}>
-            {files.map((f) => <MediaFileCard key={f.id} file={f} />)}
+            {files.map((f) => <MediaFileCard key={f.id} file={f} screens={screens} hasSchedule={hasSchedule} />)}
           </div>
         )}
       </CollapsibleSection>
@@ -92,16 +108,41 @@ export function MediaSection() {
   );
 }
 
-/* ── a library file card (thumb + inline-editable title + duration + status) ── */
-function MediaFileCard({ file }: { file: MediaFile }) {
+/* ── a library file card (thumb + inline-editable title + duration + status + PLAY ON) ── */
+function MediaFileCard({ file, screens, hasSchedule }: {
+  file: MediaFile;
+  /** Landscape screens this film can be sent to (empty ⇒ the PLAY ON row is hidden). */
+  screens: AdminSlot[];
+  hasSchedule: (slotId: string) => boolean;
+}) {
   const chip = statusChip(file.status);
   const [editingTitle, setEditingTitle] = useState(false);
   const [draft, setDraft] = useState(file.title ?? "");
+  const [picking, setPicking] = useState(false);
   const save = useMutation({
     mutationFn: (t: string) => updateMediaTitle(file.id, t),
     onSettled: () => setEditingTitle(false),
   });
   const display = (file.title ?? "").trim() || file.filename;
+
+  // PLAY ON — write a playlist program that OPENS ON THIS FILE. It targets the virtual ALL MEDIA
+  // playlist, so the film always resolves (every present file is a member) and the screen keeps
+  // playing the rest of the library afterwards.
+  // DECISION: always ALL MEDIA rather than "whichever playlist is running / contains it". Picking a
+  // containing playlist would need this card to re-run the schedule resolver per screen and to know
+  // playlist membership per file — real machinery for an ambiguous win — and it can silently strand
+  // a film in a 3-clip loop. The button copy states the behaviour so nothing is hidden. The Q-SYS /
+  // iPad path (the primary consumer) can name any playlist + file explicitly via media-control.
+  const play = useMutation({
+    mutationFn: (slot: AdminSlot) =>
+      setSlotProgram(
+        slot.id,
+        { kind: "playlist", playlist_id: ALL_MEDIA_PLAYLIST_ID, start_file_id: file.id },
+        hasSchedule(slot.id) ? "boundary" : "pin",
+      ),
+    onSuccess: () => setPicking(false),
+  });
+  const canPlay = file.status === "present" && screens.length > 0;
 
   return (
     <div className="terminal-border" style={{ display: "flex", flexDirection: "column", overflow: "hidden", minWidth: 0 }}>
@@ -133,6 +174,34 @@ function MediaFileCard({ file }: { file: MediaFile }) {
           >{display}</button>
         )}
         <div style={{ fontSize: 12, opacity: 0.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", marginTop: 3 }} title={file.filename}>{file.filename}</div>
+
+        {/* PLAY ON — send this film to a screen right now (owner beat). Present files only: a
+            missing/unsupported file has nothing to play. */}
+        {canPlay && (
+          <div style={{ marginTop: 8 }}>
+            {!picking ? (
+              <button
+                type="button"
+                onClick={() => setPicking(true)}
+                title="Play this film now on a screen, then continue through the rest of the library"
+                style={playBtn}
+              >▶ PLAY ON…</button>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                <div style={{ fontSize: 11, letterSpacing: 1, opacity: 0.6, lineHeight: 1.4 }}>
+                  STARTS THIS FILM, THEN THE REST OF THE LIBRARY
+                </div>
+                {screens.map((s) => (
+                  <button key={s.id} type="button" disabled={play.isPending} onClick={() => play.mutate(s)} style={playBtn}>
+                    ▶ {s.name.toUpperCase()}
+                  </button>
+                ))}
+                <button type="button" onClick={() => setPicking(false)} style={{ ...playBtn, opacity: 0.6 }}>CANCEL</button>
+                {play.isError && <div className="u-amber" style={{ fontSize: 11 }}>COULD NOT SET PROGRAM</div>}
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -310,6 +379,13 @@ const toggleBtn: CSSProperties = {
   fontFamily: MONO, fontSize: 13, letterSpacing: 1, color: "var(--terminal-green)",
   border: "1px solid var(--terminal-green)", background: "transparent", padding: "7px 10px",
   minHeight: 44, cursor: "pointer", whiteSpace: "nowrap",
+};
+/** PLAY ON row button — 44px tap target (the mobile-first hub rule), full card width. */
+const playBtn: CSSProperties = {
+  fontFamily: MONO, fontSize: 13, letterSpacing: 1, color: "var(--terminal-green)",
+  border: "1px solid var(--terminal-green)", background: "transparent", padding: "6px 8px",
+  minHeight: 44, width: "100%", cursor: "pointer", textAlign: "left",
+  whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
 };
 const miniIcon: CSSProperties = {
   fontFamily: MONO, fontSize: 14, color: "var(--terminal-green)",
