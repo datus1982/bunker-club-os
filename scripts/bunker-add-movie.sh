@@ -18,8 +18,10 @@
 #
 # OPTIONS
 #   --title "Title (Year)"  override the derived Kodi title
-#   --no-normalize          never re-encode; copy/remux only (fails loudly if
-#                           the source can't be stream-copied into .mp4)
+#   --no-normalize          never re-encode VIDEO. COPY/REMUX/AUDIO-REMUX are
+#                           all still allowed (they stream-copy the video);
+#                           fails loudly if the VIDEO itself would need a
+#                           re-encode.
 #   --dry-run               print the plan and exit; changes nothing
 #   -h, --help              this text
 #
@@ -44,11 +46,22 @@
 # ENCODE POLICY — mirrors scripts/normalize-media-library.sh, which produced the
 # bar's whole library. Playback target: H.264 (or another Chromium-decodable
 # codec) + AAC audio in .mp4, max 1920x1080, +faststart.
-#   COPY       source is already a compliant .mp4  -> plain file copy
-#   REMUX      compliant codecs, wrong container   -> ffmpeg -c copy into .mp4
-#   TRANSCODE  bad codec, or >1080p, or a failed   -> full H.264/AAC re-encode
-#              remux verify                           (h264_videotoolbox when
-#                                                      available, else libx264)
+#
+#   COPY         already a compliant +faststart .mp4  -> plain file copy
+#   REMUX        mp4-copyable codecs, wrong container  -> ffmpeg -c copy into .mp4
+#                or moov box at the end
+#   AUDIO-REMUX  fine video (<=1080p) but audio that   -> -c:v copy + audio to AAC
+#                can't ride into .mp4 (ac3/eac3/dts/      (fast; video stream is
+#                truehd/flac/opus/vorbis/pcm/...)          byte-preserved)
+#   TRANSCODE    bad video codec, >1080p, or a failed  -> full H.264/AAC re-encode
+#                copy/remux verify                        (h264_videotoolbox when
+#                                                          available, else libx264)
+#
+# AUDIO-REMUX is normalize-media-library.sh's REMUX class (its lines ~116-122
+# and ~171-182) and uses that script's exact audio settings (-c:a aac -b:a 192k
+# -ac 2). It exists because the vast majority of scene .mkv releases are already
+# H.264 1080p with AC3/DTS audio: without this branch every one of them took a
+# full hour-long video re-encode, and lost quality doing it, to fix the audio.
 #
 # SAFETY
 #   * ffmpeg writes to a staging dir OUTSIDE the outbox but on the same
@@ -68,7 +81,11 @@ set -uo pipefail
 
 # ---- policy (mirrors normalize-media-library.sh) ----------------------------
 GOOD_VIDEO_RE='^(h264|av1|vp9)$'
-GOOD_AUDIO_RE='^(aac|mp3)$'      # what we are willing to stream-copy INTO .mp4
+# What we are willing to stream-copy INTO .mp4. Deliberately NARROWER than
+# normalize-media-library.sh's GOOD_AUDIO_RE (which also passes flac/opus/vorbis)
+# because that script may leave a file in .mkv, where those codecs are legal —
+# the courier always targets .mp4. Anything outside this set is AUDIO-REMUXed.
+GOOD_AUDIO_RE='^(aac|mp3)$'
 SIZE_FLOOR=1048576               # 1 MiB
 
 OUTBOX="${BUNKER_OUTBOX:-$HOME/BunkerClubOutbox}"
@@ -112,7 +129,9 @@ bytes_to_h(){ awk -v b="$1" 'BEGIN{ if(b>=1073741824)printf "%.1fG",b/1073741824
 secs_to_h() { awk -v s="$1" 'BEGIN{ if(s+0<=0){print "?"; exit} h=int(s/3600); m=int((s-h*3600)/60); sec=int(s-h*3600-m*60); printf "%d:%02d:%02d",h,m,sec }'; }
 
 die()  { printf 'error: %s\n' "$1" >&2; exit 1; }
-usage(){ sed -n '2,60p' "$0"; exit "${1:-0}"; }
+# Print the whole banner comment (line 2 .. the line before `set -uo pipefail`),
+# so growing the header never silently truncates --help.
+usage(){ awk 'NR>1 && /^set -uo pipefail/{exit} NR>1' "$0"; exit "${1:-0}"; }
 
 # =============================================================================
 # Title derivation — Kodi "Title (Year)" from a messy source filename.
@@ -240,20 +259,31 @@ if [ -z "$src_a" ]; then good_audio=1; else printf '%s' "$src_a" | grep -Eq "$GO
 if [ -n "$src_h" ] && [ "$src_h" -gt 1080 ] 2>/dev/null; then oversize=1; fi
 if [ -n "$src_w" ] && [ "$src_w" -gt 1920 ] 2>/dev/null; then oversize=1; fi
 
-if [ "$good_video" -eq 1 ] && [ "$good_audio" -eq 1 ] && [ "$oversize" -eq 0 ]; then
-  # A compliant .mp4 is only a straight copy when it is ALSO +faststart;
-  # otherwise a stream-copy remux relocates the moov box for free.
-  if [ "$src_ext" = "mp4" ] && has_faststart "$SRC_ABS"; then MODE="COPY"; else MODE="REMUX"; fi
+if [ "$good_video" -eq 1 ] && [ "$oversize" -eq 0 ]; then
+  if [ "$good_audio" -eq 1 ]; then
+    # A compliant .mp4 is only a straight copy when it is ALSO +faststart;
+    # otherwise a stream-copy remux relocates the moov box for free.
+    if [ "$src_ext" = "mp4" ] && has_faststart "$SRC_ABS"; then MODE="COPY"; else MODE="REMUX"; fi
+  else
+    # The video is already exactly what the bar plays and it fits inside 1080p —
+    # only the audio codec can't ride into .mp4. Copy the video stream untouched
+    # and re-encode ONLY the audio, the way normalize-media-library.sh does.
+    MODE="AUDIO-REMUX"
+  fi
 else
   MODE="TRANSCODE"
 fi
 
+# DECISION: --no-normalize permits AUDIO-REMUX. The flag's purpose (per its help
+# text and the runbook) is "don't burn an hour of CPU / don't degrade a source
+# that is already right". An audio-only remux does neither: the video stream is
+# copied bit-for-bit and the job finishes in seconds. Blocking it would leave a
+# common source class (H.264 1080p + AC3) with no path at all under the flag.
 if [ "$MODE" = "TRANSCODE" ] && [ "$NO_NORMALIZE" -eq 1 ]; then
   reason=""
   [ "$good_video" -eq 0 ] && reason="$reason video=$src_v"
-  [ "$good_audio" -eq 0 ] && reason="$reason audio=$src_a"
   [ "$oversize"   -eq 1 ] && reason="$reason ${src_w}x${src_h}>1080p"
-  die "--no-normalize given but this source needs a re-encode:$reason"
+  die "--no-normalize given but this source needs a VIDEO re-encode:$reason"
 fi
 
 # choose an encoder the same way normalize-media-library.sh does
@@ -351,6 +381,18 @@ do_remux() {
   "${cmd[@]}"
 }
 
+# Audio-only remux: normalize-media-library.sh's REMUX branch, same flags.
+# `-c:v copy` means the video stream is byte-preserved — verified in testing by
+# comparing `ffmpeg -map 0:v -c copy -f md5 -` on the source and the output.
+# Only reached when the source HAS an audio stream (no audio => good_audio=1),
+# so the -map 0:a:0 is unconditional here.
+do_audio_remux() {
+  ffmpeg -y -nostdin -loglevel error -i "$SRC_ABS" \
+    -map 0:v:0 -map 0:a:0 \
+    -c:v copy -c:a aac -b:a 192k -ac 2 \
+    -movflags +faststart "$TMP"
+}
+
 do_transcode() {
   local cmd=(ffmpeg -y -nostdin -loglevel error -i "$SRC_ABS" -map 0:v:0)
   [ -n "$src_a" ] && cmd+=(-map 0:a:0)
@@ -371,9 +413,10 @@ FALLBACK_NOTE=""
 
 run_stage() {
   case "$1" in
-    COPY)      echo "  -> copying (already a compliant .mp4)..."; do_copy;;
-    REMUX)     echo "  -> remuxing to .mp4 (stream copy, no re-encode)...";  do_remux;;
-    TRANSCODE) echo "  -> transcoding to H.264/AAC <=1080p — this takes a while..."; do_transcode;;
+    COPY)        echo "  -> copying (already a compliant .mp4)..."; do_copy;;
+    REMUX)       echo "  -> remuxing to .mp4 (stream copy, no re-encode)...";  do_remux;;
+    AUDIO-REMUX) echo "  -> audio-only remux: video stream copied untouched, ${src_a:-audio} -> AAC (fast)..."; do_audio_remux;;
+    TRANSCODE)   echo "  -> transcoding to H.264/AAC <=1080p — this takes a while..."; do_transcode;;
   esac
 }
 
@@ -461,7 +504,14 @@ printf '  subtitles : %s\n' "$SUB_RESULT"
 printf '  playlist  : %s\n' "$PLAYLIST_SAFE"
 echo "---------------------------------------------------------------"
 echo "  Syncthing ships this to the bar automatically (watch delay ~10s)."
-echo "  Once the Syncthing UI shows the folder Up to Date / 100%, this"
-echo "  local copy may be DELETED — deletes never propagate to the bar"
-echo "  (the PC folder runs ignoreDelete=true)."
+echo
+echo "  HOW TO KNOW IT LANDED. Do NOT wait for the Syncthing UI to say"
+echo "  \"Up to Date\" — this folder is sendonly against a library it never"
+echo "  pulls, so it reads Out of Sync FOREVER (runbook §7). Use either:"
+echo "    * the title shows up in the signage hub's MEDIA LIBRARY section"
+echo "      — the shell only catalogs a file once it is complete; or"
+echo "    * scripts/bunker-ship-status.sh   -> DELIVERED (needBytes 0)"
+echo
+echo "  Only then delete the local copy. Deletes never propagate to the"
+echo "  bar (the PC folder runs ignoreDelete=true)."
 echo "==============================================================="

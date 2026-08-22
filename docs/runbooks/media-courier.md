@@ -4,6 +4,7 @@ How a film gets from Stephen's Mac onto the bar's media PC without a drive trip.
 
 Companion pieces:
 - `scripts/bunker-add-movie.sh` — the Mac-side prep command
+- `scripts/bunker-ship-status.sh` — "has it landed yet?" (read-only, §2)
 - `docs/runbooks/media-courier-pc-setup.ps1` — the one-time mini-PC installer
 - `apps/media-shell/README.md` — the shell that plays what lands there
 
@@ -85,20 +86,68 @@ What the script does:
 |------|--------|
 | title | derived Kodi-style from the filename (scene tags cut, year lifted), or `--title` |
 | layout | `<outbox>/<Playlist>/<Title (Year)>/<Title (Year)>.mp4` |
-| encode | `COPY` if already a faststart-compliant .mp4; `REMUX` (stream copy) if the codecs are fine but the container or moov placement isn't; `TRANSCODE` to H.264/AAC <=1080p otherwise. Same policy and same ffmpeg settings as `scripts/normalize-media-library.sh`, which produced the existing library. |
+| encode | four classes, see below. Same policy and same ffmpeg settings as `scripts/normalize-media-library.sh`, which produced the existing library. |
 | verify | codecs, 1 MiB size floor, faststart, and **duration parity vs the source** (max(5s, 3%)). A failed copy/remux automatically falls back to a full transcode. |
 | atomic | ffmpeg writes to a staging dir outside the outbox on the same filesystem, then `rename(2)`s the finished file in. Syncthing never sees a partial file. |
 | subtitles | optional English `.srt` via `subliminal` (see §5) |
 
-Then Syncthing ships it (folder watcher delay ~10s). **Once the Mac's Syncthing
-UI shows the folder Up to Date, the local copy in the outbox can be deleted** —
-the bar keeps its copy. That is the whole point of `ignoreDelete`.
+### Encode classes
+
+| class | source looks like | what runs | cost |
+|-------|-------------------|-----------|------|
+| `COPY` | already an H.264/AAC `.mp4` with `+faststart` | plain file copy | instant |
+| `REMUX` | mp4-copyable codecs, but wrong container or `moov` at the end | `ffmpeg -c copy` into `.mp4` | seconds |
+| `AUDIO-REMUX` | fine video ≤1080p, audio that can't ride into `.mp4` (ac3/eac3/dts/truehd/flac/opus…) | `-c:v copy` + audio → stereo AAC 192k | seconds |
+| `TRANSCODE` | bad video codec (hevc/vc1/mpeg2…), >1080p, or a copy/remux that failed verification | full H.264/AAC re-encode ≤1080p | ~an hour |
+
+`AUDIO-REMUX` matters more than it sounds: most scene `.mkv` releases are
+*already* H.264 1080p and only their AC3/DTS audio is a problem. It copies the
+video stream bit-for-bit (proven by comparing `ffmpeg -map 0:v -c copy -f md5 -`
+on source and output) and finishes in seconds, where a full transcode would
+spend an hour and lose quality to fix nothing but the soundtrack.
+
+Then Syncthing ships it (folder watcher delay ~10s).
+
+### Has it landed? (do not trust "Up to Date")
+
+The Mac's Syncthing UI **never** says Up to Date for this folder — it is
+`sendonly` against a ~2 TB library it deliberately never pulls, so it reports
+Out of Sync permanently (§7). Two signals that do exist:
+
+1. **The title appears in the signage hub's MEDIA LIBRARY section.** The shell
+   only catalogs a *complete* file, so this is the human-grade confirmation —
+   and it proves the whole chain, not just the transfer.
+2. **`scripts/bunker-ship-status.sh`** — asks the local Syncthing REST API how
+   many bytes the bar still needs:
+
+   ```bash
+   scripts/bunker-ship-status.sh
+   #   Bunker Mini PC     DELIVERED  needBytes=0  needItems=0  100%  remoteState=valid
+   #   -> DELIVERED. The local copy in the outbox is safe to delete.
+   ```
+
+   Read-only. Exit `0` delivered · `2` no peer paired yet · `3` still in flight.
+   The underlying call, if you'd rather run it by hand:
+
+   ```bash
+   API=$(sed -n 's/.*<apikey>\(.*\)<\/apikey>.*/\1/p' \
+         "$HOME/Library/Application Support/Syncthing/config.xml")
+   curl -sS -H "X-API-Key: $API" \
+     "http://127.0.0.1:8384/rest/db/completion?folder=bunkerclub-media&device=<PC-DEVICE-ID>"
+   ```
+
+   `needBytes: 0` means delivered. (`completion` and `remoteState` are worth a
+   glance too — a peer that has never connected can't need anything either.)
+
+**Once it reads DELIVERED, the local copy in the outbox can be deleted** — the
+bar keeps its copy. That is the whole point of `ignoreDelete`.
 
 Options:
 
-- `--no-normalize` — refuse to re-encode; fail loudly if the source can't be
-  stream-copied. Use when you know the source is already correct and don't want
-  to burn an hour of CPU.
+- `--no-normalize` — refuse to re-encode the **video**; fail loudly if the video
+  itself would need one. `COPY`/`REMUX`/`AUDIO-REMUX` still run, since all three
+  stream-copy the video. Use when you know the source is already correct and
+  don't want to burn an hour of CPU.
 - `--dry-run` — print the plan, change nothing.
 
 Environment overrides:
@@ -122,7 +171,7 @@ Stephen, on the mini PC (via the TV + keyboard, or Remote Desktop):
    - or, if it has been published as a gist:
      `iwr -useb <raw-gist-url> | iex`
 
-   (Pasting 340 lines straight into a console window is the one path to avoid —
+   (Pasting ~450 lines straight into a console window is the one path to avoid —
    the legacy console executes line-by-line as it pastes.)
 3. A browser opens once for the **Tailscale login**. That is the only
    interactive step.
@@ -245,7 +294,8 @@ exactly the action `ignoreDelete` exists to ignore.
 **The Mac will show the folder as out of sync, forever.** The bar has ~2 TB the
 Mac doesn't. A `sendonly` folder reports every remote-only file as a difference
 and offers **Override Changes**. This is cosmetic. `ignoreDelete` on the PC
-neutralises the button, but don't press it.
+neutralises the button, but don't press it. Because of this, "Up to Date" is
+never a usable delivery signal — use the two in §2 instead.
 
 **Don't rename a file after it has shipped.** Syncthing has no concept of "the
 same film, renamed" — a rename on the Mac ships a *second* copy under the new
