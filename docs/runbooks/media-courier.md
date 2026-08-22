@@ -332,6 +332,13 @@ Server so Claude sessions on Stephen's Mac can run maintenance on the mini PC
 directly — shell log checks and restarts, media surgery (§6 without RDP),
 future shell upgrades — no more paste-blocks or drive trips.
 
+> **If step 7 hangs** (Add-WindowsCapability waiting on a Windows Update the
+> kiosk debloat disabled — this is what happened on the real PC): kill it and
+> run `docs/runbooks/media-courier-pc-ssh-standalone.ps1` instead. It installs
+> Microsoft's standalone Win32-OpenSSH MSI (no Windows Update involved) and then
+> applies the exact same key/lockdown/firewall steps. That script is how the
+> bar PC's SSH was actually provisioned, field-verified 2026-08-21.
+
 From the Mac:
 
 ```bash
