@@ -40,7 +40,9 @@ import { blockedGuids } from "./rankFilter.ts";
 // exclusion (display semantics only; tallies unchanged from v8). v10 = RANK GATES: 86'd items
 // and rank-excluded menu groups are kept OUT of sales_cache, and 86'd items out of NOW POURING
 // (display semantics only — sales_history / event counters / cross-ring credits unchanged).
-const TOAST_SYNC_VERSION = "v10-rank-gates";
+// v11 = POS-hidden items (pos_visible === false, strict-false / fail-open per PR #11) also kept
+// out of sales_cache at the write seam — write/read gates now symmetric (PR #93 NOTE-3).
+const TOAST_SYNC_VERSION = "v11-rank-pos-gate";
 
 // Item metadata resolved from toast_menu_cache, used to give a MODIFIER-credited item its
 // canonical name / price / menu group (rung items keep using the selection's own values).
@@ -618,12 +620,14 @@ Deno.serve(async (req) => {
       const nameMap = buildNameMap((cacheRows ?? []) as { guid: string; name: string | null }[]);
       const ctx: CountCtx = { nameMap, cacheMeta, groupGuidByName };
 
-      // RANK GATE set (v10): guids barred from sales_cache = 86'd items ∪ rank-excluded groups.
-      // Built ONCE per venue off the cache read above and applied at the single write-time seam
-      // (calculateTopItems). NOT applied to allItemQuantities/sales_history, NOT to the events
-      // pass — those are tallies, not advertisements.
+      // RANK GATE set (v10/v11): guids barred from sales_cache = 86'd items ∪ rank-excluded
+      // groups ∪ POS-hidden items (v11 — pos_visible === false, the PR #11 principle at the
+      // write seam; the display-side isRankable already enforced it). Built ONCE per venue off
+      // the cache read above and applied at the single write-time seam (calculateTopItems).
+      // NOT applied to allItemQuantities/sales_history, NOT to the events pass — those are
+      // tallies, not advertisements.
       const rankBlockedGuids = blockedGuids(
-        (cacheRows ?? []) as { guid: string; menu_group: string | null; out_of_stock: boolean | null }[],
+        (cacheRows ?? []) as { guid: string; menu_group: string | null; out_of_stock: boolean | null; pos_visible: boolean | null }[],
         rankExcludedGroups,
       );
       if (nameMap.ambiguous.size > 0) {
@@ -713,8 +717,10 @@ Deno.serve(async (req) => {
         // Guids barred from the ticker: menu_group excluded (Food/Merch/Soft Drinks) OR 86'd
         // (v10 — "NOW POURING: Bunker Beer" is wrong when the keg blew; the walk falls back to
         // the last pourable thing). Cache miss / unknown stock ⇒ not excluded (fail-open).
+        // v11's pos_visible fold-in is redundant here with the hiddenGuids/hiddenNames gate
+        // above — same items, same outcome (harmless double coverage).
         const rungExcludedGuids = blockedGuids(
-          (cacheRows ?? []) as { guid: string; menu_group: string | null; out_of_stock: boolean | null }[],
+          (cacheRows ?? []) as { guid: string; menu_group: string | null; out_of_stock: boolean | null; pos_visible: boolean | null }[],
           rungExcludedGroups,
         );
         lastRung = computeLastRung(orders, hiddenGuids, hiddenNames, rungExcludedGuids);

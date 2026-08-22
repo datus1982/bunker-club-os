@@ -9,7 +9,7 @@
 // engine are entirely unaffected. This module decides ONE thing: whether an item is allowed to
 // be *advertised* in a ranked list. The tally that made it #1 is still recorded either way.
 //
-// Two owner rulings are enforced here, both by item GUID:
+// Three owner rulings are enforced here, all by item GUID:
 //
 //   1. 86'D = NOT ADVERTISED IN ANY WAY (toast_menu_cache.out_of_stock, maintained by
 //      toast-menu-sync's stock poll). The drink_special template and ★ SCREENS materialization
@@ -27,6 +27,15 @@
 //      NOW POURING ticker but MUST still be able to rank — the owner's Hot Dog champion ruling
 //      (PR #39). Two keys, two intents; neither may be collapsed into the other.
 //
+//   3. POS-HIDDEN ITEMS (toast_menu_cache.pos_visible === false — the PR #11 gate). "Never
+//      advertise anything not active on the POS view" is the standing owner principle; the
+//      display-side gate (rankGates.isRankable) has enforced it on CHAMPION/UNDERDOGS all along,
+//      but the sales_cache WRITE seam did not (PR #93 reviewer NOTE-3, owner-ratified). Folding
+//      it in here makes the write and read seams symmetric. Strict-false check only — the PR #11
+//      convention: null/undefined pos_visible = unknown ⇒ show (fail-open); only an explicit
+//      Toast-side hide blocks. In the NOW POURING path this is redundant with the existing
+//      guid+name hidden gate (harmlessly so — same items, same outcome).
+//
 // FAIL-OPEN THROUGHOUT (the standing POS-gate convention): unknown ⇒ show. An item guid absent
 // from toast_menu_cache, a null/undefined out_of_stock, or a missing/malformed settings value all
 // resolve to "not blocked" — a data outage can never blank the board.
@@ -38,14 +47,17 @@ export interface RankCacheRow {
   guid: string;
   menu_group?: string | null;
   out_of_stock?: boolean | null;
+  pos_visible?: boolean | null;
 }
 
 /**
  * toast_menu_cache rows + a set of normalized excluded group names → the set of item GUIDs that
  * must not appear on a ranked surface.
  *
- * Blocked when EITHER:
- *   • out_of_stock === true  (strict true only — null/undefined = unknown stock ⇒ fail-open), or
+ * Blocked when ANY of:
+ *   • out_of_stock === true  (strict true only — null/undefined = unknown stock ⇒ fail-open),
+ *   • pos_visible === false  (strict false only — null/undefined = unknown ⇒ fail-open, the
+ *     PR #11 convention), or
  *   • the row's menu_group is in `excludedGroups` (case-insensitive on the trimmed name).
  *
  * Group names are parsed from the venue_settings value by lastRung.parseExcludedGroups (shared —
@@ -57,7 +69,7 @@ export function blockedGuids(rows: RankCacheRow[], excludedGroups: Set<string>):
   const out = excludedGuidsForGroups(rows, excludedGroups);
   for (const r of rows) {
     if (!r?.guid) continue;
-    if (r.out_of_stock === true) out.add(r.guid);
+    if (r.out_of_stock === true || r.pos_visible === false) out.add(r.guid);
   }
   return out;
 }

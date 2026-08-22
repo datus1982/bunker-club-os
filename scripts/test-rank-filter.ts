@@ -1,7 +1,7 @@
 /**
  * Unit test for the ranked-surface gates (PR #93 — "86'd = not advertised in ANY way" + the
- * mixer-pollution display filter). `npx tsx scripts/test-rank-filter.ts` (pnpm test:rankfilter).
- * Pure — no DB, no network.
+ * mixer-pollution display filter + the v11 pos_visible write-seam gate, reviewer NOTE-3).
+ * `npx tsx scripts/test-rank-filter.ts` (pnpm test:rankfilter). Pure — no DB, no network.
  *
  * Covers BOTH copies of the gate and asserts they agree:
  *   • supabase/functions/toast-sync/rankFilter.ts — the WRITE-time gate on sales_cache (blockedGuids)
@@ -70,6 +70,40 @@ check("a row with no guid is skipped, not crashed on",
   setOf(blockedGuids([{ guid: "", menu_group: "Soft Drinks", out_of_stock: true }], SOFT)), []);
 check("a blocked guid appears exactly once when both rules fire",
   blockedGuids(rows, SOFT).size, 4);
+
+console.log("\n── blockedGuids: pos_visible at the write seam (v11, NOTE-3) ──");
+// The whole legacy fixture above carries NO pos_visible field — asserted unchanged, so an
+// absent column can never change v10 behavior. These exercise the new rule explicitly.
+check("POS-hidden item (pos_visible === false) is blocked",
+  setOf(blockedGuids([{ guid: "a", menu_group: "Gin", out_of_stock: false, pos_visible: false }], NONE)), ["a"]);
+check("POS-visible item (pos_visible === true) is not blocked",
+  setOf(blockedGuids([{ guid: "a", menu_group: "Gin", out_of_stock: false, pos_visible: true }], NONE)), []);
+check("pos_visible null ⇒ fail-open, not blocked (the PR #11 convention)",
+  setOf(blockedGuids([{ guid: "a", menu_group: "Gin", out_of_stock: false, pos_visible: null }], NONE)), []);
+check("pos_visible undefined/absent ⇒ fail-open, not blocked",
+  setOf(blockedGuids([{ guid: "a", menu_group: "Gin", out_of_stock: false }], NONE)), []);
+check("POS-hidden ∪ 86'd ∪ excluded group all land in one set, once each",
+  setOf(blockedGuids([
+    { guid: "hidden", menu_group: "Gin", out_of_stock: false, pos_visible: false },
+    { guid: "dead", menu_group: "Gin", out_of_stock: true, pos_visible: true },
+    { guid: "mixer", menu_group: "Soft Drinks", out_of_stock: false, pos_visible: true },
+    { guid: "trifecta", menu_group: "Soft Drinks", out_of_stock: true, pos_visible: false },
+    { guid: "ok", menu_group: "Gin", out_of_stock: false, pos_visible: true },
+  ], SOFT)), ["dead", "hidden", "mixer", "trifecta"]);
+// WRITE/READ SEAM SYMMETRY (the point of the v11 change): for every determinate shape, the
+// write-time gate blocks a row exactly when the display-time isRankable rejects it. (The
+// null/undefined fail-open shapes are write-seam-only by type: RankGateRow.pos_visible is a
+// strict boolean because the display readers select the non-null cache column.)
+for (const pos_visible of [true, false]) {
+  for (const out_of_stock of [true, false]) {
+    for (const menu_group of ["Soft Drinks", "Gin"]) {
+      const writeBlocked = blockedGuids([{ guid: "x", menu_group, out_of_stock, pos_visible }], SOFT).has("x");
+      const readRankable = isRankable({ menu_group, out_of_stock, pos_visible }, SOFT);
+      check(`seam symmetry — pos:${pos_visible} 86'd:${out_of_stock} group:${menu_group}`,
+        writeBlocked, !readRankable);
+    }
+  }
+}
 
 console.log("\n── isGroupExcluded / isRankable: the display-side gate ──");
 check("excluded group", isGroupExcluded("Soft Drinks", SOFT), true);
