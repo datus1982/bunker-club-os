@@ -6,7 +6,8 @@ import { EventWindowCard, EventMessageCard, EventTeaseCard } from "./EventStages
 import { balanceHeadline } from "./eventStage";
 import { parseInline, RichText, alignOf } from "./richText";
 import { SUPPORT_TEXT } from "./supportText";
-import { useDrinksBoard, useSalesCache, useSalesHistory, useMenuGroups, overallTopSellers, groupGuidByName, groupTopSellers, OVERALL_GROUP, type DrinkItem, type HistorySum } from "@/modules/leaderboard/useDrinks";
+import { useDrinksBoard, useSalesCache, useSalesHistory, useMenuGroups, useRankExcludedGroups, overallTopSellers, groupGuidByName, groupTopSellers, OVERALL_GROUP, type DrinkItem, type HistorySum } from "@/modules/leaderboard/useDrinks";
+import { isGroupExcluded, isRankable } from "./rankGates";
 import { QRCodeSVG } from "qrcode.react";
 import { useInstagramFeed, type IgPost } from "./useInstagram";
 
@@ -1126,6 +1127,10 @@ export function SmartToast({ item, toast, orientation }: TemplateProps) {
   const { sums, trueDays, loading } = useSalesHistory(days);
   const { byGroup, isLoading: salesLoading } = useSalesCache();
   const { groups } = useMenuGroups();
+  // RANK GATE (PR #93): menu groups barred from ranked surfaces. Needed on BOTH smart_toast modes
+  // because neither of their rosters comes from sales_cache (which toast-sync gates at write
+  // time) — CHAMPION picks from sales_history, UNDERDOGS from the toast cache. See rankGates.ts.
+  const rankExcluded = useRankExcludedGroups();
 
   const port = orientation === "portrait";
   const z = SIZES[orientation];
@@ -1147,14 +1152,21 @@ export function SmartToast({ item, toast, orientation }: TemplateProps) {
         orientation={orientation}
         menuGroup={menuGroup}
         groupGuid={groupGuidByName(groups, menuGroup)}
+        rankExcluded={rankExcluded}
       />
     );
   }
 
   // UNDERDOGS — roster is the live POS menu for the group; history sums are a left-join.
+  // isRankable() carries the pos_visible + 86'd gates this surface already had, PLUS the new
+  // rank-excluded-group gate, so UNDERDOGS and CHAMPION can never drift on what may be shown.
   const roster = [...toast.values()].filter(
-    (r) => menuGroup && sameMenuGroup(r.menu_group, menuGroup) && r.pos_visible && !r.out_of_stock,
+    (r) => menuGroup && sameMenuGroup(r.menu_group, menuGroup) && isRankable(r, rankExcluded),
   );
+  // The slide's OWN authored group is excluded from rankings ⇒ the roster is empty by rule, not
+  // because everything is selling. Distinguished below so the empty state can say so honestly
+  // instead of claiming "EVERYTHING'S POURING".
+  const groupIsExcluded = !!menuGroup && isGroupExcluded(menuGroup, rankExcluded);
   const ranked = roster
     .map((r) => ({ row: r, qty: sums.get(r.guid)?.quantity ?? 0 }))
     // Bottom sellers first; ties broken by name so the order is deterministic across renders.
@@ -1180,8 +1192,12 @@ export function SmartToast({ item, toast, orientation }: TemplateProps) {
     return (
       <SmartFrame header={header}>
         <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", gap: 16 }}>
-          <div style={{ fontSize: port ? 76 : 60, fontWeight: 700, letterSpacing: 3, opacity: 0.75, textShadow: "0 0 16px var(--terminal-glow)" }}>NO SLOW MOVERS</div>
-          <div style={{ fontSize: SUPPORT_TEXT[orientation], letterSpacing: 4, opacity: 0.5 }}>◊ EVERYTHING'S POURING — PICK A GROUP</div>
+          <div style={{ fontSize: port ? 76 : 60, fontWeight: 700, letterSpacing: 3, opacity: 0.75, textShadow: "0 0 16px var(--terminal-glow)" }}>
+            {groupIsExcluded ? "NOT RANKED" : "NO SLOW MOVERS"}
+          </div>
+          <div style={{ fontSize: SUPPORT_TEXT[orientation], letterSpacing: 4, opacity: 0.5 }}>
+            {groupIsExcluded ? "◊ THIS GROUP IS EXCLUDED FROM RANKINGS" : "◊ EVERYTHING'S POURING — PICK A GROUP"}
+          </div>
         </div>
       </SmartFrame>
     );
@@ -1284,7 +1300,7 @@ function UnderdogRow({ name, photo, blurb, qty, days, orientation, sz }: { name:
 }
 
 function SmartChampion({
-  sums, trueDays, loading, byGroup, toast, orientation, menuGroup, groupGuid,
+  sums, trueDays, loading, byGroup, toast, orientation, menuGroup, groupGuid, rankExcluded,
 }: {
   sums: Map<string, HistorySum>;
   trueDays: number;
@@ -1296,19 +1312,24 @@ function SmartChampion({
   menuGroup?: string;
   /** Resolved sales_cache bucket guid for menuGroup (undefined if unset/unconfigured). */
   groupGuid?: string;
+  /** Menu groups barred from ranked surfaces (venue_settings.signage_rank_excluded_groups). */
+  rankExcluded: Set<string>;
 }) {
   const port = orientation === "portrait";
   const z = SIZES[orientation];
 
-  // Pick the highest-selling guid that is present in the toast cache AND POS-visible/in-stock
-  // (owner principle) — walk the sorted list until one qualifies. When a group filter is set,
-  // the candidate must ALSO belong to that group (same sameMenuGroup() match as UNDERDOGS, so
-  // the two modes can't drift); empty group = whole menu, unchanged.
+  // Pick the highest-selling guid that is present in the toast cache AND rankable — POS-visible,
+  // in stock, and not in a rank-excluded menu group (isRankable, shared with UNDERDOGS so the two
+  // modes can't drift). Walk the sorted list until one qualifies, so an 86'd or excluded leader
+  // simply hands the crown to the next real contender rather than blanking the slide. The history
+  // sums themselves stay unfiltered — the tally is the truth, this only decides what gets shown.
+  // When a group filter is set the candidate must ALSO belong to that group (same sameMenuGroup()
+  // match as UNDERDOGS); empty group = whole menu, unchanged.
   const sorted = [...sums.values()].sort((a, b) => b.quantity - a.quantity);
   let champ: { name: string; qty: number; photo: string | undefined; category: string | undefined } | null = null;
   for (const h of sorted) {
     const row = toast.get(h.toast_guid);
-    if (!row || !row.pos_visible || row.out_of_stock) continue;
+    if (!row || !isRankable(row, rankExcluded)) continue;
     if (menuGroup && !sameMenuGroup(row.menu_group, menuGroup)) continue;
     champ = { name: (row.name ?? h.name ?? "SPECIAL").toUpperCase(), qty: h.quantity, photo: row.image ?? undefined, category: row.menu_group ?? h.menu_group ?? undefined };
     break;

@@ -11,10 +11,14 @@
 // Exclusions, in the order they were added:
 //   1. POS-HIDDEN items (pos_visible=false) — the standing owner principle "never advertise
 //      anything not active on the POS view". Matched by guid AND by name.
-//   2. EXCLUDED MENU GROUPS (venue_settings.signage_rung_excluded_groups, seeded ["Food","Merch"])
-//      — "NOW POURING: Hot Dog" is wrong on a drinks ticker. Matched by GUID only, resolved from
+//   2. EXCLUDED MENU GROUPS (venue_settings.signage_rung_excluded_groups, seeded
+//      ["Food","Merch","Soft Drinks"]) — "NOW POURING: Hot Dog" is wrong on a drinks ticker, and
+//      a rung soda water is not a pour. Matched by GUID only, resolved from
 //      toast_menu_cache.menu_group; an item guid absent from the cache keeps the prior behavior
 //      (not excluded / fail-open).
+//   3. 86'D ITEMS (v10) — folded into the SAME `excludedGroupGuids` set by the caller via
+//      rankFilter.blockedGuids(), so this function needed no change. See rankFilter.ts for the
+//      owner ruling ("86'd = not advertised in ANY way") and the fail-open contract.
 // An excluded selection is SKIPPED and the walk keeps looking at earlier selections, exactly the
 // way the pos_visible exclusion already worked.
 

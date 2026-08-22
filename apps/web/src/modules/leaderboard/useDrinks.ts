@@ -1,6 +1,7 @@
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase, VENUE_ID } from "@/shared/supabaseClient";
+import { parseRankExcludedGroups } from "@/modules/signage/rankGates";
 
 // Data layer for the /drinks board (docs/08) AND the signage Top Sellers rotation slide
 // (Phase 8). Pure realtime READER of the tables the scheduled toast-sync writes — the
@@ -253,6 +254,39 @@ export function useSalesHistory(days: number): SalesHistoryResult {
     },
   });
   return { sums: q.data?.sums ?? new Map(), trueDays: q.data?.trueDays ?? 0, loading: q.isLoading };
+}
+
+/**
+ * venue_settings.signage_rank_excluded_groups → the normalized set of menu-group names barred
+ * from RANKED surfaces (PR #93). Read anon the same way the ticker reads signage_ticker_lines
+ * (venue_settings public_read, 0011).
+ *
+ * Only the two surfaces that do NOT read sales_cache need this — the CHAMPION's history-sourced
+ * headline and the UNDERDOGS roster. Everything sourced from sales_cache is already gated at
+ * WRITE time by toast-sync (see apps/web/src/modules/signage/rankGates.ts for the full split).
+ *
+ * It is a config value that changes about never, so it polls at 5 min rather than the 60s the
+ * live sales figures use — well inside the display rules (no sub-30s polling), and one fewer
+ * request per TV per minute. A missing/malformed value yields an empty set = fail-open.
+ */
+export function useRankExcludedGroups(): Set<string> {
+  const q = useQuery({
+    queryKey: ["drinks", "rankExcludedGroups"],
+    refetchInterval: 300_000,
+    queryFn: async (): Promise<string[]> => {
+      const { data, error } = await supabase
+        .from("venue_settings")
+        .select("value")
+        .eq("venue_id", VENUE_ID)
+        .eq("key", "signage_rank_excluded_groups")
+        .maybeSingle();
+      if (error) throw error;
+      // Serialized through the query cache as a plain array (a Set is not structurally cloneable
+      // by react-query's dev tooling); re-hydrated to a Set below.
+      return [...parseRankExcludedGroups(data?.value)];
+    },
+  });
+  return useMemo(() => new Set(q.data ?? []), [q.data]);
 }
 
 export function useDrinksBoard() {
