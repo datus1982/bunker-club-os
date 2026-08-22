@@ -143,7 +143,9 @@ export function useTicker(opts?: { events?: LiveEvent[]; timezone?: string }): T
       //    design-beat: "it would be really cool if that was just the last thing rung in").
       //    toast-sync writes venue_settings key `signage_last_rung` = { name, at } during its
       //    sales pass, already POS-visibility-gated on the WRITE side (only an explicit
-      //    pos_visible=false is skipped; 86'd is fine — it was just sold). Read it the SAME
+      //    pos_visible=false is skipped; 86'd is fine — it was just sold) AND filtered on the
+      //    WRITE side by menu group (venue_settings `signage_rung_excluded_groups`, seeded
+      //    ["Food","Merch"] — a drinks ticker never says "NOW POURING: Hot Dog"). Read it the SAME
       //    anon way as signage_ticker_lines (venue_settings public_read). Only surface the
       //    line when the ring is FRESH — within the last 90 min — so a stale ring drops off.
       const { data: rungRow } = await supabase

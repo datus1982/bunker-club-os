@@ -25,7 +25,8 @@
     "test:selectioncounts": "tsx scripts/test-selection-counts.ts",
     "test:scheduleresolve": "tsx scripts/test-schedule-resolve.ts",
     "test:qsysstatus": "tsx scripts/test-qsys-status-resolve.ts",
-    "test:audioverdict": "tsx scripts/test-audio-verdict.ts"
+    "test:audioverdict": "tsx scripts/test-audio-verdict.ts",
+    "test:lastrung": "tsx scripts/test-last-rung.ts"
   },
   "devDependencies": {
     "@supabase/supabase-js": "2.97.0",
