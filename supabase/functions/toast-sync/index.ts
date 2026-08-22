@@ -30,15 +30,17 @@ import {
 } from "./selectionCounts.ts";
 import {
   computeLastRung,
-  excludedGuidsForGroups,
   parseExcludedGroups,
   type LastRung,
 } from "./lastRung.ts";
+import { blockedGuids } from "./rankFilter.ts";
 
 // Version marker — bumped when the counting semantics change so a run's response proves
 // deployed==source. v8 = cross-ring (modifier-aware) counting. v9 = NOW-POURING menu-group
-// exclusion (display semantics only; tallies unchanged from v8).
-const TOAST_SYNC_VERSION = "v9-rung-group-filter";
+// exclusion (display semantics only; tallies unchanged from v8). v10 = RANK GATES: 86'd items
+// and rank-excluded menu groups are kept OUT of sales_cache, and 86'd items out of NOW POURING
+// (display semantics only — sales_history / event counters / cross-ring credits unchanged).
+const TOAST_SYNC_VERSION = "v10-rank-gates";
 
 // Item metadata resolved from toast_menu_cache, used to give a MODIFIER-credited item its
 // canonical name / price / menu group (rung items keep using the selection's own values).
@@ -231,7 +233,16 @@ async function upsertSalesHistory(admin: Admin, venueId: string, businessDate: s
 // (b) item-matched MODIFIER credits whose CREDITED item natively lives in this group (resolved
 // from cache: the credited item's menu_group name → this group's guid). MAIN_MENU_ALL takes
 // everything. Rung metadata (name/price) wins over modifier metadata for display.
-function calculateTopItems(orders: ToastOrder[], menuGuid: string, ctx: CountCtx): TopItem[] {
+//
+// RANK GATES (v10, owner rulings — see rankFilter.ts for the full reasoning): `blocked` is the
+// set of item guids that may not be ADVERTISED in a ranked list — 86'd items (out_of_stock) and
+// items in venue_settings.signage_rank_excluded_groups (the mixer groups PR #55's cross-ring
+// credits polluted). They are skipped BEFORE the tally, so the surviving items close ranks and
+// the board still renders a full-depth list of legitimate items instead of leaving holes — the
+// reason this gate lives at WRITE time rather than at the reader. sales_history and the event
+// counters read their own passes and are untouched: an 86'd item keeps accruing its true tally,
+// it simply isn't put on a screen. Empty set ⇒ byte-identical to v9.
+function calculateTopItems(orders: ToastOrder[], menuGuid: string, ctx: CountCtx, blocked: Set<string>): TopItem[] {
   const overall = menuGuid === "MAIN_MENU_ALL";
   const items = new Map<string, { name: string; price: number; count: number; fromRung: boolean }>();
 
@@ -241,6 +252,9 @@ function calculateTopItems(orders: ToastOrder[], menuGuid: string, ctx: CountCtx
       for (const sel of check.selections ?? []) {
         if (sel.voided) continue;
         for (const credit of creditsForSelection(sel as CountSelection, ctx.nameMap)) {
+          // RANK GATE: never advertised ⇒ never tallied into this list (and so never in the
+          // percentage denominator either). Cache miss ⇒ not blocked (fail-open).
+          if (blocked.has(credit.guid)) continue;
           // Group membership: rung → selection group guid; modifier → credited item's native group.
           let inGroup: boolean;
           if (overall) inGroup = true;
@@ -576,13 +590,26 @@ Deno.serve(async (req) => {
         .maybeSingle();
       const rungExcludedGroups = parseExcludedGroups(rungExRow?.value);
 
+      // RANKING group exclusions — venue_settings.signage_rank_excluded_groups, a JSON array of
+      // menu_group NAMES, seeded ["Soft Drinks"]. DELIBERATELY a different key (and a different
+      // set) from the ticker's above: Food is barred from NOW POURING but must still be able to
+      // RANK (the owner's Hot Dog champion ruling, PR #39). Missing/malformed ⇒ empty set =
+      // fail-open to the pre-v10 behavior. Display semantics only — see rankFilter.ts.
+      const { data: rankExRow } = await admin
+        .from("venue_settings")
+        .select("value")
+        .eq("venue_id", venue.id)
+        .eq("key", "signage_rank_excluded_groups")
+        .maybeSingle();
+      const rankExcludedGroups = parseExcludedGroups(rankExRow?.value);
+
       // CROSS-RING counting context — read the venue's whole menu cache ONCE. Feeds the shared
       // counting core (name→guid matching for modifiers + canonical name/price/group for modifier
       // credits) AND the NOW-POURING hidden gate below (pos_visible=false rows). Built before the
       // events pass so the live counter can credit liquor-first rings too.
       const { data: cacheRows } = await admin
         .from("toast_menu_cache")
-        .select("guid, name, price, menu_group, pos_visible")
+        .select("guid, name, price, menu_group, pos_visible, out_of_stock")
         .eq("venue_id", venue.id);
       const cacheMeta = new Map<string, CacheMeta>();
       for (const r of (cacheRows ?? []) as { guid: string; name: string | null; price: number | null; menu_group: string | null }[]) {
@@ -590,6 +617,15 @@ Deno.serve(async (req) => {
       }
       const nameMap = buildNameMap((cacheRows ?? []) as { guid: string; name: string | null }[]);
       const ctx: CountCtx = { nameMap, cacheMeta, groupGuidByName };
+
+      // RANK GATE set (v10): guids barred from sales_cache = 86'd items ∪ rank-excluded groups.
+      // Built ONCE per venue off the cache read above and applied at the single write-time seam
+      // (calculateTopItems). NOT applied to allItemQuantities/sales_history, NOT to the events
+      // pass — those are tallies, not advertisements.
+      const rankBlockedGuids = blockedGuids(
+        (cacheRows ?? []) as { guid: string; menu_group: string | null; out_of_stock: boolean | null }[],
+        rankExcludedGroups,
+      );
       if (nameMap.ambiguous.size > 0) {
         console.warn(`toast-sync: ${nameMap.ambiguous.size} ambiguous item name(s) excluded from modifier matching (venue ${venue.id}): ${[...nameMap.ambiguous].join(", ")}`);
       }
@@ -627,7 +663,7 @@ Deno.serve(async (req) => {
 
       let rowsWritten = 0;
       for (const guid of targetGuids) {
-        const top = calculateTopItems(orders, guid, ctx);
+        const top = calculateTopItems(orders, guid, ctx, rankBlockedGuids);
         // Replace this group's cached rows atomically-ish: clear then insert fresh.
         await admin.from("sales_cache").delete().eq("venue_id", venue.id).eq("menu_group_guid", guid);
         if (top.length > 0) {
@@ -674,9 +710,11 @@ Deno.serve(async (req) => {
           .filter((h) => h.pos_visible === false);
         const hiddenGuids = new Set(hidden.map((h) => h.guid));
         const hiddenNames = new Set(hidden.map((h) => String(h.name ?? "").trim().toLowerCase()));
-        // Guids whose menu_group is excluded (Food/Merch). Cache miss ⇒ not excluded.
-        const rungExcludedGuids = excludedGuidsForGroups(
-          (cacheRows ?? []) as { guid: string; menu_group: string | null }[],
+        // Guids barred from the ticker: menu_group excluded (Food/Merch/Soft Drinks) OR 86'd
+        // (v10 — "NOW POURING: Bunker Beer" is wrong when the keg blew; the walk falls back to
+        // the last pourable thing). Cache miss / unknown stock ⇒ not excluded (fail-open).
+        const rungExcludedGuids = blockedGuids(
+          (cacheRows ?? []) as { guid: string; menu_group: string | null; out_of_stock: boolean | null }[],
           rungExcludedGroups,
         );
         lastRung = computeLastRung(orders, hiddenGuids, hiddenNames, rungExcludedGuids);

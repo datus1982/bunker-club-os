@@ -15,6 +15,7 @@ import {
   parseExcludedGroups,
   type RungOrder,
 } from "../supabase/functions/toast-sync/lastRung.ts";
+import { blockedGuids } from "../supabase/functions/toast-sync/rankFilter.ts";
 
 let failures = 0;
 function check(label: string, got: unknown, want: unknown) {
@@ -146,6 +147,38 @@ check("exclusions compose — food AND pos-hidden both skipped",
     order(T2, [{ guid: "hotdog", name: "Hot Dog" }]),
   ], new Set(["og"]), NONE, excluded),
   { name: "Gin & Tonic", at: "2026-08-21T21:00:00.000Z" });
+
+// ── v10: 86'd items are barred from NOW POURING too ──────────────────────────
+// computeLastRung itself is UNCHANGED — the caller now composes the excluded set with
+// rankFilter.blockedGuids(), which unions the menu-group exclusion with out_of_stock. These
+// assertions pin that composition at the call site's contract.
+const blocked = blockedGuids(
+  [
+    { guid: "hotdog", menu_group: "Food", out_of_stock: false },
+    { guid: "keg", menu_group: "Draft Beers", out_of_stock: true },   // 86'd — the blown keg
+    { guid: "gin", menu_group: "Gin", out_of_stock: false },
+    { guid: "soda", menu_group: "Soft Drinks", out_of_stock: false },
+  ],
+  parseExcludedGroups(["Food", "Merch", "Soft Drinks"]),
+);
+check("86'd item is skipped — the walk falls back to the last POURABLE thing",
+  computeLastRung([order(T1, [{ guid: "gin", name: "Gin & Tonic" }]), order(T2, [{ guid: "keg", name: "Bunker Beer" }])],
+    NONE, NONE, blocked),
+  { name: "Gin & Tonic", at: T1 });
+check("a rung soda water is not a pour (Soft Drinks now in the rung config)",
+  computeLastRung([order(T1, [{ guid: "gin", name: "Gin & Tonic" }]), order(T2, [{ guid: "soda", name: "Soda Water" }])],
+    NONE, NONE, blocked),
+  { name: "Gin & Tonic", at: T1 });
+check("in-stock drink still wins over a later 86'd one AND later food",
+  computeLastRung([
+    order("2026-08-21T21:00:00.000Z", [{ guid: "gin", name: "Gin & Tonic" }]),
+    order(T1, [{ guid: "keg", name: "Bunker Beer" }]),
+    order(T2, [{ guid: "hotdog", name: "Hot Dog" }]),
+  ], NONE, NONE, blocked),
+  { name: "Gin & Tonic", at: "2026-08-21T21:00:00.000Z" });
+check("nothing pourable qualifies ⇒ null (caller leaves the prior value to age out)",
+  computeLastRung([order(T2, [{ guid: "keg", name: "Bunker Beer" }])], NONE, NONE, blocked),
+  null);
 
 if (failures > 0) {
   console.error(`\n${failures} test(s) failed`);

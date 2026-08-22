@@ -26,7 +26,8 @@
     "test:scheduleresolve": "tsx scripts/test-schedule-resolve.ts",
     "test:qsysstatus": "tsx scripts/test-qsys-status-resolve.ts",
     "test:audioverdict": "tsx scripts/test-audio-verdict.ts",
-    "test:lastrung": "tsx scripts/test-last-rung.ts"
+    "test:lastrung": "tsx scripts/test-last-rung.ts",
+    "test:rankfilter": "tsx scripts/test-rank-filter.ts"
   },
   "devDependencies": {
     "@supabase/supabase-js": "2.97.0",
