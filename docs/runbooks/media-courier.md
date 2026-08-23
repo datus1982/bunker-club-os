@@ -7,6 +7,9 @@ Companion pieces:
 - `scripts/bunker-ship-status.sh` — "has it landed yet?" (read-only, §2)
 - `docs/runbooks/media-courier-pc-setup.ps1` — the one-time mini-PC installer
 - `apps/media-shell/README.md` — the shell that plays what lands there
+- `docs/runbooks/nuc-disaster-recovery.md` — backing up and rebuilding the mini
+  PC itself (weekly backup, one-script rebuild, and the honest list of what a
+  script can't do)
 
 ---
 
