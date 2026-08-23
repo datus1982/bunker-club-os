@@ -30,7 +30,16 @@ export type CarouselOrder = "ordered" | "random";
 
 /** Slot program shapes (docs/15 §Concept: PROGRAMS). null slot.program = rotation. */
 export type SlotProgram =
-  | { kind: "playlist"; playlist_id: string }
+  // `start_file_id` (owner beat: "start a specific film") — OPTIONAL: play that file first, then
+  // continue exactly as this playlist normally would (in-order → rotate to it; shuffle → it first,
+  // then the normal shuffled walk). Absent/unknown/not-a-member degrades silently to the normal
+  // start (applyStartFile in playlistOrder.ts). Works for the ALL-MEDIA sentinel too — that is how
+  // "the whole library, pick any movie" plays. Everything else (holds, dayparts, takeover
+  // preemption, carousel, transport) is untouched by it.
+  // DECISION: MultiviewMain's playlist shape deliberately does NOT gain the field — the ask is
+  // "start a film on a screen", and a multiview main region has no picker surface; the resolver
+  // there would silently ignore it. Add it there only when a multiview picker exists.
+  | { kind: "playlist"; playlist_id: string; start_file_id?: string }
   // Capture (M2): the live UVC input (the Roku) via getUserMedia. `device_match` filters the
   // videoinput label (blank = first camera); `presentation` overrides the fullbleed default.
   | { kind: "capture"; device_match?: string; presentation?: Presentation; audio?: boolean }

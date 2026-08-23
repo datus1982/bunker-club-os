@@ -213,8 +213,10 @@ function SlotScreen({
     ),
     [preview, slot.program, slot.program_hold, slot.program_set_at, schedule, now, timezone, rolloverHour],
   );
-  const programPlaylistId =
-    mode === "rotation" && effProgram?.kind === "playlist" ? effProgram.playlist_id : null;
+  // The whole playlist program (not just its id) — it may carry an optional `start_file_id`
+  // (owner beat: "start a specific film"), which the player opens the loop on.
+  const programPlaylist =
+    mode === "rotation" && effProgram?.kind === "playlist" ? effProgram : null;
   // CAROUSEL program (owner beat 2026-07-20): play a whole playlist through then hop to the next.
   // Renders in the same rotation-bottom slot as playlist; preempted whole exactly like playlist.
   const programCarousel =
@@ -245,13 +247,14 @@ function SlotScreen({
           )}
           {showBoot && <BootOverlay />}
         </div>
-      ) : programPlaylistId ? (
+      ) : programPlaylist ? (
         // Playlist program: framed keeps the chrome, fullbleed hides it (PlaylistProgram decides
         // from the playlist's presentation toggle). The <video> unmounts the moment mode flips.
         // renderHeader flows the playing film's NOW SHOWING title into the header's center.
         <PlaylistProgram
           slot={slot}
-          playlistId={programPlaylistId}
+          playlistId={programPlaylist.playlist_id}
+          startFileId={programPlaylist.start_file_id}
           base={mediaBase}
           renderHeader={(nowShowing) => <ChromeHeader slot={slot} venueName={venueName} timezone={timezone} nowShowing={nowShowing} slim />}
           footer={<ChromeFooter ticker={ticker} live={false} orientation={slot.orientation} slim />}

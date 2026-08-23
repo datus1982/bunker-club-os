@@ -45,7 +45,7 @@ curl -sS -X POST "https://api.supabase.com/v1/projects/ysrqvdutayirpoibdlbf/secr
 |------------|-------------|----------------------------------------------------------------|
 | `rotation` | —           | clear the override — `program = null` (follow the schedule / rotation) |
 | `capture`  | `hold`      | `program = {kind:"capture"}` — the live capture feed (the Roku)|
-| `playlist` | `playlist`, `hold` | `program = {kind:"playlist",…}` — loop a media-library playlist (or the virtual `all-media`) |
+| `playlist` | `playlist`, `file`, `hold` | `program = {kind:"playlist",…}` — loop a media-library playlist (or the virtual `all-media`); optional `file` **starts on a specific film** |
 | `carousel` | `order`, `hold` | `program = {kind:"carousel",order}` — play a whole playlist, then hop to the next (`order` `ordered`\|`random`, default `ordered`) |
 | `schedule` | —           | **M3:** clear the override so the slot follows its daypart SCHEDULE again |
 | `pause`    | —           | broadcast: pause the playlist `<video>`                        |
@@ -61,6 +61,33 @@ orientation). `playlist` accepts a playlist **id** (uuid) or a **name** (case-in
 ambiguous names return 409), plus the **virtual `all-media` playlist** (by the id `all-media` or its
 name `ALL MEDIA (SHUFFLE)`) — every present file in the library, shuffled. `all-media` is also the
 first entry of the `playlists` list (`fileCount` = all present files).
+
+### `file` — start a specific film (v8)
+
+`cmd:"playlist"` takes an **optional `file`**: the screen opens on that film and then continues
+through the playlist exactly as it normally would — an IN-ORDER playlist is rotated so the film is
+first and the rest follow in order; a SHUFFLE playlist plays the film first, then its normal shuffled
+walk. Everything else is untouched (holds, dayparts, takeover/MOMENT/game preemption,
+`pause`/`resume`/`next`).
+
+`file` accepts a media **id** (uuid — the contract; ids come from the library) or a **title**
+(case-insensitive, exact; ambiguous titles return 409). The film must be `status:"present"` on the
+media host **and a member of the playlist you named** — a file that isn't in that playlist is
+rejected (409) rather than silently ignored, because the TV only ever plays that playlist's files.
+With `all-media`, membership is simply "any present file", so any film in the library is valid — that
+is the "whole library, pick any movie" path a picker should use.
+
+```json
+{ "slug": "landscape-bar", "cmd": "playlist", "playlist": "all-media",
+  "file": "3f1b…-uuid" }
+{ "slug": "landscape-bar", "cmd": "playlist", "playlist": "Atomic Age",
+  "file": "The Truman Show (1998)" }
+```
+
+Omitting `file` writes the byte-identical program it always did — every existing UCI button is
+unaffected. Sending `file` with any other `cmd` is a 400 (a mis-wired button fails loudly instead of
+playing something at random). Re-sending the SAME film while it is already playing is a deliberate
+no-op on screen — the film is already on.
 
 `cmd:"carousel"` plays one whole playlist through, then hops to the next: `order:"ordered"` walks the
 playlists alphabetically by name, `order:"random"` picks a different one each hop (no immediate
@@ -90,6 +117,7 @@ button. (With no schedule on the screen, `hold` is irrelevant — the override i
 { "slug": "landscape-bar", "cmd": "schedule" }
 { "slug": "landscape-bar", "cmd": "playlist", "playlist": "Atomic Age" }
 { "slug": "landscape-bar", "cmd": "playlist", "playlist": "all-media" }
+{ "slug": "landscape-bar", "cmd": "playlist", "playlist": "all-media", "file": "<media file id>" }
 { "slug": "landscape-bar", "cmd": "carousel", "order": "random" }
 { "slug": "landscape-bar", "cmd": "next" }
 ```
@@ -99,10 +127,15 @@ button. (With no schedule on the screen, `hold` is irrelevant — the override i
 - `200 { ok:true, slug, cmd, kind:"program", program }` — program written.
 - `200 { ok:true, slug, cmd, kind:"transport" }` — broadcast sent.
 - `401 { error:"unauthorized" }` — bad/missing `x-qsys-token`.
-- `400` — missing slug/cmd, unknown cmd, portrait slot, `playlist` missing for a playlist cmd, an
-  invalid `order` (must be `ordered`|`random`), or an invalid `hold` (must be `pin`|`boundary`|`event`).
-- `404` — unknown slug or no playlist matches.
-- `409` — ambiguous playlist name.
+- `400` — missing slug/cmd, unknown cmd, portrait slot, `playlist` missing for a playlist cmd, `file`
+  sent with a cmd other than `playlist`, an invalid `order` (must be `ordered`|`random`), or an
+  invalid `hold` (must be `pin`|`boundary`|`event`).
+- `404` — unknown slug, no playlist matches, or no media file matches `file`.
+- `409` — ambiguous playlist name, ambiguous `file` title, a `file` that is not `present` on the
+  media host, or a `file` that is not a member of the named playlist.
+
+Every response also carries **`v`** — the fn version marker (currently `v8-start-file`), so a UCI or
+a probe can confirm which build answered.
 
 ## Discovery & status (v3)
 

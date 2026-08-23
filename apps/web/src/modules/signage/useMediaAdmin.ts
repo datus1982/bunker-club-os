@@ -278,7 +278,9 @@ export async function swapPlaylistItems(
 /** A program the hub can WRITE: ROTATION (null), playlist, capture (M2), multiview (M3), or
  *  carousel (play a whole playlist then hop to the next — owner beat 2026-07-20). */
 export type WritableProgram =
-  | { kind: "playlist"; playlist_id: string }
+  // start_file_id (owner beat) — optional "start on THIS film, then continue as normal"; see
+  // playlistOrder.ts. Omitted by the PROGRAM picker (a plain playlist flip), set by PLAY ON.
+  | { kind: "playlist"; playlist_id: string; start_file_id?: string }
   | { kind: "capture"; device_match?: string; presentation?: "framed" | "fullbleed" }
   | { kind: "multiview"; main: MultiviewMain; panel_slot_id: string }
   | { kind: "carousel"; order: "ordered" | "random" };

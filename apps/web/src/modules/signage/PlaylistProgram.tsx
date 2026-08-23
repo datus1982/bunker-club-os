@@ -5,6 +5,7 @@ import {
 } from "@/shared/videoAudio";
 import { usePlaylistProgram, mediaFileUrl, subtitleUrl, nowShowingParts, type MediaFile } from "./mediaProgram";
 import { useTransportCommands } from "./mediaTransport";
+import { applyStartFile } from "./playlistOrder";
 import type { Slot, Orientation } from "./useSignage";
 import { SUPPORT_TEXT } from "./supportText";
 
@@ -29,10 +30,13 @@ import { SUPPORT_TEXT } from "./supportText";
  * the native `ended` event (no interval), error/stall recovery by FINITE timeouts.
  */
 export function PlaylistProgram({
-  slot, playlistId, base, renderHeader, footer, onPassComplete,
+  slot, playlistId, startFileId, base, renderHeader, footer, onPassComplete,
 }: {
   slot: Slot;
   playlistId: string;
+  /** Optional start-at-file (owner beat): play this file first, then continue as normal (see
+   *  playlistOrder.ts). Unknown/missing ids degrade silently to the playlist's normal start. */
+  startFileId?: string | null;
   /** Media host base URL (resolveMediaBase — 127.0.0.1:{port} or ?mediahost override). */
   base: string;
   /** Builds the framed chrome header, given the NOW SHOWING node for the header's center (owner
@@ -57,10 +61,15 @@ export function PlaylistProgram({
 
   const video = (
     <PlaylistVideo
-      key={playlistId}
+      // The start file is part of the identity of a "play THIS now" command: a new start_file_id on
+      // the SAME playlist must restart the loop on that film, not merely re-order a loop that is
+      // already mid-clip. Re-sending the SAME film while it plays is intentionally a no-op (the key
+      // is unchanged) — the screen is already showing it.
+      key={`${playlistId}:${startFileId ?? ""}`}
       slug={slot.slug}
       files={files}
       base={base}
+      startFileId={startFileId}
       shuffle={!!playlist?.shuffle}
       subtitles={!!playlist?.subtitles}
       fullbleed={fullbleed}
@@ -142,11 +151,13 @@ function reportNowPlaying(slug: string, fileId: string) {
  * OFFLINE (retries the current clip every 8s so it recovers when the shell comes back).
  */
 export function PlaylistVideo({
-  slug, files, base, shuffle, subtitles, fullbleed, orientation, loading, loadError, onNowShowing, onPassComplete,
+  slug, files, base, startFileId, shuffle, subtitles, fullbleed, orientation, loading, loadError, onNowShowing, onPassComplete,
 }: {
   slug: string;
   files: MediaFile[];
   base: string;
+  /** Optional start-at-file: open on this file, then continue normally (applyStartFile). */
+  startFileId?: string | null;
   shuffle: boolean;
   /** Playlist subtitle toggle — render a WebVTT <track> when on AND the file has_subtitles. */
   subtitles: boolean;
@@ -163,7 +174,13 @@ export function PlaylistVideo({
 }) {
   // Shuffle deterministically per mount via a session-monotonic seed (top_sellers precedent —
   // no Math.random-per-render). A stable order per mount keeps the loop predictable.
-  const order = useMemo(() => (shuffle ? shuffleSeeded(files) : files), [files, shuffle]);
+  // START-AT-FILE (owner beat): when the program named a file, applyStartFile opens the loop on it —
+  // rotating an in-order playlist, or lifting it to the front of the shuffled walk. An id that is
+  // absent/unknown/not present returns the base order unchanged, so nothing can blank the screen.
+  const order = useMemo(
+    () => applyStartFile(shuffle ? shuffleSeeded(files) : files, shuffle, startFileId),
+    [files, shuffle, startFileId],
+  );
 
   const [index, setIndex] = useState(0);
   const [retry, setRetry] = useState(0);
