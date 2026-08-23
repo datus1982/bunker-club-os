@@ -38,6 +38,13 @@
 
 set -uo pipefail
 
+# Everything this script writes carries secrets - the Syncthing private key, the
+# sshd host keys, the media device token. The tarball is explicitly chmod 600 at
+# the end, but the files staged on the way there inherited the default umask and
+# landed 0644 (and so did their extracted copies on any machine that later
+# unpacks the archive). Clamp it here, before the first mkdir.
+umask 077
+
 NUC_HOST="${BUNKER_NUC_HOST:-admin@100.68.29.108}"
 SSH_KEY="${BUNKER_NUC_KEY:-$HOME/.ssh/bunker_pc_ed25519}"
 BACKUP_DIR="${BUNKER_NUC_BACKUP_DIR:-$HOME/BunkerCuration/nuc-backup}"
@@ -362,5 +369,8 @@ if [ "$COUNT" -gt "$KEEP" ]; then
   done
 fi
 
-log "==== OK  ($WARNINGS warnings) - $COUNT+ archives retained, keeping $KEEP"
+# $COUNT was taken BEFORE the prune, so report what actually survives it.
+RETAINED="$COUNT"
+[ "$COUNT" -gt "$KEEP" ] && RETAINED="$KEEP"
+log "==== OK  ($WARNINGS warnings) - $RETAINED archive(s) retained, keeping newest $KEEP"
 exit 0
