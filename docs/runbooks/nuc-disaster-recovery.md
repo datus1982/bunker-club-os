@@ -199,8 +199,12 @@ verification → a printed list of what is still on you.
 
 **Mint a Tailscale auth key first** if you want the run to be hands-off:
 login.tailscale.com → Settings → Keys → generate a reusable/ephemeral-off key,
-pass it as `-TailscaleAuthKey`. Otherwise the script stops and tells you to sign
-in as `datus1982` in a browser.
+pass it as `-TailscaleAuthKey`. Without one the script **warns and carries on** —
+it installs Tailscale, notes that it is not signed in, and prints the `tailscale
+up` command in the closing manual-steps list. Nothing after that step depends on
+the tailnet, so the sign-in can wait until the bar is back on the air. (You will
+want it before you try to `ssh` in from the Mac, since port 22 is scoped to the
+Tailscale range.)
 
 ### Proving it worked
 
@@ -328,7 +332,9 @@ Named honestly, in the order you'll hit them.
 1. **Installing Windows.** Media creation, OOBE, the local-account dance.
 2. **The Tailscale login.** Interactive browser sign-in as `datus1982` — unless
    you mint a pre-auth key beforehand and pass `-TailscaleAuthKey`, which turns
-   this one into a scripted step. Do that.
+   this one into a scripted step. Do that. It is *deferrable* either way: the
+   rebuild warns and continues without it, and nothing else in the script needs
+   the tailnet. It is only remote access to the finished machine that waits.
 3. **Auto-logon (`netplwiz`).** Settings → Accounts → Sign-in options → turn
    **off** "only allow Windows Hello sign-in", then `netplwiz` → untick "Users
    must enter a user name and password" → type the password. **The password is

@@ -261,18 +261,37 @@ if (-not (Test-Path $tsExe)) {
 }
 
 if (Test-Path $tsExe) {
-  $tsState = (& $tsExe status 2>&1 | Out-String)
-  if ($tsState -match 'Logged out|NeedsLogin|not running') {
+  # !! EVERY native call here is wrapped. Under $ErrorActionPreference='Stop',
+  #    PowerShell 5.1 turns anything a native exe writes to stderr under `2>&1`
+  #    into a TERMINATING RemoteException - and a freshly installed, not-yet-
+  #    signed-in tailscale writes to stderr. Unwrapped, the script would die on
+  #    this line on the exact path it exists for (a fresh rebuild with no
+  #    -TailscaleAuthKey), BEFORE restoring the Syncthing identity in step 4.
+  #    Tailscale login is a documented manual step; it must warn and continue.
+  #    Same idiom as the `syncthing --version` probe in step 4.
+  $tsNeedsLogin = $false
+  $tsState      = ''
+  try   { $tsState = (& $tsExe status 2>&1 | Out-String) }
+  catch { $tsState = "$($_.Exception.Message)"; $tsNeedsLogin = $true }
+
+  if ($tsNeedsLogin -or $tsState -match 'Logged out|NeedsLogin|not running') {
     if ($TailscaleAuthKey) {
       Say "bringing the tailnet up with the supplied auth key"
-      & $tsExe up --authkey $TailscaleAuthKey --hostname bunkerclub-nuc --unattended
+      try { & $tsExe up --authkey $TailscaleAuthKey --hostname bunkerclub-nuc --unattended }
+      catch {
+        Warn "tailscale up failed: $($_.Exception.Message)"
+        Warn "Sign in by hand later:  & '$tsExe' up --hostname bunkerclub-nuc --unattended"
+      }
     } else {
-      Warn "Tailscale needs a login. THIS IS ONE OF THE MANUAL STEPS."
-      Warn "Run:  & '$tsExe' up --hostname bunkerclub-nuc --unattended"
+      Warn "Tailscale is not signed in. THIS IS ONE OF THE MANUAL STEPS - the"
+      Warn "rebuild carries on without it; nothing below depends on the tailnet."
+      Warn "Sign in later:  & '$tsExe' up --hostname bunkerclub-nuc --unattended"
       Warn "and sign in as datus1982 in the browser that opens."
     }
   }
-  Say ("tailnet IPv4: " + ((& $tsExe ip -4 2>&1) -join ' '))
+
+  try { Say ("tailnet IPv4: " + ((& $tsExe ip -4 2>&1) -join ' ')) }
+  catch { Say "tailnet IPv4: none yet (Tailscale is not signed in - see above)" }
 }
 
 # =============================================================================
