@@ -132,7 +132,7 @@ Say "using $Backup"
 
 # tar.exe (bsdtar) ships with Windows 10 1803+ and handles .tar.gz natively.
 if (-not (Get-Command tar.exe -ErrorAction SilentlyContinue)) {
-  throw "tar.exe not found. Expand the tarball by hand and re-run with -Backup pointed at the extracted 'nuc-backup-*' FOLDER is NOT supported - install tar or use a machine that has it."
+  throw "tar.exe not found. -Backup must point at the .tar.gz itself; a pre-extracted 'nuc-backup-*' folder is not accepted. Install tar (it ships with Windows 10 1803+) or use a machine that has it, then re-run."
 }
 
 $work = Join-Path $env:TEMP ("nuc-restore-" + [Guid]::NewGuid().ToString('N').Substring(0,8))
@@ -368,7 +368,16 @@ $folder = $stCfg.configuration.folder | Where-Object { $_.id -eq $FolderId }
 if ($folder -and $folder.path -ne $MediaDir) {
   Warn ("folder path in the backup is '{0}' but the library is at '{1}' - rewriting it." -f $folder.path, $MediaDir)
   $folder.path = $MediaDir
-  $stCfg.Save((Join-Path $stHome 'config.xml'))
+  # !! NOT $stCfg.Save(<path>) - XmlDocument.Save(string) writes a UTF-8 BOM.
+  #    This is the one file whose restoration the whole script is built around;
+  #    it is not worth discovering on the bad day whether Syncthing's Go XML
+  #    parser shrugs at a BOM. Same discipline as config.json below: changed
+  #    file => BOM-less UTF-8, via an XmlWriter with UTF8Encoding($false).
+  $xmlSettings = New-Object System.Xml.XmlWriterSettings
+  $xmlSettings.Encoding = New-Object System.Text.UTF8Encoding($false)
+  $xmlSettings.Indent   = $true
+  $xw = [System.Xml.XmlWriter]::Create((Join-Path $stHome 'config.xml'), $xmlSettings)
+  try { $stCfg.Save($xw) } finally { $xw.Close() }
 }
 if ($folder) {
   Say ("folder {0}: path={1} type={2} ignoreDelete={3}" -f $folder.id, $folder.path, $folder.type, $folder.ignoreDelete)
@@ -399,16 +408,27 @@ Start-ScheduledTask -TaskName $SyncthingTask
 Say "started - waiting for the local API..."
 $apiKey = $stCfg.configuration.gui.apikey
 $hdr = @{ 'X-API-Key' = $apiKey }
+
+# Where the GUI/REST API actually listens, per the RESTORED config - not a
+# hardcoded literal. If the bar's Syncthing is ever moved off 8384, hardcoding
+# would time out the readiness probe and report a perfectly healthy Syncthing as
+# dead. A wildcard bind (0.0.0.0 / ::) is dialled on loopback.
+$guiAddr = "$($stCfg.configuration.gui.address)".Trim()
+if (-not $guiAddr) { $guiAddr = '127.0.0.1:8384' }
+if ($guiAddr -match '^(?:0\.0\.0\.0|\[?::\]?)(:\d+)$') { $guiAddr = '127.0.0.1' + $Matches[1] }
+$guiScheme = if ("$($stCfg.configuration.gui.tls)" -eq 'true') { 'https' } else { 'http' }
+$guiBase   = if ($guiAddr -match '^https?://') { $guiAddr.TrimEnd('/') } else { "${guiScheme}://$guiAddr" }
+
 $ready = $false
 $deadline = (Get-Date).AddSeconds(120)
 while (-not $ready -and (Get-Date) -lt $deadline) {
-  try { Invoke-RestMethod -Uri 'http://127.0.0.1:8384/rest/system/ping' -Headers $hdr -TimeoutSec 5 | Out-Null; $ready = $true }
+  try { Invoke-RestMethod -Uri "$guiBase/rest/system/ping" -Headers $hdr -TimeoutSec 5 | Out-Null; $ready = $true }
   catch { Start-Sleep -Seconds 3 }
 }
 if (-not $ready) {
-  Warn "Syncthing's API never came up on 127.0.0.1:8384. Check Task Manager for syncthing.exe."
+  Warn "Syncthing's API never came up on $guiBase. Check Task Manager for syncthing.exe."
 } else {
-  $myId = (Invoke-RestMethod -Uri 'http://127.0.0.1:8384/rest/system/status' -Headers $hdr).myID
+  $myId = (Invoke-RestMethod -Uri "$guiBase/rest/system/status" -Headers $hdr).myID
   Say "this machine's Syncthing device ID: $myId"
   # Prove the identity actually carried over: the restored config.xml lists this
   # device under <device>, so the ID must be one of them.
