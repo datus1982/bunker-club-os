@@ -114,9 +114,21 @@ a 0700 directory), keeps the newest 8, and logs to `nuc-backup.log`.
 | `syncthing/cert.pem`, `key.pem`, `config.xml` | the device identity. See [§4](#4-why-the-syncthing-identity-is-the-crown-jewel). |
 | `media-shell/config.json` | slug (`landscape-bar`), the 64-char device token, `mediaDir`, port 48151, catalog URL |
 | `media-shell/catalog-cache.json`, `sent-thumbs.json` | saves a full rescan; not required |
-| `ssh/ssh_host_*` + `administrators_authorized_keys` + `sshd_config` | keeps `ssh` working from the Mac with no host-key warning and no re-provisioning |
+| `ssh/ssh_host_*` | restored on rebuild, so `ssh` from the Mac keeps working with no host-key warning |
+| `ssh/administrators_authorized_keys` + `sshd_config` | reference copies — re-derived by the provisioner, not replayed (see the note below) |
 | `inventory/manifest.txt` | ~210 lines: versions, drives, services, tasks, autostart, autologon, power, Defender, firewall, network, hardware |
 | `inventory/media-listing.tsv.gz` | every media file with size and mtime — the checklist for verifying a restored library |
+
+⚠ **`sshd_config` and `administrators_authorized_keys` are backed up for
+reference, not for replay.** The rebuild runs
+`media-courier-pc-ssh-standalone.ps1`, which **re-derives** both from scratch —
+it writes its own `sshd_config` and installs the Mac's public key itself. Only
+the `ssh_host_*` keys are actually copied back out of the backup. That is
+deliberate: the provisioner is the field-proven artefact and it is idempotent.
+But it means any hand-edit ever made to the NUC's sshd config — an extra
+authorized key, a changed port, a `Match` block — will **not** come back on its
+own. If sshd on the old machine was ever customised, diff the backed-up copies
+against what the provisioner produced and re-apply the difference by hand.
 
 **What it deliberately does NOT capture:**
 

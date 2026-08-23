@@ -3,8 +3,14 @@
 # ============================================================================
 #  VENDORED PINNED COPY. Upstream is Stephen's own public gist:
 #    https://gist.github.com/datus1982/e5ecf0d1a6b557f5bc91802239b0674e
-#  Author: Stephen Tyler (Bunker Club). Copied verbatim 2026-08-23 apart from
-#  this header and the $MediaDir parameterisation noted below.
+#  Author: Stephen Tyler (Bunker Club). Copied 2026-08-23 with exactly three
+#  deliberate differences, and nothing else:
+#    1. this header,
+#    2. the $MediaDir parameterisation noted below,
+#    3. em-dashes in the comments normalised to ASCII hyphens, so the file
+#       survives whatever encoding a rebuild USB stick and a fresh Windows
+#       console hand it (this copy is pure ASCII).
+#  No logic, no ordering, no registry path and no value was changed.
 #
 #  It lives in the repo because a disaster-recovery kit must not depend on a
 #  gist still being there, still being public, and still saying the same thing
