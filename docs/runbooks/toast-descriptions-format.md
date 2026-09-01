@@ -149,9 +149,12 @@ How it maps:
 - **Items** render in their order inside the group.
 - A **brand-new group** (the "Tiki Tuesday" case) lands wherever you put it — first, if
   that's where you put it. Nothing has to be added to a list anywhere.
-- An item that lives in **two groups** renders under the LAST group it appears in, in
-  that group's position. If an item shows up in the wrong section, that's the lever:
-  remove it from the group you don't want it in.
+- An item that lives in **two groups** renders once, under the **first group it appears in
+  that is visible on the POS view** (Toast's own top-to-bottom order). If every group it's
+  in is hidden, it's hidden. So a drink listed in both a live "Tiki Tuesday" group and a
+  hidden "Classics" group shows under Tiki Tuesday — being listed somewhere hidden can
+  never take it off the website. If an item shows up in the wrong section, the lever is to
+  remove it from the group you don't want it in, or to move that group below the one you do.
 
 Two things ordering does NOT override — both still apply first:
 
@@ -159,7 +162,33 @@ Two things ordering does NOT override — both still apply first:
 - 86'd items are hidden, and `site_menu_hidden_guids` still suppresses register-only
   rows (e.g. the "Sputnik 1/2 off" duplicate).
 
-One quirk worth knowing: an item you **delete from the Toast menus** stays in our cache
-until it's replaced, so it can linger at the bottom of its section on the website
-(it has no position any more, and unpositioned items sort last, alphabetically). If a
-deleted item is still showing, hide it on the POS view and it drops off immediately.
+## Toast is the sole source of truth (2026-09-01)
+
+**If it's in Toast — visible, in stock, sellable — it shows up. If it's hidden, 86'd, or
+deleted, it's gone.** All four cases are automatic and all four land within ~2–3 minutes
+of Publish. Nothing has to be done on the website, on the screens, or in a dev session:
+
+| In Toast | On the website / screens |
+| --- | --- |
+| Item added | Appears, in the position you gave it |
+| Description / price / photo edited | Updates everywhere |
+| Item **hidden** from the POS view | Disappears (the `pos_visible` gate) |
+| Item **86'd** | Disappears |
+| Item **deleted**, or pulled off every menu | Disappears |
+| Deleted item **put back** | Reappears, with everything it had before |
+
+"Gone" means gone from every surface at once: the website menu, the What's-On feed, the
+TV drink slides, NOW POURING, and the top-sellers / champion / underdogs boards (a
+removed item can't win a ranking it's no longer sold in). A signage card linked to a
+deleted item auto-hides on screen and is labelled **REMOVED FROM TOAST** in the hub, so
+it's obvious why it stopped showing.
+
+Deleting in Toast never destroys anything on our side — the item's cached name, blurbs
+and photo are kept, so putting it back in Toast restores it exactly as it was on the very
+next sync. There is no "undelete" step to run.
+
+> This used to be the one hole in the loop: before 2026-09-01 an item deleted in Toast
+> stayed cached forever and could keep showing on the website months later (21 items were
+> in exactly that state — Fireball Shot, Malört Shot, Crown Apple Whiskey, the old
+> "Sputnik 1/2 off" duplicate, and others). The workaround was to POS-hide it as well.
+> That's no longer needed; deleting is enough.
