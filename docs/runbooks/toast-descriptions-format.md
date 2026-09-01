@@ -134,3 +134,32 @@ delivered 2026-07-14 but lived in a temp directory that's gone. If it would help
 Bunker OS dev session can regenerate it from `docs/Drink Slides.zip` in the repo —
 ask for "regenerate the toast-descriptions worksheet." The formatting rules above
 stand alone without it.
+
+## Menu ORDER is Toast's too (2026-09-01)
+
+The order of sections and of items inside them on bunkerokc.com/menu is **exactly the
+order you arrange in Toast** — no deploy, no session, no list kept on the website side.
+Rearrange a group or an item in Toast, Publish, and within ~2–3 minutes (the same
+`toast-menu-sync` pass that carries descriptions) the website mirrors it.
+
+How it maps:
+
+- **Menus** are walked in the order Toast lists them, and **groups** in the order they
+  sit inside each menu. A sub-group renders right after its parent group, not at the end.
+- **Items** render in their order inside the group.
+- A **brand-new group** (the "Tiki Tuesday" case) lands wherever you put it — first, if
+  that's where you put it. Nothing has to be added to a list anywhere.
+- An item that lives in **two groups** renders under the LAST group it appears in, in
+  that group's position. If an item shows up in the wrong section, that's the lever:
+  remove it from the group you don't want it in.
+
+Two things ordering does NOT override — both still apply first:
+
+- POS-hidden items and whole POS-hidden groups never appear (the `pos_visible` gate).
+- 86'd items are hidden, and `site_menu_hidden_guids` still suppresses register-only
+  rows (e.g. the "Sputnik 1/2 off" duplicate).
+
+One quirk worth knowing: an item you **delete from the Toast menus** stays in our cache
+until it's replaced, so it can linger at the bottom of its section on the website
+(it has no position any more, and unpositioned items sort last, alphabetically). If a
+deleted item is still showing, hide it on the POS view and it drops off immediately.
