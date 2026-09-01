@@ -5,7 +5,7 @@ import {
   type AdminItem, type AdminSlot, type AdminTakeover,
 } from "./useSignageAdmin";
 import {
-  resolveRotation, eventStage, compareRotation,
+  resolveRotation, eventStage, compareRotation, useVenueClock, itemAirsToday,
   type SignageItem, type LiveEvent, type EventStage, type ToastCacheRow,
 } from "./useSignage";
 import { setEventFields, VENUE_TZ } from "./useEventsAdmin";
@@ -63,9 +63,12 @@ export function QueuePanel({
   // THE LIVE QUEUE — resolveRotation on the same inputs the TV gets (ACTIVE authored items,
   // the Toast map, now, the live events). Ground truth for what's on screen this minute.
   const activeAuthored = useMemo(() => slotItems.filter((it) => it.active) as SignageItem[], [slotItems]);
+  // The venue clock the weekday gate reasons in — passed so this list matches the TV's exactly
+  // (hub/TV parity: an off-today asset must be dimmed here, never shown as ● NOW).
+  const venueClock = useVenueClock();
   const liveQueue = useMemo(
-    () => resolveRotation(activeAuthored, tmap, now, liveEvents),
-    [activeAuthored, tmap, now, liveEvents],
+    () => resolveRotation(activeAuthored, tmap, now, liveEvents, { venue: venueClock }),
+    [activeAuthored, tmap, now, liveEvents, venueClock],
   );
   const liveIds = useMemo(() => new Set(liveQueue.map((r) => r.id)), [liveQueue]);
   const eventCards = useMemo(() => liveQueue.filter((r) => r.id.startsWith("event:")), [liveQueue]);
@@ -172,6 +175,10 @@ export function QueuePanel({
                 next={nb.next}
                 live={liveIds.has(row.item.id)}
                 windowReason={windowReason(row.item, now)}
+                // Why an in-window, in-stock asset still isn't on screen: its weekday rule
+                // excludes TODAY'S business day (itemSchedule). Without this the row would just
+                // dim with no reason given — the same gap the POS-HIDDEN chip fills for an 86.
+                offToday={row.item.active && !itemAirsToday(row.item, now, venueClock)}
                 hideReason={sourceHideReason(row.item, toastRows)}
                 onEdit={() => onEditAsset(row.item)}
                 onRemove={() => remove.mutate(row.item.id)}

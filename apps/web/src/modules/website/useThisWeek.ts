@@ -2,7 +2,8 @@ import { useQuery } from "@tanstack/react-query";
 
 import { supabase, VENUE_ID } from "@/shared/supabaseClient";
 import { todayKey } from "./useSiteCopy";
-import { fetchPromoMenu, fieldStr, priceLine } from "./promoResolve";
+import { fetchPromoMenu, fieldStr, priceLine, SITE_CLOCK } from "./promoResolve";
+import { itemAirsToday, parseRecurrence } from "@/modules/signage/itemSchedule";
 import {
   DYNAMIC_TEMPLATES,
   resolveNowPlayingCard,
@@ -69,6 +70,7 @@ export function useThisWeek() {
       const cards: StripCard[] = [];
       const today = todayKey();
       const nowMs = Date.now();
+      const now = new Date(nowMs);
 
       // ── 0) ON THE SCREENS NOW ─────────────────────────────────────────────
       // What's actually on the room's TVs this minute. `signage_events_live` is the
@@ -138,17 +140,21 @@ export function useThisWeek() {
       // and every one should rotate through the feed.
       const { data: promos } = await supabase
         .from("signage_items")
-        .select("id, template, fields, starts_at, ends_at, created_at")
+        .select("id, template, fields, starts_at, ends_at, recurrence, created_at")
         .eq("venue_id", VENUE_ID)
         .eq("show_on_website", true)
         .eq("active", true)
         .order("created_at", { ascending: true, nullsFirst: true })
         .limit(24);
 
+      // The DAY RULE applies here too (itemSchedule). A Tuesdays-only asset is on the TVs on
+      // Tuesday and off them the rest of the week — the homepage must say the same thing, or
+      // bunkerokc.com advertises all week what the room only honors one night. Same business-day
+      // reasoning as the screens, so a Tuesday promo is still up at 1:30 AM Wednesday.
       const inWindow = (promos ?? []).filter((p) => {
         if (p.ends_at && new Date(p.ends_at).getTime() < nowMs) return false; // ended
         if (p.starts_at && new Date(p.starts_at).getTime() > nowMs) return false; // not yet live
-        return true;
+        return itemAirsToday({ starts_at: null, ends_at: null, recurrence: parseRecurrence(p.recurrence) }, now, SITE_CLOCK);
       }) as Array<{
         id: string;
         template: string;

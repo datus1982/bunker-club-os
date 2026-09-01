@@ -2,7 +2,8 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react"
 import { useMutation } from "@tanstack/react-query";
 import { Modal, Field, input as inputStyle, btnGhost } from "@/modules/trivia/ui";
 import type { Orientation, SignageItem, Template, ToastCacheRow } from "./useSignage";
-import { DEFAULT_NOW_PLAYING_SOURCE } from "./useSignage";
+import { DEFAULT_NOW_PLAYING_SOURCE, useVenueClock, recurrenceSentence, daysInMonth } from "./useSignage";
+import { DOW, DOW_LABEL } from "./useEventsAdmin";
 import {
   type AdminItem, type AdminSlot, type ItemDraft, type Recurrence,
   saveItem, deleteItem, uploadCustomImage, linkedMoment, saveMoment, toastMap,
@@ -47,7 +48,8 @@ export const ITEM_TEMPLATES: { key: Template; label: string; blurb: string; icon
 ];
 
 const SKINS = ["birthday", "bachelor", "bachelorette", "anniversary", "congrats"] as const;
-const DOW = ["SU", "MO", "TU", "WE", "TH", "FR", "SA"];
+// (day chips now reuse useEventsAdmin's Mon-first DOW + DOW_LABEL — one day vocabulary for
+//  both recurrence builders in this console; the stored tokens are unchanged.)
 
 export function ItemEditor({
   slots, toastRows, editing, presetTemplate, venueName, queueOnSlotId, placementSlotIds, nextPosition, onClose, onSaved, onDeleted,
@@ -153,6 +155,8 @@ function ItemForm({
   const [startsAt, setStartsAt] = useState<string>(toLocalInput(editing?.starts_at ?? null));
   const [endsAt, setEndsAt] = useState<string>(toLocalInput(editing?.ends_at ?? null));
   const [recurrence, setRecurrence] = useState<Recurrence | null>(editing?.recurrence ?? null);
+  // CERTAIN DAYS chosen but no day ticked — an intent that would save as "every day". Gates SAVE.
+  const noDaysPicked = recurrence?.kind === "weekly" && recurrence.daysOfWeek.length === 0;
 
   // Celebration date is a single field that drives a whole-day schedule window.
   const [celebDate, setCelebDate] = useState<string>(
@@ -289,7 +293,17 @@ function ItemForm({
             </button>
           )}
           <button type="button" onClick={onClose} style={btnGhost}>CANCEL</button>
-          <button type="button" onClick={submit} disabled={busy || del.isPending || !momentLoaded} className="u-fill u-ink" style={{ ...btnPrimary, opacity: busy || !momentLoaded ? 0.5 : 1 }}>
+          <button
+            type="button"
+            onClick={submit}
+            // CERTAIN DAYS with nothing picked would save as an every-day asset wearing a day
+            // rule — the manager's intent silently dropped. Blocked here rather than coerced,
+            // because either coercion (drop the rule / hide the asset) guesses at what he meant.
+            disabled={busy || del.isPending || !momentLoaded || noDaysPicked}
+            title={noDaysPicked ? "Pick at least one day under DAYS IT RUNS, or switch back to EVERY DAY." : undefined}
+            className="u-fill u-ink"
+            style={{ ...btnPrimary, opacity: busy || !momentLoaded || noDaysPicked ? 0.5 : 1 }}
+          >
             {busy ? "SAVING…" : !momentLoaded ? "LOADING…" : editing ? "SAVE" : "CREATE"}
           </button>
         </>
@@ -885,36 +899,68 @@ function ImageField({ fields, setField }: FieldProps) {
   );
 }
 
-// DECISION: recurrence is PERSISTED here (shape per 0009/0010 comments) and rendered as a
-// RECURS badge, but the pg_cron re-arm job that recomputes starts_at/ends_at on completion
-// is OUT of scope for this task — it ships with the events module (Phase 7). Until then a
-// recurring item behaves as a one-shot on its next window; the stored shape is forward-compatible.
+// The DAYS rule for a rotation asset. The stored shape is unchanged from 0009/0010
+// ({kind:'weekly', daysOfWeek:['TU',…]} | {kind:'annual', month, day}) — what CHANGED is that
+// it is now HONORED: itemSchedule.itemAirsNow gates every rotation surface on it at read time,
+// in the venue BUSINESS day (a Tuesdays asset runs until the 04:00 closeout, so it is still up
+// at 1:30 AM Wednesday). No pg_cron re-arm exists or is needed — nothing rewrites the row, so
+// the rule can never go stale (the 0051 "expiry derived at read" pattern).
 function RecurrenceField({ value, onChange }: { value: Recurrence | null; onChange: (r: Recurrence | null) => void }) {
   const kind = value?.kind ?? "none";
+  // The real venue rollover hour, never a hardcoded "4 AM" — this copy is the only place the
+  // owner is told where a night ends, so it has to match what the resolver actually uses.
+  const { closeoutHour } = useVenueClock();
+  const closeLabel = `${closeoutHour % 12 === 0 ? 12 : closeoutHour % 12} ${closeoutHour < 12 ? "AM" : "PM"} rollover`;
+  const noDays = value?.kind === "weekly" && value.daysOfWeek.length === 0;
+  const MODES = [
+    { key: "none", label: "EVERY DAY" },
+    { key: "weekly", label: "CERTAIN DAYS" },
+    { key: "annual", label: "ONE DATE A YEAR" },
+  ] as const;
   return (
     <div className="terminal-border" style={{ padding: "10px 12px", display: "flex", flexDirection: "column", gap: 8 }}>
-      <div style={caption}>RECURRENCE</div>
+      <div style={caption}>DAYS IT RUNS</div>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-        {(["none", "annual", "weekly"] as const).map((k) => (
+        {MODES.map((m) => (
           <button
-            key={k}
+            key={m.key}
             type="button"
             onClick={() => onChange(
-              k === "none" ? null
-                : k === "annual" ? { kind: "annual", month: 1, day: 1 }
+              m.key === "none" ? null
+                : m.key === "annual" ? { kind: "annual", month: 1, day: 1 }
                 : { kind: "weekly", daysOfWeek: [] },
             )}
-            className={kind === k ? "u-fill u-ink" : ""}
-            style={{ ...chip, ...(kind === k ? chipActive : null) }}
+            className={kind === m.key ? "u-fill u-ink" : ""}
+            style={{ ...chip, ...(kind === m.key ? chipActive : null) }}
           >
-            {k.toUpperCase()}
+            {m.label}
           </button>
         ))}
       </div>
       {value?.kind === "annual" && (
         <div style={{ display: "flex", gap: 10 }}>
-          <Field label="MONTH"><input type="number" min={1} max={12} value={value.month} onChange={(e) => onChange({ kind: "annual", month: clamp(parseInt(e.target.value) || 1, 1, 12), day: value.day })} style={{ ...sel, width: 90 }} /></Field>
-          <Field label="DAY"><input type="number" min={1} max={31} value={value.day} onChange={(e) => onChange({ kind: "annual", month: value.month, day: clamp(parseInt(e.target.value) || 1, 1, 31) })} style={{ ...sel, width: 90 }} /></Field>
+          {/* DAY is clamped to the MONTH's real length (Feb ≤ 29 — leap years included, so a
+              Feb 29 rule is allowed and simply doesn't fire in common years). A flat max of 31
+              let a manager save Feb 31, which no business day can ever match: the slide would
+              be queued, badged with a date, and silently never run. Changing the month re-clamps
+              the day, so Jan 31 → Feb becomes Feb 29, never an impossible date. */}
+          <Field label="MONTH">
+            <input
+              type="number" min={1} max={12} value={value.month}
+              onChange={(e) => {
+                const month = clamp(parseInt(e.target.value) || 1, 1, 12);
+                onChange({ kind: "annual", month, day: clamp(value.day, 1, daysInMonth(month)) });
+              }}
+              style={{ ...sel, width: 90 }}
+            />
+          </Field>
+          <Field label="DAY">
+            <input
+              type="number" min={1} max={daysInMonth(value.month)} value={value.day}
+              onChange={(e) => onChange({ kind: "annual", month: value.month, day: clamp(parseInt(e.target.value) || 1, 1, daysInMonth(value.month)) })}
+              style={{ ...sel, width: 90 }}
+            />
+          </Field>
         </div>
       )}
       {value?.kind === "weekly" && (
@@ -927,7 +973,8 @@ function RecurrenceField({ value, onChange }: { value: Recurrence | null; onChan
                 type="button"
                 onClick={() => onChange({ kind: "weekly", daysOfWeek: on ? value.daysOfWeek.filter((x) => x !== d) : [...value.daysOfWeek, d] })}
                 className={on ? "u-fill u-ink" : ""}
-                style={{ ...chip, ...(on ? chipActive : null), minWidth: 44 }}
+                title={DOW_LABEL[d]}
+                style={{ ...chip, ...(on ? chipActive : null), minWidth: 46, padding: "8px 6px", textAlign: "center" }}
               >
                 {d}
               </button>
@@ -935,7 +982,17 @@ function RecurrenceField({ value, onChange }: { value: Recurrence | null; onChan
           })}
         </div>
       )}
-      <div style={{ fontSize: 13, opacity: 0.55 }}>Re-arm on completion ships with the events module — stored now, forward-compatible.</div>
+      {/* Plain-phrase echo of the rule, so the manager reads back what he just set. The
+          nothing-picked case is a blocker, not a note — it wears the amber and says so. */}
+      {noDays ? (
+        <div className="u-amber" style={{ fontSize: 15 }}>⚠ {recurrenceSentence(value)} SAVE stays disabled until you do, or switch back to EVERY DAY.</div>
+      ) : (
+        <div style={{ fontSize: 15 }}>{recurrenceSentence(value)}</div>
+      )}
+      <div style={{ fontSize: 13, opacity: 0.55 }}>
+        A day rule applies on top of any START / END dates above. Nights count as the day they
+        started — a TUE slide stays up until close ({closeLabel}), not midnight.
+      </div>
     </div>
   );
 }
