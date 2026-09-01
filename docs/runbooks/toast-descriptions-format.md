@@ -134,3 +134,81 @@ delivered 2026-07-14 but lived in a temp directory that's gone. If it would help
 Bunker OS dev session can regenerate it from `docs/Drink Slides.zip` in the repo —
 ask for "regenerate the toast-descriptions worksheet." The formatting rules above
 stand alone without it.
+
+## Menu ORDER is Toast's too (2026-09-01)
+
+The order of sections and of items inside them on bunkerokc.com/menu is **exactly the
+order you arrange in Toast** — no deploy, no session, no list kept on the website side.
+Rearrange a group or an item in Toast, Publish, and within ~2–3 minutes (the same
+`toast-menu-sync` pass that carries descriptions) the website mirrors it.
+
+How it maps:
+
+- **Menus** are walked in the order Toast lists them, and **groups** in the order they
+  sit inside each menu. A sub-group renders right after its parent group, not at the end.
+- **Items** render in their order inside the group.
+- A **brand-new group** (the "Tiki Tuesday" case) lands wherever you put it — first, if
+  that's where you put it. Nothing has to be added to a list anywhere.
+- An item that lives in **two groups** renders once, under the **first group it appears in
+  that is visible on the POS view** (Toast's own top-to-bottom order). If every group it's
+  in is hidden, it's hidden. So a drink listed in both a live "Tiki Tuesday" group and a
+  hidden "Classics" group shows under Tiki Tuesday — being listed somewhere hidden can
+  never take it off the website. If an item shows up in the wrong section, the lever is to
+  remove it from the group you don't want it in, or to move that group below the one you do.
+
+Two things ordering does NOT override — both still apply first:
+
+- POS-hidden items and whole POS-hidden groups never appear (the `pos_visible` gate).
+- 86'd items are hidden, and `site_menu_hidden_guids` still suppresses register-only
+  rows (e.g. the "Sputnik 1/2 off" duplicate).
+
+## Toast is the sole source of truth (2026-09-01)
+
+**If it's in Toast — visible, in stock, sellable — it shows up. If it's hidden, 86'd, or
+deleted, it's gone.** All four cases are automatic and all four land within ~2–3 minutes
+of Publish. Nothing has to be done on the website, on the screens, or in a dev session:
+
+| In Toast | On the website / screens |
+| --- | --- |
+| Item added | Appears, in the position you gave it |
+| Description / price / photo edited | Updates everywhere |
+| Item **hidden** from the POS view | Disappears (the `pos_visible` gate) |
+| Item **86'd** | Disappears |
+| Item **deleted**, or pulled off every menu | Disappears |
+| Deleted item **put back** | Reappears, with everything it had before |
+
+"Gone" means gone from every surface at once: the website menu, the What's-On feed, the
+TV drink slides, NOW POURING, and the top-sellers / champion / underdogs boards (a
+removed item can't win a ranking it's no longer sold in). A signage card linked to a
+deleted item auto-hides on screen and is labelled **REMOVED FROM TOAST** in the hub, so
+it's obvious why it stopped showing.
+
+Deleting in Toast never destroys anything on our side — the item's cached name, blurbs
+and photo are kept, so putting it back in Toast restores it exactly as it was on the very
+next sync. There is no "undelete" step to run.
+
+> This used to be the one hole in the loop: before 2026-09-01 an item deleted in Toast
+> stayed cached forever and could keep showing on the website months later (21 items were
+> in exactly that state — Fireball Shot, Malört Shot, Crown Apple Whiskey, the old
+> "Sputnik 1/2 off" duplicate, and others). The workaround was to POS-hide it as well.
+> That's no longer needed; deleting is enough.
+
+### Two things to know about deleting
+
+**A re-created item is a NEW item.** Toast gives it a fresh internal ID, so it is not the
+old one coming back — it arrives as a brand-new menu item. The website doesn't care (it
+shows whatever Toast has), but **a TV card that was linked to the deleted item stays
+linked to the dead one**: it keeps reading `REMOVED FROM TOAST` and keeps auto-hiding.
+Fix it in the Signage Hub by opening that card and picking the new item. Deleted items also
+just accumulate in our cache — harmless, invisible everywhere, and there's no clean-up chore.
+
+**If the menu ever looks wrong after a Publish, the lever is a forced sync.** As a safety
+net the sync refuses to remove a large share of the menu on its own: if Toast answers with
+an incomplete menu (a partial response, a hiccup mid-publish), the sync would "see" all the
+missing items as deleted, so instead it **holds** — it changes nothing, writes an amber
+**MENU PRUNE HELD — N items missing from Toast, retrying** line on the dashboard's TOAST
+SYNC panel, and tries again every 2 minutes until Toast answers completely. The site keeps
+showing what it already had the whole time. If you *did* mean to delete a lot of items at
+once, or the menu is genuinely showing the wrong thing, ask a dev session for a **forced
+sync** — that's the human override that applies the change immediately, and it's the
+recovery lever for anything that looks stuck.

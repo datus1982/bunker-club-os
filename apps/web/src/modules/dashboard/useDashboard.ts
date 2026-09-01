@@ -49,6 +49,22 @@ function classify(updatedAt: string | null, opts: { gated: boolean; inWindow: bo
 export interface SyncStatus {
   toastSync: { state: Freshness; ageMs: number | null; updatedAt: string | null; inWindow: boolean };
   menuSync: { state: Freshness; ageMs: number | null; updatedAt: string | null };
+  /**
+   * Raised by toast-menu-sync (v12) when it planned to remove more items than the safety cap
+   * allows and HELD the prune instead — the incomplete-Toast-payload case. The row's absence
+   * is the healthy state; the sync deletes it on the next clean pass. Nothing is wrong with
+   * the menu when this is set: the site keeps showing what it already had, and the sync
+   * retries every 2 minutes. It exists so a held prune is never silent.
+   */
+  pruneAlarm: PruneAlarm | null;
+}
+
+/** Payload of the `toast_menu_prune_alarm` venue_settings key (toast-menu-sync v12). */
+export interface PruneAlarm {
+  count: number;
+  cap: number;
+  at: string;
+  sample: string[];
 }
 
 /** Freshness of the two Toast syncs, from the newest updated_at in each cache table. */
@@ -59,11 +75,12 @@ export function useSyncStatus() {
     queryFn: async (): Promise<SyncStatus> => {
       const now = new Date();
 
-      const [{ data: venue }, { data: winRow }, sales, menu] = await Promise.all([
+      const [{ data: venue }, { data: winRow }, sales, menu, { data: alarmRow }] = await Promise.all([
         supabase.from("venues").select("timezone").eq("id", VENUE_ID).maybeSingle(),
         supabase.from("venue_settings").select("value").eq("venue_id", VENUE_ID).eq("key", "drinks_sync_window").maybeSingle(),
         supabase.from("sales_cache").select("updated_at").eq("venue_id", VENUE_ID).order("updated_at", { ascending: false }).limit(1).maybeSingle(),
         supabase.from("toast_menu_cache").select("updated_at").eq("venue_id", VENUE_ID).order("updated_at", { ascending: false }).limit(1).maybeSingle(),
+        supabase.from("venue_settings").select("value").eq("venue_id", VENUE_ID).eq("key", "toast_menu_prune_alarm").maybeSingle(),
       ]);
 
       const tz = (venue?.timezone as string | undefined) ?? "America/Chicago";
@@ -75,9 +92,22 @@ export function useSyncStatus() {
 
       const t = classify(salesAt, { gated: true, inWindow });
       const m = classify(menuAt, { gated: false, inWindow: true });
+      // Absent row = healthy. Only trust a well-formed payload; a malformed one must not
+      // fabricate an alarm on the owner's status board.
+      const alarmVal = (alarmRow?.value ?? null) as Partial<PruneAlarm> | null;
+      const pruneAlarm: PruneAlarm | null = alarmVal && typeof alarmVal.count === "number"
+        ? {
+            count: alarmVal.count,
+            cap: typeof alarmVal.cap === "number" ? alarmVal.cap : 0,
+            at: typeof alarmVal.at === "string" ? alarmVal.at : "",
+            sample: Array.isArray(alarmVal.sample) ? alarmVal.sample.filter((x): x is string => typeof x === "string") : [],
+          }
+        : null;
+
       return {
         toastSync: { ...t, updatedAt: salesAt, inWindow },
         menuSync: { ...m, updatedAt: menuAt },
+        pruneAlarm,
       };
     },
   });

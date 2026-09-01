@@ -307,7 +307,9 @@ export function useToastCache() {
       const [{ data: cache }, { data: menu }] = await Promise.all([
         supabase
           .from("toast_menu_cache")
-          .select("guid, name, price, image_storage_path, image_url, menu_group, out_of_stock, pos_visible, long_blurb, price_options")
+          // removed_at (0066) is staff-only — `authenticated` holds a relation-level SELECT so
+          // it reads fine here, while the anon TV reader in useSignage deliberately omits it.
+          .select("guid, name, price, image_storage_path, image_url, menu_group, out_of_stock, pos_visible, long_blurb, price_options, removed_at")
           .eq("venue_id", VENUE_ID)
           .order("menu_group"),
         supabase.from("public_menu").select("guid, public_blurb"),
@@ -320,6 +322,7 @@ export function useToastCache() {
         image_storage_path: string | null; image_url: string | null;
         menu_group: string | null; out_of_stock: boolean; pos_visible: boolean | null;
         long_blurb: string | null; price_options: PriceOption[] | null;
+        removed_at: string | null;
       }>).map((r) => ({
         guid: r.guid,
         name: r.name,
@@ -331,6 +334,7 @@ export function useToastCache() {
         public_blurb: blurbs.get(r.guid) ?? null,
         long_blurb: r.long_blurb, // 0048 — available to templates later; nothing renders it yet
         price_options: r.price_options ?? null, // 0050 — available to templates later; nothing renders it yet
+        removed_at: r.removed_at ?? null, // 0066 — Toast no longer carries this item
       }));
     },
   });
