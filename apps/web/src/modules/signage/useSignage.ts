@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase, VENUE_ID } from "@/shared/supabaseClient";
+import { logError } from "@/shared/log";
 import { fetchSlotQueuePublic } from "./slotQueue";
 import { eventStage, isTakeoverStage, type LiveEvent } from "./eventStage";
 import type { SlotProgram } from "./mediaProgram";
@@ -8,6 +9,7 @@ import { thumbUrl } from "./mediaProgram";
 import { nextRollover, type ScheduleRow, type ProgramHold, type ScheduleProgram } from "./scheduleResolve";
 import { itemAirsNow, DEFAULT_VENUE_CLOCK, type ItemRecurrence, type VenueClock } from "./itemSchedule";
 import { slotRenderFieldsUnchanged, TV_SLOT_RENDER_FIELDS } from "./slotRealtime";
+import { menuGroupOf, menuGroupRows, type MenuGroupFilters } from "./menuGroup";
 
 // Re-export the pure events surface so the app imports it from one place. The pure
 // module (no react/supabase) is what scripts/test-event-stage.ts imports directly.
@@ -368,93 +370,20 @@ export function useNowPlayingSource(slug: string | null) {
 
 /* ── MENU GROUP slide (0065) ──────────────────────────────────────────────────── */
 
-/** The exact toast_menu_cache `menu_group` string a MENU GROUP slide lists (fields.group). */
-export function menuGroupOf(item: SignageItem): string {
-  const v = item.fields?.group;
-  return typeof v === "string" ? v.trim() : "";
-}
-
-/** One resolved menu line, in the shape the slide renders. Mirrors the public /menu row
- *  (modules/website/useMenu.ts MenuItem) so the two surfaces show the SAME item the same way. */
-export interface MenuGroupRow {
-  guid: string;
-  name: string;
-  price: number | null;
-  image: string | null;
-  blurb: string | null;
-  priceOptions: PriceOption[] | null;
-  /** Toast's own menu ordering (public_menu.item_position, added by 0064). null until that
-   *  migration lands, or for an item Toast gives no position — those fall to name order. */
-  position: number | null;
-}
-
-/** The website-parity filters a MENU GROUP slide applies on top of the Toast mirror. */
-export interface MenuGroupFilters {
-  /** venue_settings.site_menu_hidden_guids — POS-convenience rows the owner suppresses publicly. */
-  hidden: Set<string>;
-  /** public_menu.item_position by guid (0064). Empty until that migration applies. */
-  order: Map<string, number>;
-}
-
 /**
- * Resolve ONE Toast menu group into the rows a MENU GROUP slide lists.
- *
- * DECISION (website parity — the owner asked for it "similarly to how it is on the website"):
- * this applies the SAME three gates modules/website/useMenu.ts applies to /menu —
- *   1. `pos_visible` (0034 owner principle: never advertise what isn't active on the POS view;
- *      already enforced upstream for /menu by the public_menu view, applied here on the cache),
- *   2. out-of-stock (86'd items are hidden, not greyed),
- *   3. venue_settings.site_menu_hidden_guids (the "Sputnik 1/2 off" class of register-only row),
- * so a drink the owner has taken off the public menu never reappears on a bar TV.
- *
- * PURE — one function shared by the template (what to draw) and resolveRotation (whether the
- * card survives at all), so the auto-hide can never disagree with the render and leave a blank
- * dwell. `filters` is optional: absent ⇒ no hidden-guid suppression and name ordering (the hub
- * and the item editor's preview have no live settings read; see useSiteMenuFilters).
+ * The row resolution + the whole sizing model live in the PURE ./menuGroup module (no react, no
+ * supabase) so scripts/test-menu-group.ts can import them directly. Re-exported here so the app
+ * keeps ONE signage import surface — the eventStage.ts idiom.
  */
-export function menuGroupRows(
-  toast: Map<string, ToastCacheRow>,
-  group: string,
-  filters?: MenuGroupFilters,
-): MenuGroupRow[] {
-  const want = group.trim().toLowerCase();
-  if (!want) return [];
-  const rows: MenuGroupRow[] = [];
-  for (const [guid, r] of toast) {
-    if ((r.menu_group ?? "").trim().toLowerCase() !== want) continue;
-    if (r.out_of_stock || !r.pos_visible) continue;
-    if (filters?.hidden.has(guid)) continue;
-    if (!r.name) continue;
-    rows.push({
-      guid,
-      name: r.name,
-      price: r.price,
-      image: r.image,
-      blurb: r.public_blurb,
-      priceOptions: cleanPriceOptions(r.price_options),
-      position: filters?.order.get(guid) ?? null,
-    });
-  }
-  // Toast's own order first (nulls last — an unpositioned item never jumps the list), then name.
-  rows.sort((a, b) => {
-    const ap = a.position ?? Number.MAX_SAFE_INTEGER;
-    const bp = b.position ?? Number.MAX_SAFE_INTEGER;
-    return ap - bp || a.name.localeCompare(b.name);
-  });
-  return rows;
-}
+export {
+  menuGroupOf,
+  menuGroupRows,
+  mgLayout,
+  mgTypography,
+  MENU_GROUP_NAME_GREEN,
+} from "./menuGroup";
+export type { MenuGroupRow, MenuGroupFilters } from "./menuGroup";
 
-/** Defensive price-options clean (byte-mirrors modules/website/useMenu.ts cleanOptions): only
- *  well-formed {label:string, price:number} entries survive, and an empty result is null so the
- *  row falls back to the single-price path instead of rendering an empty options strip. */
-function cleanPriceOptions(raw: PriceOption[] | null): PriceOption[] | null {
-  if (!Array.isArray(raw)) return null;
-  const ok = raw.filter(
-    (o): o is PriceOption =>
-      !!o && typeof o.label === "string" && o.label.length > 0 && typeof o.price === "number",
-  );
-  return ok.length > 0 ? ok : null;
-}
 
 /**
  * The website-parity filters for the MENU GROUP slide: the owner's hidden-guid list and Toast's
@@ -471,11 +400,12 @@ function cleanPriceOptions(raw: PriceOption[] | null): PriceOption[] | null {
  * seeded live. Failure mode of getting it wrong here is one POS-convenience row listed on a TV
  * — strictly smaller than a stale hardcoded guid hiding the wrong drink forever.
  *
- * DECISION (soft column): public_menu.item_position / group_position arrive in migration 0064
- * (sibling branch). Selecting a column that does not exist yet fails the WHOLE PostgREST
- * request, so the ordering read is tried WITH the column and, on any error, retried without it
- * — the slide falls back to name order until 0064 lands, and self-heals afterwards with no
- * code change.
+ * DECISION (soft column, corrected after the cold review's NOTE-2): public_menu.item_position
+ * arrived in migration 0064 (sibling branch). Selecting a column that does not exist fails the
+ * WHOLE PostgREST request, so this read is DELIBERATELY NON-FATAL: on any error the ordering map
+ * is left empty and the slide falls back to name order, self-healing once 0064 is applied. There
+ * is no second retry without the column — the earlier comment claimed one and there never was —
+ * so the failure is LOGGED rather than masquerading as "every item is unpositioned".
  */
 export function useSiteMenuFilters(enabled: boolean) {
   return useQuery({
@@ -498,8 +428,17 @@ export function useSiteMenuFilters(enabled: boolean) {
       );
 
       const order = new Map<string, number>();
+      if (orderRes.error) {
+        // 0064 not applied yet, or a genuinely broken read. Either way the slide degrades to name
+        // order rather than crashing — but say so, so a broken read is not silently indistinct
+        // from "Toast gave these items no position".
+        logError(
+          "[menu-group] public_menu.item_position read failed — falling back to name order:",
+          orderRes.error.message,
+        );
+      }
       const orderRows = orderRes.error
-        ? [] // 0064 not applied yet (or a transient read failure) → name order, never a crash
+        ? []
         : ((orderRes.data ?? []) as { guid: string; item_position: number | null }[]);
       for (const r of orderRows) if (typeof r.item_position === "number") order.set(r.guid, r.item_position);
 

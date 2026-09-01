@@ -648,6 +648,9 @@ function NowPlayingFields({ fields, setField, slots }: FieldProps & { slots: Adm
   );
 }
 
+/** Toast's featured-duplicates group — never a customer-facing menu section (see README). */
+const SCREENS_GROUP = "\u2605 SCREENS";
+
 /* ── menu_group ─────────────────────────────────────────────────────────────── */
 /**
  * MENU GROUP settings (0065). Three fields:
@@ -667,15 +670,19 @@ function MenuGroupFields({ fields, setField, toastRows }: FieldProps & { toastRo
   const showBlurbs = fields.show_blurbs !== false; // default true
 
   // Distinct groups + how many rows in each would actually LIST (in stock AND POS-visible), so
-  // the picker tells the truth about what the slide will show.
+  // the picker tells the truth about what the slide will show. Cold-review NOTE-9: a 0-showable
+  // group used to be labelled POS-HIDDEN whatever the cause, which was a lie for a section whose
+  // items are simply all 86'd — so the two causes are counted SEPARATELY and named.
   const groups = useMemo(() => {
-    const m = new Map<string, { total: number; showable: number; photos: number }>();
+    const m = new Map<string, { total: number; showable: number; photos: number; eightySixed: number; offPos: number }>();
     for (const r of toastRows) {
       const g = (r.menu_group ?? "").trim();
-      if (!g || g === "★ SCREENS") continue;
-      const e = m.get(g) ?? { total: 0, showable: 0, photos: 0 };
+      if (!g || g === SCREENS_GROUP) continue;
+      const e = m.get(g) ?? { total: 0, showable: 0, photos: 0, eightySixed: 0, offPos: 0 };
       e.total += 1;
-      if (!r.out_of_stock && r.pos_visible) {
+      if (!r.pos_visible) e.offPos += 1;
+      else if (r.out_of_stock) e.eightySixed += 1;
+      else {
         e.showable += 1;
         if (r.image) e.photos += 1;
       }
@@ -687,6 +694,9 @@ function MenuGroupFields({ fields, setField, toastRows }: FieldProps & { toastRo
   }, [toastRows]);
 
   const picked = groups.find((g) => g.name === group);
+  // The ★ SCREENS duplicates group is excluded from the picker; the free-text fallback (shown
+  // only when the Toast mirror hasn't loaded) can't enforce that, so it warns instead.
+  const typedScreens = group.trim().toUpperCase() === SCREENS_GROUP;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -706,7 +716,8 @@ function MenuGroupFields({ fields, setField, toastRows }: FieldProps & { toastRo
             <option value="" style={opt}>— pick a section —</option>
             {groups.map((g) => (
               <option key={g.name} value={g.name} style={opt}>
-                {g.name} ({g.showable} item{g.showable === 1 ? "" : "s"}){g.showable === 0 ? " — POS-HIDDEN" : ""}
+                {g.name} ({g.showable} item{g.showable === 1 ? "" : "s"})
+                {g.showable === 0 ? " — NOTHING SHOWABLE (hidden / 86'd)" : ""}
               </option>
             ))}
           </select>
@@ -714,17 +725,31 @@ function MenuGroupFields({ fields, setField, toastRows }: FieldProps & { toastRo
           <input placeholder="Exact Toast menu group name" value={group} onChange={(e) => setField("group", e.target.value)} style={sel} />
         )}
       </Field>
+      {typedScreens && (
+        <div style={{ fontSize: 14, lineHeight: 1.5 }} className="u-amber">
+          ⚠ {SCREENS_GROUP} is the featured-duplicates group, not a customer menu section — pick a real one.
+        </div>
+      )}
       {picked && (
         <div style={{ fontSize: 14, opacity: 0.7, lineHeight: 1.5 }}>
           {picked.showable === 0 ? (
             <span className="u-amber">
-              ⚠ POS-HIDDEN — none of this section's {picked.total} item{picked.total === 1 ? " is" : "s are"} active on the
-              POS view, so the slide will stay hidden until it is turned back on in Toast.
+              ⚠ NOTHING SHOWABLE — all {picked.total} item{picked.total === 1 ? "" : "s"} in this section
+              {picked.eightySixed > 0 && picked.offPos > 0
+                ? ` are out (${picked.eightySixed} 86'd, ${picked.offPos} off the POS view)`
+                : picked.eightySixed > 0
+                  ? ` ${picked.eightySixed === 1 ? "is" : "are"} 86'd`
+                  : ` ${picked.offPos === 1 ? "is" : "are"} off the POS view`}
+              , so the slide will stay hidden until that changes in Toast.
             </span>
           ) : (
             <>
               Will list <b>{picked.showable}</b> item{picked.showable === 1 ? "" : "s"} · <b>{picked.photos}</b> with a photo.
               {picked.photos === 0 && " No photos yet — names and prices take the full width until Toast has some."}
+              {(picked.eightySixed > 0 || picked.offPos > 0) && (
+                <> {picked.eightySixed + picked.offPos} more {picked.eightySixed + picked.offPos === 1 ? "item is" : "items are"} hidden
+                  {picked.eightySixed > 0 && ` (${picked.eightySixed} 86'd)`} and will appear on their own when Toast says so.</>
+              )}
             </>
           )}
         </div>
