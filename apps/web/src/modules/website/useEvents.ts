@@ -1,7 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
 
 import { supabase, VENUE_ID } from "@/shared/supabaseClient";
-import { fetchPromoMenu, fieldStr, priceLine } from "./promoResolve";
+import { fetchPromoMenu, fieldStr, priceLine, SITE_CLOCK } from "./promoResolve";
+import { itemAirsToday, parseRecurrence } from "@/modules/signage/itemSchedule";
 
 /**
  * Public events data (docs/14). Two anon-safe sources, unioned into one card list:
@@ -91,7 +92,7 @@ export function useEvents() {
       // by their event date below anyway; this only sets the pre-sort/tiebreak order.
       const { data: promos } = await supabase
         .from("signage_items")
-        .select("id, template, fields, ends_at, created_at")
+        .select("id, template, fields, ends_at, recurrence, created_at")
         .eq("venue_id", VENUE_ID)
         .eq("show_on_website", true)
         .eq("active", true)
@@ -100,8 +101,13 @@ export function useEvents() {
         .limit(24);
 
       const nowMs = Date.now();
+      const now = new Date(nowMs);
+      // Ended-window drop, PLUS the per-item DAY RULE (itemSchedule) — the same gate the TVs
+      // apply, in the same venue business day. Without it a Tuesdays-only promo would sit on
+      // /events all week while the room only honors it one night.
       const live = (promos ?? []).filter(
-        (p) => !(p.ends_at && new Date(p.ends_at).getTime() < nowMs), // drop ended; evergreen stays
+        (p) => !(p.ends_at && new Date(p.ends_at).getTime() < nowMs) // drop ended; evergreen stays
+          && itemAirsToday({ starts_at: null, ends_at: null, recurrence: parseRecurrence(p.recurrence) }, now, SITE_CLOCK),
       ) as Array<{
         id: string; template: string; fields: Record<string, unknown>; ends_at: string | null;
       }>;

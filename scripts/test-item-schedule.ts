@@ -3,18 +3,19 @@
  * `npx tsx scripts/test-item-schedule.ts` (pnpm test:itemschedule).
  *
  * Imports the PURE module (no react / supabase / `@/` alias), exactly like
- * test-schedule-resolve.ts. Asserts: weekday match in the venue BUSINESS day (the 04:00
+ * test-schedule-resolve.ts. 77 assertions: weekday match in the venue BUSINESS day (the 04:00
  * rollover, so Tuesday night runs past midnight), null-recurrence passthrough, empty-days
- * passthrough, starts_at/ends_at intersection, annual, malformed fail-open, chip labels, and
- * DST-transition days. All instants hand-computed for America/Chicago
- * (CDT = UTC−5 summer, CST = UTC−6 winter).
+ * passthrough, starts_at/ends_at intersection, annual (incl. impossible dates failing open),
+ * malformed fail-open, chip labels, the website feed's gate, and DST-transition days. All
+ * instants hand-computed for America/Chicago (CDT = UTC−5 summer, CST = UTC−6 winter).
  */
 import {
   itemAirsNow, itemAirsToday, inTimeWindow, parseRecurrence,
-  recurrenceChipLabel, recurrenceSentence, DEFAULT_VENUE_CLOCK,
+  recurrenceChipLabel, recurrenceSentence, isEmptyWeekly, daysInMonth,
+  DEFAULT_VENUE_CLOCK, NO_DAYS_CHIP,
   type SchedulableItem, type VenueClock,
 } from "../apps/web/src/modules/signage/itemSchedule.ts";
-import { venueBusinessDay } from "../apps/web/src/modules/signage/scheduleResolve.ts";
+import { venueBusinessDay } from "../apps/web/src/modules/signage/venueTime.ts";
 
 let failures = 0;
 function assert(label: string, got: unknown, want: unknown) {
@@ -132,19 +133,48 @@ assert("NYC clock: Wed 5:30AM ET → Wednesday", venueBusinessDay(new Date("2026
 assert("default clock",                         DEFAULT_VENUE_CLOCK, { timezone: "America/Chicago", closeoutHour: 4 });
 assert("default clock used when omitted",       itemAirsNow(item(TUESDAYS), wed130), true);
 
+/* ── impossible annual dates fail OPEN (NOTE-5: the editor can no longer make one) ─── */
+assert("daysInMonth Feb = 29 (leap allowed)",   daysInMonth(2), 29);
+assert("daysInMonth Apr = 30",                  daysInMonth(4), 30);
+assert("Feb 31 parses to null",                 parseRecurrence({ kind: "annual", month: 2, day: 31 }), null);
+assert("Feb 31 asset airs (not silently dark)", itemAirsNow(item({ kind: "annual", month: 2, day: 31 }), wed6pm, VENUE), true);
+assert("Feb 29 is a legal rule",                parseRecurrence({ kind: "annual", month: 2, day: 29 }), { kind: "annual", month: 2, day: 29 });
+assert("Apr 31 parses to null",                 parseRecurrence({ kind: "annual", month: 4, day: 31 }), null);
+
+/* ── weekly-with-no-days: airs, but is never MISTAKEN for a plain asset (NOTE-3) ───── */
+assert("isEmptyWeekly true",                    isEmptyWeekly({ kind: "weekly", daysOfWeek: [] }), true);
+assert("isEmptyWeekly false for real set",      isEmptyWeekly(TUESDAYS), false);
+assert("isEmptyWeekly false for null",          isEmptyWeekly(null), false);
+assert("empty weekly still airs",               itemAirsNow(item({ kind: "weekly", daysOfWeek: [] }), wed6pm, VENUE), true);
+assert("empty weekly gets its OWN chip",        recurrenceChipLabel({ kind: "weekly", daysOfWeek: [] }), NO_DAYS_CHIP);
+
 /* ── chip labels + editor sentence ────────────────────────────────────── */
 assert("chip one day",                          recurrenceChipLabel(TUESDAYS), "TUESDAYS");
 assert("chip three days (week order)",          recurrenceChipLabel({ kind: "weekly", daysOfWeek: ["FR", "MO", "WE"] }), "MON·WED·FRI");
 assert("chip includes Sunday last",             recurrenceChipLabel({ kind: "weekly", daysOfWeek: ["SU", "SA"] }), "SAT·SUN");
 assert("chip all 7 = no restriction",           recurrenceChipLabel({ kind: "weekly", daysOfWeek: ["SU","MO","TU","WE","TH","FR","SA"] }), null);
-assert("chip empty = no restriction",           recurrenceChipLabel({ kind: "weekly", daysOfWeek: [] }), null);
+assert("chip null recurrence",                  recurrenceChipLabel(undefined), null);
 assert("chip null",                             recurrenceChipLabel(null), null);
 assert("chip annual",                           recurrenceChipLabel(halloween), "OCT 31");
 assert("sentence weekly",                       recurrenceSentence(TUESDAYS), "Runs on tuesdays only.");
 assert("sentence multi",                        recurrenceSentence(MWF), "Runs on mon, wed, fri only.");
 assert("sentence none",                         recurrenceSentence(null), "Runs whenever it's queued — every day.");
-assert("sentence weekly-no-days",               recurrenceSentence({ kind: "weekly", daysOfWeek: [] }), "No days picked yet — it runs every day until you pick some.");
+assert("sentence weekly-no-days is a PROMPT",   recurrenceSentence({ kind: "weekly", daysOfWeek: [] }), "Pick at least one day — nothing is selected yet.");
+assert("sentence all-7 = runs every day",       recurrenceSentence({ kind: "weekly", daysOfWeek: ["SU","MO","TU","WE","TH","FR","SA"] }), "Runs every day.");
 assert("sentence annual",                       recurrenceSentence(halloween), "Runs one day a year — OCT 31.");
+
+/* ── WARN-2: the WEBSITE feed gate ────────────────────────────────────────
+ * useThisWeek.ts / useEvents.ts filter their 🌐 promo rows with exactly this expression
+ * (SITE_CLOCK = DEFAULT_VENUE_CLOCK — the site has no venue-TZ read; see promoResolve).
+ * A raw DB row is passed in, so the recurrence goes through parseRecurrence first. */
+const siteAirs = (row: { recurrence: unknown }, at: Date) =>
+  itemAirsToday({ starts_at: null, ends_at: null, recurrence: parseRecurrence(row.recurrence) }, at, DEFAULT_VENUE_CLOCK);
+assert("site: WEDNESDAY promo hidden on a Tuesday", siteAirs({ recurrence: { kind: "weekly", daysOfWeek: ["WE"] } }, tue5pm), false);
+assert("site: same promo shows on Wednesday",       siteAirs({ recurrence: { kind: "weekly", daysOfWeek: ["WE"] } }, wed6pm), true);
+assert("site: TUESDAY promo shows on Tuesday",      siteAirs({ recurrence: TUESDAYS }, tue5pm), true);
+assert("site: TUESDAY promo still shows Wed 1:30AM",siteAirs({ recurrence: TUESDAYS }, wed130), true);
+assert("site: unrestricted promo always shows",     siteAirs({ recurrence: null }, wed6pm), true);
+assert("site: malformed recurrence still shows",    siteAirs({ recurrence: { kind: "lunar" } }, wed6pm), true);
 
 console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILURE(S)`);
 process.exit(failures === 0 ? 0 : 1);

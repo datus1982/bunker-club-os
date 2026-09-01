@@ -1,4 +1,5 @@
 import { supabase, VENUE_ID } from "@/shared/supabaseClient";
+import { DEFAULT_VENUE_CLOCK, type VenueClock } from "@/modules/signage/itemSchedule";
 
 /**
  * Shared resolver for website promo cards sourced from `signage_items`.
@@ -18,6 +19,20 @@ import { supabase, VENUE_ID } from "@/shared/supabaseClient";
  *
  * All reads degrade to an empty map on error — never throw the page.
  */
+
+/**
+ * The clock the public site reasons about venue days in — for the per-item DAY RULE
+ * (itemSchedule) that gates 🌐 promos on both /|home and /events.
+ *
+ * DECISION: the site uses DEFAULT_VENUE_CLOCK rather than reading `venues.timezone` +
+ * `venue_settings.toast_closeout_hour`. The website module has no venue read at all today,
+ * and adding two queries to the eager Home path (an LCP-sensitive bundle — PR #68) to move
+ * a rollover the venue has never changed is the wrong trade. `itemSchedule` is pure (no
+ * react, no supabase), so this costs the bundle nothing. If the venue is ever re-homed or
+ * its closeout hour changes, thread `useVenueClock()` in here — the call sites take a
+ * VenueClock already.
+ */
+export const SITE_CLOCK: VenueClock = DEFAULT_VENUE_CLOCK;
 
 export interface ResolvedMenu {
   guid: string;

@@ -48,32 +48,14 @@ export interface SlotProgramState {
   program_set_at: string | null; // ISO
 }
 
-const TOK2NUM: Record<string, number> = { SU: 0, MO: 1, TU: 2, WE: 3, TH: 4, FR: 5, SA: 6 };
-const WD2NUM: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
-const DAY_MS = 86_400_000;
-
-/* ── venue-local wall-time helpers (Intl-based, DST-correct) ─────────────────────── */
-
-/** Venue-local weekday index (0=Sun) + minutes past midnight for an instant. */
-export function venueLocalParts(at: Date, tz: string): { dow: number; minute: number } {
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone: tz, weekday: "short", hour: "2-digit", minute: "2-digit", hour12: false,
-  }).formatToParts(at);
-  const wd = parts.find((p) => p.type === "weekday")?.value ?? "Sun";
-  let hh = parseInt(parts.find((p) => p.type === "hour")?.value ?? "0", 10);
-  const mm = parseInt(parts.find((p) => p.type === "minute")?.value ?? "0", 10);
-  if (hh === 24) hh = 0; // some engines emit '24' at midnight
-  return { dow: WD2NUM[wd] ?? 0, minute: hh * 60 + mm };
-}
-
-/** Venue-local calendar Y/M/D of an instant (M is 1..12). */
-function venueLocalYMD(at: Date, tz: string): { y: number; m1: number; d: number } {
-  const p = Object.fromEntries(
-    new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" })
-      .formatToParts(at).filter((x) => x.type !== "literal").map((x) => [x.type, parseInt(x.value, 10)]),
-  ) as { year: number; month: number; day: number };
-  return { y: p.year, m1: p.month, d: p.day };
-}
+/* ── venue-local wall-time helpers ────────────────────────────────────────────────
+ * The Intl primitives (venueLocalParts / venueLocalYMD / dayAllowed / venueBusinessDay) live in
+ * venueTime.ts so that itemSchedule — and through it the public website — can ask "what venue
+ * day is it" without pulling this module's daypart/hold machinery into the eager Home bundle.
+ * Re-exported here because this module was their home and its callers + unit test import them
+ * from this path. */
+export { venueLocalParts, dayAllowed, venueBusinessDay } from "./venueTime";
+import { venueLocalParts, venueLocalYMD, dayAllowed, DAY_MS } from "./venueTime";
 
 /** Offset (ms) of `tz` at `at`: (that wall clock read back as UTC) − at. */
 function tzOffsetMs(at: Date, tz: string): number {
@@ -97,15 +79,6 @@ function zonedWallToInstant(y: number, m1: number, d: number, minutes: number, t
 }
 
 /* ── coverage ────────────────────────────────────────────────────────────────────── */
-
-/** Is `dow` (0=Sun) in a ['MO','TU',…] token set? EMPTY = every day (the schema default, and the
- *  same rule signage_items.recurrence follows — see itemSchedule.ts). Exported so the item-level
- *  weekday gate reuses this exact semantics instead of re-deriving it. */
-export function dayAllowed(days: string[], dow: number): boolean {
-  if (days.length === 0) return true; // empty = every day
-  for (const d of days) if (TOK2NUM[d.toUpperCase()] === dow) return true;
-  return false;
-}
 
 /** Does a row cover the venue-local (dow, minute)? Wrap-past-midnight aware: the post-midnight
  *  portion of a wrapping daypart belongs to the day it STARTED (the previous weekday). */
@@ -175,26 +148,6 @@ export function nextRollover(from: Date, tz: string, rolloverHour: number): Date
   if (today.getTime() > from.getTime()) return today;
   const nd = new Date(Date.UTC(y, m1 - 1, d) + DAY_MS);
   return zonedWallToInstant(nd.getUTCFullYear(), nd.getUTCMonth() + 1, nd.getUTCDate(), rolloverHour * 60, tz);
-}
-
-/** The venue BUSINESS day an instant belongs to: the venue-local calendar day, rolled back one
- *  day while the wall clock is still before the closeout hour (the 04:00 rollover — the same
- *  business-date idiom toast-sync uses and the same "belongs to the day it started" rule
- *  rowCovers applies to a wrapping daypart). 1:30 AM Wednesday is still TUESDAY night here.
- *
- *  Returns the venue-local Y / M (1..12) / D of that business day plus its weekday (0=Sun).
- *  DST-correct: every wall-clock read goes through Intl (venueLocalParts / venueLocalYMD), and
- *  the day-before step is plain calendar arithmetic on a UTC proxy of the local date — never a
- *  fixed-offset subtraction on the instant, which would shift by an hour across a DST edge. */
-export function venueBusinessDay(
-  at: Date, tz: string, closeoutHour: number,
-): { y: number; m1: number; d: number; dow: number } {
-  const hour = Number.isFinite(closeoutHour) ? Math.min(23, Math.max(0, Math.trunc(closeoutHour))) : 4;
-  const { minute } = venueLocalParts(at, tz);
-  const { y, m1, d } = venueLocalYMD(at, tz);
-  const proxy = Date.UTC(y, m1 - 1, d);
-  const day = new Date(minute < hour * 60 ? proxy - DAY_MS : proxy);
-  return { y: day.getUTCFullYear(), m1: day.getUTCMonth() + 1, d: day.getUTCDate(), dow: day.getUTCDay() };
 }
 
 /* ── the effective program (override + schedule) ─────────────────────────────────────── */

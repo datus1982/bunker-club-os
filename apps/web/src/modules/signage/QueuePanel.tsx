@@ -67,7 +67,7 @@ export function QueuePanel({
   // (hub/TV parity: an off-today asset must be dimmed here, never shown as ● NOW).
   const venueClock = useVenueClock();
   const liveQueue = useMemo(
-    () => resolveRotation(activeAuthored, tmap, now, liveEvents, undefined, venueClock),
+    () => resolveRotation(activeAuthored, tmap, now, liveEvents, { venue: venueClock }),
     [activeAuthored, tmap, now, liveEvents, venueClock],
   );
   const liveIds = useMemo(() => new Set(liveQueue.map((r) => r.id)), [liveQueue]);

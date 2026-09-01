@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase, VENUE_ID } from "@/shared/supabaseClient";
 import { fetchSlotQueuePublic } from "./slotQueue";
@@ -32,6 +32,9 @@ export {
   parseRecurrence,
   recurrenceChipLabel,
   recurrenceSentence,
+  isEmptyWeekly,
+  daysInMonth,
+  NO_DAYS_CHIP,
   DEFAULT_VENUE_CLOCK,
 } from "./itemSchedule";
 export type { ItemRecurrence, VenueClock } from "./itemSchedule";
@@ -468,10 +471,11 @@ export function useVenue() {
 export function useVenueClock(): VenueClock {
   const venue = useVenue();
   const closeout = useCloseoutHour();
-  return {
-    timezone: venue.data?.timezone ?? DEFAULT_VENUE_CLOCK.timezone,
-    closeoutHour: closeout.data ?? DEFAULT_VENUE_CLOCK.closeoutHour,
-  };
+  const timezone = venue.data?.timezone ?? DEFAULT_VENUE_CLOCK.timezone;
+  const closeoutHour = closeout.data ?? DEFAULT_VENUE_CLOCK.closeoutHour;
+  // Memoised on the two scalars: callers put this object straight into useMemo deps, and a
+  // fresh identity every render would re-run their resolvers on every unrelated re-render.
+  return useMemo(() => ({ timezone, closeoutHour }), [timezone, closeoutHour]);
 }
 
 /** Everything the slot page needs, keyed by slug. */
@@ -788,20 +792,34 @@ function eventRotationCard(ev: LiveEvent): SignageItem {
  * MOMENT TEASE interstitials are NOT injected here — they are timing-based (every ~4th
  * turn) and handled by the Rotation component so the pure list stays deterministic.
  */
+/** Optional gates on the resolved rotation. Every field is optional and defaults to the
+ *  pre-existing behaviour, so `resolveRotation(items, toast)` is unchanged. */
+export interface ResolveRotationOptions {
+  /** Source slugs whose now_playing film is FRESH right now (0054). A now_playing card
+   *  auto-hides — like the OOS/POS gate — when its source is NOT in this set. OMITTED = don't
+   *  gate: the hub/editor/queue views have no live source data and should show what's queued;
+   *  the TV always passes a set. */
+  liveNowPlayingSlugs?: Set<string>;
+  /** Venue timezone + business-day closeout hour, for the per-item weekday/annual rule
+   *  (itemSchedule). Omitted ⇒ DEFAULT_VENUE_CLOCK, so a caller whose venue queries are still
+   *  pending resolves exactly as it did before day rules existed. */
+  venue?: VenueClock;
+}
+
 export function resolveRotation(
   items: SignageItem[],
   toast: Map<string, ToastCacheRow>,
   now: Date = new Date(),
   events: LiveEvent[] = [],
-  // The set of source slugs whose now_playing is FRESH right now (SlotDisplay computes it from
-  // useNowPlayingSources + the live clock). A now_playing item auto-hides — like the OOS/POS gate
-  // — when its source is NOT in this set. UNDEFINED = don't gate (the hub/editor/queue views have
-  // no live source data and should show what's queued); the TV always passes a set.
-  liveNowPlayingSlugs?: Set<string>,
-  // The venue clock (timezone + business-day closeout hour) the WEEKDAY gate reasons in — a
-  // Tuesdays-only asset airs for the whole of Tuesday's SERVICE, i.e. until the 04:00 rollover.
-  // Defaulted so a caller whose venue queries are still pending resolves exactly as before.
-  venue: VenueClock = DEFAULT_VENUE_CLOCK,
+  // Everything past `events` rides ONE options object rather than a growing positional tail.
+  // The gates on this resolver are optional, caller-specific, and still being added (this arc
+  // brought the venue clock; the menu-group slide brings its own filter) — a positional tail
+  // forces unrelated call sites to pass `undefined` placeholders and makes two branches that
+  // add different gates conflict on the same line for no semantic reason.
+  {
+    liveNowPlayingSlugs,
+    venue = DEFAULT_VENUE_CLOCK,
+  }: ResolveRotationOptions = {},
 ): SignageItem[] {
   // Window + recurrence, both derived at read time (itemSchedule). No cron, no stored state.
   const airing = (it: SignageItem) => itemAirsNow(it, now, venue);

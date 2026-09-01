@@ -79,7 +79,7 @@ export function MultiviewProgram({
   }, [nowPlayingSources.data, now]);
 
   const panelRotation = useMemo(
-    () => resolveRotation(panelItems, toast, now, liveEvents, liveNowPlayingSlugs, venueClock),
+    () => resolveRotation(panelItems, toast, now, liveEvents, { liveNowPlayingSlugs, venue: venueClock }),
     [panelItems, toast, now, liveEvents, liveNowPlayingSlugs, venueClock],
   );
   const panelTease = useMemo(() => teaseMoment(liveEvents, now), [liveEvents, now]);

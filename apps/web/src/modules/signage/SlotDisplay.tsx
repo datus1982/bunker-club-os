@@ -152,7 +152,7 @@ function SlotScreen({
   );
 
   const rotation = useMemo(
-    () => resolveRotation(items, toast, now, liveEvents, liveNowPlayingSlugs, venueClock),
+    () => resolveRotation(items, toast, now, liveEvents, { liveNowPlayingSlugs, venue: venueClock }),
     [items, toast, now, liveEvents, liveNowPlayingSlugs, venueClock],
   );
 

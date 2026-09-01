@@ -40,7 +40,13 @@ List per slot; add item: pick template → form (image upload → Storage `signa
 
 **Scheduled shout-out moment:** a celebration item may attach a timed takeover — screen_takeovers.starts_at is already future-schedulable; add `signage_item_id uuid references signage_items` to screen_takeovers so the celebration's admin card shows/edits its linked moment. At the chosen minute every slot flips to the shout-out ('RAISE A GLASS FOR DANA') for a configured 30–120s, then resumes. Priority: same tier as manual takeovers. Product note: 'your name on every screen at your minute' is a sellable party-package line item.
 
-**Recurrence on signage_items:** add `recurrence jsonb` (same shape as scheduled_events: annual { month, day } or weekly { daysOfWeek }, plus time window). pg_cron re-arms the item's starts_at/ends_at on completion. Holidays are celebrations/announcements with annual recurrence — Halloween, New Year's, July 4th configured once, forever.
+**Recurrence on signage_items:** `recurrence jsonb` (migration 0009) — weekly `{ kind:'weekly', daysOfWeek:['TU',…] }` or annual `{ kind:'annual', month, day }`. Holidays are celebrations/announcements with annual recurrence — Halloween, New Year's, July 4th configured once, forever; a weekly rule is how "Tiki Tuesday runs Tuesdays" is expressed.
+
+*AS BUILT (amends the original spec above):*
+- **Honored at READ time, not by pg_cron.** The planned cron job that re-armed `starts_at`/`ends_at` on completion was never built and is not wanted: `itemSchedule.itemAirsNow()` derives airing from the stored rule on every render (`resolveRotation`, the hub's ON AIR cards, the QUEUE slide-over, and the website's 🌐 feed all call it). Nothing is precomputed and no row is ever rewritten — the 0051 "expiry derived at read" pattern — so a screen that was dark all night still resolves correctly when it comes back, and a stale row can't exist.
+- **The venue BUSINESS day decides the weekday**, not the calendar day: the venue-local date rolled back while the wall clock is before `venue_settings.toast_closeout_hour` (04:00). A Tuesday slide is still on screen at 1:30 AM Wednesday and drops at the rollover.
+- **No daily time window.** The original "plus time window" was never written by the editor and is deliberately not implemented: that is what a WINDOW event (doc 13) is for, and duplicating it here would give the same behaviour two authoring homes. `starts_at`/`ends_at` still apply on top of the day rule.
+- **Fail open.** A malformed or impossible rule (a hand-edited blob, `Feb 31`) parses to null and the asset simply airs — a TV never goes dark over a bad jsonb value.
 
 ## Screens & scheduling — Bunker OS OWNS IT (decision: OptiSigns is phased out)
 Venue screens have built-in browsers. Each physical screen is pointed at its slot URL ONCE, permanently, in kiosk/fullscreen mode. The slot page resolves its own mode, priority order:

@@ -100,6 +100,18 @@ export function SignageHub({ openQueueSlug }: { openQueueSlug?: string }) {
   // The same clock the TV resolves item weekday rules in (hub/TV parity — an ON AIR card must
   // not count a Tuesdays-only asset on a Wednesday).
   const venueClock = useMemo<VenueClock>(() => ({ timezone, closeoutHour: rolloverHour }), [timezone, rolloverHour]);
+
+  // A slow render clock, at the 60s cadence the admin slot poll already runs on (this is a
+  // console, not a display — the docs/01 sub-30s floor governs /signage/s). Time-derived reads
+  // are memoised on their DATA, so without a ticking `now` in the deps a card computed before
+  // the business-day rollover would keep asserting yesterday's rotation until something else
+  // invalidated it.
+  const [nowTick, setNowTick] = useState(() => Date.now());
+  useEffect(() => {
+    const id = window.setInterval(() => setNowTick(Date.now()), 60_000);
+    return () => window.clearInterval(id);
+  }, []);
+  const now = useMemo(() => new Date(nowTick), [nowTick]);
   const panelChoices = useMemo(() => slots.filter((s) => s.orientation === "portrait"), [slots]);
 
   // WARN-1 (hub/TV parity): the card chip + ProgramPanel must show what the TV is ACTUALLY playing —
@@ -304,6 +316,7 @@ export function SignageHub({ openQueueSlug }: { openQueueSlug?: string }) {
                   eventLabel={eventLabel}
                   slotItems={itemsBySlot.get(s.id) ?? []}
                   tmap={tmap}
+                  now={now}
                   venueClock={venueClock}
                   overflowOpen={overflowSlot === s.id}
                   onToggleOverflow={() => setOverflowSlot((cur) => (cur === s.id ? null : s.id))}
@@ -346,7 +359,7 @@ export function SignageHub({ openQueueSlug }: { openQueueSlug?: string }) {
           ) : (
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(min(100%,200px),1fr))", gap: 12 }}>
               {assets.map((a) => (
-                <AssetCard key={a.asset.id} a={a} slots={slots} toastRows={toastRows} tmap={tmap} venueClock={venueClock} onOpen={() => openAsset(a)} />
+                <AssetCard key={a.asset.id} a={a} slots={slots} toastRows={toastRows} tmap={tmap} now={now} venueClock={venueClock} onOpen={() => openAsset(a)} />
               ))}
             </div>
           )}
@@ -501,11 +514,14 @@ function placementsFor(assets: AssetWithPlacements[], itemId: string): string[] 
 
 /* ── A · screen card (D1: three buttons + ⋯ overflow) ───────────────────────── */
 function ScreenCard({
-  slot, mode, takeoverMessage, staleGameDate, eventLabel, slotItems, tmap, venueClock,
+  slot, mode, takeoverMessage, staleGameDate, eventLabel, slotItems, tmap, now, venueClock,
   overflowOpen, onToggleOverflow, onAdd, onQueue, onTakeover, programLabel, onProgram,
   onSchedule, scheduleCount, overrideHold, isPanel, transportPlaylist,
 }: {
   slot: AdminSlot;
+  /** The hub's 60s render clock — in the summary memo's deps so the ON AIR line re-resolves
+   *  after a business-day rollover instead of freezing on the data it was first computed with. */
+  now: Date;
   /** Venue TZ + closeout hour — the ON AIR summary resolves weekday rules exactly like the TV. */
   venueClock: VenueClock;
   mode: SlotMode;
@@ -535,7 +551,7 @@ function ScreenCard({
   transportPlaylist: boolean;
 }) {
   const health = screenHealth(slot.last_seen);
-  const summary = useMemo(() => rotationSummary(slotItems, tmap, venueClock), [slotItems, tmap, venueClock]);
+  const summary = useMemo(() => rotationSummary(slotItems, tmap, now, venueClock), [slotItems, tmap, now, venueClock]);
   // In rotation mode a set program is what the TV actually plays — surface it (parity).
   const programActive = mode === "rotation" && !!programLabel;
   // Variant A: below ~720px the wide control row degrades to the stacked column he has today
@@ -737,9 +753,9 @@ function ModeChip({ mode, eventLabel, programLabel }: { mode: SlotMode; eventLab
 
 /** "N assets rotating: a · b · c · +K more" (+ ★ featured). Counts only currently-visible
  *  authored items — resolveRotation applies the exact in-window + OOS/POS-hide rules. */
-function rotationSummary(slotItems: AdminItem[], tmap: Map<string, ToastCacheRow>, venueClock: VenueClock): string {
+function rotationSummary(slotItems: AdminItem[], tmap: Map<string, ToastCacheRow>, now: Date, venueClock: VenueClock): string {
   const activeItems = slotItems.filter((it) => it.active);
-  const rotation = resolveRotation(activeItems as SignageItem[], tmap, new Date(), [], undefined, venueClock);
+  const rotation = resolveRotation(activeItems as SignageItem[], tmap, now, [], { venue: venueClock });
   const authored = rotation.filter((r) => !r.materialized);
   const hasFeatured = rotation.some((r) => r.materialized);
   const names = authored.map((it) => rotationName(it, tmap));
@@ -767,12 +783,14 @@ function rotationName(it: SignageItem, tmap: Map<string, ToastCacheRow>): string
 
 /* ── B · asset library card (D3) ────────────────────────────────────────────── */
 function AssetCard({
-  a, slots, toastRows, tmap, venueClock, onOpen,
+  a, slots, toastRows, tmap, now, venueClock, onOpen,
 }: {
   a: AssetWithPlacements;
   slots: AdminSlot[];
   toastRows: ToastCacheRow[];
   tmap: Map<string, ToastCacheRow>;
+  /** The hub's 60s render clock (see ScreenCard) — the OFF TODAY chip must flip at rollover. */
+  now: Date;
   venueClock: VenueClock;
   onOpen: () => void;
 }) {
@@ -784,10 +802,9 @@ function AssetCard({
   const sub = assetSubtitle(item, tmap);
   // The asset's day rule, and whether it excludes today's BUSINESS day — the library card says
   // the same thing the queue row does, so an owner scanning the grid can see "TUESDAYS · OFF
-  // TODAY" without opening anything. now() at render is fine: the hub is not a TV, and it
-  // re-renders on realtime + the 60s slot poll.
+  // TODAY" without opening anything.
   const dayLabel = recurrenceChipLabel(item.recurrence);
-  const offToday = !!dayLabel && !itemAirsToday(item, new Date(), venueClock);
+  const offToday = !!dayLabel && !itemAirsToday(item, now, venueClock);
 
   return (
     <button
