@@ -4,6 +4,7 @@ import { supabase, VENUE_ID } from "@/shared/supabaseClient";
 import { fetchSlotQueueAdmin, fetchAssetsWithPlacements, swapQueuePositions, setQueueDuration, type AssetWithPlacements } from "./slotQueue";
 import type { Orientation, PriceOption, SignageItem, Template, ToastCacheRow } from "./useSignage";
 import type { SlotProgram } from "./mediaProgram";
+import type { ItemRecurrence } from "./itemSchedule";
 import { slotRenderFieldsUnchanged, HUB_SLOT_RENDER_FIELDS } from "./slotRealtime";
 
 /**
@@ -52,10 +53,10 @@ export interface AdminTakeover {
 /** Re-export so the hub/library can type the deduped asset list. */
 export type { AssetWithPlacements };
 
-/** recurrence jsonb shape (docs/09; same family as scheduled_events). null = one-shot. */
-export type Recurrence =
-  | { kind: "annual"; month: number; day: number }
-  | { kind: "weekly"; daysOfWeek: string[] };
+/** recurrence jsonb shape (docs/09; same family as scheduled_events). null = one-shot.
+ *  Single-sourced from itemSchedule — the pure module that now HONORS the shape at read time
+ *  (weekday / annual gate) — so the admin console and the TV can never drift on it. */
+export type Recurrence = ItemRecurrence;
 
 export type ScreenHealth = "online" | "stale" | "offline";
 

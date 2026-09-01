@@ -6,6 +6,7 @@ import { eventStage, isTakeoverStage, type LiveEvent } from "./eventStage";
 import type { SlotProgram } from "./mediaProgram";
 import { thumbUrl } from "./mediaProgram";
 import { nextRollover, type ScheduleRow, type ProgramHold, type ScheduleProgram } from "./scheduleResolve";
+import { itemAirsNow, DEFAULT_VENUE_CLOCK, type ItemRecurrence, type VenueClock } from "./itemSchedule";
 import { slotRenderFieldsUnchanged, TV_SLOT_RENDER_FIELDS } from "./slotRealtime";
 
 // Re-export the pure events surface so the app imports it from one place. The pure
@@ -22,6 +23,18 @@ export {
   flavorOf,
 } from "./eventStage";
 export type { LiveEvent, EventStage, EventKind, EventFlavor } from "./eventStage";
+
+// Same for the pure per-item airing rules (window + recurrence weekday gate). One import path.
+export {
+  itemAirsNow,
+  itemAirsToday,
+  inTimeWindow,
+  parseRecurrence,
+  recurrenceChipLabel,
+  recurrenceSentence,
+  DEFAULT_VENUE_CLOCK,
+} from "./itemSchedule";
+export type { ItemRecurrence, VenueClock } from "./itemSchedule";
 
 /**
  * Data layer for the PUBLIC signage slot page (/signage/s/:slug — docs/09).
@@ -94,6 +107,10 @@ export interface SignageItem {
   fields: Record<string, unknown>;
   starts_at: string | null;
   ends_at: string | null;
+  /** Weekday / annual airing rule (0009 jsonb), honored at READ time by resolveRotation via
+   *  itemSchedule.itemAirsNow — null/absent = airs every day it's inside its window.
+   *  Optional because materialized cards (★ SCREENS trailers, event cards) never carry one. */
+  recurrence?: ItemRecurrence | null;
   sort_order: number;
   duration_seconds: number;
   active: boolean;
@@ -440,6 +457,23 @@ export function useVenue() {
   });
 }
 
+/**
+ * The venue clock — timezone + business-day closeout hour — as ONE value, for the surfaces that
+ * pass it to resolveRotation (hub cards, the QUEUE slide-over). Both underlying queries are the
+ * shared cached ones (useVenue / useCloseoutHour), so this adds no fetch; it just stops each
+ * caller from re-typing the two fallbacks. The TV (SlotDisplay) already carries both values and
+ * builds the object inline. Falls back to DEFAULT_VENUE_CLOCK while the queries are pending —
+ * i.e. a first paint never hides a slide it would otherwise show.
+ */
+export function useVenueClock(): VenueClock {
+  const venue = useVenue();
+  const closeout = useCloseoutHour();
+  return {
+    timezone: venue.data?.timezone ?? DEFAULT_VENUE_CLOCK.timezone,
+    closeoutHour: closeout.data ?? DEFAULT_VENUE_CLOCK.closeoutHour,
+  };
+}
+
 /** Everything the slot page needs, keyed by slug. */
 export function useSlot(slug: string) {
   const qc = useQueryClient();
@@ -744,7 +778,10 @@ function eventRotationCard(ev: LiveEvent): SignageItem {
 
 /**
  * Resolve the rotation the slot should show right now: active items in their time
- * windows (client-side, matches the DrinksDisplay pattern), plus presentation-layer
+ * windows AND admitted by their recurrence — a weekday/annual rule honored at read
+ * time in the venue BUSINESS day, so a "Tuesdays" asset stays up until the 04:00
+ * rollover and reappears next Tuesday with no cron and no row rewrite (itemSchedule)
+ * — (client-side, matches the DrinksDisplay pattern), plus presentation-layer
  * ★ SCREENS entries and any active WINDOW/MESSAGE event cards (docs/13); minus any
  * item whose source_toast_guid is 86'd or off the POS view.
  *
@@ -761,11 +798,13 @@ export function resolveRotation(
   // — when its source is NOT in this set. UNDEFINED = don't gate (the hub/editor/queue views have
   // no live source data and should show what's queued); the TV always passes a set.
   liveNowPlayingSlugs?: Set<string>,
+  // The venue clock (timezone + business-day closeout hour) the WEEKDAY gate reasons in — a
+  // Tuesdays-only asset airs for the whole of Tuesday's SERVICE, i.e. until the 04:00 rollover.
+  // Defaulted so a caller whose venue queries are still pending resolves exactly as before.
+  venue: VenueClock = DEFAULT_VENUE_CLOCK,
 ): SignageItem[] {
-  const t = now.getTime();
-  const inWindow = (it: SignageItem) =>
-    (!it.starts_at || new Date(it.starts_at).getTime() <= t) &&
-    (!it.ends_at || new Date(it.ends_at).getTime() > t);
+  // Window + recurrence, both derived at read time (itemSchedule). No cron, no stored state.
+  const airing = (it: SignageItem) => itemAirsNow(it, now, venue);
 
   // NOW PLAYING auto-hide (0054): a now_playing card only survives when its source screen has a
   // FRESH film (resolveRotation-level skip, so a dead movie screen leaves no blank dwell). Only
@@ -787,7 +826,7 @@ export function resolveRotation(
     return !row.out_of_stock && row.pos_visible;
   };
 
-  const scheduled = items.filter((it) => inWindow(it) && notHidden(it) && nowPlayingLive(it));
+  const scheduled = items.filter((it) => airing(it) && notHidden(it) && nowPlayingLive(it));
 
   // Active WINDOW/MESSAGE event cards (docs/13) join the rotation exactly like ★ SCREENS
   // — presentation-layer only, never DB rows. A toast-linked card obeys the same 86'd /

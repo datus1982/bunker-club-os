@@ -4,8 +4,9 @@ import {
   setItemActive, setItemDuration, reorderItem, featuredItems,
   uploadCustomImage,
   DURATION_CHOICES,
-  type AdminItem, type Recurrence, type ScreenHealth,
+  type AdminItem, type ScreenHealth,
 } from "./useSignageAdmin";
+import { recurrenceChipLabel } from "./itemSchedule";
 import type { EventKind, ToastCacheRow } from "./useSignage";
 import type { Align } from "./richText";
 
@@ -158,7 +159,7 @@ export function CopyKioskButton({ slug, style }: { slug: string; style?: CSSProp
 /* ── per-slot item row (QUEUE / EDIT ROTATION) ──────────────────────────────── */
 export function ItemRow({
   item, first, last, hideReason, prev, next, onEdit, onRemove, onChanged, toastRows,
-  live, windowReason,
+  live, windowReason, offToday,
 }: {
   item: AdminItem; first: boolean; last: boolean; hideReason: string | null;
   prev?: AdminItem; next?: AdminItem;
@@ -172,6 +173,10 @@ export function ItemRow({
   // would show this row this minute (● NOW, full brightness); `windowReason` = why an
   // active-but-not-live authored item is out of its time window (STARTS … / ENDED).
   live?: boolean; windowReason?: string | null;
+  // The asset's weekday/annual rule excludes today's BUSINESS day — it is queued and healthy,
+  // it just doesn't run today. Rendered as its own chip beside the day label so a dimmed row
+  // always says why (parity with the 86'd / POS-HIDDEN chips).
+  offToday?: boolean;
 }) {
   const toggle = useMutation({ mutationFn: () => setItemActive(item.id, !item.active), onSuccess: onChanged });
   const up = useMutation({ mutationFn: () => reorderItem(item, prev!), onSuccess: onChanged });
@@ -189,7 +194,15 @@ export function ItemRow({
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           <span style={badge}>{item.template.replace(/_/g, " ").toUpperCase()}</span>
           {live && <span className="sig-live" style={{ fontSize: 13, letterSpacing: 1, whiteSpace: "nowrap" }} title="On the TV rotation right now">● NOW</span>}
-          {item.recurrence && <span className="u-amber" style={{ fontSize: 13, letterSpacing: 1 }}>↻ RECURS</span>}
+          {/* The day rule, in words the owner set it in: "↻ TUESDAYS" / "↻ MON·WED·FRI" /
+              "↻ JAN 1". (Was a bare "↻ RECURS" back when nothing consumed the value.) A weekly
+              rule with every day / no days picked reads as no restriction, so it shows nothing. */}
+          {recurrenceChipLabel(item.recurrence) && (
+            <span className="u-amber" style={{ fontSize: 13, letterSpacing: 1 }} title="This asset only runs on these days">↻ {recurrenceChipLabel(item.recurrence)}</span>
+          )}
+          {offToday && (
+            <span className="u-amber" style={{ fontSize: 13, letterSpacing: 1 }} title="Queued, but its day rule excludes today — it returns on its next day">OFF TODAY</span>
+          )}
           {item.show_on_website && <span style={{ fontSize: 13, letterSpacing: 1 }} title="Published to the public website">🌐 WEB</span>}
           {windowReason && <span style={{ fontSize: 13, letterSpacing: 1, opacity: 0.7 }}>{windowReason}</span>}
           {hideReason && <span className="u-amber" style={{ fontSize: 13 }}>{hideReason}</span>}
@@ -333,13 +346,9 @@ export function scheduleLabel(item: AdminItem): string {
   return `UNTIL ${fmt(item.ends_at!)}`;
 }
 
-/** Human phrase for a persisted recurrence shape (RUNNING & UPCOMING). null = one-shot. */
-export function recurrencePhrase(rec: Recurrence | null): string | null {
-  if (!rec) return null;
-  if (rec.kind === "weekly") return rec.daysOfWeek.length ? rec.daysOfWeek.join(" · ") : "weekly";
-  if (rec.kind === "annual") return `annually ${rec.month}/${rec.day}`;
-  return null;
-}
+// (recurrencePhrase lived here — an exported, never-called formatter from back when recurrence
+//  was badge-only. Deleted rather than left to drift beside itemSchedule.recurrenceChipLabel,
+//  which is the one formatter now, and is unit-tested.)
 
 /* ── scheduled-events kind badge (matches ux-refinement-mockup.html view 5) ──── */
 // WINDOW = calm green-dim outline · MESSAGE = green outline · MOMENT = amber-filled

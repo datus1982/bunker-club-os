@@ -98,7 +98,10 @@ function zonedWallToInstant(y: number, m1: number, d: number, minutes: number, t
 
 /* ── coverage ────────────────────────────────────────────────────────────────────── */
 
-function dayAllowed(days: string[], dow: number): boolean {
+/** Is `dow` (0=Sun) in a ['MO','TU',…] token set? EMPTY = every day (the schema default, and the
+ *  same rule signage_items.recurrence follows — see itemSchedule.ts). Exported so the item-level
+ *  weekday gate reuses this exact semantics instead of re-deriving it. */
+export function dayAllowed(days: string[], dow: number): boolean {
   if (days.length === 0) return true; // empty = every day
   for (const d of days) if (TOK2NUM[d.toUpperCase()] === dow) return true;
   return false;
@@ -172,6 +175,26 @@ export function nextRollover(from: Date, tz: string, rolloverHour: number): Date
   if (today.getTime() > from.getTime()) return today;
   const nd = new Date(Date.UTC(y, m1 - 1, d) + DAY_MS);
   return zonedWallToInstant(nd.getUTCFullYear(), nd.getUTCMonth() + 1, nd.getUTCDate(), rolloverHour * 60, tz);
+}
+
+/** The venue BUSINESS day an instant belongs to: the venue-local calendar day, rolled back one
+ *  day while the wall clock is still before the closeout hour (the 04:00 rollover — the same
+ *  business-date idiom toast-sync uses and the same "belongs to the day it started" rule
+ *  rowCovers applies to a wrapping daypart). 1:30 AM Wednesday is still TUESDAY night here.
+ *
+ *  Returns the venue-local Y / M (1..12) / D of that business day plus its weekday (0=Sun).
+ *  DST-correct: every wall-clock read goes through Intl (venueLocalParts / venueLocalYMD), and
+ *  the day-before step is plain calendar arithmetic on a UTC proxy of the local date — never a
+ *  fixed-offset subtraction on the instant, which would shift by an hour across a DST edge. */
+export function venueBusinessDay(
+  at: Date, tz: string, closeoutHour: number,
+): { y: number; m1: number; d: number; dow: number } {
+  const hour = Number.isFinite(closeoutHour) ? Math.min(23, Math.max(0, Math.trunc(closeoutHour))) : 4;
+  const { minute } = venueLocalParts(at, tz);
+  const { y, m1, d } = venueLocalYMD(at, tz);
+  const proxy = Date.UTC(y, m1 - 1, d);
+  const day = new Date(minute < hour * 60 ? proxy - DAY_MS : proxy);
+  return { y: day.getUTCFullYear(), m1: day.getUTCMonth() + 1, d: day.getUTCDate(), dow: day.getUTCDay() };
 }
 
 /* ── the effective program (override + schedule) ─────────────────────────────────────── */

@@ -6,7 +6,7 @@ import { NowShowing } from "./PlaylistProgram";
 import {
   usePanelSlot, resolveRotation, teaseMoment,
   useNowPlayingSources, nowPlayingSourceSlug, isNowPlayingFresh,
-  type ToastCacheRow, type LiveEvent,
+  type ToastCacheRow, type LiveEvent, type VenueClock,
 } from "./useSignage";
 import type { TickerLine } from "./useTicker";
 import type { MultiviewMain, MediaFile } from "./mediaProgram";
@@ -32,7 +32,7 @@ import type { MultiviewMain, MediaFile } from "./mediaProgram";
  */
 export function MultiviewProgram({
   main, panelSlotId, hostSlug, base, renderHeader, footer,
-  venueName, timezone, toast, liveEvents, ticker, now,
+  venueName, timezone, venueClock, toast, liveEvents, ticker, now,
 }: {
   main: MultiviewMain;
   panelSlotId: string;
@@ -45,6 +45,10 @@ export function MultiviewProgram({
   footer: ReactNode;
   venueName: string;
   timezone: string;
+  /** Venue TZ + closeout hour — the PANEL rotation's weekday gate must resolve identically to
+   *  the host screen's (hub/TV parity), so the host passes its own clock down rather than
+   *  letting this surface fall back to the default. */
+  venueClock: VenueClock;
   toast: Map<string, ToastCacheRow>;
   liveEvents: LiveEvent[];
   ticker: TickerLine[];
@@ -75,8 +79,8 @@ export function MultiviewProgram({
   }, [nowPlayingSources.data, now]);
 
   const panelRotation = useMemo(
-    () => resolveRotation(panelItems, toast, now, liveEvents, liveNowPlayingSlugs),
-    [panelItems, toast, now, liveEvents, liveNowPlayingSlugs],
+    () => resolveRotation(panelItems, toast, now, liveEvents, liveNowPlayingSlugs, venueClock),
+    [panelItems, toast, now, liveEvents, liveNowPlayingSlugs, venueClock],
   );
   const panelTease = useMemo(() => teaseMoment(liveEvents, now), [liveEvents, now]);
 

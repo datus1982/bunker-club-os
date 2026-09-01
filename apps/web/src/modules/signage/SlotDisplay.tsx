@@ -142,9 +142,18 @@ function SlotScreen({
     return () => window.clearTimeout(id);
   }, [nowTick, schedule, timezone, rolloverHour, slot.program, slot.program_hold, slot.program_set_at]);
 
+  // The venue clock the per-item WEEKDAY gate reasons in (itemSchedule): a "Tuesdays" asset is
+  // on air for Tuesday's whole SERVICE, i.e. through 1:30 AM Wednesday, until the closeout
+  // rollover. No extra timer is needed for the flip — the 30s nowTick above already feeds `now`
+  // into this memo, so the day boundary takes effect within one tick, like every window expiry.
+  const venueClock = useMemo(
+    () => ({ timezone, closeoutHour: rolloverHour }),
+    [timezone, rolloverHour],
+  );
+
   const rotation = useMemo(
-    () => resolveRotation(items, toast, now, liveEvents, liveNowPlayingSlugs),
-    [items, toast, now, liveEvents, liveNowPlayingSlugs],
+    () => resolveRotation(items, toast, now, liveEvents, liveNowPlayingSlugs, venueClock),
+    [items, toast, now, liveEvents, liveNowPlayingSlugs, venueClock],
   );
 
   // MOMENT in a takeover-level stage (alert/moment/event/allclear) + the tease lead-in.
@@ -292,6 +301,7 @@ function SlotScreen({
           footer={<ChromeFooter ticker={ticker} live={false} orientation={slot.orientation} />}
           venueName={venueName}
           timezone={timezone}
+          venueClock={venueClock}
           toast={toast}
           liveEvents={liveEvents}
           ticker={ticker}

@@ -1,5 +1,6 @@
 import { supabase, VENUE_ID } from "@/shared/supabaseClient";
 import type { SignageItem } from "./useSignage";
+import { parseRecurrence, type ItemRecurrence } from "./itemSchedule";
 
 /**
  * slot_queue (screen ↔ asset junction, migration 0045) read/write helpers.
@@ -21,8 +22,11 @@ import type { SignageItem } from "./useSignage";
  */
 
 /** Asset columns the PUBLIC board needs (no slot_id/sort_order/duration_seconds — those are
- *  on the junction now). */
-export const ASSET_COLS_PUBLIC = "id, template, fields, starts_at, ends_at, active";
+ *  on the junction now). `recurrence` joined the public read when the weekday gate started
+ *  being honored at render time (itemSchedule) — the TV cannot apply a rule it can't see.
+ *  It is anon-SELECTable (0009 grants; no column-level revoke like pin_hash/description) and
+ *  carries no private data: it is the same "Tuesdays" the slide advertises. */
+export const ASSET_COLS_PUBLIC = "id, template, fields, starts_at, ends_at, active, recurrence";
 /** Asset columns the STAFF console needs (adds recurrence / website flag / created_at). */
 export const ASSET_COLS_ADMIN =
   "id, template, fields, starts_at, ends_at, active, recurrence, show_on_website, created_at";
@@ -50,6 +54,9 @@ function flatten(row: QueueJoinRow): SignageItem | null {
     fields: (it.fields as Record<string, unknown>) ?? {},
     starts_at: (it.starts_at as string | null) ?? null,
     ends_at: (it.ends_at as string | null) ?? null,
+    // Normalised at the read boundary (fail-open on anything unrecognised) so every consumer —
+    // TV resolver, hub chips, editor — reasons over the same validated shape.
+    recurrence: parseRecurrence(it.recurrence),
     // per-screen order + dwell come from the JUNCTION, not the asset.
     sort_order: row.position,
     duration_seconds: row.duration_seconds,
@@ -105,7 +112,7 @@ export interface Placement {
 
 /** A venue-wide asset (signage_items row) + every screen it's queued on. */
 export interface AssetWithPlacements {
-  asset: SignageItem & { recurrence: unknown; created_at: string | null };
+  asset: SignageItem & { recurrence: ItemRecurrence | null; created_at: string | null };
   placements: Placement[];
 }
 
@@ -129,7 +136,10 @@ export async function fetchAssetsWithPlacements(): Promise<AssetWithPlacements[]
   if (assetsRes.error) throw assetsRes.error;
   if (queuesRes.error) throw queuesRes.error;
 
-  const assets = (assetsRes.data ?? []) as unknown as AssetWithPlacements["asset"][];
+  // Same read-boundary normalisation as flatten(): the library cards and the TV must agree on
+  // what a recurrence value means, including a malformed one (fail open → null).
+  const assets = ((assetsRes.data ?? []) as unknown as AssetWithPlacements["asset"][])
+    .map((a) => ({ ...a, recurrence: parseRecurrence(a.recurrence) }));
   const assetIds = new Set(assets.map((a) => a.id));
   const byItem = new Map<string, Placement[]>();
   for (const q of (queuesRes.data ?? []) as Array<Placement & { item_id: string }>) {
