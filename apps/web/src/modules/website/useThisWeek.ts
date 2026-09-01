@@ -206,6 +206,12 @@ export function useThisWeek() {
         // they never count toward the promo cap or fall through as contentless. (They'd skip for
         // lack of a title anyway; this is explicit.)
         if (DYNAMIC_TEMPLATES.has(p.template)) continue;
+        // DECISION (0065): the MENU GROUP slide is deliberately NOT website-publishable. The
+        // website already publishes the whole menu, properly, at /menu — re-listing one section
+        // inside the What's-On feed would duplicate it worse. It carries no headline in its own
+        // fields either, so it would fall through the contentless-skip below anyway; this is the
+        // explicit statement of intent (and the 🌐 toggle is hidden for it in the editor).
+        if (p.template === "menu_group") continue;
         const guid = fieldStr(p.fields, ["source_toast_guid"]);
         // Toast-sourced but off-POS / 86'd (absent from public_menu) → skip entirely.
         const src = guid ? menu.get(guid) : undefined;

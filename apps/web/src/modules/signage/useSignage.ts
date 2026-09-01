@@ -97,6 +97,14 @@ export type Template =
   // "landscape-bar") + the media_files row (title/poster). AUTO-HIDES at resolveRotation when the
   // source's now_playing stamp is stale (>15 min) or absent — the movie ended / trivia took over.
   | "now_playing"
+  // MENU GROUP (0065): ONE Toast menu group listed full-screen, the way the public /menu lists
+  // it — row height divides the stage so the list always fills the screen and the photos are as
+  // large as the row allows. Carries three authored settings (fields.group — the exact
+  // toast_menu_cache menu_group string, required; fields.heading — optional title override;
+  // fields.show_blurbs). Everything else is live from the Toast mirror at render time.
+  // AUTO-HIDES at resolveRotation when the group resolves to zero showable rows (group renamed
+  // away in Toast, every item 86'd / pulled off the POS view, or all website-hidden).
+  | "menu_group"
   // Phase 7 (docs/13): rotation-level cards materialized from a live scheduled_event.
   // Never authored, never DB rows — only produced by resolveRotation at render time.
   | "event_window"  // an active WINDOW promo card (title/body/cta + optional live price)
@@ -356,6 +364,148 @@ export function useNowPlayingSources(slugs: string[]) {
 export function useNowPlayingSource(slug: string | null) {
   const q = useNowPlayingSources(slug ? [slug] : []);
   return { ...q, state: slug ? q.data?.get(slug) ?? null : null };
+}
+
+/* ── MENU GROUP slide (0065) ──────────────────────────────────────────────────── */
+
+/** The exact toast_menu_cache `menu_group` string a MENU GROUP slide lists (fields.group). */
+export function menuGroupOf(item: SignageItem): string {
+  const v = item.fields?.group;
+  return typeof v === "string" ? v.trim() : "";
+}
+
+/** One resolved menu line, in the shape the slide renders. Mirrors the public /menu row
+ *  (modules/website/useMenu.ts MenuItem) so the two surfaces show the SAME item the same way. */
+export interface MenuGroupRow {
+  guid: string;
+  name: string;
+  price: number | null;
+  image: string | null;
+  blurb: string | null;
+  priceOptions: PriceOption[] | null;
+  /** Toast's own menu ordering (public_menu.item_position, added by 0064). null until that
+   *  migration lands, or for an item Toast gives no position — those fall to name order. */
+  position: number | null;
+}
+
+/** The website-parity filters a MENU GROUP slide applies on top of the Toast mirror. */
+export interface MenuGroupFilters {
+  /** venue_settings.site_menu_hidden_guids — POS-convenience rows the owner suppresses publicly. */
+  hidden: Set<string>;
+  /** public_menu.item_position by guid (0064). Empty until that migration applies. */
+  order: Map<string, number>;
+}
+
+/**
+ * Resolve ONE Toast menu group into the rows a MENU GROUP slide lists.
+ *
+ * DECISION (website parity — the owner asked for it "similarly to how it is on the website"):
+ * this applies the SAME three gates modules/website/useMenu.ts applies to /menu —
+ *   1. `pos_visible` (0034 owner principle: never advertise what isn't active on the POS view;
+ *      already enforced upstream for /menu by the public_menu view, applied here on the cache),
+ *   2. out-of-stock (86'd items are hidden, not greyed),
+ *   3. venue_settings.site_menu_hidden_guids (the "Sputnik 1/2 off" class of register-only row),
+ * so a drink the owner has taken off the public menu never reappears on a bar TV.
+ *
+ * PURE — one function shared by the template (what to draw) and resolveRotation (whether the
+ * card survives at all), so the auto-hide can never disagree with the render and leave a blank
+ * dwell. `filters` is optional: absent ⇒ no hidden-guid suppression and name ordering (the hub
+ * and the item editor's preview have no live settings read; see useSiteMenuFilters).
+ */
+export function menuGroupRows(
+  toast: Map<string, ToastCacheRow>,
+  group: string,
+  filters?: MenuGroupFilters,
+): MenuGroupRow[] {
+  const want = group.trim().toLowerCase();
+  if (!want) return [];
+  const rows: MenuGroupRow[] = [];
+  for (const [guid, r] of toast) {
+    if ((r.menu_group ?? "").trim().toLowerCase() !== want) continue;
+    if (r.out_of_stock || !r.pos_visible) continue;
+    if (filters?.hidden.has(guid)) continue;
+    if (!r.name) continue;
+    rows.push({
+      guid,
+      name: r.name,
+      price: r.price,
+      image: r.image,
+      blurb: r.public_blurb,
+      priceOptions: cleanPriceOptions(r.price_options),
+      position: filters?.order.get(guid) ?? null,
+    });
+  }
+  // Toast's own order first (nulls last — an unpositioned item never jumps the list), then name.
+  rows.sort((a, b) => {
+    const ap = a.position ?? Number.MAX_SAFE_INTEGER;
+    const bp = b.position ?? Number.MAX_SAFE_INTEGER;
+    return ap - bp || a.name.localeCompare(b.name);
+  });
+  return rows;
+}
+
+/** Defensive price-options clean (byte-mirrors modules/website/useMenu.ts cleanOptions): only
+ *  well-formed {label:string, price:number} entries survive, and an empty result is null so the
+ *  row falls back to the single-price path instead of rendering an empty options strip. */
+function cleanPriceOptions(raw: PriceOption[] | null): PriceOption[] | null {
+  if (!Array.isArray(raw)) return null;
+  const ok = raw.filter(
+    (o): o is PriceOption =>
+      !!o && typeof o.label === "string" && o.label.length > 0 && typeof o.price === "number",
+  );
+  return ok.length > 0 ? ok : null;
+}
+
+/**
+ * The website-parity filters for the MENU GROUP slide: the owner's hidden-guid list and Toast's
+ * item ordering. One query, two parallel reads, both anon-safe.
+ *
+ * Query key sits UNDER ["signage","toast"] on purpose: the useSlot realtime channel already
+ * invalidates that prefix on any toast_menu_cache change, so a re-sync refreshes the ordering
+ * for free — no second subscription, no extra poll (realtime-first, docs/01).
+ *
+ * DECISION (no fallback constant): when `site_menu_hidden_guids` is absent or malformed this
+ * applies NO suppression, rather than duplicating modules/website/useMenu.ts's
+ * MENU_HIDDEN_GUIDS_FALLBACK. That constant already carries a three-way byte-match invariant
+ * (the 0033 seed, the live value, the constant); a fourth copy is a liability, and the key IS
+ * seeded live. Failure mode of getting it wrong here is one POS-convenience row listed on a TV
+ * — strictly smaller than a stale hardcoded guid hiding the wrong drink forever.
+ *
+ * DECISION (soft column): public_menu.item_position / group_position arrive in migration 0064
+ * (sibling branch). Selecting a column that does not exist yet fails the WHOLE PostgREST
+ * request, so the ordering read is tried WITH the column and, on any error, retried without it
+ * — the slide falls back to name order until 0064 lands, and self-heals afterwards with no
+ * code change.
+ */
+export function useSiteMenuFilters(enabled: boolean) {
+  return useQuery({
+    queryKey: ["signage", "toast", "menuFilters"],
+    enabled,
+    staleTime: 5 * 60_000, // matches modules/website/useMenu.ts for the same data
+    queryFn: async (): Promise<MenuGroupFilters> => {
+      const hiddenP = supabase
+        .from("venue_settings")
+        .select("value")
+        .eq("venue_id", VENUE_ID)
+        .eq("key", "site_menu_hidden_guids")
+        .maybeSingle();
+      const orderP = supabase.from("public_menu").select("guid, item_position").eq("venue_id", VENUE_ID);
+      const [hiddenRes, orderRes] = await Promise.all([hiddenP, orderP]);
+
+      const raw = hiddenRes.data?.value;
+      const hidden = new Set<string>(
+        Array.isArray(raw) ? raw.filter((s): s is string => typeof s === "string") : [],
+      );
+
+      const order = new Map<string, number>();
+      const orderRows = orderRes.error
+        ? [] // 0064 not applied yet (or a transient read failure) → name order, never a crash
+        : ((orderRes.data ?? []) as { guid: string; item_position: number | null }[]);
+      for (const r of orderRows) if (typeof r.item_position === "number") order.set(r.guid, r.item_position);
+
+      return { hidden, order };
+    },
+  });
 }
 
 /* ── "PUT TRIVIA ON SCREENS" arm gate (0056 / 0057) ───────────────────────────── */
@@ -804,6 +954,10 @@ export interface ResolveRotationOptions {
    *  (itemSchedule). Omitted ⇒ DEFAULT_VENUE_CLOCK, so a caller whose venue queries are still
    *  pending resolves exactly as it did before day rules existed. */
   venue?: VenueClock;
+  /** MENU GROUP (0065): the website-parity filters, so the emptiness gate below resolves the SAME
+   *  row set the slide will render. OMITTED = gate on the Toast mirror alone (the hub/editor have
+   *  no settings read); the TV always passes them once loaded. */
+  menuFilters?: MenuGroupFilters;
 }
 
 export function resolveRotation(
@@ -819,6 +973,7 @@ export function resolveRotation(
   {
     liveNowPlayingSlugs,
     venue = DEFAULT_VENUE_CLOCK,
+    menuFilters,
   }: ResolveRotationOptions = {},
 ): SignageItem[] {
   // Window + recurrence, both derived at read time (itemSchedule). No cron, no stored state.
@@ -844,7 +999,21 @@ export function resolveRotation(
     return !row.out_of_stock && row.pos_visible;
   };
 
-  const scheduled = items.filter((it) => airing(it) && notHidden(it) && nowPlayingLive(it));
+  // MENU GROUP auto-hide (0065): the slide only survives when its group resolves to at least one
+  // showable row — a group renamed away in Toast, or one whose every item is 86'd / off the POS
+  // view / website-hidden, drops out of the rotation entirely rather than dwelling on an empty
+  // list. Same resolveRotation-level treatment as now_playing and the OOS/POS gate, and it shares
+  // menuGroupRows() with the template so the two can never disagree.
+  const menuGroupHasRows = (it: SignageItem) => {
+    if (it.template !== "menu_group") return true;
+    const group = menuGroupOf(it);
+    if (!group) return false; // never authored a group ⇒ nothing to list
+    return menuGroupRows(toast, group, menuFilters).length > 0;
+  };
+
+  const scheduled = items.filter(
+    (it) => airing(it) && notHidden(it) && nowPlayingLive(it) && menuGroupHasRows(it),
+  );
 
   // Active WINDOW/MESSAGE event cards (docs/13) join the rotation exactly like ★ SCREENS
   // — presentation-layer only, never DB rows. A toast-linked card obeys the same 86'd /

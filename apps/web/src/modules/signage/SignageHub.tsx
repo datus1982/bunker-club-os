@@ -877,6 +877,10 @@ function assetSubtitle(item: AdminItem, tmap: Map<string, ToastCacheRow>): strin
     case "top_sellers": return "live top-5 from the POS · auto";
     case "instagram": return "recent posts · caption + QR";
     case "smart_toast": return `${(typeof f.smart_mode === "string" ? f.smart_mode : "underdogs")} · auto`;
+    case "menu_group": {
+      const grp = typeof f.group === "string" && f.group.trim() ? f.group.trim() : "";
+      return grp ? `${grp.toLowerCase()} · full section · live` : "no section picked · live";
+    }
     case "event": return typeof f.date === "string" ? `event · ${f.date}` : "event";
     case "celebration": return "celebration";
     case "image_only": return "full-frame photo";

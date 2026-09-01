@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import type { Orientation, SignageItem, ToastCacheRow } from "./useSignage";
-import { useNowPlayingSource, nowPlayingSourceSlug, isNowPlayingFresh } from "./useSignage";
+import { useNowPlayingSource, nowPlayingSourceSlug, isNowPlayingFresh, useSiteMenuFilters, menuGroupRows, menuGroupOf, type MenuGroupRow } from "./useSignage";
 import { parseTitleYear } from "./mediaProgram";
 import { EventWindowCard, EventMessageCard, EventTeaseCard } from "./EventStages";
 import { balanceHeadline } from "./eventStage";
@@ -1099,6 +1099,328 @@ export function NowPlaying({ item, orientation }: TemplateProps) {
   );
 }
 
+/* ── MENU GROUP (one Toast menu group listed full-screen — 0065) ─────────────── */
+/**
+ * The owner's ask (2026-09-01): "add a new slide … that is to basically just show a menu group.
+ * In this case the Tiki Tuesday menu … similarly to how it is on the website, and rotating as a
+ * full screen slide. It should dynamically adjust row height to fill the screen and make the
+ * images as large as possible."
+ *
+ * So: a distance-first listing of ONE group, live from the Toast mirror at render time. The
+ * stage height is DIVIDED by the row count — four Tiki drinks get enormous rows, nine
+ * signatures get proportionally smaller ones — and the photo is a square sized to the row.
+ * Website parity (same POS gate, same 86'd gate, same owner-hidden guids, same short blurb and
+ * pour-option price shape) comes from the shared menuGroupRows() in useSignage, which
+ * resolveRotation also uses for the auto-hide — the two can never disagree.
+ *
+ * DECISION (photo COLUMN is per-slide, not per-row): if NO item in the group has a mirrored
+ * photo, the column is dropped entirely and the names/prices take the full width (Tiki Tuesday
+ * today). If ANY item has one, the column is kept for EVERY row — a photo-less item shows the
+ * labelled placeholder box — so the list stays aligned and, per the owner ("I know there are no
+ * photos in Tiki Tuesday right now but there will be"), adding a photo in Toast later just drops
+ * into a row that already has the right anatomy.
+ *
+ * DECISION (green = the price, not the name): docs/09 colour-state renders live-feed values
+ * green, and every value here is live from Toast — but a full screen of green names is the
+ * "wall" the TopSellers beat explicitly avoids. The PRICE (the value that actually moves) is
+ * green; names and blurbs stay ambient amber, which is also how a printed menu reads.
+ *
+ * Remember `.terminal-theme *` sets font-size on EVERY element (see PR #89) — nothing inherits,
+ * so every text node below carries an explicit size (or an explicit `1em` where it must track a
+ * measured parent).
+ */
+const MG_HEADER: Record<Orientation, number> = { portrait: 88, landscape: 66 };
+
+/**
+ * The minimum row height a page may use before the list PAGINATES instead of shrinking further.
+ * Derived, not guessed: the name is MG_NAME_RATIO of the row, and the readable floor for a
+ * distance-first NAME (not a supporting label) is 1.4 × the shared SUPPORT_TEXT floor —
+ * portrait 40 × 1.4 ≈ 56px, landscape 32 × 1.4 ≈ 45px. Divide by the ratio and round up:
+ *   portrait  56 / 0.34 ≈ 165 → 168      landscape  45 / 0.34 ≈ 132 → 140
+ * At the real canvas that yields 10 rows per portrait page and 6 per landscape page, so the
+ * owner's two cases (Tiki Tuesday 4, Signature Cocktails 9) are each ONE page, and a monster
+ * group like Cordials (55 showable) pages rather than rendering an unreadable 55-line wall.
+ */
+const MG_MIN_ROW: Record<Orientation, number> = { portrait: 168, landscape: 140 };
+const MG_NAME_RATIO = 0.34;
+
+interface MGSizes {
+  perPage: number;
+  pages: number;
+  rowH: number;
+  gap: number;
+  thumb: number;
+  name: number;
+  price: number;
+  optPrice: number;
+  optLabel: number;
+  priceW: number;
+  /** 0 = no room for a blurb at this density (omitted rather than rendered under the floor). */
+  blurb: number;
+  blurbLines: 1 | 2;
+}
+
+/** Divide the measured stage among the rows. `count` = showable items, `withPhotos` = whether the
+ *  photo column exists at all, `hasOptions` = whether any row prices as pour options (those need a
+ *  wider price column than a single "$12"). */
+function mgSizes(
+  availH: number, availW: number, count: number, o: Orientation,
+  withPhotos: boolean, hasOptions: boolean,
+): MGSizes {
+  const port = o === "portrait";
+  const H = availH > 0 ? availH : (port ? 1620 : 860);
+  const W = availW > 0 ? availW : (port ? 984 : 1808);
+  const n = Math.max(1, count);
+
+  // Rows per page: as many as fit above the legible floor, never more than there are items.
+  const maxRows = Math.max(1, Math.floor(H / MG_MIN_ROW[o]));
+  const perPage = Math.min(maxRows, n);
+  const pages = Math.max(1, Math.ceil(n / perPage));
+
+  const gap = Math.round(clampN((H / perPage) * 0.08, 8, port ? 32 : 22));
+  const rowH = (H - (perPage - 1) * gap) / perPage;
+
+  // "Images as large as possible" (owner) = the full row height, capped only so the name column
+  // keeps usable width. 36% of the stage width still leaves ~2/3 for name + price.
+  const thumb = withPhotos ? Math.round(Math.min(rowH * 0.94, W * 0.36)) : 0;
+
+  const name = Math.round(clampN(rowH * MG_NAME_RATIO, SUPPORT_TEXT[o], port ? 120 : 88));
+  const price = Math.round(name * 0.92);
+  const optPrice = Math.round(clampN(name * 0.46, SUPPORT_TEXT[o], port ? 60 : 46));
+  const optLabel = Math.round(clampN(optPrice * 0.6, 18, port ? 36 : 28));
+  // Right-aligned price column. Pour-option strips ("SHOT $6 · COCKTAIL $9 · DOUBLE $11") need a
+  // real share of the row; a single price needs very little. FitScale shrinks whatever is left.
+  const priceW = Math.round(W * (hasOptions ? (port ? 0.42 : 0.32) : (port ? 0.24 : 0.18)));
+
+  // Vertical budget left under the name line for the blurb. Rather than push the shared
+  // SUPPORT_TEXT floor down at high densities, the blurb drops to one line, then out entirely.
+  const inner = Math.round(clampN(rowH * 0.05, 6, 16));
+  const budget = rowH * 0.9 - name * 1.05 - inner;
+  const floor = SUPPORT_TEXT[o];
+  const blurbLines: 1 | 2 = budget >= floor * 1.3 * 2 ? 2 : 1;
+  const blurb = budget >= floor * 1.3
+    ? Math.round(clampN(budget / (1.3 * blurbLines), floor, port ? 52 : 40))
+    : 0;
+
+  return { perPage, pages, rowH, gap, thumb, name, price, optPrice, optLabel, priceW, blurb, blurbLines };
+}
+
+/** Measure a container's content box (both axes). Sibling of useFillHeight — the menu rows need
+ *  the width too (photo cap + price column), and one guarded no-dep layout effect covers both. */
+function useFillBox<T extends HTMLElement>(): [React.RefObject<T | null>, { w: number; h: number }] {
+  const ref = useRef<T>(null);
+  const [box, setBox] = useState({ w: 0, h: 0 });
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    if (el.clientWidth !== box.w || el.clientHeight !== box.h) setBox({ w: el.clientWidth, h: el.clientHeight });
+  });
+  return [ref, box];
+}
+
+/**
+ * Shrink-to-fit for arbitrary children (the price cell, which mixes a dim label and a live-green
+ * figure and so can't go through FitText's single-string API). Same one-pass idiom FitText uses:
+ * offsetWidth is a pre-transform layout metric, so applying the scale can't feed back into the
+ * measurement. A long pour-option strip therefore shrinks rather than truncating or wrapping.
+ */
+function FitScale({ children, align = "right" }: { children: ReactNode; align?: "left" | "right" }) {
+  const boxRef = useRef<HTMLDivElement>(null);
+  const innerRef = useRef<HTMLDivElement>(null);
+  const [scale, setScale] = useState(1);
+  useLayoutEffect(() => {
+    const box = boxRef.current, inner = innerRef.current;
+    if (!box || !inner) return;
+    const avail = box.clientWidth;
+    const need = inner.offsetWidth;
+    const next = avail > 0 && need > avail ? avail / need : 1;
+    if (Math.abs(next - scale) > 0.001) setScale(next);
+  });
+  return (
+    <div ref={boxRef} style={{ minWidth: 0, overflow: "hidden", textAlign: align }}>
+      <div
+        ref={innerRef}
+        style={{
+          display: "inline-block", whiteSpace: "nowrap",
+          transform: `scale(${scale})`, transformOrigin: `${align} center`,
+        }}
+      >
+        {children}
+      </div>
+    </div>
+  );
+}
+
+/** Session-monotonic page seed (same rationale as topSellersSeq / instagramSeq): consecutive
+ *  passes of a multi-page group START on different pages instead of always replaying page 1. */
+let menuGroupSeq = 0;
+
+export function MenuGroup({ item, toast, orientation }: TemplateProps) {
+  const group = menuGroupOf(item);
+  const heading = (s(item.fields, "heading") ?? group).toUpperCase();
+  const showBlurbs = item.fields?.show_blurbs !== false; // default true
+  const dwell = Math.max(4, item.duration_seconds || 12);
+  const port = orientation === "portrait";
+
+  // Website-parity filters. The query key sits under ["signage","toast"], so this shares the
+  // SlotDisplay request and refreshes on the same realtime invalidation.
+  const filters = useSiteMenuFilters(true);
+  const rows = useMemo(
+    () => menuGroupRows(toast, group, filters.data),
+    [toast, group, filters.data],
+  );
+
+  const [listRef, box] = useFillBox<HTMLDivElement>();
+  const withPhotos = rows.some((r) => !!r.image);
+  const hasOptions = rows.some((r) => !!r.priceOptions);
+  const sz = mgSizes(box.h, box.w, rows.length, orientation, withPhotos, hasOptions);
+
+  // Walk one page per dwell — the Instagram-card idiom (a session-monotonic seed at mount plus a
+  // FINITE re-armed one-shot timeout; no interval, no infinite animation, cleared on unmount).
+  // In a multi-item rotation the slide unmounts at dwell end and remounts at seed+1, the same
+  // value the timer would have produced, so remount and timer agree. On a slot where this is the
+  // only item the timer is what turns the page.
+  const [seq] = useState(() => menuGroupSeq++);
+  const [step, setStep] = useState(0);
+  useEffect(() => {
+    if (sz.pages <= 1) return;
+    const id = window.setTimeout(() => setStep((v) => v + 1), dwell * 1000);
+    return () => window.clearTimeout(id);
+  }, [step, sz.pages, dwell]);
+  const page = sz.pages > 1 ? (seq + step) % sz.pages : 0;
+  const pageRows = rows.slice(page * sz.perPage, page * sz.perPage + sz.perPage);
+
+  const header = (
+    <div style={{ flexShrink: 0, textAlign: "center", paddingBottom: port ? 16 : 12, borderBottom: "1px solid var(--sig-rule)", marginBottom: port ? 22 : 14 }}>
+      {/* The established ◆ CATEGORY ◆ treatment from the drink slides, promoted to a slide title. */}
+      <div style={{ fontSize: MG_HEADER[orientation], fontWeight: 700, letterSpacing: 6, lineHeight: 1, textTransform: "uppercase", textShadow: "0 0 16px var(--terminal-glow)" }}>
+        ◆ {heading} ◆
+      </div>
+      <div style={{ fontSize: SUPPORT_TEXT[orientation], letterSpacing: 4, marginTop: 10, opacity: 0.95 }}>
+        <span className="sig-live" style={{ fontSize: "inherit" }}>◉ LIVE FROM THE POS</span>
+        {sz.pages > 1 && <span style={{ fontSize: "inherit", opacity: 0.6 }}>{"  ·  "}PAGE {page + 1}/{sz.pages}</span>}
+      </div>
+    </div>
+  );
+
+  // Empty states. On a TV this is unreachable — resolveRotation auto-hides the card when the
+  // group has no showable rows — so these render only in the hub/editor preview, where they tell
+  // a manager exactly what is wrong instead of showing a blank frame.
+  if (rows.length === 0) {
+    const [big, small] = !group
+      ? ["PICK A MENU GROUP", "◊ NO GROUP SELECTED YET"]
+      : filters.isLoading
+        ? ["READING THE MENU…", "◊ PULLING FROM THE POS"]
+        : ["NOTHING TO POUR HERE", "◊ EVERY ITEM IS 86'D OR OFF THE POS VIEW"];
+    return (
+      <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
+        {header}
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", gap: port ? 26 : 18 }}>
+          <div style={{ fontSize: port ? 92 : 72, fontWeight: 700, letterSpacing: 3, lineHeight: 1, opacity: 0.75, textShadow: "0 0 16px var(--terminal-glow)" }}>{big}</div>
+          <div style={{ fontSize: SUPPORT_TEXT[orientation], letterSpacing: 5, opacity: 0.5 }}>{small}</div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
+      {header}
+      {/* Rows fill TOP-DOWN at the fixed per-page size (the TopSellers precedent): a final short
+          page is the top slice of the same grid, leaving honest empty space below rather than
+          re-scaling and making page N look different from page 1. */}
+      <div ref={listRef} style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", gap: sz.gap, overflow: "hidden" }}>
+        {pageRows.map((r, i) => (
+          <MenuGroupRowView
+            key={r.guid}
+            row={r}
+            sz={sz}
+            orientation={orientation}
+            showBlurb={showBlurbs}
+            withPhotos={withPhotos}
+            last={i === pageRows.length - 1}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function MenuGroupRowView({
+  row, sz, orientation, showBlurb, withPhotos, last,
+}: {
+  row: MenuGroupRow; sz: MGSizes; orientation: Orientation;
+  showBlurb: boolean; withPhotos: boolean; last: boolean;
+}) {
+  const port = orientation === "portrait";
+  const blurb = showBlurb && sz.blurb > 0 ? row.blurb : null;
+  return (
+    <div style={{
+      height: sz.rowH, flexShrink: 0, display: "flex", alignItems: "center", gap: port ? 26 : 20,
+      minWidth: 0, overflow: "hidden",
+      // A hairline leader between rows reads as a menu without competing with the content.
+      borderBottom: last ? undefined : "1px solid var(--sig-rule)",
+    }}>
+      {withPhotos && (
+        row.image ? (
+          <div className="sig-viewport sig-sq" style={{ width: sz.thumb, height: sz.thumb, flexShrink: 0 }}>
+            <img src={row.image} alt="" />
+          </div>
+        ) : (
+          // Placeholder keeps the row anatomy identical, so a photo added in Toast later simply
+          // appears here with no layout change (owner: "there are no photos … but there will be").
+          <div className="sig-sq sig-sq-ph" style={{ width: sz.thumb, height: sz.thumb, flexShrink: 0 }} />
+        )
+      )}
+
+      <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", justifyContent: "center" }}>
+        {/* Name shrinks to fit its column — never truncates, never wraps, never reflows the row. */}
+        <FitText text={row.name} size={sz.name} align="left" glow="0 0 12px var(--terminal-glow)" style={{ width: "100%" }} />
+        {blurb && (
+          <div style={{
+            fontSize: sz.blurb, lineHeight: 1.3, opacity: 0.8, marginTop: port ? 10 : 7,
+            display: "-webkit-box", WebkitLineClamp: sz.blurbLines, WebkitBoxOrient: "vertical", overflow: "hidden",
+          }}>
+            {blurb}
+          </div>
+        )}
+      </div>
+
+      <div style={{ width: sz.priceW, flexShrink: 0 }}>
+        <MenuGroupPrice row={row} sz={sz} />
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The price cell, mirroring the public /menu: pour options render IN PLACE of the single price
+ * (a $0-base liquor item's real prices live there), otherwise the single price — and a 0/null
+ * price renders nothing at all rather than advertising "$0" (the /menu DECISION, held here).
+ */
+function MenuGroupPrice({ row, sz }: { row: MenuGroupRow; sz: MGSizes }) {
+  if (row.priceOptions) {
+    return (
+      <FitScale align="right">
+        {row.priceOptions.map((o, i) => (
+          <span key={`${o.label}-${i}`} style={{ fontSize: sz.optPrice, marginLeft: i === 0 ? 0 : 18, whiteSpace: "nowrap" }}>
+            <span style={{ fontSize: sz.optLabel, opacity: 0.6, letterSpacing: 2, marginRight: 8 }}>{o.label.toUpperCase()}</span>
+            <span className="sig-live" style={{ fontSize: "inherit", fontWeight: 700 }}>${formatPrice(o.price)}</span>
+          </span>
+        ))}
+      </FitScale>
+    );
+  }
+  if (row.price == null || row.price <= 0) return null;
+  return (
+    <FitScale align="right">
+      <span className="sig-live" style={{ fontSize: sz.price, fontWeight: 700, lineHeight: 1, whiteSpace: "nowrap" }}>
+        ${formatPrice(row.price)}
+      </span>
+    </FitScale>
+  );
+}
+
 /* ── SMART TOAST (data-driven live slide from sales_history — 0043) ──────────── */
 /**
  * Two owner-asked modes, both distance-first and one-slide-per-pass (no sub-rotation, finite
@@ -1526,6 +1848,7 @@ export function TemplateView(props: TemplateProps) {
     case "instagram": return <InstagramCard {...props} />;
     case "smart_toast": return <SmartToast {...props} />;
     case "now_playing": return <NowPlaying {...props} />;
+    case "menu_group": return <MenuGroup {...props} />;
     // Phase 7 rotation-level event cards (docs/13) — materialized from a live event.
     case "event_window": return <EventWindowCard item={props.item} toast={props.toast} orientation={props.orientation} />;
     case "event_message": return <EventMessageCard item={props.item} toast={props.toast} orientation={props.orientation} />;

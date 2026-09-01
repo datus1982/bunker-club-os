@@ -297,6 +297,13 @@ export function summarize(item: AdminItem, toastRows?: ToastCacheRow[]): string 
       const count = typeof f.post_count === "number" ? f.post_count : 5;
       return `Instagram — last ${count} post${count === 1 ? "" : "s"}`;
     }
+    case "menu_group": {
+      // The authored group is the whole identity of the card — show it, not a generic phrase.
+      const heading = g("heading");
+      const grp = g("group");
+      if (!grp) return "Menu group — none picked yet";
+      return heading ? `${heading} — ${grp} menu` : `${grp} — full menu section`;
+    }
     default: return item.template;
   }
 }
@@ -313,6 +320,7 @@ export function templateIcon(template: AdminItem["template"]): string {
     case "top_sellers": return "📊";
     case "instagram": return "▦";
     case "smart_toast": return "🎯";
+    case "menu_group": return "▤";
     default: return "▣";
   }
 }
@@ -328,6 +336,7 @@ export function templateBadge(template: AdminItem["template"]): string {
     case "top_sellers": return "TOP 5";
     case "instagram": return "INSTAGRAM";
     case "smart_toast": return "SMART TOAST";
+    case "menu_group": return "MENU";
     default: return "ITEM";
   }
 }
@@ -335,7 +344,10 @@ export function templateBadge(template: AdminItem["template"]): string {
 /** True for a data-driven "smart" asset (renders live/auto, no typed content). Used to tint
  *  its badge amber in the library grid + picker (mockup D5). */
 export function isSmartTemplate(template: AdminItem["template"]): boolean {
-  return template === "top_sellers" || template === "instagram" || template === "smart_toast";
+  // menu_group joins the smart family: it carries no typed content, only a pointer at a Toast
+  // section, and its rows/prices/photos resolve live at render time (0065).
+  return template === "top_sellers" || template === "instagram" || template === "smart_toast"
+    || template === "menu_group";
 }
 
 export function scheduleLabel(item: AdminItem): string {

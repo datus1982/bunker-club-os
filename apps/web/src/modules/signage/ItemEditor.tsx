@@ -45,6 +45,7 @@ export const ITEM_TEMPLATES: { key: Template; label: string; blurb: string; icon
   { key: "instagram", label: "INSTAGRAM", blurb: "Recent @posts — caption + QR", icon: "▦" },
   { key: "smart_toast", label: "SMART TOAST", blurb: "Underdogs or the champion — auto", icon: "🎯" },
   { key: "now_playing", label: "NOW PLAYING", blurb: "Cross-promo from the movie screen", icon: "🎬" },
+  { key: "menu_group", label: "MENU GROUP", blurb: "One menu section, listed full-screen", icon: "▤" },
 ];
 
 const SKINS = ["birthday", "bachelor", "bachelorette", "anniversary", "congrats"] as const;
@@ -326,6 +327,7 @@ function ItemForm({
       {template === "instagram" && <InstagramFields fields={fields} setField={setField} />}
       {template === "smart_toast" && <SmartToastFields fields={fields} setField={setField} toastRows={toastRows} />}
       {template === "now_playing" && <NowPlayingFields fields={fields} setField={setField} slots={slots} />}
+      {template === "menu_group" && <MenuGroupFields fields={fields} setField={setField} toastRows={toastRows} />}
       {template === "celebration" && (
         <CelebrationFields
           fields={fields}
@@ -398,7 +400,10 @@ function ItemForm({
         </label>
       </div>
 
-      {/* Publish to the public marketing site /events page (0015 flag). */}
+      {/* Publish to the public marketing site /events page (0015 flag). Hidden for MENU GROUP:
+          DECISION (0065) — the website already publishes the whole menu at /menu, so re-listing
+          one section in the What's-On feed is redundant; the feed skips this template explicitly. */}
+      {template !== "menu_group" && (
       <label style={{ ...checkLabel, alignItems: "flex-start" }}>
         <input type="checkbox" checked={showOnWebsite} onChange={(e) => setShowOnWebsite(e.target.checked)} style={{ ...checkbox, marginTop: 2 }} />
         <span>
@@ -408,6 +413,7 @@ function ItemForm({
           </span>
         </span>
       </label>
+      )}
 
       {err && <div className="u-red" style={{ fontSize: 18 }}>⚠ {err}</div>}
     </Modal>
@@ -637,6 +643,111 @@ function NowPlayingFields({ fields, setField, slots }: FieldProps & { slots: Adm
       </label>
       <div style={{ fontSize: 14, opacity: 0.6 }}>
         Best on a portrait ad screen. Give it a longer duration so guests can read the title and see the poster.
+      </div>
+    </div>
+  );
+}
+
+/* ── menu_group ─────────────────────────────────────────────────────────────── */
+/**
+ * MENU GROUP settings (0065). Three fields:
+ *   • group        — the exact toast_menu_cache `menu_group` string (required; the slide has
+ *                    nothing to list without it, and auto-hides from rotation while it's unset).
+ *   • heading      — optional title override; blank = the group's own name.
+ *   • show_blurbs  — whether each line carries its public description (default ON).
+ *
+ * The group list is the DISTINCT menu_group values in the Toast mirror, minus the hidden
+ * `★ SCREENS` duplicates group (same exclusion SmartToastFields applies). A group whose every
+ * item is off the POS view carries a POS-HIDDEN badge — it is still selectable (the owner may be
+ * about to turn it back on in Toast), but the slide will auto-hide until it is.
+ */
+function MenuGroupFields({ fields, setField, toastRows }: FieldProps & { toastRows: ToastCacheRow[] }) {
+  const group = str(fields.group) ?? "";
+  const heading = str(fields.heading) ?? "";
+  const showBlurbs = fields.show_blurbs !== false; // default true
+
+  // Distinct groups + how many rows in each would actually LIST (in stock AND POS-visible), so
+  // the picker tells the truth about what the slide will show.
+  const groups = useMemo(() => {
+    const m = new Map<string, { total: number; showable: number; photos: number }>();
+    for (const r of toastRows) {
+      const g = (r.menu_group ?? "").trim();
+      if (!g || g === "★ SCREENS") continue;
+      const e = m.get(g) ?? { total: 0, showable: 0, photos: 0 };
+      e.total += 1;
+      if (!r.out_of_stock && r.pos_visible) {
+        e.showable += 1;
+        if (r.image) e.photos += 1;
+      }
+      m.set(g, e);
+    }
+    return [...m.entries()]
+      .map(([name, v]) => ({ name, ...v }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [toastRows]);
+
+  const picked = groups.find((g) => g.name === group);
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <div className="terminal-border" style={{ padding: "12px 14px", display: "flex", flexDirection: "column", gap: 6, fontSize: 15, lineHeight: 1.5 }}>
+        <div style={{ fontSize: 17, fontWeight: 700, letterSpacing: 1 }}>▤ ONE MENU SECTION, FULL SCREEN</div>
+        <div style={{ opacity: 0.75 }}>
+          Lists a whole menu group the way bunkerokc.com/menu lists it — name, price (or pour sizes),
+          description and photo — sized so the rows <b>fill the screen</b>. It follows Toast live:
+          anything 86'd or pulled off the POS view drops out on its own, and the whole slide
+          <b> hides itself</b> if the section ends up empty. Long sections page automatically.
+        </div>
+      </div>
+
+      <Field label="MENU GROUP">
+        {groups.length > 0 ? (
+          <select value={group} onChange={(e) => setField("group", e.target.value)} style={sel}>
+            <option value="" style={opt}>— pick a section —</option>
+            {groups.map((g) => (
+              <option key={g.name} value={g.name} style={opt}>
+                {g.name} ({g.showable} item{g.showable === 1 ? "" : "s"}){g.showable === 0 ? " — POS-HIDDEN" : ""}
+              </option>
+            ))}
+          </select>
+        ) : (
+          <input placeholder="Exact Toast menu group name" value={group} onChange={(e) => setField("group", e.target.value)} style={sel} />
+        )}
+      </Field>
+      {picked && (
+        <div style={{ fontSize: 14, opacity: 0.7, lineHeight: 1.5 }}>
+          {picked.showable === 0 ? (
+            <span className="u-amber">
+              ⚠ POS-HIDDEN — none of this section's {picked.total} item{picked.total === 1 ? " is" : "s are"} active on the
+              POS view, so the slide will stay hidden until it is turned back on in Toast.
+            </span>
+          ) : (
+            <>
+              Will list <b>{picked.showable}</b> item{picked.showable === 1 ? "" : "s"} · <b>{picked.photos}</b> with a photo.
+              {picked.photos === 0 && " No photos yet — names and prices take the full width until Toast has some."}
+            </>
+          )}
+        </div>
+      )}
+
+      <Field label="HEADING OVERRIDE (blank = the section name)">
+        <input placeholder={group || "e.g. TIKI TUESDAY"} value={heading} onChange={(e) => setField("heading", e.target.value)} style={sel} />
+      </Field>
+
+      <label style={{ ...checkLabel, alignItems: "flex-start" }}>
+        <input type="checkbox" checked={showBlurbs} onChange={(e) => setField("show_blurbs", e.target.checked ? "" : false)} style={{ ...checkbox, marginTop: 2 }} />
+        <span>
+          SHOW DESCRIPTIONS
+          <span style={{ display: "block", fontSize: 14, opacity: 0.55, letterSpacing: 0 }}>
+            The short public description under each name (the part before <code>---</code> in Toast).
+            Turn off for a tighter list of just names and prices.
+          </span>
+        </span>
+      </label>
+
+      <div style={{ fontSize: 14, opacity: 0.6 }}>
+        Tip: give it a longer duration than a quick promo — a guest needs time to read a whole section,
+        and a long section turns one page per showing.
       </div>
     </div>
   );

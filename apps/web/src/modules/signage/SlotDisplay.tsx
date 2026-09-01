@@ -6,7 +6,7 @@ import { LeaderboardBoard } from "@/modules/trivia/Leaderboard";
 import { GameDisplayBoard } from "@/modules/trivia/GameDisplay";
 import {
   useSlot, useLiveEvents, resolveRotation, resolveSlotMode, activeMoment, teaseMoment,
-  useNowPlayingSources, nowPlayingSourceSlug, isNowPlayingFresh, isTriviaArmed,
+  useNowPlayingSources, nowPlayingSourceSlug, isNowPlayingFresh, isTriviaArmed, useSiteMenuFilters,
   type SignageItem, type Slot, type SlotMode, type Takeover, type ToastCacheRow, type LiveEvent, type Orientation, type LiveGame, type ArmedRaw,
 } from "./useSignage";
 import { TriviaHoldingBoard } from "@/modules/trivia/TriviaHoldingBoard";
@@ -151,9 +151,22 @@ function SlotScreen({
     [timezone, rolloverHour],
   );
 
+  // MENU GROUP (0065): the website-parity filters (owner-hidden guids + Toast item order). Only
+  // fetched when this screen actually queues a menu_group card, so a screen without one makes no
+  // extra request. Until it resolves, resolveRotation gates on the Toast mirror alone — which can
+  // only ever be MORE permissive, so the card never blinks out; the slide's own empty state
+  // covers the (sub-second, hidden-guids-only) window where the two could disagree.
+  const hasMenuGroup = useMemo(() => items.some((it) => it.template === "menu_group"), [items]);
+  const menuFilters = useSiteMenuFilters(hasMenuGroup);
+
   const rotation = useMemo(
-    () => resolveRotation(items, toast, now, liveEvents, { liveNowPlayingSlugs, venue: venueClock }),
-    [items, toast, now, liveEvents, liveNowPlayingSlugs, venueClock],
+    () =>
+      resolveRotation(items, toast, now, liveEvents, {
+        liveNowPlayingSlugs,
+        venue: venueClock,
+        menuFilters: menuFilters.data,
+      }),
+    [items, toast, now, liveEvents, liveNowPlayingSlugs, venueClock, menuFilters.data],
   );
 
   // MOMENT in a takeover-level stage (alert/moment/event/allclear) + the tease lead-in.
