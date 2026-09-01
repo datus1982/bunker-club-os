@@ -128,6 +128,17 @@ export interface ToastCacheRow {
                              // Available for templates to read later; NO template renders it yet.
   price_options: PriceOption[] | null; // pour-size options (0050) — anon-readable cache column,
                              // public by construction. Available to templates later; NO template renders it yet.
+  /**
+   * When Toast stopped carrying this item (0066); null/undefined = present in Toast.
+   *
+   * OPTIONAL ON PURPOSE. anon's SELECT on toast_menu_cache is COLUMN-LEVEL (0015), and 0066
+   * deliberately grants anon nothing, so the public TV reader below MUST NOT select this
+   * column — doing so would 401 the whole query and blank every drink slide. Only the
+   * authenticated staff hook (useSignageAdmin.useToastCache) populates it. The TV needs
+   * nothing extra anyway: the sync forces pos_visible=false on a removed item, which is the
+   * gate every display surface already honours.
+   */
+  removed_at?: string | null;
 }
 
 /** One pour-size option (0050): display label + dollar price. See priceOptions.ts (write side). */

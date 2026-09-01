@@ -246,13 +246,17 @@ export function Countdown({ endsAt }: { endsAt: string | null }) {
 }
 
 /* ── item helpers ───────────────────────────────────────────────────────────── */
-// Why the slot page auto-hides an item's Toast source, if at all: 86'd (out of stock) or
-// POS-HIDDEN (not active on the POS view — 0034). Either reason hides it on-screen.
+// Why the slot page auto-hides an item's Toast source, if at all: gone from Toast entirely
+// (0066), 86'd (out of stock), or POS-HIDDEN (not active on the POS view — 0034). Any of the
+// three hides it on-screen. REMOVED is reported first and reads differently on purpose: an
+// 86'd or POS-hidden item is one Toast toggle from coming back, while a removed one is a dead
+// reference — the card will never show again until the owner re-creates the item in Toast.
 export function sourceHideReason(item: AdminItem, rows: ReturnType<typeof featuredItems> | undefined): string | null {
   const guid = typeof item.fields?.source_toast_guid === "string" ? (item.fields.source_toast_guid as string) : undefined;
   if (!guid || !rows) return null;
-  const r = (rows as { guid: string; out_of_stock?: boolean; pos_visible?: boolean }[]).find((x) => x.guid === guid);
+  const r = (rows as { guid: string; out_of_stock?: boolean; pos_visible?: boolean; removed_at?: string | null }[]).find((x) => x.guid === guid);
   if (!r) return null;
+  if (r.removed_at) return "REMOVED FROM TOAST";
   if (r.out_of_stock) return "86'D — HIDDEN";
   if (r.pos_visible === false) return "POS-HIDDEN";
   return null;
@@ -455,11 +459,24 @@ export function ToastSourcePicker({
     const needle = q.trim().toLowerCase();
     return rows
       .filter((r) => r.menu_group !== "★ SCREENS") // featured duplicates aren't picker sources
+      // DECISION (0066): items Toast no longer carries are FILTERED OUT of the picker, not
+      // dimmed-and-badged like POS-hidden ones. The two states are not the same kind of
+      // problem: a POS-hidden item is a live item the owner flipped off (staff want to see it,
+      // and it can come back with one Toast toggle), whereas a removed item is a dead
+      // reference — a card linked to it can never render again. Offering it would only let a
+      // manager build a card that is guaranteed to auto-hide. An ALREADY-linked removed item
+      // is still shown below, badged, so an existing card explains itself instead of going
+      // mysteriously blank.
+      .filter((r) => !r.removed_at)
       .filter((r) => !needle || (r.name ?? "").toLowerCase().includes(needle) || (r.menu_group ?? "").toLowerCase().includes(needle))
       .slice(0, 60);
   }, [rows, q]);
 
-  const warn = sel?.out_of_stock ? "86'D — this card auto-hides on screen" : sel && !sel.pos_visible ? "OFF POS VIEW — this card auto-hides on screen" : null;
+  const warn = sel?.removed_at
+    ? "REMOVED FROM TOAST — this card auto-hides on screen; pick another item"
+    : sel?.out_of_stock ? "86'D — this card auto-hides on screen"
+    : sel && !sel.pos_visible ? "OFF POS VIEW — this card auto-hides on screen"
+    : null;
 
   return (
     <div className="terminal-border" style={{ padding: "10px 12px", display: "flex", flexDirection: "column", gap: 8 }}>

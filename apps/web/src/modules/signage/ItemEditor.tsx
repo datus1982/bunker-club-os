@@ -950,6 +950,11 @@ function ToastPicker({ rows, selected, onSelect }: { rows: ToastCacheRow[]; sele
     const needle = q.trim().toLowerCase();
     return rows
       .filter((r) => r.menu_group !== "★ SCREENS") // featured duplicates aren't picker sources
+      // DECISION (0066): items Toast no longer carries are filtered OUT rather than dimmed
+      // like POS-hidden ones — a removed item is a dead reference, so a card built on it could
+      // never render. See the matching note in signageAdminShared's ToastSourcePicker. An
+      // already-linked removed item still shows in the selected row above, badged.
+      .filter((r) => !r.removed_at)
       .filter((r) => !needle || (r.name ?? "").toLowerCase().includes(needle) || (r.menu_group ?? "").toLowerCase().includes(needle))
       .slice(0, 60);
   }, [rows, q]);
@@ -961,13 +966,20 @@ function ToastPicker({ rows, selected, onSelect }: { rows: ToastCacheRow[]; sele
         {sel && <button type="button" onClick={() => onSelect("")} style={{ ...btnGhost, fontSize: 15, padding: "4px 10px", minHeight: 44 }}>CLEAR</button>}
       </div>
       {sel ? (
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          {sel.image && <img src={sel.image} alt="" style={{ width: 44, height: 44, objectFit: "cover", border: "1px solid var(--terminal-green)" }} />}
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 20, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{sel.name}</div>
-            <div style={{ fontSize: 14, opacity: 0.6 }}>{sel.menu_group}{sel.price != null ? ` · $${sel.price}` : ""}{sel.out_of_stock ? " · 86'D" : ""}{sel.pos_visible ? "" : " · POS-HIDDEN"}</div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            {sel.image && <img src={sel.image} alt="" style={{ width: 44, height: 44, objectFit: "cover", border: "1px solid var(--terminal-green)" }} />}
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 20, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{sel.name}</div>
+              <div style={{ fontSize: 14, opacity: 0.6 }}>{sel.menu_group}{sel.price != null ? ` · $${sel.price}` : ""}{sel.out_of_stock ? " · 86'D" : ""}{sel.pos_visible ? "" : " · POS-HIDDEN"}</div>
+            </div>
+            <button type="button" onClick={() => setOpen((o) => !o)} style={{ ...btnGhost, fontSize: 15, minHeight: 44 }}>CHANGE</button>
           </div>
-          <button type="button" onClick={() => setOpen((o) => !o)} style={{ ...btnGhost, fontSize: 15, minHeight: 44 }}>CHANGE</button>
+          {/* A card whose Toast item was deleted can never render again (0066) — say so
+              here rather than letting it look like an ordinary linked special. */}
+          {sel.removed_at && (
+            <div className="u-amber" style={{ fontSize: 14 }}>⚠ REMOVED FROM TOAST — this card auto-hides on screen; pick another item</div>
+          )}
         </div>
       ) : (
         <button type="button" onClick={() => setOpen((o) => !o)} style={btnGhost}>{open ? "CLOSE PICKER" : "PICK A TOAST ITEM"}</button>

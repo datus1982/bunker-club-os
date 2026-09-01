@@ -15,6 +15,7 @@
     "test:menutext": "tsx scripts/test-menu-text.ts",
     "test:priceoptions": "tsx scripts/test-price-options.ts",
     "test:menuorder": "tsx scripts/test-menu-order.ts",
+    "test:menuprune": "tsx scripts/test-menu-prune.ts",
     "seed:staff": "tsx scripts/seed-staff.ts",
     "apply:email-templates": "tsx scripts/apply-email-templates.ts",
     "backup": "tsx scripts/backup.ts",
