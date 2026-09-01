@@ -40,40 +40,27 @@ export interface MenuGroup {
   items: MenuItem[];
 }
 
-// Section order for the menu, owner-configurable via the venue_settings
-// `site_menu_group_order` key (seeded by migration 0031). Groups listed there
-// render first in exact order; any group NOT listed (e.g. a brand-new Toast group)
-// falls to the end, alphabetically — the menu never breaks on an unknown group.
+// ── ORDER: Toast is the single source (0064, owner ask 2026-09-01) ───────────
+// The owner arranges his menus, groups and items in Toast; /menu mirrors that layout
+// exactly. THE WEBSITE CARRIES NO ORDER OF ITS OWN — there is no list to maintain here,
+// no venue_settings key to keep in sync, and no session needed when he adds a group.
 //
-// This constant is the FALLBACK (first-paint / offline / key-missing) and MUST
-// byte-match the 0031 `site_menu_group_order` seed AND the live DB value — the
-// same three-way invariant useSiteCopy holds for its keys. Owner reorder
-// (2026-07-13); names are the exact `menu_group` strings in the live
-// toast_menu_cache. "Winter Cocktails" is deliberately unlisted — it is POS-hidden
-// in Toast, so the pos_visible gate on public_menu keeps it off /menu regardless of
-// order (gate added in 0034, accidentally dropped by 0040/0048, restored by 0049).
-// Update all three together.
-const MENU_GROUP_ORDER_FALLBACK = [
-  "Signature Cocktails",
-  "Cocktail Features",
-  "Mocktails",
-  "Draft Beers",
-  "Vodka",
-  "Gin",
-  "Rum",
-  "Classics",
-  "Shots",
-  "N/A Beers",
-  "Bottle / Cans",
-  "Wine",
-  "Whiskey / Bourbon / Rye",
-  "Scotch",
-  "Tequila",
-  "Cordials",
-  "Soft Drinks",
-  "Food",
-  "Merch",
-];
+// toast-menu-sync (v10) stamps every cached item with where it sat in the Toast walk:
+//   group_position — global, monotonic, groups in Toast's order (sub-groups follow parents);
+//   item_position  — the item's index inside its group.
+// Both surface through public_menu (0064). A group is ranked by the MINIMUM group_position
+// of its surviving items, so a group keeps its place even when its first item is 86'd or
+// POS-hidden. Nulls (unknown / not yet synced) sort LAST and tiebreak by name, so a stale or
+// half-synced cache degrades to the old alphabetical behaviour instead of scrambling.
+//
+// Replaced the `site_menu_group_order` venue_settings key + its byte-matching constant
+// (0031, retired) — that pair is exactly the hand-off the owner asked to be rid of.
+
+// Rank helper: nulls (and non-finite values) sort after every real position.
+const NO_POSITION = Number.POSITIVE_INFINITY;
+function rank(v: number | null | undefined): number {
+  return typeof v === "number" && Number.isFinite(v) ? v : NO_POSITION;
+}
 
 // GUIDs of toast_menu_cache items to suppress from the public /menu — POS
 // register-convenience rows (e.g. a "Sputnik 1/2 off" priced-down duplicate) that
@@ -81,39 +68,27 @@ const MENU_GROUP_ORDER_FALLBACK = [
 // the venue_settings `site_menu_hidden_guids` key (seeded by migration 0033).
 //
 // This constant is the FALLBACK (first-paint / offline / key-missing) and MUST
-// byte-match the 0033 `site_menu_hidden_guids` seed AND the live DB value — the
-// same three-way invariant the group-order list holds. Update all three together.
+// byte-match the 0033 `site_menu_hidden_guids` seed AND the live DB value.
+// Update all three together.
 //
 // NOTE: this only affects the public /menu. The drinks display board reads
 // sales_cache top-sellers via a different path and does NOT consult this list, so
 // a hidden item that is also a top seller would still appear there (future owner call).
 const MENU_HIDDEN_GUIDS_FALLBACK = ["fa3603be-0965-42d0-9cca-6e0708cce1f0"];
 
-function rankFn(order: string[]) {
-  return (name: string): number => {
-    const i = order.indexOf(name);
-    return i === -1 ? order.length : i;
-  };
-}
-
 export function useMenu() {
   return useQuery({
     queryKey: ["site-menu", VENUE_ID],
     staleTime: 5 * 60_000,
     queryFn: async (): Promise<MenuGroup[]> => {
-      // Pull the menu rows, the owner's group-order key, and the hidden-guids key
-      // in parallel (no waterfall).
-      const [menuRes, orderRes, hiddenRes] = await Promise.all([
+      // Pull the menu rows and the hidden-guids key in parallel (no waterfall).
+      const [menuRes, hiddenRes] = await Promise.all([
         supabase
           .from("public_menu")
-          .select('guid, "group", name, public_blurb, long_blurb, price, price_options, image, in_stock')
+          .select(
+            'guid, "group", name, public_blurb, long_blurb, price, price_options, image, in_stock, group_position, item_position',
+          )
           .eq("venue_id", VENUE_ID),
-        supabase
-          .from("venue_settings")
-          .select("value")
-          .eq("venue_id", VENUE_ID)
-          .eq("key", "site_menu_group_order")
-          .maybeSingle(),
         supabase
           .from("venue_settings")
           .select("value")
@@ -123,14 +98,6 @@ export function useMenu() {
       ]);
       const { data, error } = menuRes;
       if (error) throw error;
-
-      // Use the configured order when present + well-formed; else the fallback.
-      const configured = orderRes.data?.value;
-      const order =
-        Array.isArray(configured) && configured.every((s) => typeof s === "string")
-          ? (configured as string[])
-          : MENU_GROUP_ORDER_FALLBACK;
-      const groupRank = rankFn(order);
 
       // GUIDs to suppress from the public menu. Defensive: a missing or malformed
       // key means NO filtering (never crash, never over-hide) — fall back to the
@@ -155,6 +122,8 @@ export function useMenu() {
         price_options: PriceOption[] | null;
         image: string | null;
         in_stock: boolean;
+        group_position: number | null;
+        item_position: number | null;
       };
 
       // Defensive: only accept well-formed {label:string, price:number} entries; a malformed
@@ -168,7 +137,14 @@ export function useMenu() {
         return ok.length > 0 ? ok : null;
       };
 
-      const byGroup = new Map<string, MenuItem[]>();
+      // Item + its Toast position, kept side by side so the sort can read the position
+      // without leaking it into the public MenuItem shape.
+      type Placed = { item: MenuItem; itemPos: number };
+
+      const byGroup = new Map<string, Placed[]>();
+      // Lowest group_position seen per group name — the group's rank on the page.
+      const groupRank = new Map<string, number>();
+
       for (const r of (data ?? []) as Row[]) {
         if (hidden.has(r.guid)) continue; // owner-hidden POS-convenience item (0033).
         if (!r.in_stock) continue; // DECISION: hide 86'd items.
@@ -176,24 +152,40 @@ export function useMenu() {
         const g = r.group?.trim() || "Other";
         if (!byGroup.has(g)) byGroup.set(g, []);
         byGroup.get(g)!.push({
-          guid: r.guid,
-          name: r.name,
-          blurb: r.public_blurb,
-          longBlurb: r.long_blurb,
-          price: r.price,
-          priceOptions: cleanOptions(r.price_options),
-          image: r.image,
+          itemPos: rank(r.item_position),
+          item: {
+            guid: r.guid,
+            name: r.name,
+            blurb: r.public_blurb,
+            longBlurb: r.long_blurb,
+            price: r.price,
+            priceOptions: cleanOptions(r.price_options),
+            image: r.image,
+          },
         });
+        // A group ranks by its EARLIEST surviving item, so 86'd/hidden rows can't
+        // push a whole section down the page.
+        const gp = rank(r.group_position);
+        const seen = groupRank.get(g);
+        if (seen === undefined || gp < seen) groupRank.set(g, gp);
       }
 
-      const groups: MenuGroup[] = [...byGroup.entries()].map(([group, items]) => ({
+      const groups: MenuGroup[] = [...byGroup.entries()].map(([group, placed]) => ({
         group,
-        items: items.sort((a, b) => a.name.localeCompare(b.name)),
+        items: placed
+          .slice()
+          .sort((a, b) =>
+            a.itemPos !== b.itemPos
+              ? a.itemPos - b.itemPos
+              : a.item.name.localeCompare(b.item.name),
+          )
+          .map((p) => p.item),
       }));
 
       groups.sort((a, b) => {
-        const r = groupRank(a.group) - groupRank(b.group);
-        return r !== 0 ? r : a.group.localeCompare(b.group);
+        const ra = groupRank.get(a.group) ?? NO_POSITION;
+        const rb = groupRank.get(b.group) ?? NO_POSITION;
+        return ra !== rb ? ra - rb : a.group.localeCompare(b.group);
       });
       return groups;
     },

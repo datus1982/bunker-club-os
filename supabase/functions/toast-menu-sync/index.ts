@@ -20,9 +20,15 @@
 // v8 (2026-07-17): also extract pour-size price options (priceOptions.ts) into
 // toast_menu_cache.price_options (0050) so $0-base liquor/draft items show SHOT/COCKTAIL/
 // DOUBLE (or PINT/PITCHER) prices on the public menu.
+//
+// v10 (2026-09-01): also record WHERE each item sits in the owner's Toast layout
+// (menuOrder.ts → toast_menu_cache.group_position / item_position, 0064). Toast is now the
+// single source of the public menu's ORDER too — the website carries no order of its own,
+// so a brand-new Toast group lands exactly where the owner put it with no deploy.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { publicBlurb, publicLongform } from "./menuText.ts";
 import { buildGroupUsage, extractPriceOptions } from "./priceOptions.ts";
+import { assignMenuPositions } from "./menuOrder.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -33,7 +39,7 @@ const TOAST_RESTAURANT_GUID = Deno.env.get("TOAST_RESTAURANT_GUID") ?? "";
 const TOAST_BASE = "https://ws-api.toasttab.com";
 const VENUE_ID = Deno.env.get("VENUE_ID") ?? "11111111-1111-1111-1111-111111111111";
 const BUCKET = "signage";
-const SYNC_VERSION = "v9-warn1-guard"; // deployed==source marker
+const SYNC_VERSION = "v10-toast-order"; // deployed==source marker
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -139,10 +145,19 @@ Deno.serve(async (req) => {
 
     let itemsUpserted = 0;
     let priceOptionRows = 0;
+    let positionedRows = 0; // rows that carry a Toast layout position (0064)
     if (menuChanged) {
       const menusRes = await fetch(`${TOAST_BASE}/menus/v2/menus`, { headers: headers(token) });
       if (!menusRes.ok) throw new Error(`menus fetch failed: ${menusRes.status} ${await menusRes.text()}`);
       const menusData = await menusRes.json();
+
+      // Menu ORDER (0064): where the owner put each item in his Toast layout. Derived up-front
+      // by a pure walk of the raw payload (menuOrder.ts — menus in order, groups in order,
+      // sub-groups depth-first, first occurrence of a reused item wins) so the row walk below
+      // is a plain lookup and the ordering rule stays unit-testable (pnpm test:menuorder).
+      // Looking positions up by guid also makes them independent of which duplicate row wins
+      // the de-dupe further down: every copy of an item carries its FIRST position.
+      const positions = assignMenuPositions(menusData);
 
       const rows: Record<string, unknown>[] = [];
       // Groups can nest sub-groups; walk the tree and collect items from every level.
@@ -174,6 +189,10 @@ Deno.serve(async (req) => {
             pos_visible: here && isPosVisible(item.visibility),
             // raw item channel array, for future per-channel granularity.
             visibility: Array.isArray(item.visibility) ? item.visibility : null,
+            // Toast layout order (0064). null only if the pure walk somehow missed this guid
+            // (malformed node) — the website sorts nulls last, so it degrades to alphabetical.
+            group_position: positions.get(item.guid)?.group_position ?? null,
+            item_position: positions.get(item.guid)?.item_position ?? null,
             // Pour-size price options (0050) are computed AFTER the walk, once every item's
             // group references are known (the venue-wide usage count drives the shared-tier
             // vs per-item-group choice). Stash the item's group refs here; stripped before upsert.
@@ -219,6 +238,7 @@ Deno.serve(async (req) => {
         }
         r.price_options = opts;
         if (opts) priceOptionRows++;
+        if (r.group_position !== null) positionedRows++;
         delete r._groupRefs; // never persisted — an internal carry only
       }
 
@@ -238,7 +258,7 @@ Deno.serve(async (req) => {
       }
     }
 
-    return json({ ok: true, version: SYNC_VERSION, menuChanged, itemsUpserted, priceOptionRows, stockRows: stock.size, lastUpdated }, 200);
+    return json({ ok: true, version: SYNC_VERSION, menuChanged, itemsUpserted, priceOptionRows, positionedRows, stockRows: stock.size, lastUpdated }, 200);
   } catch (error) {
     const msg = error instanceof Error ? error.message : JSON.stringify(error);
     console.error("toast-menu-sync error:", msg);
