@@ -7,7 +7,8 @@
  *   - menus in payload order, groups in order, sub-groups depth-first right after their parent;
  *   - group_position is a global monotonic counter incremented on ENTERING each group;
  *   - item_position is the item's index inside its group's menuItems;
- *   - an item repeated across menus/groups keeps its FIRST (lowest) positions;
+ *   - an item repeated across menus/groups keeps its LAST occurrence's positions — the row
+ *     that survives index.ts's de-dupe, so menu_group and position always agree;
  *   - malformed nodes are skipped, never thrown.
  */
 import {
@@ -76,15 +77,29 @@ eq("menu 1 group 0", at(multi, "m1a"), pos(0, 0));
 eq("menu 1 group 1", at(multi, "m1b"), pos(1, 0));
 eq("menu 2 continues the counter (2)", at(multi, "m2a"), pos(2, 0));
 
-// ── First occurrence wins ───────────────────────────────────────────────────
+// ── Last occurrence wins (matches index.ts's row de-dupe) ───────────────────
+// The live case this pins: "Cantina Pizzolato" sits inside Draft Beers AND in Wine. The row
+// de-dupe caches it with menu_group "Wine" (last), so its position must be Wine's too —
+// otherwise the Wine section inherits the beers' rank.
 const dupe = assignMenuPositions({
   menus: [
-    { menuGroups: [{ name: "Signature Cocktails", menuItems: [item("x"), item("dup")] }] },
-    { menuGroups: [{ name: "Happy Hour", menuItems: [item("dup")] }] },
+    { menuGroups: [{ name: "Draft Beers", menuItems: [item("x"), item("dup")] }] },
+    { menuGroups: [{ name: "Wine", menuItems: [item("dup")] }] },
   ],
 });
-eq("repeated item keeps its FIRST position", at(dupe, "dup"), pos(0, 1));
+eq("repeated item keeps its LAST position", at(dupe, "dup"), pos(1, 0));
 eq("dupe map size", dupe.size, 2);
+
+// Same rule inside one menu, across sibling groups.
+const dupeSameMenu = assignMenuPositions({
+  menus: [{
+    menuGroups: [
+      { name: "Draft Beers", menuItems: [item("a"), item("dup2")] },
+      { name: "Wine", menuItems: [item("b"), item("c"), item("dup2")] },
+    ],
+  }],
+});
+eq("last occurrence within one menu", at(dupeSameMenu, "dup2"), pos(1, 2));
 
 // ── Defensive shapes ────────────────────────────────────────────────────────
 eq("null payload empty", assignMenuPositions(null).size, 0);

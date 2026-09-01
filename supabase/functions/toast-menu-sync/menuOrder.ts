@@ -12,9 +12,17 @@
 //     numbers are globally monotonic across the whole payload;
 //   * an item's `item_position` is its index inside its group's `menuItems`.
 //
-// An item can legitimately appear in several menus/groups (Toast reuses items). The FIRST
-// occurrence — the earliest place the owner put it — wins, so a "Signature Cocktails" item
-// also parked on a late "Happy Hour" menu still renders in the cocktails section.
+// An item can legitimately appear in several menus/groups (Toast reuses items) and the LAST
+// occurrence wins.
+//
+// DECISION (2026-09-01, changed from first-wins after a live probe): the row de-dupe in
+// index.ts is `new Map(rows.map(...))`, which keeps the LAST row — so an item's cached
+// `menu_group` is already its last occurrence's group. Positions MUST come from that same
+// occurrence or the two disagree. It is not hypothetical: the owner lists "Cantina Pizzolato"
+// inside Draft Beers AND in Wine, and under first-wins it cached as menu_group "Wine" while
+// carrying the Draft Beers position — which dragged the whole Wine section's rank up next to
+// the beers. Both walks visit occurrences in the identical order (same tree, same child
+// order), so last-wins here lines up exactly with the row that survives the de-dupe.
 //
 // Pure + defensive: any malformed node is skipped, never thrown (a shape surprise must not
 // abort a whole sync pass — the 0050 WARN-1 lesson). `pnpm test:menuorder`.
@@ -36,7 +44,8 @@ function isRecord(v: unknown): v is Record<string, unknown> {
 
 /**
  * Map every item guid in a Menus V2 payload to its {group_position, item_position}.
- * First occurrence wins. Returns an empty map for a malformed/absent payload.
+ * LAST occurrence wins (see the DECISION above — it must match index.ts's row de-dupe).
+ * Returns an empty map for a malformed/absent payload.
  */
 export function assignMenuPositions(menusData: unknown): Map<string, MenuPosition> {
   const out = new Map<string, MenuPosition>();
@@ -53,7 +62,7 @@ export function assignMenuPositions(menusData: unknown): Map<string, MenuPositio
       if (!isRecord(item)) continue;
       const guid = item.guid;
       if (typeof guid !== "string" || guid.length === 0) continue;
-      if (out.has(guid)) continue; // first occurrence wins (lowest positions)
+      // Last occurrence wins — a plain overwrite, matching index.ts's row de-dupe.
       out.set(guid, { group_position: groupPosition, item_position: i });
     }
     // Depth-first: a sub-group follows its parent immediately.

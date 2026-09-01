@@ -153,10 +153,11 @@ Deno.serve(async (req) => {
 
       // Menu ORDER (0064): where the owner put each item in his Toast layout. Derived up-front
       // by a pure walk of the raw payload (menuOrder.ts — menus in order, groups in order,
-      // sub-groups depth-first, first occurrence of a reused item wins) so the row walk below
-      // is a plain lookup and the ordering rule stays unit-testable (pnpm test:menuorder).
-      // Looking positions up by guid also makes them independent of which duplicate row wins
-      // the de-dupe further down: every copy of an item carries its FIRST position.
+      // sub-groups depth-first) so the row walk below is a plain lookup and the ordering rule
+      // stays unit-testable (pnpm test:menuorder). menuOrder walks occurrences in the SAME
+      // order as the row walk and keeps the LAST one, exactly like the `new Map(rows...)`
+      // de-dupe below — so an item reused across groups gets the position of the very
+      // occurrence whose menu_group it caches (see the DECISION in menuOrder.ts).
       const positions = assignMenuPositions(menusData);
 
       const rows: Record<string, unknown>[] = [];
