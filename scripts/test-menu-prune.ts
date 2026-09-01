@@ -10,9 +10,12 @@
  *     menu (the media-catalog "empty flap" lesson). This is the load-bearing assertion;
  *   - an ALREADY-removed absent guid is NOT rewritten, so its original removal timestamp
  *     survives;
- *   - malformed cache rows are skipped, never thrown.
+ *   - malformed cache rows are skipped, never thrown;
+ *   - THE CAP (addendum WARN-1): a prune larger than 15% of the cache (floor 5) is HELD, so an
+ *     incomplete-but-valid Toast payload can never empty the menu unattended; force:true is
+ *     the human override.
  */
-import { chunk, planPrune, type PruneCacheRow } from "../supabase/functions/toast-menu-sync/menuPrune.ts";
+import { chunk, gatePrune, planPrune, pruneCap, type PruneCacheRow } from "../supabase/functions/toast-menu-sync/menuPrune.ts";
 
 let failures = 0;
 function eq<T>(label: string, got: T, want: T) {
@@ -104,6 +107,39 @@ const flagged = (guid: string): PruneCacheRow => ({ guid, removed_at: REMOVED_AT
   eq("chunk of empty list", chunk([], 100), []);
   eq("chunk larger than list", chunk([1, 2], 100), [[1, 2]]);
   eq("chunk covers every element once", chunk(["a", "b", "c"], 1).flat(), ["a", "b", "c"]);
+}
+
+// ── The cap (WARN-1) ────────────────────────────────────────────────────────
+{
+  eq("cap is 15% of a big cache", pruneCap(320), 48);
+  eq("cap rounds up", pruneCap(100), 15);
+  eq("floor of 5 on a small cache", pruneCap(20), 5);
+  eq("floor of 5 on a tiny cache", pruneCap(3), 5);
+  eq("floor of 5 on an empty cache", pruneCap(0), 5);
+  eq("nonsense cache count still yields the floor", pruneCap(NaN as unknown as number), 5);
+}
+{
+  // Under the cap → prune proceeds. (The live shape: 21 of 317.)
+  eq("21 of 317 is under the cap", gatePrune({ removedCount: 21, cacheCount: 317, force: false }), { held: false, cap: 48 });
+  eq("exactly at the cap still prunes", gatePrune({ removedCount: 48, cacheCount: 317, force: false }), { held: false, cap: 48 });
+  eq("zero removals never held", gatePrune({ removedCount: 0, cacheCount: 317, force: false }), { held: false, cap: 48 });
+}
+{
+  // Over the cap → HELD. This is the partial-payload case: one menu missing from a 200.
+  eq("49 of 317 is held", gatePrune({ removedCount: 49, cacheCount: 317, force: false }), { held: true, cap: 48 });
+  eq("a near-total wipe is held", gatePrune({ removedCount: 300, cacheCount: 317, force: false }), { held: true, cap: 48 });
+}
+{
+  // force:true is the operator override — a genuine mass delete, and the documented recovery
+  // lever after a hold.
+  eq("force bypasses the cap", gatePrune({ removedCount: 300, cacheCount: 317, force: true }), { held: false, cap: 48 });
+  eq("force reports the cap it bypassed", gatePrune({ removedCount: 9, cacheCount: 20, force: true }), { held: false, cap: 5 });
+}
+{
+  // The floor protects small caches from being held over ordinary deletions…
+  eq("5 removals from a 20-row cache proceed", gatePrune({ removedCount: 5, cacheCount: 20, force: false }), { held: false, cap: 5 });
+  // …but not from a wipe.
+  eq("6 removals from a 20-row cache are held", gatePrune({ removedCount: 6, cacheCount: 20, force: false }), { held: true, cap: 5 });
 }
 
 console.log(failures === 0 ? "\nAll menu-prune assertions passed." : `\n${failures} assertion(s) FAILED.`);

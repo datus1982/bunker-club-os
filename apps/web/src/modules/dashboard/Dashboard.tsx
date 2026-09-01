@@ -83,6 +83,14 @@ export function Dashboard() {
             state={sync.data?.menuSync.state ?? "never"}
             age={formatAge(sync.data?.menuSync.ageMs ?? null)}
           />
+          {/* toast-menu-sync held a prune it judged too large to apply unattended (0066/v12).
+              Nothing is broken — the menu keeps showing what it had and the sync retries every
+              2 minutes — but a held prune must never be silent. */}
+          {sync.data?.pruneAlarm && (
+            <div className="u-amber" style={{ fontSize: 15, marginTop: 6 }}>
+              MENU PRUNE HELD — {sync.data.pruneAlarm.count} items missing from Toast, retrying
+            </div>
+          )}
         </StatusPanel>
 
         {/* Tonight */}

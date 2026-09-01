@@ -192,3 +192,23 @@ next sync. There is no "undelete" step to run.
 > in exactly that state — Fireball Shot, Malört Shot, Crown Apple Whiskey, the old
 > "Sputnik 1/2 off" duplicate, and others). The workaround was to POS-hide it as well.
 > That's no longer needed; deleting is enough.
+
+### Two things to know about deleting
+
+**A re-created item is a NEW item.** Toast gives it a fresh internal ID, so it is not the
+old one coming back — it arrives as a brand-new menu item. The website doesn't care (it
+shows whatever Toast has), but **a TV card that was linked to the deleted item stays
+linked to the dead one**: it keeps reading `REMOVED FROM TOAST` and keeps auto-hiding.
+Fix it in the Signage Hub by opening that card and picking the new item. Deleted items also
+just accumulate in our cache — harmless, invisible everywhere, and there's no clean-up chore.
+
+**If the menu ever looks wrong after a Publish, the lever is a forced sync.** As a safety
+net the sync refuses to remove a large share of the menu on its own: if Toast answers with
+an incomplete menu (a partial response, a hiccup mid-publish), the sync would "see" all the
+missing items as deleted, so instead it **holds** — it changes nothing, writes an amber
+**MENU PRUNE HELD — N items missing from Toast, retrying** line on the dashboard's TOAST
+SYNC panel, and tries again every 2 minutes until Toast answers completely. The site keeps
+showing what it already had the whole time. If you *did* mean to delete a lot of items at
+once, or the menu is genuinely showing the wrong thing, ask a dev session for a **forced
+sync** — that's the human override that applies the change immediately, and it's the
+recovery lever for anything that looks stuck.

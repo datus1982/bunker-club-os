@@ -43,7 +43,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { publicBlurb, publicLongform } from "./menuText.ts";
 import { buildGroupUsage, extractPriceOptions } from "./priceOptions.ts";
 import { assignMenuPositions } from "./menuOrder.ts";
-import { chunk, planPrune, type PruneCacheRow } from "./menuPrune.ts";
+import { chunk, gatePrune, planPrune, type PruneCacheRow } from "./menuPrune.ts";
 import { isPosVisible } from "./posVisible.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -55,7 +55,10 @@ const TOAST_RESTAURANT_GUID = Deno.env.get("TOAST_RESTAURANT_GUID") ?? "";
 const TOAST_BASE = "https://ws-api.toasttab.com";
 const VENUE_ID = Deno.env.get("VENUE_ID") ?? "11111111-1111-1111-1111-111111111111";
 const BUCKET = "signage";
-const SYNC_VERSION = "v11-prune-visible-wins"; // deployed==source marker
+// venue_settings state key raised when a prune is held by the cap (WARN-1). Absent = healthy;
+// the staff dashboard reads it to show an amber "MENU PRUNE HELD" line on the Toast panel.
+const PRUNE_ALARM_KEY = "toast_menu_prune_alarm";
+const SYNC_VERSION = "v12-prune-cap"; // deployed==source marker
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -157,10 +160,17 @@ Deno.serve(async (req) => {
     let positionedRows = 0;
     let removedRows = 0; // rows Toast no longer carries, flagged this pass (0066)
     let restoredRows = 0; // previously-removed rows Toast carries again (0066)
+    // True when a prune was planned but HELD by the cap (WARN-1). A held pass deliberately
+    // does NOT record lastUpdated, so the next 2-minute tick re-walks and retries.
+    let pruneSkipped = false;
     if (menuChanged) {
       const menusRes = await fetch(`${TOAST_BASE}/menus/v2/menus`, { headers: headers(token) });
       if (!menusRes.ok) throw new Error(`menus fetch failed: ${menusRes.status} ${await menusRes.text()}`);
       const menusData = await menusRes.json();
+      // NOTE-6: fail LOUD on a malformed body rather than walking `undefined` into an empty
+      // row set. An empty walk is already guarded downstream, but a 200 carrying HTML or a
+      // bare string should be an error in the logs, not a silent no-op pass.
+      if (!menusData || typeof menusData !== "object") throw new Error("menus payload malformed");
 
       // Menu ORDER (0064): where the owner put each item in his Toast layout. Derived up-front
       // by a pure walk of the raw payload (menuOrder.ts — menus in order, groups in order,
@@ -292,14 +302,45 @@ Deno.serve(async (req) => {
         const { data: cacheGuids, error: cacheErr } = await admin
           .from("toast_menu_cache")
           .select("guid, removed_at")
-          .eq("venue_id", VENUE_ID);
+          .eq("venue_id", VENUE_ID)
+          .limit(5000); // NOTE-2: never let PostgREST's default page cap silently shorten the
+                        // cache side of the diff — a truncated read would look like deletions.
         if (cacheErr) throw new Error(`toast_menu_cache guid read: ${cacheErr.message ?? JSON.stringify(cacheErr)}`);
-        const plan = planPrune(
-          (cacheGuids ?? []) as PruneCacheRow[],
-          new Set(deduped.map((r) => r.guid as string)),
-        );
-        toRemove = plan.removed;
+        const cacheRows = (cacheGuids ?? []) as PruneCacheRow[];
+        const plan = planPrune(cacheRows, new Set(deduped.map((r) => r.guid as string)));
         restoredRows = plan.restored.length;
+
+        // WARN-1: a prune bigger than the cap is HELD — an incomplete-but-valid Toast payload
+        // must not be able to empty the menu unattended. force:true is the human override.
+        const gate = gatePrune({ removedCount: plan.removed.length, cacheCount: cacheRows.length, force });
+        if (gate.held) {
+          pruneSkipped = true;
+          // A removed guid is by definition NOT in `deduped` (that's the present set), so read
+          // the names back from the cache — the alarm has to be readable by a human.
+          const first5 = plan.removed.slice(0, 5);
+          const names = await admin
+            .from("toast_menu_cache")
+            .select("guid, name")
+            .eq("venue_id", VENUE_ID)
+            .in("guid", first5);
+          const byGuidName = new Map(((names.data ?? []) as { guid: string; name: string | null }[]).map((r) => [r.guid, r.name]));
+          const sample = first5.map((g) => byGuidName.get(g) ?? g);
+          console.error(
+            `PRUNE HELD: ${plan.removed.length} items absent from Toast exceeds the cap of ${gate.cap} ` +
+            `(cache ${cacheRows.length}). Skipping the prune AND the lastUpdated stamp so the next tick retries. ` +
+            `Sample: ${sample.join(", ")}`,
+          );
+          await admin.from("venue_settings").upsert(
+            {
+              venue_id: VENUE_ID,
+              key: PRUNE_ALARM_KEY,
+              value: { count: plan.removed.length, cap: gate.cap, at: new Date().toISOString(), sample },
+            },
+            { onConflict: "venue_id,key" },
+          );
+        } else {
+          toRemove = plan.removed;
+        }
       }
 
       if (deduped.length > 0) {
@@ -326,10 +367,20 @@ Deno.serve(async (req) => {
           removedRows += part.length;
         }
       }
-      await admin.from("venue_settings").upsert(
-        { venue_id: VENUE_ID, key: "toast_menu_last_synced", value: { lastUpdated, at: new Date().toISOString() } },
-        { onConflict: "venue_id,key" },
-      );
+      if (pruneSkipped) {
+        // DELIBERATELY NOT recording lastUpdated. Stamping it would make the next tick
+        // menuChanged=false and latch the bad state in until a Toast publish or a forced run;
+        // leaving it makes every 2-minute tick re-walk until Toast answers completely.
+        console.error("PRUNE HELD: lastUpdated NOT recorded — the next tick will re-walk.");
+      } else {
+        await admin.from("venue_settings").upsert(
+          { venue_id: VENUE_ID, key: "toast_menu_last_synced", value: { lastUpdated, at: new Date().toISOString() } },
+          { onConflict: "venue_id,key" },
+        );
+        // A clean pass clears any standing alarm (delete rather than null so the dashboard's
+        // "row absent = healthy" read stays trivially true).
+        await admin.from("venue_settings").delete().eq("venue_id", VENUE_ID).eq("key", PRUNE_ALARM_KEY);
+      }
     } else if (stock.size > 0) {
       // Menu unchanged: just refresh out_of_stock on the cached rows.
       for (const [guid, oos] of stock) {
@@ -337,7 +388,7 @@ Deno.serve(async (req) => {
       }
     }
 
-    return json({ ok: true, version: SYNC_VERSION, menuChanged, itemsUpserted, priceOptionRows, positionedRows, removedRows, restoredRows, stockRows: stock.size, lastUpdated }, 200);
+    return json({ ok: true, version: SYNC_VERSION, menuChanged, itemsUpserted, priceOptionRows, positionedRows, removedRows, restoredRows, pruneSkipped, stockRows: stock.size, lastUpdated }, 200);
   } catch (error) {
     const msg = error instanceof Error ? error.message : JSON.stringify(error);
     console.error("toast-menu-sync error:", msg);

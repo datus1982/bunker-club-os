@@ -89,3 +89,46 @@ export function chunk<T>(list: readonly T[], size: number): T[][] {
   for (let i = 0; i < list.length; i += size) out.push(list.slice(i, i + size));
   return out;
 }
+
+/* ── The prune cap ─────────────────────────────────────────────────────────────────────── */
+//
+// WARN-1 (addendum review): the empty-payload guard above only catches a TOTALLY empty walk.
+// A Toast 200 whose `menus` array is merely INCOMPLETE — one menu missing, a partial page —
+// looks like a perfectly good payload, and the plain diff would prune every item in the menus
+// that didn't come back. Worse, index.ts records that payload's `lastUpdated` afterwards, so
+// the next 2-minute tick sees menuChanged=false, never re-walks, and the site stays blank
+// until a real Toast publish or a manual {force:true}. Silent, unbounded and self-latching.
+//
+// So a prune bigger than the cap is HELD, not applied: the pass logs, raises an alarm state
+// key, skips the prune AND skips the lastUpdated write, so every tick retries until Toast
+// answers completely — the run self-heals instead of latching.
+//
+// The cap is 15% of the cache, with a floor of 5 so a small or freshly-seeded cache isn't
+// held for an ordinary handful of deletions. `force:true` bypasses it entirely: a forced run
+// is a human saying "yes, I mean it", which is exactly how a genuine mass delete gets through
+// (and, per the runbook, how an operator recovers a blanked menu).
+
+/** Largest prune applied without a human: 15% of the cache, never fewer than 5 rows. */
+export function pruneCap(cacheCount: number): number {
+  const n = Number.isFinite(cacheCount) && cacheCount > 0 ? cacheCount : 0;
+  return Math.max(5, Math.ceil(0.15 * n));
+}
+
+export interface PruneGateResult {
+  /** true = the prune is held this pass (alarm raised, lastUpdated NOT recorded, retry next tick). */
+  held: boolean;
+  /** The cap the count was measured against — reported so the alarm/log can be specific. */
+  cap: number;
+}
+
+/**
+ * Decide whether a planned prune is small enough to apply unattended.
+ * `force` (an operator's {force:true}) always applies.
+ */
+export function gatePrune(
+  opts: { removedCount: number; cacheCount: number; force: boolean },
+): PruneGateResult {
+  const cap = pruneCap(opts.cacheCount);
+  if (opts.force) return { held: false, cap };
+  return { held: opts.removedCount > cap, cap };
+}

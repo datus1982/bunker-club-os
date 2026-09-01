@@ -7,11 +7,19 @@
 -- toast-menu-sync has always UPSERTED every item the Menus V2 payload contains, but it has
 -- never handled the other direction — an item DELETED in Toast, or removed from every menu,
 -- simply stopped being refreshed and sat in `toast_menu_cache` forever with its last-known
--- name/price and (crucially) its last-known pos_visible=true. 21 of 261 POS-visible rows on
--- the day this shipped were in exactly that state (Fireball Shot, Jägermeister Shot, Malört
--- Shot, Crown Apple Whiskey, Monopolowa Vodka, Hendrick's Grand Cabaret Gin, "Sputnik 1/2
--- off", …) — still renderable on bunkerokc.com/menu and still offerable in the signage
--- source picker, months after the owner deleted them.
+-- name/price and (crucially) its last-known pos_visible=true. 21 cached rows on the day this
+-- shipped were in exactly that state (Fireball Shot, Jägermeister Shot, Malört Shot, Crown
+-- Apple Whiskey, Monopolowa Vodka, Hendrick's Grand Cabaret Gin, "Sputnik 1/2 off", …) —
+-- still offerable in the signage source picker months after the owner deleted them.
+--
+-- NOTE-4, measured (this header is a comment only — the migration was applied as written and
+-- is not re-applied): all 21 were pos_visible=true and all 21 were returned by `public_menu`
+-- before the prune. The POS-visible count still only fell 261 → 243, a net of 18, because the
+-- SAME release stopped a hidden listing from masking a visible one and thereby RESTORED 3
+-- items (Mai Tai, Daiquiri, Mojito). 21 removed − 3 restored = 18. Of the 21, four were also
+-- in stock (Fernet Branca / Fireball / Jägermeister Shots and "Sputnik 1/2 off") and so were
+-- the ones a customer could actually see on bunkerokc.com/menu; the other 17 were 86'd, which
+-- the website already hides — they cluttered the staff picker and the cache, not the site.
 --
 -- This migration only STORES the fact. Like pos_visible (0034), long_blurb (0048),
 -- price_options (0050) and group_position (0064), the DERIVATION lives entirely on the WRITE
