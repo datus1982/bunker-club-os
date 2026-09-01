@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase, VENUE_ID } from "@/shared/supabaseClient";
+import { logError } from "@/shared/log";
 import { fetchSlotQueuePublic } from "./slotQueue";
 import { eventStage, isTakeoverStage, type LiveEvent } from "./eventStage";
 import type { SlotProgram } from "./mediaProgram";
@@ -8,6 +9,7 @@ import { thumbUrl } from "./mediaProgram";
 import { nextRollover, type ScheduleRow, type ProgramHold, type ScheduleProgram } from "./scheduleResolve";
 import { itemAirsNow, DEFAULT_VENUE_CLOCK, type ItemRecurrence, type VenueClock } from "./itemSchedule";
 import { slotRenderFieldsUnchanged, TV_SLOT_RENDER_FIELDS } from "./slotRealtime";
+import { menuGroupOf, menuGroupRows, type MenuGroupFilters } from "./menuGroup";
 
 // Re-export the pure events surface so the app imports it from one place. The pure
 // module (no react/supabase) is what scripts/test-event-stage.ts imports directly.
@@ -97,6 +99,14 @@ export type Template =
   // "landscape-bar") + the media_files row (title/poster). AUTO-HIDES at resolveRotation when the
   // source's now_playing stamp is stale (>15 min) or absent — the movie ended / trivia took over.
   | "now_playing"
+  // MENU GROUP (0065): ONE Toast menu group listed full-screen, the way the public /menu lists
+  // it — row height divides the stage so the list always fills the screen and the photos are as
+  // large as the row allows. Carries three authored settings (fields.group — the exact
+  // toast_menu_cache menu_group string, required; fields.heading — optional title override;
+  // fields.show_blurbs). Everything else is live from the Toast mirror at render time.
+  // AUTO-HIDES at resolveRotation when the group resolves to zero showable rows (group renamed
+  // away in Toast, every item 86'd / pulled off the POS view, or all website-hidden).
+  | "menu_group"
   // Phase 7 (docs/13): rotation-level cards materialized from a live scheduled_event.
   // Never authored, never DB rows — only produced by resolveRotation at render time.
   | "event_window"  // an active WINDOW promo card (title/body/cta + optional live price)
@@ -356,6 +366,85 @@ export function useNowPlayingSources(slugs: string[]) {
 export function useNowPlayingSource(slug: string | null) {
   const q = useNowPlayingSources(slug ? [slug] : []);
   return { ...q, state: slug ? q.data?.get(slug) ?? null : null };
+}
+
+/* ── MENU GROUP slide (0065) ──────────────────────────────────────────────────── */
+
+/**
+ * The row resolution + the whole sizing model live in the PURE ./menuGroup module (no react, no
+ * supabase) so scripts/test-menu-group.ts can import them directly. Re-exported here so the app
+ * keeps ONE signage import surface — the eventStage.ts idiom.
+ */
+export {
+  menuGroupOf,
+  menuGroupRows,
+  mgLayout,
+  mgTypography,
+  MENU_GROUP_NAME_GREEN,
+} from "./menuGroup";
+export type { MenuGroupRow, MenuGroupFilters } from "./menuGroup";
+
+
+/**
+ * The website-parity filters for the MENU GROUP slide: the owner's hidden-guid list and Toast's
+ * item ordering. One query, two parallel reads, both anon-safe.
+ *
+ * Query key sits UNDER ["signage","toast"] on purpose: the useSlot realtime channel already
+ * invalidates that prefix on any toast_menu_cache change, so a re-sync refreshes the ordering
+ * for free — no second subscription, no extra poll (realtime-first, docs/01).
+ *
+ * DECISION (no fallback constant): when `site_menu_hidden_guids` is absent or malformed this
+ * applies NO suppression, rather than duplicating modules/website/useMenu.ts's
+ * MENU_HIDDEN_GUIDS_FALLBACK. That constant already carries a three-way byte-match invariant
+ * (the 0033 seed, the live value, the constant); a fourth copy is a liability, and the key IS
+ * seeded live. Failure mode of getting it wrong here is one POS-convenience row listed on a TV
+ * — strictly smaller than a stale hardcoded guid hiding the wrong drink forever.
+ *
+ * DECISION (soft column, corrected after the cold review's NOTE-2): public_menu.item_position
+ * arrived in migration 0064 (sibling branch). Selecting a column that does not exist fails the
+ * WHOLE PostgREST request, so this read is DELIBERATELY NON-FATAL: on any error the ordering map
+ * is left empty and the slide falls back to name order, self-healing once 0064 is applied. There
+ * is no second retry without the column — the earlier comment claimed one and there never was —
+ * so the failure is LOGGED rather than masquerading as "every item is unpositioned".
+ */
+export function useSiteMenuFilters(enabled: boolean) {
+  return useQuery({
+    queryKey: ["signage", "toast", "menuFilters"],
+    enabled,
+    staleTime: 5 * 60_000, // matches modules/website/useMenu.ts for the same data
+    queryFn: async (): Promise<MenuGroupFilters> => {
+      const hiddenP = supabase
+        .from("venue_settings")
+        .select("value")
+        .eq("venue_id", VENUE_ID)
+        .eq("key", "site_menu_hidden_guids")
+        .maybeSingle();
+      const orderP = supabase.from("public_menu").select("guid, item_position").eq("venue_id", VENUE_ID);
+      const [hiddenRes, orderRes] = await Promise.all([hiddenP, orderP]);
+
+      const raw = hiddenRes.data?.value;
+      const hidden = new Set<string>(
+        Array.isArray(raw) ? raw.filter((s): s is string => typeof s === "string") : [],
+      );
+
+      const order = new Map<string, number>();
+      if (orderRes.error) {
+        // 0064 not applied yet, or a genuinely broken read. Either way the slide degrades to name
+        // order rather than crashing — but say so, so a broken read is not silently indistinct
+        // from "Toast gave these items no position".
+        logError(
+          "[menu-group] public_menu.item_position read failed — falling back to name order:",
+          orderRes.error.message,
+        );
+      }
+      const orderRows = orderRes.error
+        ? []
+        : ((orderRes.data ?? []) as { guid: string; item_position: number | null }[]);
+      for (const r of orderRows) if (typeof r.item_position === "number") order.set(r.guid, r.item_position);
+
+      return { hidden, order };
+    },
+  });
 }
 
 /* ── "PUT TRIVIA ON SCREENS" arm gate (0056 / 0057) ───────────────────────────── */
@@ -804,6 +893,10 @@ export interface ResolveRotationOptions {
    *  (itemSchedule). Omitted ⇒ DEFAULT_VENUE_CLOCK, so a caller whose venue queries are still
    *  pending resolves exactly as it did before day rules existed. */
   venue?: VenueClock;
+  /** MENU GROUP (0065): the website-parity filters, so the emptiness gate below resolves the SAME
+   *  row set the slide will render. OMITTED = gate on the Toast mirror alone (the hub/editor have
+   *  no settings read); the TV always passes them once loaded. */
+  menuFilters?: MenuGroupFilters;
 }
 
 export function resolveRotation(
@@ -819,6 +912,7 @@ export function resolveRotation(
   {
     liveNowPlayingSlugs,
     venue = DEFAULT_VENUE_CLOCK,
+    menuFilters,
   }: ResolveRotationOptions = {},
 ): SignageItem[] {
   // Window + recurrence, both derived at read time (itemSchedule). No cron, no stored state.
@@ -844,7 +938,21 @@ export function resolveRotation(
     return !row.out_of_stock && row.pos_visible;
   };
 
-  const scheduled = items.filter((it) => airing(it) && notHidden(it) && nowPlayingLive(it));
+  // MENU GROUP auto-hide (0065): the slide only survives when its group resolves to at least one
+  // showable row — a group renamed away in Toast, or one whose every item is 86'd / off the POS
+  // view / website-hidden, drops out of the rotation entirely rather than dwelling on an empty
+  // list. Same resolveRotation-level treatment as now_playing and the OOS/POS gate, and it shares
+  // menuGroupRows() with the template so the two can never disagree.
+  const menuGroupHasRows = (it: SignageItem) => {
+    if (it.template !== "menu_group") return true;
+    const group = menuGroupOf(it);
+    if (!group) return false; // never authored a group ⇒ nothing to list
+    return menuGroupRows(toast, group, menuFilters).length > 0;
+  };
+
+  const scheduled = items.filter(
+    (it) => airing(it) && notHidden(it) && nowPlayingLive(it) && menuGroupHasRows(it),
+  );
 
   // Active WINDOW/MESSAGE event cards (docs/13) join the rotation exactly like ★ SCREENS
   // — presentation-layer only, never DB rows. A toast-linked card obeys the same 86'd /

@@ -4,7 +4,7 @@ import { MainMediaStage } from "./MainMediaStage";
 import { RotationSurface } from "./SlotDisplay";
 import { NowShowing } from "./PlaylistProgram";
 import {
-  usePanelSlot, resolveRotation, teaseMoment,
+  usePanelSlot, resolveRotation, teaseMoment, useSiteMenuFilters,
   useNowPlayingSources, nowPlayingSourceSlug, isNowPlayingFresh,
   type ToastCacheRow, type LiveEvent, type VenueClock,
 } from "./useSignage";
@@ -78,9 +78,20 @@ export function MultiviewProgram({
     return s;
   }, [nowPlayingSources.data, now]);
 
+  // MENU GROUP auto-hide for the PANEL rotation (0065), same rationale as the now_playing gate
+  // above: a panel's menu_group card obeys the SAME website-parity filters the main SlotDisplay
+  // applies, so an empty group never dead-dwells as STANDBY on a multiview sidebar.
+  const hasMenuGroup = useMemo(() => panelItems.some((it) => it.template === "menu_group"), [panelItems]);
+  const menuFilters = useSiteMenuFilters(hasMenuGroup);
+
   const panelRotation = useMemo(
-    () => resolveRotation(panelItems, toast, now, liveEvents, { liveNowPlayingSlugs, venue: venueClock }),
-    [panelItems, toast, now, liveEvents, liveNowPlayingSlugs, venueClock],
+    () =>
+      resolveRotation(panelItems, toast, now, liveEvents, {
+        liveNowPlayingSlugs,
+        venue: venueClock,
+        menuFilters: menuFilters.data,
+      }),
+    [panelItems, toast, now, liveEvents, liveNowPlayingSlugs, venueClock, menuFilters.data],
   );
   const panelTease = useMemo(() => teaseMoment(liveEvents, now), [liveEvents, now]);
 

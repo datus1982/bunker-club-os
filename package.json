@@ -31,7 +31,8 @@
     "test:lastrung": "tsx scripts/test-last-rung.ts",
     "test:rankfilter": "tsx scripts/test-rank-filter.ts",
     "test:playliststart": "tsx scripts/test-playlist-start.ts",
-    "test:itemschedule": "tsx scripts/test-item-schedule.ts"
+    "test:itemschedule": "tsx scripts/test-item-schedule.ts",
+    "test:menugroup": "tsx scripts/test-menu-group.ts"
   },
   "devDependencies": {
     "@supabase/supabase-js": "2.97.0",
