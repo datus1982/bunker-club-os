@@ -1133,20 +1133,36 @@ const MG_HEADER: Record<Orientation, number> = { portrait: 88, landscape: 66 };
 
 /**
  * The minimum row height a page may use before the list PAGINATES instead of shrinking further.
- * Derived, not guessed: the name is MG_NAME_RATIO of the row, and the readable floor for a
- * distance-first NAME (not a supporting label) is 1.4 × the shared SUPPORT_TEXT floor —
- * portrait 40 × 1.4 ≈ 56px, landscape 32 × 1.4 ≈ 45px. Divide by the ratio and round up:
- *   portrait  56 / 0.34 ≈ 165 → 168      landscape  45 / 0.34 ≈ 132 → 140
- * At the real canvas that yields 10 rows per portrait page and 6 per landscape page, so the
- * owner's two cases (Tiki Tuesday 4, Signature Cocktails 9) are each ONE page, and a monster
- * group like Cordials (55 showable) pages rather than rendering an unreadable 55-line wall.
+ * DERIVED, not guessed: the name is MG_NAME.dense.ratio of the row, and the readable floor for a
+ * distance-first NAME (a headline, not a supporting label) is 1.4 × the shared SUPPORT_TEXT
+ * floor. So the floor row height is (SUPPORT_TEXT × 1.4) / 0.45, rounded up:
+ *   portrait   40 × 1.4 / 0.45 = 124.4 → 126      landscape  32 × 1.4 / 0.45 = 99.6 → 100
+ * The DENSE ratio is used deliberately (it's the smaller of the two), so the pagination floor
+ * never depends on whether a given group happens to render blurbs.
+ * Measured against the real content zone (portrait ≈ 1423px of list, landscape ≈ 630px) that is
+ * 11 rows per portrait page and 6 per landscape column — so the owner's two cases (Tiki Tuesday
+ * 4, Signature Cocktails 9) are each ONE page in both orientations, and a monster group like
+ * Cordials (55 showable) pages rather than rendering an unreadable 55-line wall.
  */
-const MG_MIN_ROW: Record<Orientation, number> = { portrait: 168, landscape: 140 };
-const MG_NAME_RATIO = 0.34;
+const MG_MIN_ROW: Record<Orientation, number> = { portrait: 126, landscape: 100 };
+/** Share of the row the NAME takes. Two modes, because a row with no description under it has
+ *  the description's vertical budget going spare and the owner's ask is that the slide FILL the
+ *  screen: DENSE (the slide renders blurbs) leaves room beneath the name; ROOMY (no blurbs on
+ *  this slide at all) grows the name into it. Caps stop a two-item group going cartoonish.
+ *  MG_MIN_ROW above is derived from the DENSE ratio — the conservative one — so the pagination
+ *  floor never depends on which mode a given group happens to land in. */
+const MG_NAME = {
+  dense: { ratio: 0.45, cap: { portrait: 120, landscape: 88 } },
+  roomy: { ratio: 0.58, cap: { portrait: 200, landscape: 150 } },
+} as const;
 
 interface MGSizes {
   perPage: number;
   pages: number;
+  /** 1 in portrait; 2 in landscape once the list outgrows a single column (TopSellers idiom). */
+  cols: number;
+  /** Rows per column on this page — the grid's row count and the `last in column` divisor. */
+  rowsUsed: number;
   rowH: number;
   gap: number;
   thumb: number;
@@ -1165,44 +1181,67 @@ interface MGSizes {
  *  wider price column than a single "$12"). */
 function mgSizes(
   availH: number, availW: number, count: number, o: Orientation,
-  withPhotos: boolean, hasOptions: boolean,
+  withPhotos: boolean, hasOptions: boolean, withBlurbs: boolean,
 ): MGSizes {
   const port = o === "portrait";
   const H = availH > 0 ? availH : (port ? 1620 : 860);
   const W = availW > 0 ? availW : (port ? 984 : 1808);
   const n = Math.max(1, count);
 
-  // Rows per page: as many as fit above the legible floor, never more than there are items.
-  const maxRows = Math.max(1, Math.floor(H / MG_MIN_ROW[o]));
-  const perPage = Math.min(maxRows, n);
+  // Rows that clear the legible floor in ONE column.
+  const perCol = Math.max(1, Math.floor(H / MG_MIN_ROW[o]));
+  // DECISION (landscape two-column): a landscape stage is barely a third as tall as a portrait
+  // one but more than twice as wide, so a long list there runs out of height while acres of width
+  // sit idle. Once the list outgrows one column, landscape splits into TWO, column-major — the
+  // exact idiom TopSellers already uses for its 10-row landscape board, so the two list slides
+  // read the same way. Portrait is always one column (that IS the menu shape), and a landscape
+  // list that fits in one column stays one column rather than becoming a needless 2×2 grid.
+  const cols = !port && n > perCol ? 2 : 1;
+  const perPage = Math.min(perCol * cols, n);
   const pages = Math.max(1, Math.ceil(n / perPage));
+  // Rows actually drawn per column on this page — a 4-item landscape page is 2×2, not 2 columns
+  // of 6 slots with 8 blanks. Rows then divide the FULL stage height, so the page always fills it.
+  const rowsUsed = Math.max(1, Math.ceil(perPage / cols));
 
-  const gap = Math.round(clampN((H / perPage) * 0.08, 8, port ? 32 : 22));
-  const rowH = (H - (perPage - 1) * gap) / perPage;
+  const gap = Math.round(clampN((H / rowsUsed) * 0.08, 8, port ? 32 : 22));
+  const rowH = (H - (rowsUsed - 1) * gap) / rowsUsed;
+  // Per-column width — everything horizontal (photo cap, price column) sizes against THIS, not
+  // the full stage, or a two-column landscape row would reserve more than its share.
+  const colGap = port ? 0 : 56;
+  const colW = (W - (cols - 1) * colGap) / cols;
 
   // "Images as large as possible" (owner) = the full row height, capped only so the name column
-  // keeps usable width. 36% of the stage width still leaves ~2/3 for name + price.
-  const thumb = withPhotos ? Math.round(Math.min(rowH * 0.94, W * 0.36)) : 0;
+  // keeps usable width. 36% of the column still leaves ~2/3 for name + price.
+  const thumb = withPhotos ? Math.round(Math.min(rowH * 0.94, colW * 0.36)) : 0;
 
-  const name = Math.round(clampN(rowH * MG_NAME_RATIO, SUPPORT_TEXT[o], port ? 120 : 88));
+  const mode = withBlurbs ? MG_NAME.dense : MG_NAME.roomy;
+  const name = Math.round(clampN(rowH * mode.ratio, SUPPORT_TEXT[o], mode.cap[o]));
   const price = Math.round(name * 0.92);
   const optPrice = Math.round(clampN(name * 0.46, SUPPORT_TEXT[o], port ? 60 : 46));
-  const optLabel = Math.round(clampN(optPrice * 0.6, 18, port ? 36 : 28));
-  // Right-aligned price column. Pour-option strips ("SHOT $6 · COCKTAIL $9 · DOUBLE $11") need a
-  // real share of the row; a single price needs very little. FitScale shrinks whatever is left.
-  const priceW = Math.round(W * (hasOptions ? (port ? 0.42 : 0.32) : (port ? 0.24 : 0.18)));
+  // The pour LABEL ("SHOT", "1 OZ") is a supporting label, so it holds the shared SUPPORT_TEXT
+  // floor by rendering at the SAME size as its price and separating on opacity alone — the way
+  // the public /menu pairs them. (An earlier smaller-label variant measured 24px against a 40px
+  // floor; the width freed by shrinking the label was not worth an unreadable one.)
+  const optLabel = optPrice;
+  // Right-aligned price column. A pour-option strip ("1 OZ $5 · 1.5 OZ $7 · 2 OZ $8") needs a real
+  // share of the row; a single price needs very little. Sized so a THREE-option strip fits at full
+  // size and FitScale has nothing to shrink — scaling would silently take the labels back under
+  // the floor, which is exactly what the floor rule exists to prevent.
+  const priceW = Math.round(colW * (hasOptions ? (port ? 0.44 : 0.42) : (port ? 0.24 : 0.22)));
 
-  // Vertical budget left under the name line for the blurb. Rather than push the shared
-  // SUPPORT_TEXT floor down at high densities, the blurb drops to one line, then out entirely.
+  // Vertical budget left under the name line for the blurb. Two hard rules, in order:
+  //   • it is never LOUDER than the name it describes (≤ 0.62 of it), and
+  //   • it is never rendered below the shared SUPPORT_TEXT floor — at densities where it can't
+  //     clear the floor it drops to one line, then is OMITTED entirely (the sanctioned exemption
+  //     from the floor pass: raise to the floor or leave it out, never shrink under it).
   const inner = Math.round(clampN(rowH * 0.05, 6, 16));
-  const budget = rowH * 0.9 - name * 1.05 - inner;
+  const budget = rowH * 0.92 - name * 1.05 - inner;
   const floor = SUPPORT_TEXT[o];
   const blurbLines: 1 | 2 = budget >= floor * 1.3 * 2 ? 2 : 1;
-  const blurb = budget >= floor * 1.3
-    ? Math.round(clampN(budget / (1.3 * blurbLines), floor, port ? 52 : 40))
-    : 0;
+  const wantBlurb = Math.min(budget / (1.3 * blurbLines), name * 0.62);
+  const blurb = wantBlurb >= floor ? Math.round(clampN(wantBlurb, floor, port ? 52 : 40)) : 0;
 
-  return { perPage, pages, rowH, gap, thumb, name, price, optPrice, optLabel, priceW, blurb, blurbLines };
+  return { perPage, pages, cols, rowsUsed, rowH, gap, thumb, name, price, optPrice, optLabel, priceW, blurb, blurbLines };
 }
 
 /** Measure a container's content box (both axes). Sibling of useFillHeight — the menu rows need
@@ -1273,7 +1312,11 @@ export function MenuGroup({ item, toast, orientation }: TemplateProps) {
   const [listRef, box] = useFillBox<HTMLDivElement>();
   const withPhotos = rows.some((r) => !!r.image);
   const hasOptions = rows.some((r) => !!r.priceOptions);
-  const sz = mgSizes(box.h, box.w, rows.length, orientation, withPhotos, hasOptions);
+  // Sizing is PER-SLIDE, never per-row, so every row on the page aligns: if this group renders no
+  // descriptions at all (toggled off, or Toast simply has none yet — Tiki Tuesday today), the
+  // names grow into the freed budget instead of leaving the rows half empty.
+  const withBlurbs = showBlurbs && rows.some((r) => !!r.blurb);
+  const sz = mgSizes(box.h, box.w, rows.length, orientation, withPhotos, hasOptions, withBlurbs);
 
   // Walk one page per dwell — the Instagram-card idiom (a session-monotonic seed at mount plus a
   // FINITE re-armed one-shot timeout; no interval, no infinite animation, cleared on unmount).
@@ -1326,10 +1369,21 @@ export function MenuGroup({ item, toast, orientation }: TemplateProps) {
   return (
     <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
       {header}
-      {/* Rows fill TOP-DOWN at the fixed per-page size (the TopSellers precedent): a final short
-          page is the top slice of the same grid, leaving honest empty space below rather than
-          re-scaling and making page N look different from page 1. */}
-      <div ref={listRef} style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", gap: sz.gap, overflow: "hidden" }}>
+      {/* One column in portrait; two column-major columns in landscape once the list outgrows a
+          single column (see mgSizes). Rows are a fixed height that divides the stage, so the page
+          always fills the screen and page N looks exactly like page 1. */}
+      <div
+        ref={listRef}
+        style={sz.cols > 1
+          ? {
+              flex: 1, minHeight: 0, display: "grid",
+              gridTemplateColumns: `repeat(${sz.cols}, minmax(0, 1fr))`,
+              gridTemplateRows: `repeat(${sz.rowsUsed}, ${sz.rowH}px)`,
+              gridAutoFlow: "column", alignContent: "start",
+              columnGap: 56, rowGap: sz.gap, overflow: "hidden",
+            }
+          : { flex: 1, minHeight: 0, display: "flex", flexDirection: "column", gap: sz.gap, overflow: "hidden" }}
+      >
         {pageRows.map((r, i) => (
           <MenuGroupRowView
             key={r.guid}
@@ -1338,7 +1392,9 @@ export function MenuGroup({ item, toast, orientation }: TemplateProps) {
             orientation={orientation}
             showBlurb={showBlurbs}
             withPhotos={withPhotos}
-            last={i === pageRows.length - 1}
+            // The hairline leader is dropped under the LAST entry of each column (and the very
+            // last on the page), so a two-column layout doesn't rule off mid-air.
+            last={(i + 1) % sz.rowsUsed === 0 || i === pageRows.length - 1}
           />
         ))}
       </div>
@@ -1403,8 +1459,8 @@ function MenuGroupPrice({ row, sz }: { row: MenuGroupRow; sz: MGSizes }) {
     return (
       <FitScale align="right">
         {row.priceOptions.map((o, i) => (
-          <span key={`${o.label}-${i}`} style={{ fontSize: sz.optPrice, marginLeft: i === 0 ? 0 : 18, whiteSpace: "nowrap" }}>
-            <span style={{ fontSize: sz.optLabel, opacity: 0.6, letterSpacing: 2, marginRight: 8 }}>{o.label.toUpperCase()}</span>
+          <span key={`${o.label}-${i}`} style={{ fontSize: sz.optPrice, marginLeft: i === 0 ? 0 : 16, whiteSpace: "nowrap" }}>
+            <span style={{ fontSize: sz.optLabel, opacity: 0.55, letterSpacing: 1, marginRight: 6 }}>{o.label.toUpperCase()}</span>
             <span className="sig-live" style={{ fontSize: "inherit", fontWeight: 700 }}>${formatPrice(o.price)}</span>
           </span>
         ))}
