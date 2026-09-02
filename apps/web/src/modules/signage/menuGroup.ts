@@ -195,6 +195,13 @@ const MG_V_SLACK = 2;
  *  to give in the width-crunch ladder — renders under its floor via FitText's shrink. */
 const MG_MIN_TEXT_W = 80;
 
+/** The photo states the crunch ladder may try, in yield order: the authored square, the largest
+ *  square that still fits (never under 60% of the row), and no photo column at all. */
+type PhotoMode = "full" | "shrink" | "none";
+const KEEP_PHOTO: readonly PhotoMode[] = ["full", "shrink"];
+const DROP_PHOTO: readonly PhotoMode[] = ["none"];
+const ALL_PHOTO: readonly PhotoMode[] = ["full", "shrink", "none"];
+
 /**
  * NAME COLOUR. docs/09's colour-state rule renders live-sourced values GREEN, and every value on
  * this slide is live from Toast — but a full screen of green names is the "wall" the TopSellers
@@ -388,31 +395,40 @@ function computeVariant(input: TypeInput, withBlurbs: boolean): MGType {
     return textWidth(Math.max(...two.map((l) => l.length)), floor, NAME_LS, ratio);
   }));
   const canStack = rows.some((r) => !!r.options && r.options.length > 1);
+  // Two name lines at the floor, plus the one description line this variant would still owe.
+  const wrapOK = 2 * floor * LH_NAME + (withBlurbs ? inner + floor * LH_BLURB : 0) <= usable;
 
   let price = 0, optPrice = 0, priceW = 0, optLines = 1, thumb = layout.thumb, colTextW = colW;
 
   /**
    * Every WIDTH on the row, derived from one nominal name size.
    *
-   * WIDTH CRUNCH ORDER (ORCHESTRATOR DECISION, addendum WARN-1). The old order shrank the photo
-   * a little and then handed back PRICE-column width, letting FitScale shrink the strip — which
-   * on the owner's real data put pour labels far under the SUPPORT_TEXT floor (Draft Beers
-   * portrait rendered its "PINT $5" strip at 25.8px against a 40px floor, Rum portrait at 37.7,
-   * Whiskey portrait at 32.3, Tequila portrait at 38.8, Draft Beers landscape at 30.3). A price
-   * nobody can read is the one thing a menu may not do, so the strip now KEEPS the width it
-   * measures and the row yields in this order instead:
+   * WIDTH CRUNCH ORDER (ORCHESTRATOR DECISION, addendum WARN-1 + its review). The old order
+   * shrank the photo a little and then handed back PRICE-column width, letting FitScale shrink
+   * the strip — which on the owner's real data put pour labels far under the SUPPORT_TEXT floor
+   * (Draft Beers portrait rendered its "PINT $5" strip at 25.8px against a 40px floor, Rum
+   * portrait at 37.7, Whiskey portrait at 32.3, Tequila portrait at 38.8, Draft Beers landscape
+   * at 30.3). A price nobody can read is the one thing a menu may not do, so the strip now KEEPS
+   * the width it measures and the row yields around it.
    *
-   *   1. the photo shrinks (never below 60% of the row height),
-   *   2. the photo goes entirely — a 151px square, and for most groups a plain placeholder
-   *      square, is worth less than a legible price,
-   *   3. the pour strip STACKS on two lines (ceil(n/2) options on the first), which roughly
-   *      halves its width; the photo is offered back at that point because the stack has made
-   *      its own room,
-   *   4. the longest NAME is budgeted at its two-line width (the per-row 1-vs-2-line choice is
-   *      still made below, by whichever renders BIGGER),
-   *   5. and only if none of that is enough does the NAME give — the strip is capped so the
-   *      text column keeps MG_MIN_TEXT_W and FitText shrinks the name under its floor. No real
-   *      group reaches step 5.
+   * THE REAL TRADE, once the strip is untouchable, is the PHOTO against a ONE-LINE strip — and
+   * the photo wins. Stacking is a cosmetic compromise (a pour strip reads best as one line);
+   * losing the photo column is a structural one, and it is slide-wide, so one tight row strips
+   * the squares off every row of the section. Measured cost of preferring the stack: Gin
+   * portrait keeps a 249px photo instead of none, Rum portrait 124, Whiskey portrait 124,
+   * Whiskey landscape 105, Draft Beers landscape 105 — every price still at or above its floor,
+   * for at most 1.5px of name and two more omitted descriptions on Whiskey portrait (which is
+   * already the densest board in the venue). So:
+   *
+   *   1. one-line strip, photo full size → shrunk (never below 60% of the row height),
+   *   2. STACKED strip (ceil(n/2) options on the first line), photo full size → shrunk,
+   *   3. one-line strip, photo dropped,
+   *   4. stacked strip, photo dropped,
+   *   5. the longest NAME budgeted at its two-line width, photo full → shrunk → dropped (the
+   *      per-row 1-vs-2-line choice is still made below, by whichever renders BIGGER),
+   *   6. and only if none of that fits does the NAME give — the strip is capped so the text
+   *      column keeps MG_MIN_TEXT_W and FitText shrinks the name under its floor. No live group
+   *      reaches step 5, let alone 6.
    */
   const derive = (nf: number) => {
     // A single price is never smaller than the shared floor either (addendum WARN-2: the
@@ -430,15 +446,22 @@ function computeVariant(input: TypeInput, withBlurbs: boolean): MGType {
     // A stacked strip is only on the table when there is more than one option to split AND the
     // row is tall enough for two lines of it.
     const stackOK = canStack && 2 * optPrice * MG_OPT_LH <= usable;
-    const stages: { ln: number; wrap: boolean }[] = [{ ln: 1, wrap: false }];
-    if (stackOK) stages.push({ ln: 2, wrap: false });
-    stages.push({ ln: stackOK ? 2 : 1, wrap: true });
+    const stages: { ln: number; wrap: boolean; modes: readonly PhotoMode[] }[] = [
+      { ln: 1, wrap: false, modes: KEEP_PHOTO },
+    ];
+    if (stackOK) stages.push({ ln: 2, wrap: false, modes: KEEP_PHOTO });
+    stages.push({ ln: 1, wrap: false, modes: DROP_PHOTO });
+    if (stackOK) stages.push({ ln: 2, wrap: false, modes: DROP_PHOTO });
+    // The wrapped-name stage may only be entered if the row can actually SHOW two name lines
+    // (plus a description line when this variant renders descriptions) — otherwise it would
+    // budget a width for a wrap the renderer can never draw. Same shape as stackOK.
+    if (wrapOK) stages.push({ ln: stackOK ? 2 : 1, wrap: true, modes: ALL_PHOTO });
 
     let chosen: { t: number; ln: number; want: number } | null = null;
     for (const st of stages) {
       const want = stripNeed(st.ln);
       const nameNeed = st.wrap ? nameFloorNeed2 : nameFloorNeed;
-      for (const mode of ["full", "shrink", "none"] as const) {
+      for (const mode of st.modes) {
         if (layout.thumb === 0 && mode !== "none") continue; // this slide has no photos at all
         let t: number;
         if (mode === "full") t = layout.thumb;
@@ -504,8 +527,16 @@ function computeVariant(input: TypeInput, withBlurbs: boolean): MGType {
   // pass COUNT silently decided the answer by parity. Instead every visited size is tested for
   // SELF-CONSISTENCY — does the budget derived from n still afford n? — and the largest
   // consistent one wins. 88 is not consistent (its own price column cannot afford it: that is
-  // precisely the stale trio WARN-2 describes); 65 is. If nothing is consistent the smallest
-  // visited size wins, which is the one that certainly fits.
+  // precisely the stale trio WARN-2 describes); 65 is.
+  //
+  // `safest` is a guard, not a path: every visited size comes from the discrete family
+  // name(L) = (usable − inner − L·floor·LH_BLURB)/LH_NAME clamped to [floor, cap], so the loop can
+  // visit at most as many distinct sizes as there are description line counts between the floor
+  // and the cap — measured maximum FIVE against these SIX passes (182,160-case adversarial grid),
+  // so the chain always settles or cycles, and both outcomes contain a consistent member (a cycle
+  // must contain an increase, and the size before it is consistent). 482,160 synthetic shapes
+  // reached it zero times. Pinned by the synthetic sweep in test:menugroup — if a future cap or
+  // pass-count change makes it reachable, that sweep is where it shows up.
   let nameFit = Math.floor(clampN(usable * 0.5, floor, cap));
   let bestFit = 0, safest = Number.MAX_SAFE_INTEGER;
   for (let pass = 0; pass < 6; pass++) {

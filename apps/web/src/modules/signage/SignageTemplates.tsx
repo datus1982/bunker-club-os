@@ -1187,20 +1187,18 @@ const MONO_PROBE_PX = 100;
  * both metrics below are pre-transform layout values, so applying the scale can't feed back into
  * the measurement.
  *
- * ADDENDUM WARN-1 — this was a safety net that did not catch. Two faults, both proven in a
- * standalone DOM repro (600×500 headless, VT323 loaded):
- *   • it measured `inner.offsetWidth` on an INLINE-BLOCK, whose shrink-to-fit width a container
- *     can cap — and once the strip renders as two BLOCK lines it certainly would — so it could
- *     report need == avail and never scale at all. It now measures the NATURAL width:
- *     `width: max-content` plus scrollWidth.
- *   • worse, when it DID scale it still clipped. An inline-block wider than its line box starts
- *     at the LEFT content edge and overflows RIGHT no matter the text-align, so scaling about
- *     `right center` shrank toward a right edge 114px OUTSIDE the box: the Draft Beers strip
- *     computed scale 0.625 and rendered "PINT $5 P". The box is now a FLEX container justified
- *     to `align`, which puts the overflow on the correct side — measured [24,214] inside a
- *     [24,214] box, zero clipped, at the same scale.
- * With the crunch ladder in menuGroup.ts the planner now reserves what the strip measures, so on
- * the owner's real groups this stays at 1 — but a net that only works when unused is not a net.
+ * ADDENDUM WARN-1 — this was a safety net that did not catch. It computed the right scale and
+ * clipped anyway: an inline-block wider than its line box starts at the LEFT content edge and
+ * overflows RIGHT no matter the text-align, so scaling about `right center` shrank toward a right
+ * edge 114px OUTSIDE the box. Proven in a standalone DOM repro (600×500 headless, VT323 loaded):
+ * the Draft Beers strip computed scale 0.625 and still rendered "PINT $5 P" — inner at [138,328]
+ * in a [24,214] box. The box is now a FLEX container justified to `align`, which puts the
+ * overflow on the correct side: same scale, inner at [24,214], nothing lost. `width: max-content`
+ * plus scrollWidth then measures the natural width regardless of what the container allows,
+ * which matters now that the strip can render as two BLOCK lines.
+ *
+ * With the crunch ladder in menuGroup.ts the planner reserves what the strip measures, so on the
+ * owner's real groups this stays at 1 — but a net that only works when unused is not a net.
  */
 function FitScale({ children, align = "right" }: { children: ReactNode; align?: "left" | "right" }) {
   const boxRef = useRef<HTMLDivElement>(null);
@@ -1511,7 +1509,8 @@ function MenuGroupPrice({ row, type }: { row: MenuGroupRow; type: MGType }) {
       <FitScale align="right">
         {strip.map((line, li) => (
           // An EXPLICIT line box: VT323's `normal` line-height is ~1.5, which two lines of strip
-          // cannot afford in a dense row (and which MG_OPT_LH is the planner's copy of).
+          // cannot afford in a dense row. MG_OPT_LH is the ONE constant — menuGroup.ts imports
+          // nothing here, it exports this and budgets the row height against the same number.
           <span key={li} style={{ display: "block", whiteSpace: "nowrap", lineHeight: MG_OPT_LH, fontSize: type.optPrice }}>
             {line.map((o, i) => (
               <span key={`${o.label}-${i}`} style={{ fontSize: type.optPrice, marginLeft: i === 0 ? 0 : MG_OPT_GAP, whiteSpace: "nowrap" }}>

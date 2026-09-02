@@ -275,6 +275,89 @@ for (const [label, rows, stage, o, photos] of LIVE) {
     + ` · thumb ${type.thumb} · minName ${type.minNamePx.toFixed(1)}`);
 }
 
+console.log("\n── the last resorts ──");
+/*
+ * There are TWO fallbacks in the sizing model and they are not equally reachable.
+ *
+ *  1. THE LADDER FALLBACK — no configuration of (photo, strip lines, name lines) fits. Reachable,
+ *     and fired on 148,948 of 300,000 random synthetic shapes, so it is pinned here on a shape a
+ *     panel slot could plausibly produce: a 420px column of real Rum rows. The contract is that
+ *     the NAME is what gives — the photo column is gone, the text column is held at its 80px
+ *     minimum, and the strip keeps its nominal size and is scaled by FitScale (which is why
+ *     FitScale had to be made to actually work).
+ *
+ *  2. THE SETTLE FALLBACK — `bestFit === 0`, i.e. no visited name size was self-consistent, so
+ *     the smallest visited one is used. This is UNREACHABLE by construction, not merely untested:
+ *     every visited size is drawn from the discrete family name(L) = (usable − inner − L·floor·
+ *     LH_BLURB)/LH_NAME clamped to [floor, cap], so the number of distinct sizes the loop can
+ *     visit is bounded by the line counts that fit between the floor and the cap. A 182,160-case
+ *     adversarial grid (small groups, relaxed caps, stages 200–2400px, descriptions up to 140
+ *     words) maxes out at FIVE distinct sizes against SIX passes — so the sequence always either
+ *     settles or enters a cycle, and both contain a member whose own budget affords it (a cycle
+ *     must contain an increase; the size before it is consistent). Zero hits in 482,160 shapes.
+ *     The sweep below pins the invariant that makes it unreachable: the strip is only ever
+ *     allowed not to fit when the LADDER fallback fired.
+ */
+const CRAMPED: MGRowInput[] = Array.from({ length: 6 }, (_, i) => ({
+  name: i === 0 ? "Gosling's Black Seal 151 Rum" : "Bumbu Rum",
+  blurb: "Overproof Bermuda black rum",
+  priceText: null,
+  options: POUR,
+}));
+const crampedLayout = mgLayout(1200, 420, CRAMPED.length, "portrait", true);
+const cramped = mgTypography({ layout: crampedLayout, rows: CRAMPED, o: "portrait", showBlurbs: true, ratio: MG_MONO_RATIO });
+const crampedStrip = Math.max(...CRAMPED.map((r) => stripWidth(r, cramped.price, cramped.optPrice, MG_MONO_RATIO, cramped.optLines)));
+ok("ladder fallback: the photo column is gone and the text column is at its 80px minimum",
+  cramped.thumb === 0 && Math.round(cramped.colTextW) === 80, `thumb ${cramped.thumb} colTextW ${cramped.colTextW.toFixed(1)}`);
+ok("ladder fallback: the columns still add up to the row",
+  cramped.priceW + cramped.colTextW + cramped.rowGap <= crampedLayout.colW + 0.5,
+  `${cramped.priceW} + ${cramped.colTextW.toFixed(0)} + ${cramped.rowGap} vs ${crampedLayout.colW}`);
+ok("ladder fallback: the pour size is still budgeted at or above the floor (FitScale scales it)",
+  cramped.optPrice >= SUPPORT_TEXT.portrait && crampedStrip > cramped.priceW,
+  `optPrice ${cramped.optPrice}, strip ${crampedStrip.toFixed(0)} in ${cramped.priceW}`);
+ok("ladder fallback: the NAME is the thing that gives — the documented last resort",
+  cramped.minNamePx < SUPPORT_TEXT.portrait, `minName ${cramped.minNamePx.toFixed(1)}`);
+
+console.log("\n── synthetic sweep: the strip only fails to fit when the ladder ran out ──");
+let sweepCases = 0, sweepFallbacks = 0;
+const sweepFails: string[] = [];
+for (const o of ["portrait", "landscape"] as const) {
+  for (const n of [1, 3, 8, 24]) {
+    for (const h of [300, 700, 1418]) {
+      for (const w of [380, 984, 1808]) {
+        for (const blurbWords of [3, 12, 40]) {
+          for (const opts of [null, POUR]) {
+            const rows: MGRowInput[] = Array.from({ length: n }, (_, k) => ({
+              name: k === 0 ? "Gosling's Black Seal 151 Rum" : "Bumbu Rum",
+              blurb: Array.from({ length: blurbWords }, (_, i) => "ingredient".slice(0, 4 + (i % 7))).join(" "),
+              priceText: opts ? null : "$13.50",
+              options: opts,
+            }));
+            const layout = mgLayout(h, w, n, o, n % 2 === 0);
+            const type = mgTypography({ layout, rows, o, showBlurbs: true, ratio: MG_MONO_RATIO });
+            const strip = Math.max(...rows.map((r) => stripWidth(r, type.price, type.optPrice, MG_MONO_RATIO, type.optLines)));
+            const ladderRanOut = type.thumb === 0 && Math.round(type.colTextW) <= 80;
+            sweepCases++;
+            if (strip > type.priceW) sweepFallbacks++;
+            const id = `${o} n${n} ${h}x${w} b${blurbWords} ${opts ? "pours" : "single"}`;
+            if (strip > type.priceW && !ladderRanOut) sweepFails.push(`${id}: strip ${strip.toFixed(0)} > priceW ${type.priceW} without the ladder running out`);
+            if (type.price < SUPPORT_TEXT[o] || type.optPrice < SUPPORT_TEXT[o]) sweepFails.push(`${id}: price ${type.price}/${type.optPrice} under the ${SUPPORT_TEXT[o]}px floor`);
+            if (type.rows.some((p) => p.showBlurb && p.blurbLines < 1)) sweepFails.push(`${id}: a description rendered with zero lines`);
+            if (type.rows.some((p) => p.lines.length * p.nameSize * 1.05
+              + (p.showBlurb ? type.inner + p.blurbLines * type.blurb * 1.25 : 0) > layout.rowH - 2 * type.padV + 0.5)) {
+              sweepFails.push(`${id}: a row overflows its own budget`);
+            }
+            if (type.colTextW < 80) sweepFails.push(`${id}: the text column fell under its 80px minimum`);
+          }
+        }
+      }
+    }
+  }
+}
+ok(`${sweepCases} synthetic shapes: a price is only ever squeezed when the ladder ran out of moves`,
+  sweepFails.length === 0, sweepFails.slice(0, 4).join(" · "));
+console.log(`   sweep: ${sweepCases} shapes, ${sweepFallbacks} reached the ladder fallback, 0 reached the settle fallback`);
+
 console.log("\n── the stacked strip halves the width it needs ──");
 const STACK: MGRowInput = { name: "Bunker Beer", blurb: null, priceText: null, options: pint(5, 18) };
 check("stacked = ceil(n/2) options on the first line, so a 2-option strip becomes one per line",
