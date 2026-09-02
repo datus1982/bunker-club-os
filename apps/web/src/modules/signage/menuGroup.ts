@@ -180,13 +180,27 @@ export const MG_COL_GAP = 56;
 const PRICE_PAD = 10;
 export const MG_OPT_GAP = 16;
 export const MG_OPT_LABEL_GAP = 6;
-/** Hard ceiling on the price column as a share of the row — the measure-tight width below is
- *  what normally wins (cold-review NOTE-1: a fixed 0.42 share reserved 368px for a strip that
- *  measures ~330px, and the stolen 40px is exactly what dropped long names under their floor). */
-const PRICE_W_CAP = {
-  options: { portrait: 0.44, landscape: 0.42 },
-  single: { portrait: 0.24, landscape: 0.22 },
-} as const;
+/** Line box of ONE pour-strip line. Matches the explicit `lineHeight` the renderer puts on each
+ *  strip line — VT323's `normal` line-height is ~1.5, which a two-line strip cannot afford. */
+export const MG_OPT_LH = 1.2;
+
+/**
+ * Vertical slack held back from every row (addendum cold review, NOTE-3). The budget arithmetic
+ * below is exact in floats, but the DOM rounds each line box UP to whole pixels: Signature
+ * Cocktails planned 154.2px of content into a row the browser measured at 154, and SEVEN of its
+ * eight rows clipped by ONE pixel. Two pixels costs nothing legible and ends the class.
+ */
+const MG_V_SLACK = 2;
+/** The narrowest the NAME column may be squeezed to. Reaching it means the name — the last thing
+ *  to give in the width-crunch ladder — renders under its floor via FitText's shrink. */
+const MG_MIN_TEXT_W = 80;
+
+/** The photo states the crunch ladder may try, in yield order: the authored square, the largest
+ *  square that still fits (never under 60% of the row), and no photo column at all. */
+type PhotoMode = "full" | "shrink" | "none";
+const KEEP_PHOTO: readonly PhotoMode[] = ["full", "shrink"];
+const DROP_PHOTO: readonly PhotoMode[] = ["none"];
+const ALL_PHOTO: readonly PhotoMode[] = ["full", "shrink", "none"];
 
 /**
  * NAME COLOUR. docs/09's colour-state rule renders live-sourced values GREEN, and every value on
@@ -317,6 +331,9 @@ export interface MGType {
   optPrice: number;
   optLabel: number;
   priceW: number;
+  /** 1 normally; 2 when the pour strip had to STACK to keep its labels above the SUPPORT_TEXT
+   *  floor (the width-crunch ladder). The renderer chunks the options ceil(n/2) per line. */
+  optLines: number;
   /** 0 when this slide renders no descriptions. */
   blurb: number;
   thumb: number;
@@ -366,84 +383,176 @@ function computeVariant(input: TypeInput, withBlurbs: boolean): MGType {
   const rowGap = MG_ROW_GAP[o];
 
   const padV = Math.round(clampN(rowH * 0.03, 3, 10));
-  const usable = rowH - 2 * padV;
+  const usable = rowH - 2 * padV - MG_V_SLACK;
   const inner = Math.round(clampN(rowH * 0.05, 6, 16));
   const boost = small ? MG_SMALL_BOOST : 1;
   const cap = Math.round((withBlurbs ? MG_NAME_CAP.dense[o] : MG_NAME_CAP.roomy[o]) * boost);
-  const hasOptions = rows.some((r) => !!r.options);
-  const priceCap = colW * (hasOptions ? PRICE_W_CAP.options[o] : PRICE_W_CAP.single[o]);
   const maxNameChars = Math.max(1, ...rows.map((r) => r.name.length));
+  // What the LONGEST name needs at its floor: on one line, and — after balanceHeadline — on two.
   const nameFloorNeed = textWidth(maxNameChars, floor, NAME_LS, ratio);
+  const nameFloorNeed2 = Math.max(1, ...rows.map((r) => {
+    const two = balanceHeadline(r.name, 2).split("\n");
+    return textWidth(Math.max(...two.map((l) => l.length)), floor, NAME_LS, ratio);
+  }));
+  const canStack = rows.some((r) => !!r.options && r.options.length > 1);
+  // Two name lines at the floor, plus the one description line this variant would still owe.
+  const wrapOK = 2 * floor * LH_NAME + (withBlurbs ? inner + floor * LH_BLURB : 0) <= usable;
 
-  // The three widths depend on each other (price size ← name size ← description lines ← text
-  // column ← price width), but the loop is a contraction, not a cycle: four passes from a
-  // mid-range seed settle to the px on every real group. No fixed point is required — the last
-  // pass is what renders, and each quantity is independently clamped to a legible range.
-  let nameFit = Math.floor(clampN(usable * 0.5, floor, cap));
-  let price = 0, optPrice = 0, priceW = 0, thumb = layout.thumb, colTextW = colW;
-  for (let pass = 0; pass < 4; pass++) {
-    price = Math.round(nameFit * 0.92);
+  let price = 0, optPrice = 0, priceW = 0, optLines = 1, thumb = layout.thumb, colTextW = colW;
+
+  /**
+   * Every WIDTH on the row, derived from one nominal name size.
+   *
+   * WIDTH CRUNCH ORDER (ORCHESTRATOR DECISION, addendum WARN-1 + its review). The old order
+   * shrank the photo a little and then handed back PRICE-column width, letting FitScale shrink
+   * the strip — which on the owner's real data put pour labels far under the SUPPORT_TEXT floor
+   * (Draft Beers portrait rendered its "PINT $5" strip at 25.8px against a 40px floor, Rum
+   * portrait at 37.7, Whiskey portrait at 32.3, Tequila portrait at 38.8, Draft Beers landscape
+   * at 30.3). A price nobody can read is the one thing a menu may not do, so the strip now KEEPS
+   * the width it measures and the row yields around it.
+   *
+   * THE REAL TRADE, once the strip is untouchable, is the PHOTO against a ONE-LINE strip — and
+   * the photo wins. Stacking is a cosmetic compromise (a pour strip reads best as one line);
+   * losing the photo column is a structural one, and it is slide-wide, so one tight row strips
+   * the squares off every row of the section. Measured cost of preferring the stack: Gin
+   * portrait keeps a 249px photo instead of none, Rum portrait 124, Whiskey portrait 124,
+   * Whiskey landscape 105, Draft Beers landscape 105 — every price still at or above its floor,
+   * for at most 1.5px of name and two more omitted descriptions on Whiskey portrait (which is
+   * already the densest board in the venue). So:
+   *
+   *   1. one-line strip, photo full size → shrunk (never below 60% of the row height),
+   *   2. STACKED strip (ceil(n/2) options on the first line), photo full size → shrunk,
+   *   3. one-line strip, photo dropped,
+   *   4. stacked strip, photo dropped,
+   *   5. the longest NAME budgeted at its two-line width, photo full → shrunk → dropped (the
+   *      per-row 1-vs-2-line choice is still made below, by whichever renders BIGGER),
+   *   6. and only if none of that fits does the NAME give — the strip is capped so the text
+   *      column keeps MG_MIN_TEXT_W and FitText shrinks the name under its floor. No live group
+   *      reaches step 5, let alone 6.
+   */
+  const derive = (nf: number) => {
+    // A single price is never smaller than the shared floor either (addendum WARN-2: the
+    // pre-reclaim trio left Cordials portrait with a 37px price beside a 63px name).
+    price = Math.max(floor, Math.round(nf * 0.92));
     // The pour LABEL ("SHOT", "1 OZ") is a supporting label, so it holds the shared SUPPORT_TEXT
     // floor by rendering at the SAME size as its price and separating on opacity alone — the way
     // the public /menu pairs them.
-    optPrice = Math.round(clampN(nameFit * 0.46, floor, port ? 60 : 46));
-    const need = Math.max(0, ...rows.map((r) => stripWidth(r, price, optPrice, ratio)));
-    priceW = Math.round(Math.min(need > 0 ? need + PRICE_PAD : 0, priceCap));
+    optPrice = Math.round(clampN(nf * 0.46, floor, port ? 60 : 46));
 
-    // WIDTH CRUNCH ORDER (DECISION): when the row cannot hold photo + name-at-floor + price, the
-    // PHOTO gives way first (down to 60% of the row) — a slightly smaller square costs the guest
-    // far less than a name they cannot read at 20 feet, and the price strip's labels have their
-    // own floor to protect.
-    thumb = layout.thumb;
-    if (thumb > 0) {
-      const room = colW - 2 * rowGap - priceW - nameFloorNeed;
-      if (thumb > room) thumb = Math.round(clampN(room, rowH * 0.6, thumb));
-    }
-    // Last resort: hand back price-column width too, and let FitScale shrink the strip. This is
-    // the ONE place a pour label may render under the SUPPORT_TEXT floor, and it is deliberate —
-    // an unreadable NAME is a worse slide than a small "1 OZ". It does not fire on any real
-    // group (the Rum board's tight strip already leaves the longest name its floor exactly);
-    // it exists so the never-below-floor name invariant holds on geometry nobody has authored yet.
-    if (priceW > 0) {
-      const room = colW - 2 * rowGap - thumb - nameFloorNeed;
-      if (priceW > room) priceW = Math.round(clampN(room, priceW * 0.45, priceW));
-    }
-    colTextW = Math.max(80, colW - (thumb > 0 ? thumb + rowGap : 0) - priceW - rowGap);
+    const stripNeed = (ln: number) => {
+      const w = Math.max(0, ...rows.map((r) => stripWidth(r, price, optPrice, ratio, ln)));
+      return w > 0 ? w + PRICE_PAD : 0;
+    };
+    // A stacked strip is only on the table when there is more than one option to split AND the
+    // row is tall enough for two lines of it.
+    const stackOK = canStack && 2 * optPrice * MG_OPT_LH <= usable;
+    const stages: { ln: number; wrap: boolean; modes: readonly PhotoMode[] }[] = [
+      { ln: 1, wrap: false, modes: KEEP_PHOTO },
+    ];
+    if (stackOK) stages.push({ ln: 2, wrap: false, modes: KEEP_PHOTO });
+    stages.push({ ln: 1, wrap: false, modes: DROP_PHOTO });
+    if (stackOK) stages.push({ ln: 2, wrap: false, modes: DROP_PHOTO });
+    // The wrapped-name stage may only be entered if the row can actually SHOW two name lines
+    // (plus a description line when this variant renders descriptions) — otherwise it would
+    // budget a width for a wrap the renderer can never draw. Same shape as stackOK.
+    if (wrapOK) stages.push({ ln: stackOK ? 2 : 1, wrap: true, modes: ALL_PHOTO });
 
-    // FLOOR, never round: rounding the name UP by half a pixel eats into the description budget
-    // that was just reserved, and a 2-line description then fails its own fit check by 0.1px and
-    // gets omitted (caught by test:menugroup — Tiki landscape lost 4 of 7 descriptions to it).
-    if (!withBlurbs) {
-      nameFit = Math.floor(clampN(usable / LH_NAME, floor, cap));
+    let chosen: { t: number; ln: number; want: number } | null = null;
+    for (const st of stages) {
+      const want = stripNeed(st.ln);
+      const nameNeed = st.wrap ? nameFloorNeed2 : nameFloorNeed;
+      for (const mode of st.modes) {
+        if (layout.thumb === 0 && mode !== "none") continue; // this slide has no photos at all
+        let t: number;
+        if (mode === "full") t = layout.thumb;
+        else if (mode === "shrink") {
+          t = Math.round(colW - 2 * rowGap - want - nameNeed);
+          if (t >= layout.thumb || t < rowH * 0.6) continue; // not a distinct, still-legible square
+        } else t = 0;
+        const room = colW - (t > 0 ? t + rowGap : 0) - rowGap - nameNeed;
+        if (want <= room) { chosen = { t, ln: st.ln, want }; break; }
+      }
+      if (chosen) break;
+    }
+
+    if (chosen) {
+      thumb = chosen.t; optLines = chosen.ln; priceW = Math.round(chosen.want);
     } else {
-      const linesAtFloor = Math.max(
-        1, ...rows.filter((r) => r.blurb).map((r) => wrapLines(r.blurb!, charsPerLine(colTextW, floor, ratio))),
-      );
-      nameFit = Math.floor(clampN((usable - inner - linesAtFloor * floor * LH_BLURB) / LH_NAME, floor, cap));
+      thumb = 0;
+      optLines = stages[stages.length - 1].ln;
+      priceW = Math.round(Math.min(stripNeed(optLines), Math.max(0, colW - rowGap - MG_MIN_TEXT_W)));
     }
-  }
+    colTextW = Math.max(MG_MIN_TEXT_W, colW - (thumb > 0 ? thumb + rowGap : 0) - priceW - rowGap);
+  };
 
-  // RECLAIM. The name above was reserved against the LONGEST description in the group. When the
-  // row cannot actually afford that many lines (the name hit its floor first), the reservation is
-  // dead space: the long descriptions are going to be omitted anyway, so the name should have the
-  // room back. Settle the two against each other — at most three passes, each strictly reducing
-  // the reserved line count, and only accepted when the resulting budget still affords the lines
-  // it was computed for. (Live example: the Rum board's 111px rows reserved two 32px lines for a
-  // description that could never fit, pinning every name at the 32px floor; this returns 56px.)
-  let name2 = nameFit;
-  let budget = withBlurbs ? usable - nameFit * LH_NAME - inner : 0;
-  let maxLines = withBlurbs ? Math.floor(budget / (floor * LH_BLURB)) : 0;
-  if (withBlurbs) {
-    let want = maxLines;
+  /** The description-first name budget: reserve the longest description AT the floor, the name
+   *  takes the remainder. FLOOR, never round — rounding the name UP by half a pixel eats into the
+   *  description budget just reserved, a 2-line description then fails its own fit check by 0.1px
+   *  and is omitted (caught by test:menugroup — Tiki landscape lost 4 of 7 descriptions to it). */
+  const budgetName = () => {
+    if (!withBlurbs) return Math.floor(clampN(usable / LH_NAME, floor, cap));
+    const linesAtFloor = Math.max(
+      1, ...rows.filter((r) => r.blurb).map((r) => wrapLines(r.blurb!, charsPerLine(colTextW, floor, ratio))),
+    );
+    return Math.floor(clampN((usable - inner - linesAtFloor * floor * LH_BLURB) / LH_NAME, floor, cap));
+  };
+
+  /** RECLAIM. The name above was reserved against the LONGEST description in the group. When the
+   *  row cannot actually afford that many lines (the name hit its floor first), the reservation is
+   *  dead space: the long descriptions are going to be omitted anyway, so the name should have the
+   *  room back. Settle the two against each other — at most three passes, each strictly reducing
+   *  the reserved line count, and only accepted when the resulting budget still affords the lines
+   *  it was computed for. (Live example: the Rum board's 111px rows reserved two 32px lines for a
+   *  description that could never fit, pinning every name at the 32px floor; this returns 56px.) */
+  const reclaim = (n0: number) => {
+    if (!withBlurbs) return n0;
+    let want = Math.floor((usable - n0 * LH_NAME - inner) / (floor * LH_BLURB));
     for (let pass = 0; pass < 3 && want >= 1; pass++) {
       const n = Math.floor(clampN((usable - inner - want * floor * LH_BLURB) / LH_NAME, floor, cap));
-      const b = usable - n * LH_NAME - inner;
-      const m = Math.floor(b / (floor * LH_BLURB));
-      if (m >= want) { name2 = n; budget = b; maxLines = m; break; }
+      const m = Math.floor((usable - n * LH_NAME - inner) / (floor * LH_BLURB));
+      if (m >= want) return n;
       want = m;
     }
+    return n0;
+  };
+
+  // The widths depend on each other (price size ← name size ← description lines ← text column ←
+  // price width). RECLAIM RUNS INSIDE THIS LOOP (addendum WARN-2): when it ran after, the
+  // returned price/optPrice/priceW were still the ones computed from the PRE-reclaim name, so the
+  // row rendered a raised name beside a price sized for a name that no longer existed.
+  //
+  // And the loop is NOT always a contraction — the old comment's claim. It can 2-CYCLE: Food
+  // landscape alternates 65 ⇄ 88 (at 88 the "$0.50" price column widens by 42px, the column
+  // narrows, a description needs a second line, and the name is pushed back to 65), so a fixed
+  // pass COUNT silently decided the answer by parity. Instead every visited size is tested for
+  // SELF-CONSISTENCY — does the budget derived from n still afford n? — and the largest
+  // consistent one wins. 88 is not consistent (its own price column cannot afford it: that is
+  // precisely the stale trio WARN-2 describes); 65 is.
+  //
+  // `safest` is a guard, not a path: every visited size comes from the discrete family
+  // name(L) = (usable − inner − L·floor·LH_BLURB)/LH_NAME clamped to [floor, cap], so the loop can
+  // visit at most as many distinct sizes as there are description line counts between the floor
+  // and the cap — measured maximum FIVE against these SIX passes (182,160-case adversarial grid),
+  // so the chain always settles or cycles, and both outcomes contain a consistent member (a cycle
+  // must contain an increase, and the size before it is consistent). 482,160 synthetic shapes
+  // reached it zero times. Pinned by the synthetic sweep in test:menugroup — if a future cap or
+  // pass-count change makes it reachable, that sweep is where it shows up.
+  let nameFit = Math.floor(clampN(usable * 0.5, floor, cap));
+  let bestFit = 0, safest = Number.MAX_SAFE_INTEGER;
+  for (let pass = 0; pass < 6; pass++) {
+    derive(nameFit);
+    const next = reclaim(budgetName());
+    if (next >= nameFit && nameFit > bestFit) bestFit = nameFit;
+    if (nameFit < safest) safest = nameFit;
+    if (next === nameFit) break;
+    nameFit = next;
   }
-  const name = name2;
+  nameFit = bestFit > 0 ? bestFit : safest;
+  derive(nameFit); // the widths that render belong to the name that renders
+
+  const name = nameFit;
+  const budget = withBlurbs ? usable - name * LH_NAME - inner : 0;
+  const maxLines = withBlurbs ? Math.floor(budget / (floor * LH_BLURB)) : 0;
   let blurb = 0;
   let effWithBlurbs = withBlurbs && maxLines >= 1;
   if (effWithBlurbs) {
@@ -496,7 +605,7 @@ function computeVariant(input: TypeInput, withBlurbs: boolean): MGType {
 
   return {
     withBlurbs: effWithBlurbs,
-    name, price, optPrice, optLabel: optPrice, priceW,
+    name, price, optPrice, optLabel: optPrice, priceW, optLines,
     blurb: effWithBlurbs ? blurb : 0,
     thumb, colTextW, rowGap, padV, inner,
     rows: plans,
@@ -517,20 +626,28 @@ export function nextMenuGroupSeq(seen: Map<string, number>, id: string): number 
   return n;
 }
 
-/** Measure-tight width of a row's price cell — a three-option pour strip needs a real share of
- *  the row, a single "$8" needs almost none (cold-review NOTE-1). */
+/**
+ * Measure-tight width of a row's price cell — a three-option pour strip needs a real share of
+ * the row, a single "$8" needs almost none (cold-review NOTE-1).
+ *
+ * `optLines` 2 is the STACKED strip (addendum WARN-1): the options split ceil(n/2) onto the first
+ * line and the rest onto the second, and the cell needs whichever line is wider. The renderer
+ * chunks them exactly the same way, so this stays the width that is actually drawn.
+ */
 export function stripWidth(
-  r: MGRowInput, price: number, optPrice: number, ratio = MG_MONO_RATIO,
+  r: MGRowInput, price: number, optPrice: number, ratio = MG_MONO_RATIO, optLines = 1,
 ): number {
   if (r.options && r.options.length > 0) {
-    let w = 0;
+    const per = optLines > 1 ? Math.ceil(r.options.length / 2) : r.options.length;
+    let widest = 0, line = 0;
     r.options.forEach((o, i) => {
-      if (i > 0) w += MG_OPT_GAP;
-      w += textWidth(o.label.length, optPrice, 1, ratio)
+      const cell = textWidth(o.label.length, optPrice, 1, ratio)
         + MG_OPT_LABEL_GAP
         + textWidth(o.priceText.length, optPrice, 0, ratio);
+      line = i % per === 0 ? cell : line + MG_OPT_GAP + cell;
+      if (line > widest) widest = line;
     });
-    return w;
+    return widest;
   }
   return r.priceText ? textWidth(r.priceText.length, price, 0, ratio) : 0;
 }

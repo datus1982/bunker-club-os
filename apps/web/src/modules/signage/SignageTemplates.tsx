@@ -5,7 +5,7 @@ import { useNowPlayingSource, nowPlayingSourceSlug, isNowPlayingFresh, useSiteMe
 // (pinned by `pnpm test:menugroup`). This file only measures the stage and draws what it says.
 import {
   menuGroupRows, menuGroupOf, mgLayout, mgTypography, nextMenuGroupSeq,
-  MG_HEADER, MG_COL_GAP, MG_OPT_GAP, MG_OPT_LABEL_GAP, MG_MONO_RATIO, MENU_GROUP_NAME_GREEN,
+  MG_HEADER, MG_COL_GAP, MG_OPT_GAP, MG_OPT_LABEL_GAP, MG_OPT_LH, MG_MONO_RATIO, MENU_GROUP_NAME_GREEN,
   type MenuGroupRow, type MGLayout, type MGType, type MGRowPlan, type MGRowInput,
 } from "./menuGroup";
 import { parseTitleYear } from "./mediaProgram";
@@ -1158,6 +1158,12 @@ function useFillBox<T extends HTMLElement>(): [React.RefObject<T | null>, { w: n
  * monospace) renders instead, the ratio changes and every line count the planner makes would be
  * wrong. Measuring means a font fallback self-corrects instead of silently mis-planning. The
  * probe is a hidden 100px string in THIS subtree, so it inherits the same cascade as the rows.
+ *
+ * offsetWidth, NOT getBoundingClientRect (addendum WARN-3). The rect is POST-transform, and every
+ * signage surface renders inside DisplayCanvas's scale-to-fit: on a 0.75 canvas the probe measured
+ * 600 instead of 800, the planner took the ratio as 0.30, and every line count it made was wrong
+ * (Bumbu Rum's description was planned at one line, rendered at two, and clipped — two rows of the
+ * Rum board clipped at 0.75 that render clean at 1). offsetWidth is a pre-transform layout metric.
  */
 function useMonoRatio(): [React.RefObject<HTMLSpanElement | null>, number] {
   const ref = useRef<HTMLSpanElement>(null);
@@ -1165,7 +1171,7 @@ function useMonoRatio(): [React.RefObject<HTMLSpanElement | null>, number] {
   useLayoutEffect(() => {
     const el = ref.current;
     if (!el) return;
-    const w = el.getBoundingClientRect().width;
+    const w = el.offsetWidth;
     if (w <= 0) return;
     const next = w / (MONO_PROBE.length * MONO_PROBE_PX);
     if (next > 0.15 && next < 1.2 && Math.abs(next - ratio) > 0.002) setRatio(next);
@@ -1178,9 +1184,21 @@ const MONO_PROBE_PX = 100;
 /**
  * Shrink-to-fit for arbitrary children (the price cell, which mixes a dim label and a live-green
  * figure and so can't go through FitText's single-string API). Same one-pass idiom FitText uses:
- * offsetWidth is a pre-transform layout metric, so applying the scale can't feed back into the
- * measurement. A long pour-option strip therefore shrinks rather than truncating or wrapping —
- * and because the price column is now measure-tight (cold-review NOTE-1), it almost never has to.
+ * both metrics below are pre-transform layout values, so applying the scale can't feed back into
+ * the measurement.
+ *
+ * ADDENDUM WARN-1 — this was a safety net that did not catch. It computed the right scale and
+ * clipped anyway: an inline-block wider than its line box starts at the LEFT content edge and
+ * overflows RIGHT no matter the text-align, so scaling about `right center` shrank toward a right
+ * edge 114px OUTSIDE the box. Proven in a standalone DOM repro (600×500 headless, VT323 loaded):
+ * the Draft Beers strip computed scale 0.625 and still rendered "PINT $5 P" — inner at [138,328]
+ * in a [24,214] box. The box is now a FLEX container justified to `align`, which puts the
+ * overflow on the correct side: same scale, inner at [24,214], nothing lost. `width: max-content`
+ * plus scrollWidth then measures the natural width regardless of what the container allows,
+ * which matters now that the strip can render as two BLOCK lines.
+ *
+ * With the crunch ladder in menuGroup.ts the planner reserves what the strip measures, so on the
+ * owner's real groups this stays at 1 — but a net that only works when unused is not a net.
  */
 function FitScale({ children, align = "right" }: { children: ReactNode; align?: "left" | "right" }) {
   const boxRef = useRef<HTMLDivElement>(null);
@@ -1190,16 +1208,22 @@ function FitScale({ children, align = "right" }: { children: ReactNode; align?: 
     const box = boxRef.current, inner = innerRef.current;
     if (!box || !inner) return;
     const avail = box.clientWidth;
-    const need = inner.offsetWidth;
+    const need = inner.scrollWidth;
     const next = avail > 0 && need > avail ? avail / need : 1;
     if (Math.abs(next - scale) > 0.001) setScale(next);
   });
   return (
-    <div ref={boxRef} style={{ minWidth: 0, overflow: "hidden", textAlign: align }}>
+    <div
+      ref={boxRef}
+      style={{
+        minWidth: 0, overflow: "hidden",
+        display: "flex", justifyContent: align === "right" ? "flex-end" : "flex-start",
+      }}
+    >
       <div
         ref={innerRef}
         style={{
-          display: "inline-block", whiteSpace: "nowrap",
+          flex: "0 0 auto", whiteSpace: "nowrap", width: "max-content", textAlign: align,
           transform: `scale(${scale})`, transformOrigin: `${align} center`,
         }}
       >
@@ -1425,6 +1449,10 @@ function MenuGroupRowView({
   row: MenuGroupRow; plan: MGRowPlan; layout: MGLayout; type: MGType;
   withPhotos: boolean; last: boolean;
 }) {
+  // type.thumb 0 with photos in the group means the crunch ladder DROPPED the photo column to
+  // keep the prices legible (menuGroup.ts derive()) — so the column goes entirely, gap included,
+  // rather than leaving a zero-width cell and its 26px of dead space in the row.
+  const showPhoto = withPhotos && type.thumb > 0;
   return (
     <div style={{
       height: layout.rowH, flexShrink: 0, display: "flex", alignItems: "center", gap: type.rowGap,
@@ -1433,7 +1461,7 @@ function MenuGroupRowView({
       // A hairline leader between rows reads as a menu without competing with the content.
       borderBottom: last ? undefined : "1px solid var(--sig-rule)",
     }}>
-      {withPhotos && (
+      {showPhoto && (
         row.image ? (
           <div className="sig-viewport sig-sq" style={{ width: type.thumb, height: type.thumb, flexShrink: 0 }}>
             <img src={row.image} alt="" />
@@ -1469,12 +1497,27 @@ function MenuGroupRowView({
  */
 function MenuGroupPrice({ row, type }: { row: MenuGroupRow; type: MGType }) {
   if (row.priceOptions) {
+    // STACKED STRIP (addendum WARN-1): when the row could not hold the whole strip at a legible
+    // size, the planner splits it over two lines rather than shrinking the labels under the
+    // SUPPORT_TEXT floor. ceil(n/2) on the first line — the SAME chunking stripWidth() measures.
+    const per = type.optLines > 1
+      ? Math.ceil(row.priceOptions.length / 2)
+      : row.priceOptions.length;
+    const strip: (typeof row.priceOptions)[] = [];
+    for (let i = 0; i < row.priceOptions.length; i += per) strip.push(row.priceOptions.slice(i, i + per));
     return (
       <FitScale align="right">
-        {row.priceOptions.map((o, i) => (
-          <span key={`${o.label}-${i}`} style={{ fontSize: type.optPrice, marginLeft: i === 0 ? 0 : MG_OPT_GAP, whiteSpace: "nowrap" }}>
-            <span style={{ fontSize: type.optLabel, opacity: 0.55, letterSpacing: 1, marginRight: MG_OPT_LABEL_GAP }}>{o.label.toUpperCase()}</span>
-            <span className="sig-live" style={{ fontSize: "inherit", fontWeight: 700 }}>${formatPrice(o.price)}</span>
+        {strip.map((line, li) => (
+          // An EXPLICIT line box: VT323's `normal` line-height is ~1.5, which two lines of strip
+          // cannot afford in a dense row. MG_OPT_LH is the ONE constant — menuGroup.ts imports
+          // nothing here, it exports this and budgets the row height against the same number.
+          <span key={li} style={{ display: "block", whiteSpace: "nowrap", lineHeight: MG_OPT_LH, fontSize: type.optPrice }}>
+            {line.map((o, i) => (
+              <span key={`${o.label}-${i}`} style={{ fontSize: type.optPrice, marginLeft: i === 0 ? 0 : MG_OPT_GAP, whiteSpace: "nowrap" }}>
+                <span style={{ fontSize: type.optLabel, opacity: 0.55, letterSpacing: 1, marginRight: MG_OPT_LABEL_GAP }}>{o.label.toUpperCase()}</span>
+                <span className="sig-live" style={{ fontSize: "inherit", fontWeight: 700 }}>${formatPrice(o.price)}</span>
+              </span>
+            ))}
           </span>
         ))}
       </FitScale>

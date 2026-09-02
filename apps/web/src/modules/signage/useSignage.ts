@@ -401,11 +401,12 @@ export type { MenuGroupRow, MenuGroupFilters } from "./menuGroup";
  * — strictly smaller than a stale hardcoded guid hiding the wrong drink forever.
  *
  * DECISION (soft column, corrected after the cold review's NOTE-2): public_menu.item_position
- * arrived in migration 0064 (sibling branch). Selecting a column that does not exist fails the
- * WHOLE PostgREST request, so this read is DELIBERATELY NON-FATAL: on any error the ordering map
- * is left empty and the slide falls back to name order, self-healing once 0064 is applied. There
- * is no second retry without the column — the earlier comment claimed one and there never was —
- * so the failure is LOGGED rather than masquerading as "every item is unpositioned".
+ * comes from migration 0064, which is merged and applied. Selecting a column that does not exist
+ * fails the WHOLE PostgREST request, so this read is DELIBERATELY NON-FATAL anyway: on any error
+ * the ordering map is left empty and the slide falls back to name order — the failure mode if
+ * 0064 is ever rolled back, or a view is rebuilt without the column. There is no second retry
+ * without the column — the earlier comment claimed one and there never was — so the failure is
+ * LOGGED rather than masquerading as "every item is unpositioned".
  */
 export function useSiteMenuFilters(enabled: boolean) {
   return useQuery({
@@ -429,9 +430,9 @@ export function useSiteMenuFilters(enabled: boolean) {
 
       const order = new Map<string, number>();
       if (orderRes.error) {
-        // 0064 not applied yet, or a genuinely broken read. Either way the slide degrades to name
-        // order rather than crashing — but say so, so a broken read is not silently indistinct
-        // from "Toast gave these items no position".
+        // A genuinely broken read (or a view rebuilt without 0064's column). Either way the
+        // slide degrades to name order rather than crashing — but say so, so a broken read is
+        // not silently indistinct from "Toast gave these items no position".
         logError(
           "[menu-group] public_menu.item_position read failed — falling back to name order:",
           orderRes.error.message,

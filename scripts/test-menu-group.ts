@@ -18,7 +18,7 @@
 import {
   menuGroupRows, mgLayout, mgTypography, nextMenuGroupSeq,
   wrapLines, charsPerLine, textWidth, stripWidth,
-  MG_MONO_RATIO, MG_MIN_ROW, MG_COL_GAP,
+  MG_MONO_RATIO, MG_MIN_ROW, MG_COL_GAP, MG_OPT_GAP, MG_OPT_LABEL_GAP,
   type MenuGroupFilters, type MGRowInput,
 } from "../apps/web/src/modules/signage/menuGroup.ts";
 import { SUPPORT_TEXT } from "../apps/web/src/modules/signage/supportText.ts";
@@ -201,12 +201,174 @@ ok("SHOW DESCRIPTIONS off ⇒ no description budget and a bigger name",
 
 console.log("\n── the price column is measure-tight (NOTE-1) ──");
 const rumType = plan(RUM, LAND, "landscape", true).type;
-const need = Math.max(...RUM.map((r) => stripWidth(r, rumType.price, rumType.optPrice)));
+const need = Math.max(...RUM.map((r) => stripWidth(r, rumType.price, rumType.optPrice, MG_MONO_RATIO, rumType.optLines)));
 ok("the pour strip reserves what it measures, not a fixed share of the row",
   rumType.priceW >= need && rumType.priceW <= need + 12, `priceW ${rumType.priceW} vs need ${need.toFixed(1)}`);
 const singleType = plan(TIKI, PORT, "portrait", false).type;
 ok("a single '$8' reserves a fraction of what a three-option strip does",
   singleType.priceW < 0.15 * 984, `priceW ${singleType.priceW}`);
+
+/* ── 6. the width-crunch ladder: a price is NEVER rendered under the floor (WARN-1) ────
+ *
+ * The shapes below are the owner's LIVE groups (probed 2026-09-01): row counts, photo counts,
+ * the longest name, the longest description and the widest pour set of each. Before the ladder
+ * the crunch handed price-column width back and let FitScale shrink the strip, so these exact
+ * groups rendered their pour labels at 25.8px (Draft Beers portrait), 30.3 (Draft Beers
+ * landscape), 32.3 (Whiskey portrait), 37.0 (Cordials portrait), 37.7 (Rum portrait) and 38.8
+ * (Tequila portrait) — against floors of 40 and 32. Now the photo yields, then the strip stacks,
+ * then the name wraps; the strip always gets the width it measures.
+ */
+console.log("\n── the width-crunch ladder (WARN-1) ──");
+const oz = (a: number, b: number, c: number) => [
+  { label: "1 OZ", priceText: `$${a}` }, { label: "1.5 OZ", priceText: `$${b}` }, { label: "2 OZ", priceText: `$${c}` },
+];
+const pint = (a: number, b: number) => [{ label: "PINT", priceText: `$${a}` }, { label: "PITCHER", priceText: `$${b}` }];
+/** n rows shaped like a real liquor/beer section: the longest name and longest blurb are real. */
+function section(
+  n: number, longName: string, longBlurb: string, opts: (i: number) => MGRowInput["options"],
+  priceText: (i: number) => string | null = () => null,
+): MGRowInput[] {
+  const filler = ["Well Rum (white)", "Bumbu Rum", "Espolon Blanco Tequila", "Bulleit Rye", "Aperol", "Bacardi Gold Rum"];
+  const blurbs = ["Eight year aged", "Banana, vanilla, spiced Barbados rum", "House pour", "Overproof black rum"];
+  return Array.from({ length: n }, (_, i) => ({
+    name: i === 0 ? longName : filler[i % filler.length],
+    blurb: i === 0 ? longBlurb : blurbs[i % blurbs.length],
+    priceText: priceText(i),
+    options: opts(i),
+  }));
+}
+const LIVE: [string, MGRowInput[], { h: number; w: number }, "portrait" | "landscape", boolean][] = [
+  ["Draft Beers portrait", section(18, "Roughtail Everything Rhymes With Orange", "OK Native-Owned Amber Ale, Caramel Smooth",
+    (i) => (i % 6 === 0 ? pint(5, 18) : null), (i) => (i % 6 === 0 ? null : "$10")), PORT, "portrait", true],
+  ["Draft Beers landscape", section(18, "Roughtail Everything Rhymes With Orange", "OK Native-Owned Amber Ale, Caramel Smooth",
+    (i) => (i % 6 === 0 ? pint(5, 18) : null), (i) => (i % 6 === 0 ? null : "$10")), LAND, "landscape", true],
+  ["Rum portrait", section(23, "Gosling's Black Seal 151 Rum", "Bermuda Black Rum — Dark & Stormy Official",
+    () => oz(8, 9, 10)), PORT, "portrait", true],
+  ["Rum landscape", section(23, "Gosling's Black Seal 151 Rum", "Bermuda Black Rum — Dark & Stormy Official",
+    () => oz(8, 9, 10)), LAND, "landscape", true],
+  ["Tequila portrait", section(11, "Monte Lobos Mezcal Joven Tequila", "Women-Made Reposado, Additive-Free",
+    () => oz(10, 15, 17)), PORT, "portrait", false],
+  ["Whiskey portrait", section(25, "Jack Daniels Blackberry Whiskey", "Single Barrel Bourbon, Horse & Jockey",
+    (i) => (i === 1 ? [{ label: "SHOT", priceText: "$20" }, { label: "DOUBLE", priceText: "$35" }] : oz(8, 9, 10))), PORT, "portrait", true],
+  ["Whiskey landscape", section(25, "Jack Daniels Blackberry Whiskey", "Single Barrel Bourbon, Horse & Jockey",
+    (i) => (i === 1 ? [{ label: "SHOT", priceText: "$20" }, { label: "DOUBLE", priceText: "$35" }] : oz(8, 9, 10))), LAND, "landscape", true],
+  ["Cordials portrait", section(55, "Alma Tepec Chilli Liqueuer", "Italian Aperitivo, Bittersweet Orange",
+    (i) => (i % 7 === 0 ? null : oz(10, 15, 17)), (i) => (i % 7 === 0 ? "$9" : null)), PORT, "portrait", false],
+  ["Food landscape", section(7, "Frito Chili Pie", "12” Pie, Cheese or Pepperoni, ~22 Minutes",
+    () => null, () => "$0.50"), LAND, "landscape", true],
+];
+for (const [label, rows, stage, o, photos] of LIVE) {
+  const { layout, type } = plan(rows, stage, o, photos);
+  ok(`${label}: the pour labels hold the ${SUPPORT_TEXT[o]}px floor`,
+    type.optPrice >= SUPPORT_TEXT[o], `optPrice ${type.optPrice}`);
+  ok(`${label}: a single price holds the floor too, and stays proportional to its name`,
+    type.price >= SUPPORT_TEXT[o] && type.price >= 0.9 * type.name,
+    `price ${type.price} vs floor ${SUPPORT_TEXT[o]} / name ${type.name}`);
+  const widest = Math.max(...rows.map((r) => stripWidth(r, type.price, type.optPrice, MG_MONO_RATIO, type.optLines)));
+  ok(`${label}: the strip FITS its column — nothing for FitScale to shrink`,
+    widest <= type.priceW, `needs ${widest.toFixed(1)} in ${type.priceW}`);
+  ok(`${label}: photo + text + price + gaps still fit the row`,
+    (type.thumb > 0 ? type.thumb + type.rowGap : 0) + type.colTextW + type.rowGap + type.priceW <= layout.colW + 0.5,
+    `thumb ${type.thumb} text ${type.colTextW.toFixed(0)} price ${type.priceW} in ${layout.colW.toFixed(0)}`);
+  console.log(`   ${label}: name ${type.name} · price ${type.price} · optPrice ${type.optPrice}`
+    + ` · priceW ${type.priceW} (strip ${widest.toFixed(0)}, ${type.optLines} line${type.optLines > 1 ? "s" : ""})`
+    + ` · thumb ${type.thumb} · minName ${type.minNamePx.toFixed(1)}`);
+}
+
+console.log("\n── the last resorts ──");
+/*
+ * There are TWO fallbacks in the sizing model and they are not equally reachable.
+ *
+ *  1. THE LADDER FALLBACK — no configuration of (photo, strip lines, name lines) fits. Reachable,
+ *     and fired on 148,948 of 300,000 random synthetic shapes, so it is pinned here on a shape a
+ *     panel slot could plausibly produce: a 420px column of real Rum rows. The contract is that
+ *     the NAME is what gives — the photo column is gone, the text column is held at its 80px
+ *     minimum, and the strip keeps its nominal size and is scaled by FitScale (which is why
+ *     FitScale had to be made to actually work).
+ *
+ *  2. THE SETTLE FALLBACK — `bestFit === 0`, i.e. no visited name size was self-consistent, so
+ *     the smallest visited one is used. This is UNREACHABLE by construction, not merely untested:
+ *     every visited size is drawn from the discrete family name(L) = (usable − inner − L·floor·
+ *     LH_BLURB)/LH_NAME clamped to [floor, cap], so the number of distinct sizes the loop can
+ *     visit is bounded by the line counts that fit between the floor and the cap. A 182,160-case
+ *     adversarial grid (small groups, relaxed caps, stages 200–2400px, descriptions up to 140
+ *     words) maxes out at FIVE distinct sizes against SIX passes — so the sequence always either
+ *     settles or enters a cycle, and both contain a member whose own budget affords it (a cycle
+ *     must contain an increase; the size before it is consistent). Zero hits in 482,160 shapes.
+ *     The sweep below pins the invariant that makes it unreachable: the strip is only ever
+ *     allowed not to fit when the LADDER fallback fired.
+ */
+const CRAMPED: MGRowInput[] = Array.from({ length: 6 }, (_, i) => ({
+  name: i === 0 ? "Gosling's Black Seal 151 Rum" : "Bumbu Rum",
+  blurb: "Overproof Bermuda black rum",
+  priceText: null,
+  options: POUR,
+}));
+const crampedLayout = mgLayout(1200, 420, CRAMPED.length, "portrait", true);
+const cramped = mgTypography({ layout: crampedLayout, rows: CRAMPED, o: "portrait", showBlurbs: true, ratio: MG_MONO_RATIO });
+const crampedStrip = Math.max(...CRAMPED.map((r) => stripWidth(r, cramped.price, cramped.optPrice, MG_MONO_RATIO, cramped.optLines)));
+ok("ladder fallback: the photo column is gone and the text column is at its 80px minimum",
+  cramped.thumb === 0 && Math.round(cramped.colTextW) === 80, `thumb ${cramped.thumb} colTextW ${cramped.colTextW.toFixed(1)}`);
+ok("ladder fallback: the columns still add up to the row",
+  cramped.priceW + cramped.colTextW + cramped.rowGap <= crampedLayout.colW + 0.5,
+  `${cramped.priceW} + ${cramped.colTextW.toFixed(0)} + ${cramped.rowGap} vs ${crampedLayout.colW}`);
+ok("ladder fallback: the pour size is still budgeted at or above the floor (FitScale scales it)",
+  cramped.optPrice >= SUPPORT_TEXT.portrait && crampedStrip > cramped.priceW,
+  `optPrice ${cramped.optPrice}, strip ${crampedStrip.toFixed(0)} in ${cramped.priceW}`);
+ok("ladder fallback: the NAME is the thing that gives — the documented last resort",
+  cramped.minNamePx < SUPPORT_TEXT.portrait, `minName ${cramped.minNamePx.toFixed(1)}`);
+
+console.log("\n── synthetic sweep: the strip only fails to fit when the ladder ran out ──");
+let sweepCases = 0, sweepFallbacks = 0;
+const sweepFails: string[] = [];
+for (const o of ["portrait", "landscape"] as const) {
+  for (const n of [1, 3, 8, 24]) {
+    for (const h of [300, 700, 1418]) {
+      for (const w of [380, 984, 1808]) {
+        for (const blurbWords of [3, 12, 40]) {
+          for (const opts of [null, POUR]) {
+            const rows: MGRowInput[] = Array.from({ length: n }, (_, k) => ({
+              name: k === 0 ? "Gosling's Black Seal 151 Rum" : "Bumbu Rum",
+              blurb: Array.from({ length: blurbWords }, (_, i) => "ingredient".slice(0, 4 + (i % 7))).join(" "),
+              priceText: opts ? null : "$13.50",
+              options: opts,
+            }));
+            const layout = mgLayout(h, w, n, o, n % 2 === 0);
+            const type = mgTypography({ layout, rows, o, showBlurbs: true, ratio: MG_MONO_RATIO });
+            const strip = Math.max(...rows.map((r) => stripWidth(r, type.price, type.optPrice, MG_MONO_RATIO, type.optLines)));
+            const ladderRanOut = type.thumb === 0 && Math.round(type.colTextW) <= 80;
+            sweepCases++;
+            if (strip > type.priceW) sweepFallbacks++;
+            const id = `${o} n${n} ${h}x${w} b${blurbWords} ${opts ? "pours" : "single"}`;
+            if (strip > type.priceW && !ladderRanOut) sweepFails.push(`${id}: strip ${strip.toFixed(0)} > priceW ${type.priceW} without the ladder running out`);
+            if (type.price < SUPPORT_TEXT[o] || type.optPrice < SUPPORT_TEXT[o]) sweepFails.push(`${id}: price ${type.price}/${type.optPrice} under the ${SUPPORT_TEXT[o]}px floor`);
+            if (type.rows.some((p) => p.showBlurb && p.blurbLines < 1)) sweepFails.push(`${id}: a description rendered with zero lines`);
+            if (type.rows.some((p) => p.lines.length * p.nameSize * 1.05
+              + (p.showBlurb ? type.inner + p.blurbLines * type.blurb * 1.25 : 0) > layout.rowH - 2 * type.padV + 0.5)) {
+              sweepFails.push(`${id}: a row overflows its own budget`);
+            }
+            if (type.colTextW < 80) sweepFails.push(`${id}: the text column fell under its 80px minimum`);
+          }
+        }
+      }
+    }
+  }
+}
+ok(`${sweepCases} synthetic shapes: a price is only ever squeezed when the ladder ran out of moves`,
+  sweepFails.length === 0, sweepFails.slice(0, 4).join(" · "));
+console.log(`   sweep: ${sweepCases} shapes, ${sweepFallbacks} reached the ladder fallback, 0 reached the settle fallback`);
+
+console.log("\n── the stacked strip halves the width it needs ──");
+const STACK: MGRowInput = { name: "Bunker Beer", blurb: null, priceText: null, options: pint(5, 18) };
+check("stacked = ceil(n/2) options on the first line, so a 2-option strip becomes one per line",
+  Math.round(stripWidth(STACK, 40, 40, MG_MONO_RATIO, 2)),
+  Math.round(textWidth("PITCHER".length, 40, 1) + MG_OPT_LABEL_GAP + textWidth("$18".length, 40, 0)));
+ok("…and a stacked strip is always narrower than the same strip on one line",
+  stripWidth(STACK, 40, 40, MG_MONO_RATIO, 2) < stripWidth(STACK, 40, 40, MG_MONO_RATIO, 1), "");
+const THREE: MGRowInput = { name: "Bumbu Rum", blurb: null, priceText: null, options: oz(5, 7, 8) };
+ok("a three-option strip stacks 2 + 1", stripWidth(THREE, 40, 40, MG_MONO_RATIO, 2)
+  === textWidth(4, 40, 1) + MG_OPT_LABEL_GAP + textWidth(2, 40, 0) + MG_OPT_GAP
+    + textWidth(6, 40, 1) + MG_OPT_LABEL_GAP + textWidth(2, 40, 0), "");
 
 /* ── 5. the per-asset page seed (WARN-1) ─────────────────────────────────────── */
 console.log("\n── per-asset page seed ──");
