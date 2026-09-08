@@ -271,10 +271,20 @@ export function SignageHub({ openQueueSlug }: { openQueueSlug?: string }) {
     if (!(id in HASH_SECTIONS)) return;
     const collapseKey = HASH_SECTIONS[id];
     if (collapseKey) requestOpenHubSection(collapseKey);
-    const raf = requestAnimationFrame(() => {
-      document.getElementById(id)?.scrollIntoView({ block: "start" });
-    });
-    return () => cancelAnimationFrame(raf);
+    // The hub's sections fill in asynchronously (the media grid is hundreds of cards), so
+    // the anchor MOVES after the first paint — one scroll lands on the wrong pixel (or gets
+    // clamped to 0 while the page is still short). Re-assert it a few times and stop: a
+    // bounded, finite sequence, never a polling loop. Offset by the sticky nav's height so
+    // the section header isn't parked underneath it.
+    const jump = () => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      const nav = document.querySelector("nav");
+      const offset = nav ? nav.getBoundingClientRect().height + 8 : 0;
+      window.scrollTo({ top: Math.max(0, el.getBoundingClientRect().top + window.scrollY - offset) });
+    };
+    const timers = [0, 150, 400, 900].map((d) => window.setTimeout(jump, d));
+    return () => timers.forEach((t) => window.clearTimeout(t));
   }, [location.hash, location.key]);
 
   // Queue an existing library asset onto a screen (AddPicker FROM LIBRARY, D6).
