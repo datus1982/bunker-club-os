@@ -4,6 +4,7 @@ import { Navigate, Routes, Route, useNavigate } from "react-router-dom";
 import { supabase } from "./shared/supabaseClient";
 import { RequireAuth, RequireRole, RequireModule } from "./shared/guards";
 import { lazyWithReload } from "./shared/lazyWithReload";
+import { NoIndex } from "./shared/NoIndex";
 // The PUBLIC marketing website stays in the main chunk — it's the site root and
 // must paint instantly with no chunk round-trip. Everything else (staff tools,
 // display screens, auth, portal, check-in) is route-split with React.lazy so the
@@ -62,6 +63,8 @@ const SlotDisplay = namedLazy(signageRoutes, "SlotDisplay");
 // Admin shell (dashboard, persistent staff layout, users).
 const Dashboard = namedLazy(dashboardRoutes, "Dashboard");
 const StaffLayout = namedLazy(dashboardRoutes, "StaffLayout");
+const BroadcastMoved = namedLazy(dashboardRoutes, "BroadcastMoved");
+const EventsMoved = namedLazy(dashboardRoutes, "EventsMoved");
 const Users = namedLazy(dashboardRoutes, "Users");
 
 // Seasons admin, player portal, auth, check-in.
@@ -188,9 +191,10 @@ export function App() {
         <Route path="/signage" element={<RequireModule module="signage"><SignageHub /></RequireModule>} />
         {/* Legacy per-screen editor bookmark — opens the hub's QUEUE slide-over then normalizes the URL. */}
         <Route path="/signage/screens/:slug" element={<RequireModule module="signage"><EditRotation /></RequireModule>} />
-        {/* Retired tabs (folded into the hub) — redirect any stale bookmark to the hub. */}
-        <Route path="/signage/broadcast" element={<Navigate to="/signage" replace />} />
-        <Route path="/signage/events" element={<Navigate to="/signage" replace />} />
+        {/* Retired tabs (folded into the hub). CLASSIC redirects silently, exactly as it
+            always has; the v2 shell says where the tool went instead (audit finding #6). */}
+        <Route path="/signage/broadcast" element={<RequireModule module="signage"><BroadcastMoved /></RequireModule>} />
+        <Route path="/signage/events" element={<RequireModule module="signage"><EventsMoved /></RequireModule>} />
         <Route path="/admin/drinks" element={<RequireModule module="drinks"><DrinksAdmin /></RequireModule>} />
         <Route path="/admin/seasons" element={<RequireRole role="admin"><SeasonsAdmin /></RequireRole>} />
         <Route path="/admin/users" element={<RequireRole role="admin"><Users /></RequireRole>} />
@@ -202,7 +206,9 @@ export function App() {
           TV routes are retired — /game/preview is the host's off-screen dual-board preview. */}
       {/* Dual-display screen preview (trivia-sandbox) — both boards side by side, no auth. */}
       <Route path="/game/preview" element={<GamePreview />} />
-      <Route path="/drinks" element={<DrinksDisplay />} />
+      {/* Legacy public drinks board — frozen (decision E). The only change is a noindex
+          meta tag injected by the wrapper; DrinksDisplay itself is untouched. */}
+      <Route path="/drinks" element={<NoIndex><DrinksDisplay /></NoIndex>} />
       <Route path="/signage/s/:slug" element={<SlotDisplay />} />
 
       {/* Staff sign-in (password + email-OTP) and password recovery landing */}

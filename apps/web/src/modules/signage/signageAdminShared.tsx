@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { useMutation } from "@tanstack/react-query";
 import {
   setItemActive, setItemDuration, reorderItem, featuredItems,
@@ -51,11 +51,26 @@ function writeCollapse(key: string, open: boolean): void {
   try { localStorage.setItem(COLLAPSE_PREFIX + key, open ? "1" : "0"); } catch { /* private mode / disabled storage — non-fatal */ }
 }
 
+/* Hash-anchor support (UX overhaul Beat 1). The v2 MEDIA nav links are hash anchors on
+ * /signage (#library, #playlists, …) — landing on one must EXPAND the named section even
+ * when this device left it collapsed (the media library is default-collapsed). A tiny
+ * window event carries the request so the hub does not have to thread props through
+ * MediaSection. DECISION: opening this way does NOT write the collapse preference —
+ * the section opens for this visit, and the manager's stored choice survives untouched. */
+const OPEN_SECTION_EVENT = "bunker-hub-open-section";
+
+/** Ask the CollapsibleSection with this `sectionKey` (if mounted) to expand. */
+export function requestOpenHubSection(sectionKey: string): void {
+  window.dispatchEvent(new CustomEvent(OPEN_SECTION_EVENT, { detail: sectionKey }));
+}
+
 export function CollapsibleSection({
-  sectionKey, title, summary, defaultOpen, headerRight, style, children,
+  sectionKey, anchorId, title, summary, defaultOpen, headerRight, style, children,
 }: {
   /** localStorage sub-key (bunker-hub-collapse:{sectionKey}). */
   sectionKey: string;
+  /** DOM id on the section root, so a `/signage#<id>` link can scroll to it. */
+  anchorId?: string;
   title: React.ReactNode;
   /** Compact count line shown beside the title (both states) — informs while collapsed. */
   summary?: React.ReactNode;
@@ -67,8 +82,15 @@ export function CollapsibleSection({
 }) {
   const [open, setOpen] = useState(() => readCollapse(sectionKey, defaultOpen));
   const toggle = () => setOpen((o) => { const n = !o; writeCollapse(sectionKey, n); return n; });
+  useEffect(() => {
+    const onOpen = (e: Event) => {
+      if ((e as CustomEvent<string>).detail === sectionKey) setOpen(true);
+    };
+    window.addEventListener(OPEN_SECTION_EVENT, onOpen);
+    return () => window.removeEventListener(OPEN_SECTION_EVENT, onOpen);
+  }, [sectionKey]);
   return (
-    <div style={style}>
+    <div id={anchorId} style={style}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
         <button
           type="button"

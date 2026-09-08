@@ -15,6 +15,7 @@ Disallow: /login
 Disallow: /reset-password
 Disallow: /leaderboard
 Disallow: /game-display
-Disallow: /drinks
+# /drinks is deliberately NOT disallowed: it carries a page-level noindex (decision E,
+# docs/ux-overhaul/01), which a crawler can only honor if it is allowed to fetch the page.
 
 Sitemap: https://bunkerokc.com/sitemap.xml
