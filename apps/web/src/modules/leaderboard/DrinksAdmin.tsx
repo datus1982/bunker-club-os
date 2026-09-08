@@ -185,7 +185,7 @@ const input: React.CSSProperties = { background: "#000", color: "var(--terminal-
 // Normalized to the canonical staff-button geometry (2026-07-13 consistency pass):
 // minHeight 44, matching padding; danger uses the codebase amber-danger convention
 // (was a one-off red). Font-size/family come from the staff-ui theme rules.
-const btn: React.CSSProperties = { background: "transparent", color: "var(--terminal-green)", border: "1px solid var(--terminal-green)", padding: "10px 18px", minHeight: 44, cursor: "pointer", fontFamily: "'VT323','Share Tech Mono',monospace" };
+const btn: React.CSSProperties = { background: "transparent", color: "var(--terminal-green)", border: "1px solid var(--terminal-green)", padding: "10px 18px", minHeight: 44, minWidth: 44, cursor: "pointer", fontFamily: "'VT323','Share Tech Mono',monospace" };
 const btnDanger: React.CSSProperties = { ...btn, borderColor: "var(--terminal-amber, #ffb000)", color: "var(--terminal-amber, #ffb000)" };
 const btnPrimary: React.CSSProperties = { background: "var(--terminal-green)", color: "#000", border: "1px solid var(--terminal-green)", padding: "10px 20px", minHeight: 44, fontWeight: 700, cursor: "pointer", fontFamily: "'VT323','Share Tech Mono',monospace" };
 const linkBtn: React.CSSProperties = { ...btn, textDecoration: "none" };
