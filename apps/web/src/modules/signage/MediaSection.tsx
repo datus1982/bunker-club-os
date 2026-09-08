@@ -59,7 +59,7 @@ export function MediaSection() {
   return (
     <div style={{ marginTop: 32 }}>
       {/* ── MEDIA LIBRARY (collapsible; DEFAULT COLLAPSED — the 361-file grid is the overwhelming one) ── */}
-      <CollapsibleSection sectionKey="media" title="MEDIA LIBRARY" summary={mediaSummary} defaultOpen={false}>
+      <CollapsibleSection sectionKey="media" anchorId="library" title="MEDIA LIBRARY" summary={mediaSummary} defaultOpen={false}>
         {filesQ.isLoading ? (
           <div style={{ fontSize: 18, opacity: 0.7 }}>LOADING MEDIA…</div>
         ) : files.length === 0 ? (
@@ -79,6 +79,7 @@ export function MediaSection() {
       <CollapsibleSection
         style={{ marginTop: 22 }}
         sectionKey="playlists"
+        anchorId="playlists"
         title="PLAYLISTS"
         summary={playlistSummary}
         defaultOpen={true}

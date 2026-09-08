@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import {
   useAdminSlots, useAllItems, useSignageAssets, useTakeovers, useToastCache, useLiveGame,
   useSlotsRealtime,
@@ -17,7 +17,7 @@ import {
   useEventsList, schedulePhrase, statusInfo, pauseEvent, resumeEvent, fireNowEvent, type EventRow,
 } from "./useEventsAdmin";
 import {
-  MONO, SectionLabel, CollapsibleSection, HealthDot, CopyKioskButton, EventKindBadge,
+  MONO, SectionLabel, CollapsibleSection, requestOpenHubSection, HealthDot, CopyKioskButton, EventKindBadge,
   ghost, summarize, templateIcon, templateBadge, isSmartTemplate,
 } from "./signageAdminShared";
 import { addToQueue } from "./slotQueue";
@@ -72,6 +72,18 @@ type Overlay =
   | { kind: "asset"; editing: AdminItem | null; preset: Template | null; queueOnSlotId: string | null; returnTo?: Overlay | null }
   | { kind: "program"; slot: AdminSlot }
   | { kind: "schedule"; slot: AdminSlot };
+
+/**
+ * Hash anchor id → the CollapsibleSection key it must expand (null = a plain block that
+ * only needs scrolling). These ids are rendered on the section roots below and are what
+ * the v2 nav's /signage#… links point at (UX overhaul Beat 1 — no new routes).
+ */
+const HASH_SECTIONS: Record<string, string | null> = {
+  screens: null,
+  events: null,
+  library: "media",
+  playlists: "playlists",
+};
 
 export function SignageHub({ openQueueSlug }: { openQueueSlug?: string }) {
   const qc = useQueryClient();
@@ -247,6 +259,24 @@ export function SignageHub({ openQueueSlug }: { openQueueSlug?: string }) {
     }
   }, [openQueueSlug, slots, slotsQ.isLoading, bootstrapped]);
 
+  // Hash anchors (UX overhaul Beat 1). The v2 nav points BAR OPS ▸ EVENTS & PROMOS and the
+  // whole MEDIA section at /signage#<section> instead of new routes. On landing (and on any
+  // later hash change) expand the named collapsible — the media library is default-collapsed,
+  // so a link that only scrolled would land on a closed header — then scroll it into view
+  // after paint. NO hash ⇒ nothing happens at all, so the hub behaves exactly as before.
+  // `location.key` is in the deps so re-clicking the same link scrolls again.
+  const location = useLocation();
+  useEffect(() => {
+    const id = location.hash.replace(/^#/, "");
+    if (!(id in HASH_SECTIONS)) return;
+    const collapseKey = HASH_SECTIONS[id];
+    if (collapseKey) requestOpenHubSection(collapseKey);
+    const raf = requestAnimationFrame(() => {
+      document.getElementById(id)?.scrollIntoView({ block: "start" });
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [location.hash, location.key]);
+
   // Queue an existing library asset onto a screen (AddPicker FROM LIBRARY, D6).
   const queueExisting = useMutation({
     mutationFn: async ({ slot, a }: { slot: AdminSlot; a: AssetWithPlacements }) => {
@@ -271,6 +301,8 @@ export function SignageHub({ openQueueSlug }: { openQueueSlug?: string }) {
         <div className="terminal-separator" style={{ margin: "12px 0 20px" }} />
 
         {/* ── A · ON AIR NOW ─────────────────────────────────────────────── */}
+        {/* id: the v2 MEDIA nav's SCREENS & PROGRAMS link is /signage#screens (Beat 1). */}
+        <div id="screens">
         <SectionLabel>◉ ON AIR NOW · what each screen is showing this second</SectionLabel>
         {gameOffScreens && (
           // A game exists but trivia is NOT armed onto the screens (0056, default OFF) — the TVs are
@@ -338,6 +370,7 @@ export function SignageHub({ openQueueSlug }: { openQueueSlug?: string }) {
             })}
           </div>
         )}
+        </div>
 
         {/* ── B · ASSET LIBRARY (collapsible — owner beat 2026-07-20) ──────── */}
         {/* + NEW ASSET moved from the grid's first tile to the section header so it stays reachable
@@ -369,7 +402,8 @@ export function SignageHub({ openQueueSlug }: { openQueueSlug?: string }) {
         <MediaSection />
 
         {/* ── C · RUNNING & UPCOMING (events, D8) ────────────────────────── */}
-        <div style={{ marginTop: 32 }}>
+        {/* id: the v2 BAR OPS nav's EVENTS & PROMOS link is /signage#events (Beat 1). */}
+        <div id="events" style={{ marginTop: 32 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
             <SectionLabel style={{ margin: 0 }}>RUNNING &amp; UPCOMING · promos &amp; events, live and scheduled</SectionLabel>
             {canEvents && (
