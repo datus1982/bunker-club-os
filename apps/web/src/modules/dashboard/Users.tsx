@@ -4,6 +4,16 @@ import { supabase, VENUE_ID } from "@/shared/supabaseClient";
 import type { ModuleKey, StaffRole } from "@/shared/useRole";
 import { moduleLabel } from "@/shared/moduleLabels";
 import { useIsMobile } from "@/shared/useIsMobile";
+import { useUiVersion } from "@/shared/useUiVersion";
+import { UsersV2 } from "./UsersV2";
+import {
+  ALL_MODULES,
+  STATUS_LABEL,
+  parseEmails,
+  type InviteResult,
+  type InviteRole,
+  type StaffRow,
+} from "./usersShared";
 
 /**
  * USERS (admin only) — staff accounts + module grants (Phase 4b, migration 0025).
@@ -20,24 +30,6 @@ import { useIsMobile } from "@/shared/useIsMobile";
  */
 
 const MONO = "'VT323','Share Tech Mono',monospace";
-const ALL_MODULES: ModuleKey[] = ["trivia", "seasons", "drinks", "signage", "website", "events"];
-type InviteRole = "staff" | "host";
-type InviteStatus = "invited" | "already-staff" | "already-admin" | "error";
-interface InviteResult { email: string; status: InviteStatus; detail?: string }
-
-interface StaffRow { profile_id: string; email: string; role: StaffRole; modules: ModuleKey[]; is_self: boolean }
-
-/** Split a free-text address list on commas / whitespace / semicolons / newlines. */
-function parseEmails(raw: string): string[] {
-  return [...new Set(raw.split(/[\s,;]+/).map((e) => e.trim().toLowerCase()).filter(Boolean))];
-}
-
-const STATUS_LABEL: Record<InviteStatus, string> = {
-  invited: "✓ invited — sign-in link emailed",
-  "already-staff": "✓ already staff — grants updated, link emailed",
-  "already-admin": "• already an admin — link emailed, grants left as-is",
-  error: "⚠ error",
-};
 
 function useStaff() {
   return useQuery({
@@ -54,6 +46,7 @@ export function Users() {
   const qc = useQueryClient();
   const staff = useStaff();
   const narrow = useIsMobile();
+  const [version] = useUiVersion();
   const [notice, setNotice] = useState<string | null>(null);
 
   // INVITE STAFF panel state.
@@ -128,6 +121,40 @@ export function Users() {
     if (emails.length > 20) { setInviteResults([{ email: "—", status: "error", detail: "Max 20 emails per invite." }]); return; }
     invite.mutate({ emails, role: inviteRole, modules: inviteModules });
   };
+
+  /** Confirm-then-remove. Shared by both presentations so the guard can't drift. */
+  const removeRow = (row: StaffRow) => {
+    if (confirm(`Remove ${row.email}?`)) remove.mutate(row.profile_id);
+  };
+
+  // UX overhaul Beat 2: the v2 presentation (owner decision C — stacked cards on a
+  // phone). PRESENTATION ONLY — the data layer, mutations and guards above are the
+  // same objects both views drive, so classic behaviour is untouched (RULE #1).
+  if (version === "v2") {
+    return (
+      <UsersV2
+        rows={staff.data ?? []}
+        isLoading={staff.isLoading}
+        loadError={staff.isError ? ((staff.error as Error)?.message ?? "Unable to load staff.") : null}
+        narrow={narrow}
+        notice={notice}
+        onToggleModule={toggleModule}
+        onChangeRole={changeRole}
+        onRemove={removeRow}
+        invite={{
+          emails: inviteEmails,
+          setEmails: setInviteEmails,
+          role: inviteRole,
+          setRole: setInviteRole,
+          modules: inviteModules,
+          toggleModule: toggleInviteModule,
+          results: inviteResults,
+          pending: invite.isPending,
+          onSubmit: sendInvites,
+        }}
+      />
+    );
+  }
 
   return (
     <div className="terminal-theme" style={{ minHeight: "100%", padding: "24px clamp(14px, 4vw, 48px)", fontFamily: MONO }}>
@@ -248,7 +275,7 @@ export function Users() {
                   })}
                   <td style={{ ...td, textAlign: "right" }}>
                     {!row.is_self && (
-                      <button type="button" className="u-amber" style={removeBtn} onClick={() => { if (confirm(`Remove ${row.email}?`)) remove.mutate(row.profile_id); }}>REMOVE</button>
+                      <button type="button" className="u-amber" style={removeBtn} onClick={() => removeRow(row)}>REMOVE</button>
                     )}
                   </td>
                 </tr>
