@@ -62,7 +62,9 @@ export function ToggleSwitch({
         onChange={(e) => onChange(e.target.checked)}
       />
       {label != null && <span style={labelStyle}>{label}</span>}
-      <span style={{ ...state, color: checked ? "var(--terminal-green)" : "#8a8f8a" }}>
+      {/* `u-idle`, not an inline colour: `.terminal-theme * { color: green !important }`
+          beats inline styles; the scoped utility is the theme's own escape hatch. */}
+      <span className={checked ? undefined : "u-idle"} style={state}>
         {disabled ? lockedHint : checked ? "ON" : "OFF"}
       </span>
       <span

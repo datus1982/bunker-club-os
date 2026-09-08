@@ -85,8 +85,9 @@
   pointer-events: none;
 }
 
-/* The focus ring the hidden input can no longer show for itself. */
-.bui-switch:focus-within {
+/* The focus ring the hidden input can no longer show for itself — keyboard focus only,
+   like the .bui-field controls (a tap would otherwise leave the last row outlined). */
+.bui-switch:has(> input:focus-visible) {
   outline: 2px solid var(--terminal-green);
   outline-offset: 1px;
 }

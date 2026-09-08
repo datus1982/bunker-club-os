@@ -62,6 +62,7 @@ export function UsersV2({
     onSubmit: (e: React.FormEvent) => void;
   };
 }) {
+  // DECISION: whole-form invite errors show ONCE, as the field error (see below).
   // A whole-form problem (nothing typed, too many addresses, the edge fn refusing) comes
   // back as a synthetic `—` result row. Show it ONCE, as the field's error line, and keep
   // the results list for real per-address outcomes.
@@ -199,7 +200,7 @@ function StaffCard({
       stacked
       title={
         // overflowWrap, not ellipsis: a long address must WRAP inside a 390px card.
-        <span style={{ display: "block", overflowWrap: "anywhere" }}>
+        <span style={{ display: "block", overflowWrap: "anywhere", fontSize: 18 /* nothing inherits font-size here */ }}>
           {row.email}
           {row.is_self && <span style={{ opacity: 0.6 }}> (you)</span>}
         </span>
@@ -250,7 +251,9 @@ function StaffCard({
   );
 }
 
-/** The desktop grant matrix. Same columns as classic, on the shared checkbox primitive. */
+/** The desktop grant matrix. Same columns as classic, on the shared checkbox primitive.
+ *  DECISION: ToggleSwitch on the phone cards (state reads at arm's length), TapTargetCheckbox
+ *  on this matrix + the invite chips (a captioned grid / a multi-select = checkbox semantics). */
 function StaffTable({
   rows,
   onToggleModule,
