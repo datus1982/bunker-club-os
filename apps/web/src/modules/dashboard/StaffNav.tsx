@@ -3,9 +3,14 @@ import { Outlet, useNavigate, useLocation, NavLink } from "react-router-dom";
 import { supabase } from "@/shared/supabaseClient";
 import { useIsMobile } from "@/shared/useIsMobile";
 import { hasModule, roleAtLeast, useRole, type ModuleKey, type StaffRole } from "@/shared/useRole";
+import { UiVersionToggle } from "./UiVersionToggle";
 
 /**
- * Slim persistent staff header. Renders above every staff route via the StaffLayout
+ * Slim persistent staff header — the CLASSIC shell, and still the default.
+ * (UX overhaul Beat 1: `StaffLayout` in StaffLayout.tsx picks this or StaffShellV2 by
+ * the per-device `ui_version` switch. The ONLY change here is the TRY THE NEW LAYOUT
+ * control — everything else is byte-identical to what shipped.)
+ * Renders above every staff route via the StaffLayout
  * wrapper in App.tsx so moving between tools never needs the URL bar. NOT present on
  * public/display/checkin/portal routes (kiosk + perf rules).
  *
@@ -74,7 +79,7 @@ const childVisible = (role: StaffRole | null, modules: ModuleKey[], c: NavChild)
 const matchesPath = (pathname: string, to: string) =>
   pathname === to || pathname.startsWith(to + "/");
 
-export function StaffLayout() {
+export function StaffLayoutClassic() {
   const { role, modules, isSignedIn, loading } = useRole();
   const navigate = useNavigate();
   const location = useLocation();
@@ -175,6 +180,8 @@ export function StaffLayout() {
                     ))}
                   </div>
                 ))}
+                {/* Beat 1: the way INTO the new shell, reachable on a phone too. */}
+                <div style={{ padding: "12px 18px 0" }}><UiVersionToggle style={{ width: "100%" }} /></div>
                 <div style={drawerFooter}>
                   <span style={{ fontSize: 16, opacity: 0.6, letterSpacing: 1 }}>{roleLabel}</span>
                   <button type="button" onClick={signOut} className="u-amber" style={signOutBtn}>SIGN OUT</button>
@@ -214,6 +221,8 @@ export function StaffLayout() {
                 );
               })}
             </div>
+            {/* Beat 1: the way INTO the new shell. */}
+            <UiVersionToggle style={{ marginRight: 8 }} />
             <span style={{ fontSize: 16, opacity: 0.6, letterSpacing: 1, marginRight: 8, whiteSpace: "nowrap" }}>
               {roleLabel}
             </span>
