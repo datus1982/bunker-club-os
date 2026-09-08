@@ -23,17 +23,10 @@
   min-width: 0;
 }
 
-.bui-field-label {
-  font-size: 15px;
-  letter-spacing: 1px;
-  opacity: 0.7;
-}
-
-.bui-field-hint {
-  font-size: 14px;
-  line-height: 1.4;
-  opacity: 0.55;
-}
+/* NB no text sizing lives here. `.terminal-theme *` sets font-size: 1.5rem at class
+ * specificity and wins the tie by source order, so a rule in this file would lose
+ * silently — FormField's caption/hint sizes are inline (the house primitive pattern,
+ * see StaffPageHeader). This file carries only geometry the base theme leaves free. */
 
 /* The 44px tap floor, componentised (audit finding #11). Direct children only, so a
  * caller that nests its own markup still gets the floor on the control it passes. */
@@ -73,6 +66,27 @@
 .bui-field > input:focus-visible,
 .bui-field > select:focus-visible,
 .bui-field > textarea:focus-visible {
+  outline: 2px solid var(--terminal-green);
+  outline-offset: 1px;
+}
+
+/* ── ToggleSwitch ──────────────────────────────────────────────────────────────
+ * The control is a native checkbox (see ToggleSwitch.tsx for why it is not a
+ * `button[role="switch"]`), hidden visually but left focusable and clickable through
+ * its label. `.bui-switch input[type="checkbox"]` (0,2,1) out-specifies the base
+ * `.terminal-theme input[type="checkbox"]` (0,2,0) 20px sizing without !important. */
+.bui-switch input[type="checkbox"] {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  min-width: 0;
+  margin: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* The focus ring the hidden input can no longer show for itself. */
+.bui-switch:focus-within {
   outline: 2px solid var(--terminal-green);
   outline-offset: 1px;
 }

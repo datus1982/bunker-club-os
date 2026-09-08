@@ -41,13 +41,17 @@ export function FormField({
   children: ReactNode;
   style?: CSSProperties;
 }) {
+  // Text sizes are INLINE, not in the stylesheet: `.terminal-theme *` sets
+  // font-size: 1.5rem at the same specificity a class rule has, and wins the tie by
+  // order — only an inline style (or !important, which this phase forbids) beats it.
+  // The stylesheet therefore carries only geometry the theme leaves alone.
   const foot =
     error != null ? (
-      <span className="bui-field-hint u-amber" style={{ opacity: 1 }}>
+      <span className="u-amber" style={{ ...footStyle, opacity: 1 }}>
         {error}
       </span>
     ) : hint != null ? (
-      <span className="bui-field-hint">{hint}</span>
+      <span style={footStyle}>{hint}</span>
     ) : null;
 
   if (group) {
@@ -58,7 +62,7 @@ export function FormField({
         aria-label={typeof label === "string" ? label : undefined}
         style={style}
       >
-        <span className="bui-field-label">{label}</span>
+        <span style={labelStyle}>{label}</span>
         {children}
         {foot}
       </div>
@@ -67,9 +71,12 @@ export function FormField({
 
   return (
     <label className="bui-field" htmlFor={htmlFor} style={style}>
-      <span className="bui-field-label">{label}</span>
+      <span style={labelStyle}>{label}</span>
       {children}
       {foot}
     </label>
   );
 }
+
+const labelStyle: CSSProperties = { fontSize: 15, letterSpacing: 1, opacity: 0.7 };
+const footStyle: CSSProperties = { fontSize: 14, lineHeight: 1.4, opacity: 0.55 };

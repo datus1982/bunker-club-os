@@ -1,18 +1,27 @@
 import type { CSSProperties, ReactNode } from "react";
+import "@/theme/staff-form.css";
 
 /**
  * An on/off control that reads at a glance on a phone (audit §5 #5).
  *
- * A real `<button role="switch" aria-checked>` — so Space/Enter toggle it for free and
- * a screen reader announces the state — with a visible ON/OFF word beside the track.
- * The word matters: a bare coloured track on a monochrome green terminal theme is not
- * a state anyone can read across a bar.
+ * SHAPE — and why it is not a `<button role="switch">`: terminal-theme.css carries a
+ * legacy Radix-switch rule, `.terminal-theme button[role="switch"] span { background:
+ * var(--terminal-green) !important }`, which paints EVERY span inside such a button
+ * solid green — a caption inside one renders as an unreadable green bar (seen live
+ * while building this). That rule may not be touched (RULE #1) and !important cannot
+ * be out-specified. So the control is the other documented ARIA switch: a native
+ * `<input type="checkbox" role="switch">`, visually hidden inside its label, with the
+ * track drawn beside it. Native keyboard (Space), native `disabled`, native focus, and
+ * `aria-checked` derived from `checked` — nothing hand-rolled.
  *
- * `disabled` renders dim + LOCKED and is used for "admin implies every module": the
- * grant is genuinely on, and genuinely not editable.
+ * The visible ON/OFF word is deliberate: a coloured track alone is not a state anyone
+ * can read across a bar on a monochrome green theme.
  *
- * Whole row is ≥44px (the app's tap floor). Motion is a 120ms transform, matching the
- * shell drawer; nothing here animates forever (display-route rule, kept app-wide).
+ * `disabled` renders dim + LOCKED — used for "admin implies every module": the grant
+ * is genuinely on, and genuinely not editable.
+ *
+ * Row is ≥44px (the app's tap floor). Motion is a 120ms transform, matching the shell
+ * drawer; nothing here animates forever.
  */
 export function ToggleSwitch({
   checked,
@@ -35,13 +44,8 @@ export function ToggleSwitch({
   style?: CSSProperties;
 }) {
   return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={checked}
-      aria-label={ariaLabel}
-      disabled={disabled}
-      onClick={() => !disabled && onChange(!checked)}
+    <label
+      className="bui-switch"
       style={{
         ...row,
         opacity: disabled ? 0.55 : 1,
@@ -49,6 +53,14 @@ export function ToggleSwitch({
         ...style,
       }}
     >
+      <input
+        type="checkbox"
+        role="switch"
+        checked={checked}
+        disabled={disabled}
+        aria-label={ariaLabel}
+        onChange={(e) => onChange(e.target.checked)}
+      />
       {label != null && <span style={labelStyle}>{label}</span>}
       <span style={{ ...state, color: checked ? "var(--terminal-green)" : "#8a8f8a" }}>
         {disabled ? lockedHint : checked ? "ON" : "OFF"}
@@ -69,20 +81,19 @@ export function ToggleSwitch({
           }}
         />
       </span>
-    </button>
+    </label>
   );
 }
 
 const row: CSSProperties = {
+  position: "relative",
   display: "flex",
   alignItems: "center",
   gap: 10,
   width: "100%",
   minHeight: 44,
   padding: "0 10px",
-  textAlign: "left",
-  background: "transparent",
-  color: "var(--terminal-green)",
+  boxSizing: "border-box",
   border: "1px solid rgba(0,255,65,0.28)",
 };
 const labelStyle: CSSProperties = { fontSize: 17, letterSpacing: 0.5, flex: "1 1 auto", minWidth: 0 };
@@ -94,6 +105,7 @@ const track: CSSProperties = {
   width: 44,
   height: 22,
   padding: 1,
+  boxSizing: "border-box",
   border: "1px solid",
 };
 const knob: CSSProperties = {

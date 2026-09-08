@@ -62,7 +62,11 @@ export function UsersV2({
     onSubmit: (e: React.FormEvent) => void;
   };
 }) {
+  // A whole-form problem (nothing typed, too many addresses, the edge fn refusing) comes
+  // back as a synthetic `—` result row. Show it ONCE, as the field's error line, and keep
+  // the results list for real per-address outcomes.
   const inviteError = invite.results?.find((r) => r.status === "error" && r.email === "—");
+  const perAddressResults = invite.results?.filter((r) => r.email !== "—") ?? [];
 
   return (
     <div style={{ padding: "20px clamp(14px, 4vw, 48px) 40px" }}>
@@ -126,9 +130,9 @@ export function UsersV2({
           </span>
         </div>
 
-        {invite.results && (
+        {perAddressResults.length > 0 && (
           <div style={{ marginTop: 14, borderTop: "1px solid rgba(0,255,65,0.25)", paddingTop: 12 }}>
-            {invite.results.map((r, i) => (
+            {perAddressResults.map((r, i) => (
               <div
                 key={`${r.email}-${i}`}
                 className={r.status === "error" ? "u-amber" : undefined}
@@ -171,7 +175,7 @@ export function UsersV2({
       )}
 
       <div style={{ fontSize: 15, opacity: 0.55, marginTop: 18 }}>
-        Admins implicitly hold every module (shown ON &amp; locked). Changes save instantly — no redeploy.
+        Admins implicitly hold every module (granted &amp; locked). Changes save instantly — no redeploy.
       </div>
     </div>
   );
@@ -259,17 +263,24 @@ function StaffTable({
   onRemove: (row: StaffRow) => void;
 }) {
   return (
-    // DECISION: no minWidth here (classic pins 720px). v2 renders this table only at
-    // ≥640px, and the columns measure ~700px at 1024 — the overflowX guard stays as the
-    // honest fallback for the 640–700 band instead of forcing a scroll at every width.
+    // DECISION: keep classic's `minWidth: 720`. Measured natural width of this table is
+    // 1126px at a 1024 window / 1184px at 1280 (real data, 3 accounts) — the email column
+    // is the long pole — so the pin is inert at desktop widths and only does work in the
+    // 640–720 band, where it makes the container scroll instead of squeezing columns.
+    // Dropping it would not have made the table fit 1024; it would only have removed a
+    // guard. Either way the PAGE never scrolls sideways: the overflow is this box's.
     <div style={{ overflowX: "auto" }}>
-      <table style={{ borderCollapse: "collapse", width: "100%", fontSize: 18 }}>
+      <table style={{ borderCollapse: "collapse", width: "100%", minWidth: 720, fontSize: 18 }}>
         <thead>
           <tr>
             <th style={th}>EMAIL</th>
             <th style={th}>ROLE</th>
             {ALL_MODULES.map((m) => (
-              <th key={m} style={{ ...th, textAlign: "center" }}>{moduleLabel(m)}</th>
+              // Module captions WRAP (the rest of the header row does not): "EVENTS &
+              // PROMOS" on one line pushed the natural table width past a 1024px window.
+              <th key={m} style={{ ...th, textAlign: "center", whiteSpace: "normal", maxWidth: 96 }}>
+                {moduleLabel(m)}
+              </th>
             ))}
             <th style={th} />
           </tr>
