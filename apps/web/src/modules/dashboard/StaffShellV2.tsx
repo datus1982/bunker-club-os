@@ -52,6 +52,7 @@ export function StaffShellV2() {
           roleLabel={`VIEWING AS ${(role ?? "—").toUpperCase()}`}
           onSignOut={signOut}
           extra={<UiVersionToggle />}
+          locationKey={location.key}
         />
       )}
       <Outlet />

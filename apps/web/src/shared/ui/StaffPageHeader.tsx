@@ -31,10 +31,12 @@ export function StaffPageHeader({
     <div style={{ ...wrap, ...style }}>
       {eyebrow != null && <div style={eyebrowStyle}>{eyebrow}</div>}
       <div style={row}>
-        <h2 className="u-head" style={titleStyle}>
+        {/* A heading-role div, not <h2>: `.terminal-theme h2 { font-size: 2rem !important }`
+            would pin an <h2> at 32px and silently defeat the responsive clamp below. */}
+        <div role="heading" aria-level={2} className="u-head" style={titleStyle}>
           {title}
           {tag != null && <span style={tagStyle}>{tag}</span>}
-        </h2>
+        </div>
         {right != null && <div style={{ display: "flex", alignItems: "center", gap: 8 }}>{right}</div>}
       </div>
     </div>

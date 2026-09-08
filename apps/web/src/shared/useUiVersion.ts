@@ -56,7 +56,7 @@ export function useUiVersion(): [UiVersion, (v: UiVersion) => void] {
     setVersion(read());
     // Other tabs on this device: keep them honest too.
     const onStorage = (e: StorageEvent) => {
-      if (e.key === KEY) setVersion(read());
+      if (e.key === KEY || e.key === null) setVersion(read());
     };
     window.addEventListener("storage", onStorage);
     return () => {

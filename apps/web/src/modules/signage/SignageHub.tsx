@@ -268,7 +268,7 @@ export function SignageHub({ openQueueSlug }: { openQueueSlug?: string }) {
   const location = useLocation();
   useEffect(() => {
     const id = location.hash.replace(/^#/, "");
-    if (!(id in HASH_SECTIONS)) return;
+    if (!Object.hasOwn(HASH_SECTIONS, id)) return;
     const collapseKey = HASH_SECTIONS[id];
     if (collapseKey) requestOpenHubSection(collapseKey);
     // The hub's sections fill in asynchronously (the media grid is hundreds of cards), so

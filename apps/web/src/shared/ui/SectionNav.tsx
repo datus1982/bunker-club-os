@@ -45,6 +45,7 @@ export function SectionNav({
   roleLabel,
   onSignOut,
   extra,
+  locationKey,
 }: {
   brand?: string;
   /** HOME entry, or null when the viewer can't see it. */
@@ -58,6 +59,9 @@ export function SectionNav({
   onSignOut: () => void;
   /** Shell-level extras (the classic/v2 switch) — desktop top row + drawer footer. */
   extra?: ReactNode;
+  /** Router `location.key` — the drawer closes on ANY route change, including browser
+   *  back/forward (link taps alone would miss those; classic closes on pathname). */
+  locationKey?: string;
 }) {
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
@@ -66,6 +70,8 @@ export function SectionNav({
 
   // Drop the drawer when we cross up to the desktop bar.
   useEffect(() => { if (!isMobile) setOpen(false); }, [isMobile]);
+  // Close on every navigation (covers hardware/browser back, not just our own links).
+  useEffect(() => { setOpen(false); }, [locationKey]);
 
   const activeSection = sections.find((s) => s.label === activeSectionLabel);
   const activeChild =

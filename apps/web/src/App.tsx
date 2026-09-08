@@ -193,8 +193,8 @@ export function App() {
         <Route path="/signage/screens/:slug" element={<RequireModule module="signage"><EditRotation /></RequireModule>} />
         {/* Retired tabs (folded into the hub). CLASSIC redirects silently, exactly as it
             always has; the v2 shell says where the tool went instead (audit finding #6). */}
-        <Route path="/signage/broadcast" element={<BroadcastMoved />} />
-        <Route path="/signage/events" element={<EventsMoved />} />
+        <Route path="/signage/broadcast" element={<RequireModule module="signage"><BroadcastMoved /></RequireModule>} />
+        <Route path="/signage/events" element={<RequireModule module="signage"><EventsMoved /></RequireModule>} />
         <Route path="/admin/drinks" element={<RequireModule module="drinks"><DrinksAdmin /></RequireModule>} />
         <Route path="/admin/seasons" element={<RequireRole role="admin"><SeasonsAdmin /></RequireRole>} />
         <Route path="/admin/users" element={<RequireRole role="admin"><Users /></RequireRole>} />
