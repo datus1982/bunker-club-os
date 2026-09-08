@@ -1,0 +1,78 @@
+/* ===== SHARED STAFF FORM CONTROLS (UX overhaul Beat 2) =========================
+ * The one place a staff form control gets its size. Audit finding #13: the base
+ * theme force-sizes every button/input/select via cascading !important, so builders
+ * kept re-declaring inline `input` style objects per page and they drifted ("sizes
+ * all over the place", PR #14). `FormField` renders `.bui-field` around exactly one
+ * native control and this file pins the shape ONCE.
+ *
+ * Scoped entirely under `.bui-field` (only FormField emits it) — nothing existing can
+ * see these rules, and NO rule was added to terminal-theme.css (RULE #1).
+ *
+ * No !important anywhere in this file: the base theme sets font-size on controls with
+ * !important (we deliberately do not fight that — 19px inputs / 20px buttons is the
+ * ratified staff scale) but leaves height, color, border and padding free.
+ *
+ * Sizes are px on the element that renders the text: `.terminal-theme *` sets
+ * font-size on EVERY element, so nothing inherits font-size in this app.
+ * ============================================================================ */
+
+.bui-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.bui-field-label {
+  font-size: 15px;
+  letter-spacing: 1px;
+  opacity: 0.7;
+}
+
+.bui-field-hint {
+  font-size: 14px;
+  line-height: 1.4;
+  opacity: 0.55;
+}
+
+/* The 44px tap floor, componentised (audit finding #11). Direct children only, so a
+ * caller that nests its own markup still gets the floor on the control it passes. */
+/* NB the base theme already forces background/border-color/color on every control with
+ * !important (`.terminal-theme input,textarea,select` and `.terminal-theme button`), so
+ * this file deliberately does NOT restate them — a declaration here would lose silently
+ * and read as a lie. Only the geometry the theme leaves free is set. */
+.bui-field > input,
+.bui-field > select,
+.bui-field > textarea,
+.bui-field > button {
+  min-height: 44px;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  border-width: 1px;
+  border-style: solid;
+  cursor: pointer;
+}
+
+.bui-field > input,
+.bui-field > textarea {
+  cursor: text;
+}
+
+.bui-field > textarea {
+  resize: vertical;
+}
+
+.bui-field > input:disabled,
+.bui-field > select:disabled,
+.bui-field > textarea:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.bui-field > input:focus-visible,
+.bui-field > select:focus-visible,
+.bui-field > textarea:focus-visible {
+  outline: 2px solid var(--terminal-green);
+  outline-offset: 1px;
+}
