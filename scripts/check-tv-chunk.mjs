@@ -48,6 +48,8 @@ const STAFF_CHUNK_PATTERNS = [
   /^Users/,
   /^Scoring/,
   /^SignageHub/,
+  /^FormField-/, //                the shared/ui primitives chunk (carries useUiVersion + staff-form.css)
+  /^ui-/, //                       trivia/ui.tsx — host-console styles
 ];
 
 /** Case-sensitive substrings that prove staff code got into a display chunk. */
@@ -164,7 +166,11 @@ function closureOf(loader) {
     }
     for (const m of src.matchAll(DYN_RE)) {
       const dep = basename(m[1]);
-      if (dep !== ENTRY) dynamic.add(dep);
+      if (dep === ENTRY) continue;
+      dynamic.add(dep);
+      // WALK it, don't just scan it: a lazy-loaded chunk's own static imports are part of what
+      // the TV would fetch once that import() fires (reviewer WARN-1, #108).
+      if (!seen.has(dep)) queue.push(dep);
     }
   }
   return { files: [...seen].sort(), dynamic: [...dynamic].sort() };
@@ -207,13 +213,16 @@ for (const loader of loaderFiles) {
     );
   }
   if (!preload) {
-    infos.push(
+    // A missing preload table means the TV's CSS is NOT covered (sv2-/bui- markers live there
+    // too). Silently passing would let a Vite bump quietly narrow the gate (reviewer NOTE-2) —
+    // so it is a violation: fix the parser, don't ship blind.
+    violations.push(
       `${loader}: preload list not parsed${mapDepsNote ? ` (${mapDepsNote})` : ""} — ` +
-        `static-import closure is the hard check; CSS not covered for this loader`
+        `CSS is not covered for this loader; update the __vite__mapDeps parser in this script`
     );
   }
   if (dynamic.length) {
-    infos.push(`${loader}: closure contains nested dynamic import(s): ${dynamic.join(", ")} (scanned under the same rules)`);
+    infos.push(`${loader}: closure contains nested dynamic import(s): ${dynamic.join(", ")} (walked + scanned under the same rules)`);
   }
 
   // Rule A — no staff chunk by name.
