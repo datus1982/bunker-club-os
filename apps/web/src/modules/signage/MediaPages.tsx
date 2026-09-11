@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { Navigate } from "react-router-dom";
+import { useCallback, useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
+import { Navigate, useSearchParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { useUiVersion } from "@/shared/useUiVersion";
-import { EmptyState, ScreenCard, StaffPageHeader, StatusChip } from "@/shared/ui";
+import { EmptyState, FormField, ScreenCard, StaffPageHeader, StatusChip } from "@/shared/ui";
 import { useIsMobile } from "@/shared/useIsMobile";
 import { screenHealth, useAdminSlots, useLiveGame, useSlotsRealtime, useTakeovers, type AdminSlot } from "./useSignageAdmin";
 import { activeMoment, useCloseoutHour, useLiveEvents, useTriviaArmedEffective, useVenue, type SlotMode } from "./useSignage";
@@ -42,6 +42,10 @@ import "./signage.css";
  * calls), never its own opinion of what a TV is playing.
  *
  * Sizes are inline px: nothing inherits font-size under `.terminal-theme` (PR #89).
+ *
+ * Beat 5 gives LIBRARY the search/filter/paging it was promised (#104 NOTE-3 + NOTE-4) and
+ * the v2 panels their 44px controls. Still no new media feature: nothing here reads, writes
+ * or resolves anything the hub did not already.
  */
 
 /**
@@ -87,6 +91,20 @@ function MediaPage({ title, tag, right, children }: {
 }
 
 /* ── MEDIA ▸ LIBRARY ───────────────────────────────────────────────────────── */
+
+/**
+ * How many cards render before the operator asks for more (Beat 5, closes #104 NOTE-4).
+ * The unbounded grid was 118,799px tall at 390px — 504 cards, nothing collapsible, and the
+ * card an operator actually wanted was somewhere in the middle of it.
+ */
+const PAGE_SIZE = 48;
+
+type StatusFilter = "all" | "present" | "missing" | "unsupported";
+const STATUS_FILTERS: StatusFilter[] = ["all", "present", "missing", "unsupported"];
+function readStatus(raw: string | null): StatusFilter {
+  return (STATUS_FILTERS as string[]).includes(raw ?? "") ? (raw as StatusFilter) : "all";
+}
+
 export function MediaLibraryPage() {
   const filesQ = useMediaFiles();
   const slotsQ = useAdminSlots();
@@ -98,7 +116,75 @@ export function MediaLibraryPage() {
   const screens = useMemo(() => (slotsQ.data ?? []).filter(isMediaCapableSlot), [slotsQ.data]);
   const hasSchedule = (slotId: string) => ((schedulesQ.data?.get(slotId)?.length ?? 0) > 0);
 
-  const present = files.filter((f) => f.status === "present").length;
+  // ── the filter state lives in the URL ──────────────────────────────────────
+  // DECISION: search text + chips are query params, not component state. A filtered library is
+  // the thing worth sending someone ("the six missing files": /media/library?status=missing), and
+  // it survives the reload a phone gives you when it reclaims a backgrounded tab. Written with
+  // `replace`, so a search does not build a history stack the BACK button has to walk out of.
+  const [params, setParams] = useSearchParams();
+  const urlQuery = params.get("q") ?? "";
+  const status = readStatus(params.get("status"));
+  const noSubsOnly = params.get("subs") === "0";
+
+  const setParam = useCallback((key: string, value: string | null) => {
+    setParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (value === null || value === "") next.delete(key);
+      else next.set(key, value);
+      return next;
+    }, { replace: true });
+  }, [setParams]);
+
+  // The input is LOCAL and the URL follows ~150ms behind it: a param write per keystroke would
+  // re-run the 504-row filter (and a router navigation) on every character. Seeded from the URL
+  // so a bookmark/reload restores the typed text.
+  const [text, setText] = useState(urlQuery);
+  useEffect(() => {
+    if (text === urlQuery) return;
+    const id = window.setTimeout(() => setParam("q", text.trim() === "" ? null : text), 150);
+    return () => window.clearTimeout(id);
+  }, [text, urlQuery, setParam]);
+
+  // ── filtering (client-side over the already-fetched array — one query, no refetch) ──
+  const needle = urlQuery.trim().toLowerCase();
+  const searched = useMemo(() => {
+    if (needle === "") return files;
+    // Title AND file name: the title is what the hub renames a file to, the file name is what
+    // the folder on the media PC still calls it, and an operator may know either one.
+    return files.filter((f) => `${f.title ?? ""} ${f.filename}`.toLowerCase().includes(needle));
+  }, [files, needle]);
+
+  // Chip counts are totals FOR THE CURRENT SEARCH, so "star" + MISSING reads as a real answer
+  // ("2 of the 9 Star files are gone") rather than a library-wide number next to a filtered grid.
+  const counts = useMemo(() => ({
+    all: searched.length,
+    present: searched.filter((f) => f.status === "present").length,
+    missing: searched.filter((f) => f.status === "missing").length,
+    unsupported: searched.filter((f) => f.status === "unsupported").length,
+    noSubs: searched.filter((f) => !f.has_subtitles).length,
+  }), [searched]);
+
+  const filtered = useMemo(
+    () => searched.filter((f) => (status === "all" || f.status === status) && (!noSubsOnly || !f.has_subtitles)),
+    [searched, status, noSubsOnly],
+  );
+
+  // ── paging ────────────────────────────────────────────────────────────────
+  // Order is whatever useMediaFiles returns — media_files ordered by `filename`, then `id` as a
+  // stable tiebreak for its range paging. No sort control here: a second ordering would change
+  // what "the first 48" means on a surface whose whole job this beat is to make findable.
+  const [shown, setShown] = useState(PAGE_SIZE);
+  useEffect(() => { setShown(PAGE_SIZE); }, [needle, status, noSubsOnly]);
+  const visible = useMemo(() => filtered.slice(0, shown), [filtered, shown]);
+  const remaining = filtered.length - visible.length;
+
+  const filterActive = needle !== "" || status !== "all" || noSubsOnly;
+  const clearAll = () => {
+    setText("");
+    setParams(new URLSearchParams(), { replace: true });
+  };
+
+  const present = counts.present;
   const missing = files.filter((f) => f.status === "missing").length;
   // The header tag never wraps (StaffPageHeader pins `nowrap` so a count can't split mid-phrase),
   // so the full three-part line pushes a 390px phone into horizontal scroll. Phones get the two
@@ -106,17 +192,14 @@ export function MediaLibraryPage() {
   const narrow = useIsMobile();
   const tag = filesQ.isLoading
     ? "LOADING…"
-    : narrow
-      ? `${files.length} FILE${files.length === 1 ? "" : "S"} · ${missing} MISSING`
-      : `${files.length} FILE${files.length === 1 ? "" : "S"} · ${present} PRESENT · ${missing} MISSING`;
+    : filterActive
+      ? `${filtered.length} OF ${files.length} FILE${files.length === 1 ? "" : "S"}`
+      : narrow
+        ? `${files.length} FILE${files.length === 1 ? "" : "S"} · ${missing} MISSING`
+        : `${files.length} FILE${files.length === 1 ? "" : "S"} · ${present} PRESENT · ${missing} MISSING`;
 
   return (
     <MediaPage title="LIBRARY" tag={tag}>
-      {/* DECISION: the grid is the hub section's grid, unbounded and unfiltered. Inside the
-          hub it was DEFAULT-COLLAPSED, which is what kept 504 cards out of the way; on its
-          own page nothing collapses it, so this is a long page (the header tag carries the
-          counts). A search/filter box is the obvious next beat — it is a FEATURE, and this
-          beat is organisation only, so it is not smuggled in here. */}
       {!filesQ.isLoading && files.length === 0 ? (
         // Same sentence the hub section shows — ingestion is folder-drop on the media PC,
         // there is no upload path on this page either.
@@ -125,11 +208,114 @@ export function MediaLibraryPage() {
           message="Drop video files into the watched folder on the media PC (~/BunkerMedia by default) — the shell probes each file and reports it here. Subfolders become auto-playlists."
         />
       ) : (
-        <MediaLibraryPanel files={files} loading={filesQ.isLoading} screens={screens} hasSchedule={hasSchedule} />
+        <>
+          <LibraryFilters
+            text={text}
+            onText={setText}
+            status={status}
+            onStatus={(next) => setParam("status", next === "all" ? null : next)}
+            counts={counts}
+            noSubsOnly={noSubsOnly}
+            onNoSubs={() => setParam("subs", noSubsOnly ? null : "0")}
+          />
+
+          {!filesQ.isLoading && filtered.length === 0 ? (
+            <EmptyState
+              eyebrow="NOTHING MATCHES"
+              message="No file in the library matches that search and those filters."
+              actionLabel="CLEAR FILTERS"
+              onAction={clearAll}
+            />
+          ) : (
+            <>
+              <MediaLibraryPanel files={visible} loading={filesQ.isLoading} screens={screens} hasSchedule={hasSchedule} variant="v2" />
+              {remaining > 0 && (
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 14 }}>
+                  <button type="button" onClick={() => setShown((n) => n + PAGE_SIZE)} style={pageBtn}>
+                    SHOW {Math.min(PAGE_SIZE, remaining)} MORE ({remaining} LEFT)
+                  </button>
+                  <button type="button" onClick={() => setShown(filtered.length)} style={pageBtn}>SHOW ALL</button>
+                </div>
+              )}
+            </>
+          )}
+        </>
       )}
     </MediaPage>
   );
 }
+
+/** Search box + status chips. Dumb: the page owns every piece of state and the URL. */
+function LibraryFilters({ text, onText, status, onStatus, counts, noSubsOnly, onNoSubs }: {
+  text: string;
+  onText: (v: string) => void;
+  status: StatusFilter;
+  onStatus: (next: StatusFilter) => void;
+  counts: Record<StatusFilter | "noSubs", number>;
+  noSubsOnly: boolean;
+  onNoSubs: () => void;
+}) {
+  const label: Record<StatusFilter, string> = {
+    all: "ALL", present: "PRESENT", missing: "MISSING", unsupported: "UNSUPPORTED",
+  };
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 10, margin: "0 0 16px" }}>
+      <div style={{ display: "flex", gap: 8, alignItems: "flex-end", flexWrap: "wrap" }}>
+        <FormField label="SEARCH THE LIBRARY" style={{ flex: "1 1 260px" }}>
+          <input
+            type="search"
+            value={text}
+            onChange={(e) => onText(e.target.value)}
+            placeholder="TITLE OR FILE NAME"
+            aria-label="Search the library by title or file name"
+            style={{ fontFamily: MONO }}
+          />
+        </FormField>
+        {text !== "" && (
+          <button type="button" onClick={() => onText("")} aria-label="Clear the search" style={{ ...chipBtn, alignSelf: "flex-end" }}>✕ CLEAR</button>
+        )}
+      </div>
+
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        {STATUS_FILTERS.map((k) => {
+          const on = status === k;
+          return (
+            <button
+              key={k}
+              type="button"
+              onClick={() => onStatus(k)}
+              aria-pressed={on}
+              className={on ? "u-fill u-ink" : ""}
+              style={on ? { ...chipBtn, ...chipOn } : chipBtn}
+            >{label[k]} ({counts[k]})</button>
+          );
+        })}
+        {/* Subtitle coverage is a real standing question at the bar (351/361 films carry a
+            sidecar .srt), so the one extra axis worth a chip is the gap itself. */}
+        <button
+          type="button"
+          onClick={onNoSubs}
+          aria-pressed={noSubsOnly}
+          title="Only files with no sidecar subtitle track"
+          className={noSubsOnly ? "u-fill u-ink" : ""}
+          style={noSubsOnly ? { ...chipBtn, ...chipOn } : chipBtn}
+        >NO SUBTITLES ({counts.noSubs})</button>
+      </div>
+    </div>
+  );
+}
+
+/** Filter chip / clear button. No `fontSize`: `.staff-ui button` pins button text at 20px
+ *  !important, so a size here would be a lie. Both axes carry the 44px floor. */
+const chipBtn: CSSProperties = {
+  fontFamily: MONO, letterSpacing: 1, color: "var(--terminal-green)",
+  border: "1px solid var(--terminal-green)", background: "transparent",
+  padding: "0 14px", minHeight: 44, minWidth: 44, cursor: "pointer", whiteSpace: "nowrap",
+};
+/** Selected chip. `u-fill u-ink` is what actually paints it — `.terminal-theme *` forces
+ *  green on every element, so the inline colours alone would render green-on-green. */
+const chipOn: CSSProperties = { background: "var(--terminal-green)", color: "#000", fontWeight: 700 };
+const pageBtn: CSSProperties = { ...chipBtn, padding: "0 18px" };
 
 /* ── MEDIA ▸ PLAYLISTS ─────────────────────────────────────────────────────── */
 export function MediaPlaylistsPage() {
@@ -164,6 +350,7 @@ export function MediaPlaylistsPage() {
           initial={editing === "new" ? null : editing}
           files={files}
           onClose={() => setEditing(null)}
+          variant="v2"
         />
       )}
     </MediaPage>
