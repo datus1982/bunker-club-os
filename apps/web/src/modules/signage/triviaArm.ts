@@ -1,5 +1,6 @@
 import { useLiveGame, type LiveGameRow } from "./useSignageAdmin";
-import { useTriviaArmedEffective } from "./useSignage";
+import { useCloseoutHour, useTriviaArmedEffective, useVenue } from "./useSignage";
+import { venueBusinessDay } from "./venueTime";
 
 /**
  * THE TRIVIA ARM STATE — one definition, called by every staff surface that reports it.
@@ -25,12 +26,41 @@ import { useTriviaArmedEffective } from "./useSignage";
  * is a DIFFERENT question (today's game by venue date, for the Tonight card) and must not
  * be substituted here.
  *
+ * WHEN the game is matters as much as whether it exists (PR 2 review, WARN-1). `useLiveGame`
+ * ignores the date on purpose — the TV must show a game that is genuinely running past
+ * midnight — but an `active` game nobody ever ended keeps looking "live" for days, and a
+ * `setup` deck built for next Wednesday is not tonight's problem at all. So the state also
+ * carries the game's relation to the venue BUSINESS day (04:00 closeout: a Wednesday game at
+ * 1 AM Thursday is still tonight), and the ALERT surfaces read `alertNotArmed` rather than
+ * `gameOffScreens`. The three original booleans are byte-identical arithmetic — they feed the
+ * hub's MODE chips and the TV-parity claim, and nothing about what the TV shows has changed.
+ *
  * This module is deliberately free of JSX and of any hub import, so a page outside
  * `modules/signage` can call it without dragging the hub's component graph into its chunk.
  */
 
+/** Where the live game sits relative to the venue's current business day. */
+export type GameWhen = "tonight" | "past" | "future";
+
 /** The three mutually-exclusive sentences, plus their inputs. */
 export interface TriviaArmState {
+  /** Where the game sits relative to the venue business day; null when there is no game. */
+  when: GameWhen | null;
+  /** The game is the one the bar is running (or about to) tonight. A game with NO date is
+   *  treated as tonight — fail LOUD: a row that reached the TV resolver is a live thing. */
+  gameIsTonight: boolean;
+  /** Dated before tonight and still open — almost always "nobody pressed END GAME". */
+  gameIsPast: boolean;
+  /** A deck built for a later night. Not tonight's problem, and must raise no alarm. */
+  gameIsFuture: boolean;
+  /**
+   * Should a STAFF ALERT surface say something? Not armed, AND either the game is actually
+   * running (active/paused, any date — a stale one still needs ending) or it is tonight's
+   * un-started deck. A FUTURE `setup` deck raises nothing: building next week's game is not
+   * a fault, and nagging about it is the bug this boolean fixes.
+   * `gameOffScreens` deliberately keeps its old meaning for MODE/parity readers.
+   */
+  alertNotArmed: boolean;
   /** Trivia is EFFECTIVELY armed (nightly expiry already applied). */
   armed: boolean;
   /** A game exists that the TVs would show if armed (setup/active/paused, any date). */
@@ -44,17 +74,48 @@ export interface TriviaArmState {
 }
 
 /**
- * Pure derivation. Exported so the three sentences can be exercised against fixtures
- * without a DB, a clock or a React tree.
+ * Pure derivation. Exported so every sentence can be exercised against fixtures without a
+ * DB, a clock or a React tree. `game` is the live row (or null); `today` is the venue
+ * business day as `YYYY-MM-DD`.
  */
-export function deriveTriviaArmState(armed: boolean, hasGame: boolean): TriviaArmState {
+export function deriveTriviaArmState(
+  armed: boolean,
+  game: Pick<LiveGameRow, "status" | "game_date"> | null,
+  today?: string | null,
+): TriviaArmState {
+  const hasGame = !!game;
+  // No date, or no business day resolved yet (the venue/closeout queries are still in
+  // flight) → treat the game as tonight. Fail LOUD: better one honest nag than a silent
+  // "nothing to see here" on the one night it matters.
+  const when: GameWhen | null = !game
+    ? null
+    : !game.game_date || !today
+    ? "tonight"
+    : game.game_date === today
+    ? "tonight"
+    : game.game_date < today
+    ? "past"
+    : "future";
+  const running = game?.status === "active" || game?.status === "paused";
   return {
     armed,
     hasGame,
+    when,
+    gameIsTonight: when === "tonight",
+    gameIsPast: when === "past",
+    gameIsFuture: when === "future",
+    // BYTE-IDENTICAL to the pre-review arithmetic — MODE chips and TV parity read these.
     gameOnScreens: hasGame && armed,
     gameOffScreens: hasGame && !armed,
     armedNoGame: armed && !hasGame,
+    alertNotArmed: !armed && (running || (game?.status === "setup" && when === "tonight")),
   };
+}
+
+/** `YYYY-MM-DD` of the venue business day containing `at` (04:00 closeout aware). */
+export function venueBusinessDate(at: Date, tz: string, closeoutHour: number): string {
+  const { y, m1, d } = venueBusinessDay(at, tz, closeoutHour);
+  return `${y}-${String(m1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
 }
 
 /**
@@ -65,5 +126,11 @@ export function deriveTriviaArmState(armed: boolean, hasGame: boolean): TriviaAr
 export function useTriviaArmState(): TriviaArmState & { liveGame: LiveGameRow | null } {
   const armed = useTriviaArmedEffective().armed;
   const liveGame = useLiveGame().data ?? null;
-  return { ...deriveTriviaArmState(armed, !!liveGame), liveGame };
+  // The SAME venue clock the arm expiry is derived against (useTriviaArmedEffective reads
+  // both of these too, so this adds no query): a game belongs to the business day it
+  // started, not to the browser's calendar date.
+  const tz = useVenue().data?.timezone ?? "America/Chicago";
+  const closeout = useCloseoutHour().data ?? 4;
+  const today = venueBusinessDate(new Date(), tz, closeout);
+  return { ...deriveTriviaArmState(armed, liveGame, today), liveGame };
 }

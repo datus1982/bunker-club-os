@@ -155,7 +155,7 @@ export function SignageHub({ openQueueSlug }: { openQueueSlug?: string }) {
   // game resolved the TV's way) now live ONCE, in `triviaArm.ts`, because HOME's alert strip reports
   // the same fact (Beat 6 PR 2, code note N8) and two copies would be two answers. Byte-for-byte the
   // same arithmetic on the same inputs as before the hoist.
-  const { liveGame, gameOnScreens, gameOffScreens, armedNoGame } = useTriviaArmState();
+  const { liveGame, gameOnScreens, gameOffScreens, alertNotArmed, armedNoGame } = useTriviaArmState();
   const moment = activeMoment(liveEvents);
   const eventLabel = moment ? `${moment.event.name.toUpperCase()} · ${moment.stage.toUpperCase()}` : null;
   const staleGameDate =
@@ -314,7 +314,7 @@ export function SignageHub({ openQueueSlug }: { openQueueSlug?: string }) {
       events, pastEvents, eventsLoading: eventsQ.isLoading,
       featured: featuredItems(toastRows),
       now, venueClock, canEvents,
-      gameOffScreens, armedNoGame, eventLabel, staleGameDate,
+      gameOffScreens, alertNotArmed, armedNoGame, eventLabel, staleGameDate,
       modeFor, programLabelFor, overrideHoldFor, takeoverMessageFor, scheduleCountFor, transportPlaylistFor,
       overlay, setOverlay,
       overflowSlot,

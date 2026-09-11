@@ -150,13 +150,19 @@ export interface HomeAlert {
  * Hub) ALREADY read — no new table, column, RPC or query shape, per the beat's RULE #1.
  *
  * Sources, in the order they appear:
- *   1/2. the trivia arm — `triviaArm.ts`, the SAME function the hub's two notices use,
- *        so HOME and the hub can never disagree about whether trivia is on the screens.
- *   3.   screen heartbeats — `screenHealth(last_seen)`, the same derivation the STATUS
- *        card below renders. OFFLINE is a true failure (red); STALE is amber.
+ *   1/2. the trivia arm — `triviaArm.ts`, the SAME function the hub's notice uses, so HOME
+ *        and the hub can never disagree about whether trivia is on the screens. The gate is
+ *        `alertNotArmed`, which is silent on a FUTURE `setup` deck, and the COPY splits on
+ *        the game's business-day relation: a still-open game from an earlier night is a
+ *        "nobody ended it" problem, not an "arm it" problem (PR 2 review, WARN-1).
+ *   3.   screen heartbeats — `screenHealth(last_seen)` for OFFLINE (a true failure, red);
+ *        STALE only past FIVE minutes (amber), because the card's chip flips at two and a
+ *        screen 2–5 minutes behind is almost always mid-reload, not in trouble.
  *   4.   Toast sync — only the RED state (>60min, and for sales only INSIDE the venue's
  *        sync window: `classify()` already resolves an out-of-hours gap to `idle`).
- *        Amber (15–60min) is ordinary churn and deliberately does NOT raise a row.
+ *        Amber (15–60min) is ordinary churn and deliberately does NOT raise a row. The
+ *        sentence names what is actually stale: the sellers boards (sales), the website
+ *        menu and drink slides (menu), or both.
  *
  * An empty result renders NOTHING — no "all clear" chrome (audit §A1: the page must
  * distinguish "needs you" from "FYI", and a permanent green bar distinguishes nothing).
@@ -166,7 +172,7 @@ export interface HomeAlert {
  * console the viewer's grants would refuse is worse than no link.
  */
 export function homeAlerts(input: {
-  arm: TriviaArmState;
+  arm: TriviaArmState & { liveGame?: { game_date: string | null } | null };
   sync: SyncStatus | undefined;
   screens: ScreenSlot[] | undefined;
   canTrivia: boolean;
@@ -175,7 +181,18 @@ export function homeAlerts(input: {
   const { arm, sync, screens, canTrivia, canSignage } = input;
   const out: HomeAlert[] = [];
 
-  if (arm.gameOffScreens) {
+  if (arm.alertNotArmed && arm.gameIsPast) {
+    // The live case this replaced: an `active` game from an earlier night that nobody ended
+    // still reads as "a game exists", and HOME used to tell the manager to ARM it. The fix
+    // is to end it — the arm model is not the problem.
+    out.push({
+      id: "trivia-game-never-ended",
+      tone: "warn",
+      message: `A game dated ${prettyDate(arm.liveGame?.game_date)} is still open — it was never ended. End it from Scoring so tonight starts clean.`,
+      to: canTrivia ? "/scoring" : undefined,
+      label: "Open scoring →",
+    });
+  } else if (arm.alertNotArmed) {
     out.push({
       id: "trivia-not-armed",
       tone: "warn",
@@ -195,7 +212,12 @@ export function homeAlerts(input: {
   }
 
   const offline = (screens ?? []).filter((s) => screenHealth(s.last_seen) === "offline");
-  const stale = (screens ?? []).filter((s) => screenHealth(s.last_seen) === "stale");
+  // NOTE-2: the CARD's chip still flips at two minutes; the STRIP waits five. Between the
+  // two a screen is nearly always mid-reload, and a row that cries wolf every evening is a
+  // row nobody reads.
+  const stale = (screens ?? []).filter(
+    (s) => screenHealth(s.last_seen) === "stale" && ageMinutes(s.last_seen) > 5,
+  );
   if (offline.length) {
     out.push({
       id: "screens-offline",
@@ -209,16 +231,23 @@ export function homeAlerts(input: {
     out.push({
       id: "screens-stale",
       tone: "warn",
-      message: `${nameList(stale)} ${stale.length === 1 ? "is" : "are"} late checking in — still showing, but the heartbeat is behind.`,
+      message: `${nameList(stale)} ${stale.length === 1 ? "is" : "are"} late checking in — may still be showing, but the heartbeat is behind.`,
       to: canSignage ? "/signage" : undefined,
       label: "Check screens →",
     });
   }
 
   if (sync) {
+    const salesRed = sync.toastSync.state === "red";
+    const menuRed = sync.menuSync.state === "red";
     const stalled: string[] = [];
-    if (sync.toastSync.state === "red") stalled.push(`sales ${formatAge(sync.toastSync.ageMs)}`);
-    if (sync.menuSync.state === "red") stalled.push(`menu ${formatAge(sync.menuSync.ageMs)}`);
+    if (salesRed) stalled.push(`sales ${formatAge(sync.toastSync.ageMs)}`);
+    if (menuRed) stalled.push(`menu ${formatAge(sync.menuSync.ageMs)}`);
+    // NOTE-3: name what is actually stale. The two syncs feed different surfaces, and
+    // "older data" without a subject sends a manager looking in the wrong place.
+    const SELLERS = "the sellers boards";
+    const MENU = "the website menu and the drink slides";
+    const affected = salesRed && menuRed ? `${SELLERS}, ${MENU}` : salesRed ? SELLERS : MENU;
     if (stalled.length) {
       // DECISION: no link. Nothing in the app restarts the sync — it is a scheduled job,
       // and pointing at a page that cannot fix it would be a lie. The TOAST SYNC card
@@ -227,12 +256,37 @@ export function homeAlerts(input: {
       out.push({
         id: "toast-stalled",
         tone: "danger",
-        message: `Toast sync has stopped (${stalled.join(", ")}) — the sellers boards and the website menu are showing older data.`,
+        message: `Toast sync has stopped (${stalled.join(", ")}) — ${affected} are showing older data.`,
       });
     }
   }
 
   return out;
+}
+
+/** Minutes since a heartbeat; +Infinity when there has never been one. */
+function ageMinutes(lastSeen: string | null): number {
+  if (!lastSeen) return Number.POSITIVE_INFINITY;
+  const t = new Date(lastSeen).getTime();
+  if (!Number.isFinite(t)) return Number.POSITIVE_INFINITY;
+  return (Date.now() - t) / 60_000;
+}
+
+/** "Sep 9" from a plain `YYYY-MM-DD`, rebuilt locally so it cannot slip a day through a
+ *  UTC parse. An absent/odd date degrades to "an earlier night". */
+export function prettyDate(date: string | null | undefined): string {
+  if (!date) return "an earlier night";
+  const [y, m, d] = date.split("-").map(Number);
+  if (!y || !m || !d) return "an earlier night";
+  return new Date(y, m - 1, d).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
+/** "Wed, Sep 16" — the TONIGHT card's next-game line. */
+export function prettyDayAndDate(date: string | null | undefined): string | null {
+  if (!date) return null;
+  const [y, m, d] = date.split("-").map(Number);
+  if (!y || !m || !d) return null;
+  return new Date(y, m - 1, d).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
 }
 
 /** "Portrait Main" / "Portrait Main and Bar TV" / "Portrait Main, Bar TV and 1 more". */

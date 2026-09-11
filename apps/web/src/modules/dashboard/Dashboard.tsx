@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { Suspense, lazy, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { hasModule, useRole } from "@/shared/useRole";
 import { useIsMobile } from "@/shared/useIsMobile";
@@ -11,7 +11,15 @@ import { screenHealth, type ScreenHealth } from "@/modules/signage/useSignageAdm
 // Tile table + label helpers (VERBATIM moves) and the alert-strip derivation, shared
 // with the v2 view below — one definition, so the two can never gate differently.
 import { TILES, screenName, tileVisible, tonightLabel, type Tile } from "./dashboardShared";
-import { DashboardV2 } from "./DashboardV2";
+
+/**
+ * LAZY ON PURPOSE (PR 2 review NOTE-1). `DashboardV2` pulls in the trivia-arm hook, and
+ * through it `useSignage` — ~36 KB of closure a CLASSIC device would otherwise download on
+ * every visit to a page it never renders. A static import would also put that weight in
+ * front of classic HOME's first paint. The fallback renders one Secondary-tier line rather
+ * than nothing, so a slow network shows a state instead of a blank page.
+ */
+const DashboardV2 = lazy(() => import("./DashboardV2").then((m) => ({ default: m.DashboardV2 })));
 
 /**
  * BUNKER UNIFIED OS home (Phase 4b — the admin shell). One staff-facing landing that
@@ -63,6 +71,7 @@ export function Dashboard() {
   // it calls itself so a CLASSIC device fires no extra query — RULE #1).
   if (version === "v2") {
     return (
+      <Suspense fallback={<div data-st-page="" style={{ padding: "24px clamp(16px, 4vw, 48px)" }}><span className="st-body st-t2">Loading…</span></div>}>
       <DashboardV2
         role={role}
         modules={modules}
@@ -76,6 +85,7 @@ export function Dashboard() {
         screens={screens.data}
         screensLoading={screens.isLoading}
       />
+      </Suspense>
     );
   }
 

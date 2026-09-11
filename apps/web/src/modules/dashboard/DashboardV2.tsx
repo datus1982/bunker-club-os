@@ -6,8 +6,8 @@ import { screenHealth, type ScreenHealth } from "@/modules/signage/useSignageAdm
 import { useTriviaArmState } from "@/modules/signage/triviaArm";
 import { formatAge, type Freshness, type ScreenSlot, type SeasonStatus, type SyncStatus, type TonightGame } from "./useDashboard";
 import {
-  TILES, homeAlerts, mediaTiles, screenName, seasonTimePhrase, tileVisible, tonightPhrase,
-  type TileSection, type Tile,
+  TILES, homeAlerts, mediaTiles, prettyDayAndDate, screenName, seasonTimePhrase, tileVisible,
+  tonightPhrase, type TileSection, type Tile,
 } from "./dashboardShared";
 
 /**
@@ -73,6 +73,15 @@ export function DashboardV2({
   // The hub's own definition of "is trivia on the screens" (N8) — read-only.
   const arm = useTriviaArmState();
   const alerts = homeAlerts({ arm, sync, screens, canTrivia, canSignage });
+
+  // A `setup` deck dated after tonight (the arm hook already read the game and resolved the
+  // venue business day, so this is a phrase, not a query).
+  const nextGameDate = arm.gameIsFuture && arm.liveGame?.status === "setup"
+    ? prettyDayAndDate(arm.liveGame.game_date)
+    : null;
+  const nextGame = nextGameDate
+    ? `Next game: ${nextGameDate} — set up, ${arm.armed ? "armed" : "not yet armed"}`
+    : null;
 
   const clock = now.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
   const day = now.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
@@ -151,6 +160,11 @@ export function DashboardV2({
               <>
                 <div className="st-heading st-t2">No game today</div>
                 <div className="st-body st-t3">Live scoring console — run the game when one's on.</div>
+                {/* A deck already built for a later night. Quiet, Secondary tier: it is
+                    context, not a task. CAVEAT: `useLiveGame` ranks `active` first, so a
+                    stale game nobody ended shadows a future deck — that game raises its own
+                    alert row above, which is the thing to fix first anyway. */}
+                {nextGame && <div className="st-body st-t2">{nextGame}</div>}
                 {canTrivia && (
                   <Link to="/game/setup" className="st-btn st-body st-accent" style={action}>Create game →</Link>
                 )}
@@ -208,20 +222,30 @@ export function DashboardV2({
               <div className="st-body st-t2">Checking…</div>
             ) : screens && screens.length > 0 ? (
               <>
-                {screens.map((s, i) => (
+              {/* WARN-2: the ROW goes to the Signage Hub — the screen's card there has its
+                  health, its PREVIEW and its kiosk URL, and is where a manager acts. The
+                  kiosk URL is a separate, explicit 44×44 control, because opening it is a
+                  different act with a real consequence: that tab BECOMES the screen and
+                  starts posting its heartbeat. */}
+              {screens.map((s, i) => (
+                <div key={s.id} style={{ ...screenRow, borderTop: i === 0 ? "none" : "1px solid" }}>
+                  <Link to="/signage" title={`Open ${screenName(s)} in the Signage Hub`} style={screenRowLink}>
+                    <span className="st-body st-t1" style={ellipsis}>{screenName(s)}</span>
+                    <ScreenBadge health={screenHealth(s.last_seen)} />
+                  </Link>
                   <a
-                    key={s.id}
                     href={`/signage/s/${s.slug}`}
                     target="_blank"
                     rel="noreferrer"
-                    title={`Open the ${screenName(s)} kiosk board in a new tab`}
-                    style={{ ...screenRow, borderTop: i === 0 ? "none" : "1px solid" }}
+                    title="Open the live board (kiosk URL — this tab heartbeats as that screen)"
+                    aria-label={`Open the live board for ${screenName(s)} (kiosk URL)`}
+                    className="st-t3"
+                    style={kioskLink}
                   >
-                    <span className="st-body st-t1" style={ellipsis}>{screenName(s)}</span>
-                    <ScreenBadge health={screenHealth(s.last_seen)} />
-                    <span className="st-t3" style={{ fontSize: 13 }} aria-hidden="true">↗</span>
+                    ↗
                   </a>
-                ))}
+                </div>
+              ))}
                 <a
                   href="/drinks"
                   target="_blank"
@@ -346,8 +370,17 @@ const action: CSSProperties = {
   display: "inline-flex", alignItems: "center", textDecoration: "none", cursor: "pointer",
 };
 const screenRow: CSSProperties = {
-  display: "flex", alignItems: "center", gap: 8, minHeight: 44,
-  textDecoration: "none", padding: "2px 0",
+  display: "flex", alignItems: "center", gap: 8, minHeight: 44, padding: "2px 0",
+};
+/** The row body: a link to the hub, filling the row so the whole line is the tap target. */
+const screenRowLink: CSSProperties = {
+  display: "flex", alignItems: "center", gap: 8, flex: "1 1 auto", minWidth: 0,
+  minHeight: 44, textDecoration: "none",
+};
+/** The kiosk URL: its own 44×44 target, never the row's default action. */
+const kioskLink: CSSProperties = {
+  display: "inline-flex", alignItems: "center", justifyContent: "center",
+  minHeight: 44, minWidth: 44, fontSize: 15, textDecoration: "none", flex: "0 0 auto",
 };
 const legacyLink: CSSProperties = {
   display: "inline-flex", alignItems: "center", minHeight: 44, minWidth: 44,

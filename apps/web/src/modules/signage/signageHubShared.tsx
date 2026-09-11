@@ -293,6 +293,10 @@ export interface SignageHubContext {
 
   /* venue-wide mode inputs (already gated exactly as the TV gates them) */
   gameOffScreens: boolean;
+  /** The ALERT-surface gate (triviaArm, PR 2 review WARN-1): like `gameOffScreens` but
+   *  silent on a FUTURE `setup` deck. The v2 banner reads this; the CLASSIC banner keeps
+   *  `gameOffScreens` untouched (RULE #1 — classic renders byte-identically). */
+  alertNotArmed: boolean;
   armedNoGame: boolean;
   eventLabel: string | null;
   staleGameDate: string | null;
