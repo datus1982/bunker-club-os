@@ -19,8 +19,9 @@ import { ALL_MODULES, STATUS_LABEL, type InviteResult, type InviteRole, type Sta
  * PRESENTATION ONLY. Every mutation, guard and RPC argument lives in `Users.tsx` and
  * is handed down as a callback — this file must never call Supabase. The guards it
  * merely RENDERS are the ones the page (and the RPCs beneath it) already enforce:
- * admin ⇒ all modules on + locked, you cannot change your own role, you cannot remove
- * yourself.
+ * admin ⇒ all modules (stated once per row since PR 3, not six locked switches), you
+ * cannot change your own role, you cannot remove yourself. The one thing this view owns
+ * outright is the REMOVE CONFIRMATION — see the PR 3 note below.
  *
  * Phone (<640, the shared useIsMobile breakpoint): stacked ListRow cards — the 720px
  * table on a 390px screen was audit finding #1. Desktop: the table, which reads fine at
@@ -234,12 +235,16 @@ function RemoveAccess({ row, onAskRemove }: { row: StaffRow; onAskRemove: (row: 
   );
 }
 
-/** C4: what an admin row shows instead of six locked switches. */
+/** C4: what an admin row shows instead of six locked switches.
+ *  The two `fontSize: "inherit"` are LOAD-BEARING: `.terminal-theme span { font-size:
+ *  1.5rem }` sizes every span on its own and there is no `.st-body *` rule, so a bare span
+ *  inside an `st-body` box renders 24px, not 15px — nothing inherits font-size in this app
+ *  (PR #89). Same pattern as the hub's `emph`. */
 function FullAccessLine() {
   return (
     <div className="st-body st-t2" style={{ display: "flex", alignItems: "center", gap: 8 }}>
-      <span aria-hidden="true">&#128274;</span>
-      <span>Full access — admin</span>
+      <span aria-hidden="true" style={{ fontSize: "inherit" }}>&#128274;</span>
+      <span style={{ fontSize: "inherit" }}>Full access — admin</span>
     </div>
   );
 }
@@ -398,7 +403,10 @@ function StaffTable({
                   separation the layout already has. What was actually wrong at desktop was
                   the register — an amber bare "REMOVE" reading like every other control —
                   and that is what changes. */}
-              <td style={{ ...td, textAlign: "right", borderLeft: "1px solid", paddingLeft: 14 }}>
+              {/* The fence exists to separate a destructive control from the routine ones.
+                  On your own row there is no such control, so there is nothing to fence —
+                  an empty ruled cell would read as a missing button. */}
+              <td style={row.is_self ? { ...td, textAlign: "right" } : { ...td, textAlign: "right", borderLeft: "1px solid", paddingLeft: 14 }}>
                 {!row.is_self && <RemoveAccess row={row} onAskRemove={onAskRemove} />}
               </td>
             </tr>

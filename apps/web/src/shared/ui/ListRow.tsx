@@ -20,6 +20,12 @@ import { radius, space, TAP } from "./tokens";
  * with a routine one, so "Remove group" / "Remove access" leaves the action cluster and
  * lands here instead. Undefined for every other caller ⇒ no element is rendered and the
  * row's markup is unchanged.
+ *
+ * `footer` and `onClick` are MUTUALLY EXCLUSIVE. A clickable row renders as a <button>, and
+ * a footer holding a button would nest one inside it — invalid HTML, and the inner control
+ * would swallow (or be swallowed by) the row's own click. No caller does this today; the
+ * combination throws in dev so it is caught the moment someone tries, and degrades to "no
+ * footer" in prod, because dropping a destructive control is the safer of the two failures.
  */
 export function ListRow({
   title,
@@ -93,9 +99,16 @@ export function ListRow({
   };
 
   if (onClick) {
+    if (footer != null && import.meta.env.DEV) {
+      throw new Error("ListRow: `footer` cannot be combined with `onClick` — a footer button would nest inside the row button. Drop onClick, or move the control out of the footer.");
+    }
+    // The re-spread fires ONLY in the degenerate footer+onClick case a prod build can
+    // reach (dev threw above): `base` would have laid the cluster out as a block. With no
+    // footer the object is byte-identical to what every current caller got, caller `style`
+    // overrides included.
     return (
-      <button type="button" className="st-row" onClick={onClick} style={{ ...base, textAlign: "left", cursor: "pointer", width: "100%" }}>
-        {body}
+      <button type="button" className="st-row" onClick={onClick} style={{ ...base, ...(footer != null ? clusterStyle : null), textAlign: "left", cursor: "pointer", width: "100%" }}>
+        {cluster}
       </button>
     );
   }

@@ -17,8 +17,9 @@ import {
 
 /**
  * USERS (admin only) — staff accounts + module grants (Phase 4b, migration 0025).
- * Role labels are titles; ACCESS is the module checkboxes. Admin implies every module,
- * so an admin's checkboxes are shown ticked + disabled. Toggling a box grants/revokes
+ * Role labels are titles; ACCESS is the module checkboxes. Admin implies every module:
+ * classic shows an admin's checkboxes ticked + disabled, v2 collapses the whole set to one
+ * "Full access — admin" line (UX overhaul Beat 6, letter C4). Toggling a box grants/revokes
  * instantly (no redeploy) via admin_upsert_staff.
  *
  * INVITE STAFF (phase-staff-invites) uses the invite-staff edge fn — the cold-email path
