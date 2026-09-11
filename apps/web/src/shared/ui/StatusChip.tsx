@@ -77,7 +77,11 @@ const chip: CSSProperties = {
   padding: "2px 8px",
   border: "1px solid currentColor",
   whiteSpace: "nowrap",
+  // Never shrink below the label inside a flex row (a squeezed cell was cutting "DRINK"
+  // down to "DRI…"), never grow past the container (the hub's 240px identity column holds
+  // a chip whose label can be far longer — it ellipsizes there instead of widening the
+  // page). A caller whose cell is genuinely too narrow gives the chips a row of their own.
+  flex: "0 0 auto",
   maxWidth: "100%",
-  minWidth: 0,
   overflow: "hidden",
 };

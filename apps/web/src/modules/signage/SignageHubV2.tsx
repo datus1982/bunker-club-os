@@ -295,7 +295,13 @@ function ScreenCardV2({ slot, ctx, stacked }: { slot: AdminSlot; ctx: SignageHub
             dot={health === "online"}
             label={health === "online" ? "LIVE" : health === "stale" ? "STALE" : "DOWN"}
           />
-          <StatusChip tone={modeTone(mode, programActive)} label={modeLabel(mode, programActive ? programLabel : null, ctx.eventLabel)} />
+          {/* minWidth 0: this column is 240px and the program label can be far longer —
+              ellipsize rather than push the card wide. */}
+          <StatusChip
+            tone={modeTone(mode, programActive)}
+            label={modeLabel(mode, programActive ? programLabel : null, ctx.eventLabel)}
+            style={{ minWidth: 0 }}
+          />
           {scheduleCount > 0 && (
             <StatusChip
               tone={overrideHold ? "warn" : "info"}
@@ -377,7 +383,9 @@ function AssetListRow({ a, ctx }: { a: AssetWithPlacements; ctx: SignageHubConte
   const placed = new Set(a.placements.map((p) => p.slot_id));
   return (
     <ListRow
-      stacked={false}
+      // Stacked: this row only renders on a phone, and side-by-side the meta cell gets
+      // squeezed to a few characters — the chips need a line of their own.
+      stacked
       onClick={() => ctx.openAsset(a)}
       title={summarize(item, ctx.toastRows)}
       sub={assetSubtitle(item, ctx.tmap)}
