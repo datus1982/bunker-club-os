@@ -86,6 +86,23 @@ Display/Heading/Body/Label/Mono-data as `.st-display/.st-heading/.st-body/.st-la
 (N5): every v2 component that renders a title/body string in literal caps gets a
 sentence-case string; Label-role strings stay caps.
 
+### 2.2b §B ADDENDA (rulings during PR 1, 2026-09-11 — Okuda's sheet reads WITH these)
+- **Scanline/vignette OFF on v2 staff pages** (`.terminal-theme::before` hidden, scoped to the
+  tokened v2 surfaces only; classic, classic-inside-v2-shell, TVs and public displays keep it).
+  Ruling 2 of the owner brief ("deviate from the strict terminal feel on the backend"); the
+  flat near-black ground is the point of the elevation tiers.
+- **Body role at 390 = 15px** (not §B's 14): Stephen's PR #14 "body size bump" ruling on staff
+  surfaces stands; md: stays 15. Flagged on the round-2 phone shots.
+- **Override scope = opt-in hooks** (`[data-st-page]` on v2 page content wrappers, `.sv2-nav`,
+  `.st-sheet`), NOT `.staff-v2`: §B's "applies to everything under `.staff-ui`" contradicts §D's
+  trivia freeze, and classic pages render inside the v2 shell. Classic-shared slide-overs
+  (`HubOverlays`, incl. the live `SignagePreview`) sit OUTSIDE the scope. Reviewer-ratified.
+- **Buttons = Body role, sentence case** (§B listed buttons in no role). Chips/eyebrows/nav
+  items stay Label-role caps.
+- **Chips as full pill IS a change** (the shipped chip was sharp under the base radius rule).
+- **`ConfirmDialog` CONFIRM already paints the red danger token in PR 1**; in-row REMOVE
+  stays calmed amber until PR 3 reconciles geometry + verb copy.
+
 ### 2.3 Surfaces, hairline, radius (§B) — [gated C]
 Card/row/tile/dialog/drawer fills on the elevation tiers; 2px green frames → the hairline;
 radius per C1 via a `.staff-v2`-scoped `border-radius` override (N3).
