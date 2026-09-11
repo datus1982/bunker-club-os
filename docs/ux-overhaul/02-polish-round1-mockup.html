@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bunker OS — Polish Pass, Round 1</title>
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    /* ===== TOKEN SHEET v2 — staff surfaces (see 02-polish-pass-audit-2026-09-11.md §B) ===== */
+    --staff-bg: #0B0D10;
+    --staff-surface-1: #131618;
+    --staff-surface-2: #171B1F;
+    --staff-surface-3: #1A1C25;
+    --staff-surface-4: #22273D;
+    --staff-text-primary: rgba(255,255,255,0.87);
+    --staff-text-secondary: rgba(255,255,255,0.60);
+    --staff-text-disabled: rgba(255,255,255,0.38);
+    --staff-accent: #7FE6A8;
+    --staff-accent-live: #00FF41;
+    --staff-amber: #E8B04B;
+    --staff-danger: #FF5A5A;
+    --staff-hairline: rgba(255,255,255,0.08);
+    --radius-control: 6px;
+    --radius-sheet: 10px;
+    --radius-pill: 9999px;
+    --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px;
+    --space-6: 24px; --space-8: 32px; --space-12: 48px;
+    --font-display: 'Share Tech Mono', monospace;
+    --font-body: 'JetBrains Mono', monospace;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; background:#05060a; color:var(--staff-text-primary);
+    font-family:var(--font-body); padding:0 0 80px;
+  }
+  a{color:inherit;}
+
+  /* ---- doc chrome (not part of the token spec — page furniture only) ---- */
+  .docbar{
+    position:sticky; top:0; z-index:50; background:#000; border-bottom:1px solid #222;
+    padding:14px 20px; display:flex; gap:18px; align-items:center; flex-wrap:wrap;
+  }
+  .docbar .title{font-family:var(--font-display); color:#7FE6A8; font-size:15px; letter-spacing:0.04em;}
+  .docbar nav{display:flex; gap:4px;}
+  .docbar nav a{
+    font-family:var(--font-body); font-size:12px; text-transform:uppercase; letter-spacing:0.06em;
+    color:#9aa0a6; padding:8px 12px; border-radius:6px; text-decoration:none; border:1px solid transparent;
+  }
+  .docbar nav a.active, .docbar nav a:hover{ color:#0B0D10; background:#7FE6A8; }
+  section.doc-section{ max-width:1400px; margin:0 auto; padding:40px 20px 10px; scroll-margin-top:64px; }
+  .doc-h1{ font-family:var(--font-display); font-size:22px; color:#fff; margin:0 0 6px; }
+  .doc-sub{ font-size:13px; color:#9aa0a6; margin:0 0 28px; max-width:820px; line-height:1.6; }
+  .compare{ display:flex; gap:28px; flex-wrap:wrap; align-items:flex-start; }
+  .col{ flex:0 0 auto; }
+  .col-label{
+    font-family:var(--font-body); font-size:11px; text-transform:uppercase; letter-spacing:0.08em;
+    color:#9aa0a6; margin:0 0 10px; display:flex; align-items:center; gap:8px;
+  }
+  .col-label .tag{ padding:2px 8px; border-radius:4px; font-size:10px; }
+  .tag.current{ background:#2a1010; color:#ff8a8a; border:1px solid #4a1a1a;}
+  .tag.new{ background:#0f2419; color:#7FE6A8; border:1px solid #1c3a2c;}
+  .frame390{ width:390px; border:1px solid #2a2d33; border-radius:14px; overflow:hidden; }
+  .frame390 img{ display:block; width:390px; }
+  .stage{ width:390px; background:var(--staff-bg); min-height:200px; }
+
+  /* ===================== NEW-SYSTEM COMPONENTS (staff shell) ===================== */
+  .staffshell{ font-family:var(--font-body); }
+  .staffshell .topbar{
+    background:var(--staff-surface-1); border-bottom:1px solid var(--staff-hairline);
+    padding:14px var(--space-4); display:flex; align-items:center; justify-content:space-between;
+  }
+  .staffshell .brand{ display:flex; align-items:center; gap:8px; font-family:var(--font-display); font-size:14px; color:var(--staff-text-primary); }
+  .staffshell .brand .mark{ width:14px; height:14px; background:var(--staff-accent); border-radius:3px; flex:0 0 auto; }
+  .staffshell .menubtn{
+    font-family:var(--font-body); font-size:11px; letter-spacing:0.06em; text-transform:uppercase;
+    color:var(--staff-text-secondary); border:1px solid var(--staff-hairline); border-radius:var(--radius-control);
+    padding:8px 12px;
+  }
+  .staffshell .content{ padding:var(--space-4); display:flex; flex-direction:column; gap:var(--space-3); }
+
+  .alert-strip{
+    display:flex; align-items:center; gap:10px; background:rgba(232,176,75,0.08);
+    border:1px solid rgba(232,176,75,0.35); border-radius:var(--radius-control);
+    padding:10px 12px; font-size:12.5px; color:var(--staff-amber); line-height:1.4;
+  }
+  .alert-strip .go{ margin-left:auto; font-size:11px; color:var(--staff-amber); opacity:0.85; white-space:nowrap; }
+
+  .eyebrow{
+    font-size:11px; text-transform:uppercase; letter-spacing:0.08em; color:var(--staff-text-secondary);
+    margin:var(--space-2) 0 2px;
+  }
+
+  .card{
+    background:var(--staff-surface-1); border:1px solid var(--staff-hairline);
+    border-radius:var(--radius-control); padding:var(--space-4);
+  }
+  .card + .card{ margin-top:0; }
+  .card h3{ font-family:var(--font-display); font-size:15px; font-weight:600; margin:0 0 8px; color:var(--staff-text-primary); }
+  .card .sub{ font-size:12px; color:var(--staff-text-secondary); margin:0 0 10px; line-height:1.5; }
+  .row{ display:flex; align-items:center; justify-content:space-between; padding:6px 0; font-size:13px; }
+  .row .k{ color:var(--staff-text-secondary); }
+  .row .v{ color:var(--staff-text-primary); font-variant-numeric:tabular-nums; }
+  .dot{ width:7px; height:7px; border-radius:50%; display:inline-block; margin-right:6px; }
+  .dot.live{ background:var(--staff-accent-live); box-shadow:0 0 6px rgba(0,255,65,0.6); }
+  .dot.idle{ background:var(--staff-text-disabled); }
+  .dot.online{ background:var(--staff-accent); }
+
+  .btn{
+    font-family:var(--font-body); font-size:13px; border-radius:var(--radius-control);
+    padding:10px 14px; border:1px solid var(--staff-hairline); color:var(--staff-text-primary);
+    background:transparent; cursor:pointer; text-align:center;
+  }
+  .btn.primary{ background:var(--staff-accent); color:var(--staff-bg); font-weight:600; border-color:transparent; }
+  .btn.ghost{ color:var(--staff-text-secondary); }
+  .btn.danger-link{
+    background:none; border:none; color:var(--staff-danger); font-size:12.5px; padding:6px 2px;
+    text-decoration:underline; text-underline-offset:2px;
+  }
+  .btn.icon{ width:36px; height:36px; padding:0; display:inline-flex; align-items:center; justify-content:center; }
+
+  .chip{
+    display:inline-flex; align-items:center; gap:5px; font-size:11px; padding:4px 10px;
+    border-radius:var(--radius-pill); background:rgba(127,230,168,0.12); color:var(--staff-accent);
+    border:1px solid rgba(127,230,168,0.3);
+  }
+
+  .modtile{ background:var(--staff-surface-1); border:1px solid var(--staff-hairline); border-radius:var(--radius-control); padding:var(--space-4); }
+  .modtile h4{ margin:0 0 4px; font-family:var(--font-display); font-size:14px; color:var(--staff-text-primary); }
+  .modtile p{ margin:0; font-size:12px; color:var(--staff-text-secondary); line-height:1.5; }
+  .modgrid{ display:grid; grid-template-columns:1fr 1fr; gap:var(--space-3); }
+
+  /* Top Sellers specific */
+  .grouprow{ background:var(--staff-surface-1); border:1px solid var(--staff-hairline); border-radius:var(--radius-control); padding:var(--space-3) var(--space-4); }
+  .grouprow .head{ display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; }
+  .grouprow .head .name{ font-family:var(--font-display); font-size:14px; color:var(--staff-text-primary); }
+  .grouprow .actions{ display:flex; align-items:center; gap:8px; }
+  .grouprow .danger-zone{ display:flex; justify-content:flex-end; margin-top:8px; padding-top:8px; border-top:1px solid var(--staff-hairline); }
+
+  .field{ margin-bottom:var(--space-3); }
+  .field label{ display:block; font-size:11px; text-transform:uppercase; letter-spacing:0.06em; color:var(--staff-text-secondary); margin-bottom:6px; }
+  .field input, .field select{
+    width:100%; background:var(--staff-surface-2); border:1px solid var(--staff-hairline); border-radius:var(--radius-control);
+    color:var(--staff-text-primary); font-family:var(--font-body); font-size:13.5px; padding:10px 12px;
+  }
+  .field .hint{ font-size:11px; color:var(--staff-text-disabled); margin-top:5px; line-height:1.5; }
+
+  .sectionlabel{ font-size:11px; text-transform:uppercase; letter-spacing:0.08em; color:var(--staff-text-secondary); margin:var(--space-2) 0 2px; }
+
+  /* ===================== TOKEN SHEET RENDER (#tokens) ===================== */
+  .tokgrid{ display:grid; grid-template-columns:repeat(auto-fill, minmax(220px,1fr)); gap:18px; margin-bottom:36px; }
+  .swatch{ border-radius:10px; overflow:hidden; border:1px solid #23262b; }
+  .swatch .fill{ height:70px; display:flex; align-items:flex-end; padding:8px; font-size:11px; }
+  .swatch .meta{ background:#0e1013; padding:10px 12px; font-size:11.5px; color:#c8ccd1; }
+  .swatch .meta b{ display:block; color:#fff; font-size:12.5px; margin-bottom:2px; }
+  .tokentable{ width:100%; border-collapse:collapse; font-size:13px; margin-bottom:36px; }
+  .tokentable th, .tokentable td{ text-align:left; padding:10px 14px; border-bottom:1px solid #1e2126; }
+  .tokentable th{ color:#9aa0a6; font-size:11px; text-transform:uppercase; letter-spacing:0.06em; }
+  .typesample{ background:var(--staff-bg); border:1px solid var(--staff-hairline); border-radius:10px; padding:24px; margin-bottom:36px; }
+  .typesample .line{ margin-bottom:16px; }
+  .typesample .role-tag{ font-size:10px; color:var(--staff-text-disabled); text-transform:uppercase; letter-spacing:0.08em; margin-bottom:4px; }
+  .display-role{ font-family:var(--font-display); font-size:28px; font-weight:700; color:var(--staff-text-primary); }
+  .heading-role{ font-family:var(--font-display); font-size:17px; font-weight:600; color:var(--staff-text-primary); }
+  .body-role{ font-family:var(--font-body); font-size:14px; color:var(--staff-text-secondary); }
+  .label-role{ font-family:var(--font-body); font-size:12px; text-transform:uppercase; letter-spacing:0.06em; color:var(--staff-text-secondary); }
+  .monodata-role{ font-family:var(--font-body); font-size:14px; font-variant-numeric:tabular-nums; color:var(--staff-text-primary); }
+  .spacingdemo{ display:flex; align-items:flex-end; gap:10px; background:var(--staff-bg); border:1px solid var(--staff-hairline); border-radius:10px; padding:24px; margin-bottom:36px; }
+  .spacingdemo .bar{ background:var(--staff-accent); width:22px; border-radius:3px 3px 0 0; }
+  .spacingdemo .lbl{ font-size:10px; color:var(--staff-text-secondary); text-align:center; margin-top:6px; }
+  .dangerdemo{ display:flex; gap:14px; flex-wrap:wrap; background:var(--staff-bg); border:1px solid var(--staff-hairline); border-radius:10px; padding:24px; margin-bottom:10px; }
+  .footer-note{ font-size:12px; color:#7a7f86; max-width:900px; line-height:1.7; margin-top:10px; }
+</style>
+</head>
+<body>
+
+<div class="docbar">
+  <div class="title">BUNKER OS · POLISH PASS · ROUND 1</div>
+  <nav>
+    <a href="#home">HOME / HUB</a>
+    <a href="#barops">BAR OPS — TOP SELLERS</a>
+    <a href="#tokens">TOKEN SHEET</a>
+  </nav>
+</div>
+
+<!-- ============================= HOME / HUB ============================= -->
+<section class="doc-section" id="home">
+  <h1 class="doc-h1">HOME / hub</h1>
+  <p class="doc-sub">Same real data as the shipped V2 dashboard (Toast sync, tonight's game state, Summer 2026
+  standings, screen status). Current column is the actual shipped screenshot; New column applies the token sheet
+  in §B plus the IA merges from §C (alert strip promoted to HOME, Tonight + Trivia Control merged, admin-noise
+  removed from the module grid is not shown here — see the audit for that case on Users).</p>
+
+  <div class="compare">
+    <div class="col">
+      <div class="col-label"><span class="tag current">CURRENT — V2 shipped</span> beat1-shots/dashboard-v2-390.png</div>
+      <div class="frame390"><img src="assets/home-v2-current-390.png" alt="Current V2 dashboard, 390px"></div>
+    </div>
+
+    <div class="col">
+      <div class="col-label"><span class="tag new">NEW — token system + IA merge</span> same data, 390px</div>
+      <div class="frame390">
+        <div class="stage staffshell">
+          <div class="topbar">
+            <div class="brand"><span class="mark"></span> Bunker OS</div>
+            <div class="menubtn">Menu</div>
+          </div>
+          <div class="content">
+            <div class="eyebrow">Shelter Authority · Civil Defense</div>
+            <div class="display-role" style="font-size:22px;">Bunker Unified OS</div>
+            <div class="body-role" style="font-size:12px;">Tue, Sep 8 · Clearance Admin · 14:13:05</div>
+
+            <div class="alert-strip">
+              <span>⚠</span>
+              <span>Trivia isn't on the screens yet — arm it before game night.</span>
+              <span class="go">Fix →</span>
+            </div>
+
+            <div class="sectionlabel">System status</div>
+
+            <div class="card">
+              <h3>Tonight</h3>
+              <div class="row"><span class="k">Trivia control</span><span class="v" style="color:var(--staff-text-secondary)">No game today</span></div>
+              <p class="sub" style="margin-top:2px;">Live scoring console — run the game when one's on.</p>
+              <button class="btn primary" style="width:100%;margin-top:6px;">Create game →</button>
+            </div>
+
+            <div class="card">
+              <h3>Toast sync</h3>
+              <div class="row"><span class="k"><span class="dot idle"></span>Sales</span><span class="v" style="color:var(--staff-text-disabled)">Idle · outside hours</span></div>
+              <div class="row"><span class="k"><span class="dot live"></span>Menu</span><span class="v">Live · just now</span></div>
+            </div>
+
+            <div class="card">
+              <h3>Season — Summer 2026</h3>
+              <div class="body-role" style="font-size:11px;margin-bottom:8px;">0 days left</div>
+              <div class="row"><span class="k">#1 The Lobotomizers</span><span class="v monodata-role">288</span></div>
+              <div class="row"><span class="k">#2 Scampus Oktober</span><span class="v monodata-role">270</span></div>
+              <div class="row"><span class="k">#3 Drug Dealers</span><span class="v monodata-role">265</span></div>
+            </div>
+
+            <div class="card">
+              <h3>Screens</h3>
+              <div class="row"><span class="k"><span class="dot online"></span>Portrait Main</span><span class="v" style="color:var(--staff-accent)">Online</span></div>
+              <div class="row"><span class="k"><span class="dot online"></span>Bar TV</span><span class="v" style="color:var(--staff-accent)">Online</span></div>
+            </div>
+
+            <div class="sectionlabel" style="margin-top:6px;">Modules</div>
+            <div class="modgrid">
+              <div class="modtile"><h4>Game setup</h4><p>Create a game, rounds &amp; questions</p></div>
+              <div class="modtile"><h4>Teams</h4><p>Regular-team roster &amp; PINs</p></div>
+              <div class="modtile"><h4>History</h4><p>Past games &amp; final boards</p></div>
+              <div class="modtile"><h4>Users</h4><p>Invite staff &amp; manage access</p></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================= BAR OPS — TOP SELLERS ============================= -->
+<section class="doc-section" id="barops">
+  <h1 class="doc-h1">BAR OPS — Top Sellers editor</h1>
+  <p class="doc-sub">Same five rotation groups and display-config fields as shipped. New column: one status chip
+  per row (was doubled), REMOVE demoted to a de-emphasized text link in its own danger-zone strip (was an
+  equal-weight amber button beside ▲▼), hairlines replace the solid glowing borders, 6px radius, calmed accent.</p>
+
+  <div class="compare">
+    <div class="col">
+      <div class="col-label"><span class="tag current">CURRENT — V2 shipped</span> beat3-shots/drinks-v2-390.png</div>
+      <div class="frame390"><img src="assets/barops-v2-current-390.png" alt="Current V2 Top Sellers editor, 390px"></div>
+    </div>
+
+    <div class="col">
+      <div class="col-label"><span class="tag new">NEW — token system</span> same data, 390px</div>
+      <div class="frame390">
+        <div class="stage staffshell">
+          <div class="topbar">
+            <div class="brand"><span class="mark"></span> Bunker OS</div>
+            <div class="menubtn">Menu</div>
+          </div>
+          <div class="content">
+            <div class="eyebrow">Bar Ops ▸ Top Sellers</div>
+            <div style="display:flex;align-items:center;gap:10px;">
+              <div class="heading-role" style="font-size:19px;">Top Sellers</div>
+              <span class="chip">5 of 5 groups on</span>
+            </div>
+            <div style="display:flex;gap:8px;margin-top:4px;">
+              <button class="btn ghost" style="flex:1;">Open board</button>
+              <button class="btn ghost" style="flex:1;">Dashboard</button>
+            </div>
+            <p class="body-role" style="font-size:12px;">Toast credentials are server-side only — nothing sensitive is entered here. Sales refresh automatically from the scheduled sync.</p>
+
+            <div class="sectionlabel">Rotation groups</div>
+
+            <div class="grouprow">
+              <div class="head"><span class="name">Draft beers</span><span class="chip">On</span></div>
+              <div class="actions">
+                <button class="btn icon">▲</button>
+                <button class="btn icon">▼</button>
+              </div>
+              <div class="danger-zone"><button class="btn danger-link" onclick="this.textContent=this.textContent.startsWith('Remove')?'Tap again to confirm':'Remove group'">Remove group</button></div>
+            </div>
+
+            <div class="grouprow">
+              <div class="head"><span class="name">Shots</span><span class="chip">On</span></div>
+              <div class="actions">
+                <button class="btn icon">▲</button>
+                <button class="btn icon">▼</button>
+              </div>
+              <div class="danger-zone"><button class="btn danger-link" onclick="this.textContent=this.textContent.startsWith('Remove')?'Tap again to confirm':'Remove group'">Remove group</button></div>
+            </div>
+
+            <div class="grouprow">
+              <div class="head"><span class="name">Signature cocktails</span><span class="chip">On</span></div>
+              <div class="actions">
+                <button class="btn icon">▲</button>
+                <button class="btn icon">▼</button>
+              </div>
+              <div class="danger-zone"><button class="btn danger-link" onclick="this.textContent=this.textContent.startsWith('Remove')?'Tap again to confirm':'Remove group'">Remove group</button></div>
+            </div>
+
+            <div class="grouprow">
+              <div class="head"><span class="name">Mocktails</span><span class="chip">On</span></div>
+              <div class="actions">
+                <button class="btn icon">▲</button>
+                <button class="btn icon">▼</button>
+              </div>
+              <div class="danger-zone"><button class="btn danger-link" onclick="this.textContent=this.textContent.startsWith('Remove')?'Tap again to confirm':'Remove group'">Remove group</button></div>
+            </div>
+
+            <div class="grouprow">
+              <div class="head"><span class="name">Overall Top 5 ★</span><span class="chip">On</span></div>
+              <div class="actions">
+                <button class="btn icon">▲</button>
+                <button class="btn icon">▼</button>
+              </div>
+              <div class="danger-zone"><button class="btn danger-link" onclick="this.textContent=this.textContent.startsWith('Remove')?'Tap again to confirm':'Remove group'">Remove group</button></div>
+            </div>
+
+            <div class="field" style="margin-top:8px;">
+              <label>Add a group</label>
+              <select><option>— pick a group —</option></select>
+            </div>
+            <button class="btn ghost" style="width:100%;">+ Add</button>
+
+            <div class="sectionlabel" style="margin-top:14px;">Display</div>
+            <div class="field">
+              <label>Header text</label>
+              <input value="Today's Top Drinks">
+            </div>
+            <div class="field">
+              <label>Footer text</label>
+              <input value="Online">
+            </div>
+            <div class="field">
+              <label>Mode</label>
+              <select><option>Rotate</option></select>
+            </div>
+            <div class="field">
+              <label>Rotate every (seconds)</label>
+              <input value="10">
+            </div>
+            <div class="field">
+              <label>Sync cadence hint (seconds)</label>
+              <input value="60">
+              <div class="hint">How often the board re-reads the sync cache.</div>
+            </div>
+            <button class="btn primary" style="width:100%;">Save display config</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================= TOKEN SHEET ============================= -->
+<section class="doc-section" id="tokens">
+  <h1 class="doc-h1">Token sheet v2 — staff surfaces</h1>
+  <p class="doc-sub">Full detail in 02-polish-pass-audit-2026-09-11.md §B. TVs/signage/game displays and the
+  trivia/host system are unaffected — see §D for exactly what they adopt.</p>
+
+  <div class="sectionlabel">Ground + elevation (near-black, lightness-stepped)</div>
+  <div class="tokgrid">
+    <div class="swatch"><div class="fill" style="background:#0B0D10;color:rgba(255,255,255,.4)">#0B0D10</div><div class="meta"><b>Ground</b>Color.staffBackground — page bg</div></div>
+    <div class="swatch"><div class="fill" style="background:#131618;color:rgba(255,255,255,.5)">#131618</div><div class="meta"><b>Elevation 1</b>Color.staffSurface1 — cards, list rows</div></div>
+    <div class="swatch"><div class="fill" style="background:#171B1F;color:rgba(255,255,255,.55)">#171B1F</div><div class="meta"><b>Elevation 2</b>Color.staffSurface2 — grouped panels</div></div>
+    <div class="swatch"><div class="fill" style="background:#1A1C25;color:rgba(255,255,255,.6)">#1A1C25</div><div class="meta"><b>Elevation 3</b>Color.staffSurface3 — menus, drawers</div></div>
+    <div class="swatch"><div class="fill" style="background:#22273D;color:rgba(255,255,255,.7)">#22273D</div><div class="meta"><b>Elevation 4</b>Color.staffSurface4 — modals, sheets</div></div>
+  </div>
+
+  <div class="sectionlabel">Text tiers (alpha on white)</div>
+  <table class="tokentable">
+    <tr><th>Tier</th><th>Value</th><th>Usage</th><th>SwiftUI</th></tr>
+    <tr><td style="color:rgba(255,255,255,.87)">Primary</td><td>rgba(255,255,255,0.87)</td><td>Titles, primary data, active nav</td><td>Color.staffTextPrimary</td></tr>
+    <tr><td style="color:rgba(255,255,255,.60)">Secondary</td><td>rgba(255,255,255,0.60)</td><td>Labels, captions, helper copy</td><td>Color.staffTextSecondary</td></tr>
+    <tr><td style="color:rgba(255,255,255,.38)">Disabled</td><td>rgba(255,255,255,0.38)</td><td>Disabled, placeholder, least-important</td><td>Color.staffTextDisabled</td></tr>
+  </table>
+
+  <div class="sectionlabel">Accent roles (calmed)</div>
+  <div class="tokgrid">
+    <div class="swatch"><div class="fill" style="background:#7FE6A8;color:#0B0D10">#7FE6A8</div><div class="meta"><b>Accent (calm)</b>Color.staffAccent — nav, links, focus</div></div>
+    <div class="swatch"><div class="fill" style="background:#00FF41;color:#0B0D10">#00FF41</div><div class="meta"><b>Accent live (reserved)</b>Color.staffAccentLive — true "live" only</div></div>
+    <div class="swatch"><div class="fill" style="background:#E8B04B;color:#0B0D10">#E8B04B</div><div class="meta"><b>Amber (calmed)</b>Color.staffAmber — ambient/pending</div></div>
+    <div class="swatch"><div class="fill" style="background:#FF5A5A;color:#0B0D10">#FF5A5A</div><div class="meta"><b>Red (a budget)</b>Color.staffDanger — destructive + errors only</div></div>
+  </div>
+
+  <div class="sectionlabel">Type roles</div>
+  <div class="typesample">
+    <div class="line"><div class="role-tag">Display · Share Tech Mono 28/34 · 700</div><div class="display-role">Bunker Unified OS</div></div>
+    <div class="line"><div class="role-tag">Heading · Share Tech Mono 17/19 · 600</div><div class="heading-role">Top Sellers</div></div>
+    <div class="line"><div class="role-tag">Body · JetBrains Mono 14/15 · 400</div><div class="body-role">Toast credentials are server-side only — nothing sensitive is entered here.</div></div>
+    <div class="line"><div class="role-tag">Label · JetBrains Mono 12 · 500 · caps reserved for this role</div><div class="label-role">Rotation groups</div></div>
+    <div class="line"><div class="role-tag">Mono-data · JetBrains Mono 14/15 · tabular-nums</div><div class="monodata-role">#1 The Lobotomizers — 288</div></div>
+  </div>
+
+  <div class="sectionlabel">Spacing (8pt grid)</div>
+  <div class="spacingdemo">
+    <div><div class="bar" style="height:4px;"></div><div class="lbl">4<br>space-1</div></div>
+    <div><div class="bar" style="height:8px;"></div><div class="lbl">8<br>space-2</div></div>
+    <div><div class="bar" style="height:12px;"></div><div class="lbl">12<br>space-3</div></div>
+    <div><div class="bar" style="height:16px;"></div><div class="lbl">16<br>space-4</div></div>
+    <div><div class="bar" style="height:24px;"></div><div class="lbl">24<br>space-6</div></div>
+    <div><div class="bar" style="height:32px;"></div><div class="lbl">32<br>space-8</div></div>
+    <div><div class="bar" style="height:48px;"></div><div class="lbl">48<br>space-12</div></div>
+  </div>
+
+  <div class="sectionlabel">Danger language</div>
+  <div class="dangerdemo">
+    <button class="btn ghost">Sign out</button>
+    <button class="btn danger-link">Remove group</button>
+    <button class="btn" style="border-color:var(--staff-danger);color:var(--staff-danger);">Delete asset permanently (hold to confirm)</button>
+  </div>
+  <p class="footer-note">Radius: 6px controls/cards, 10px sheets/modals, full pill for chips and status badges only — a
+  ruling for staff surfaces, not display/TV surfaces, which keep sharp corners. Motion: 120–150ms hover/press,
+  180ms single-axis drawer/sheet, 160ms expand/collapse, nothing infinite off display routes. Full detail,
+  citations, and the danger-language confirm tiers are in 02-polish-pass-audit-2026-09-11.md.</p>
+</section>
+
+</body>
+</html>
