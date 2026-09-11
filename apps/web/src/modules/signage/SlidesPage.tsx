@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Navigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { useUiVersion } from "@/shared/useUiVersion";
-import { EmptyState, ListRow, StaffPageHeader, StatusChip } from "@/shared/ui";
+import { EmptyState, InlineNotice, ListRow, StaffPageHeader, StatusChip } from "@/shared/ui";
 import { useIsMobile } from "@/shared/useIsMobile";
 import {
   useAdminSlots, useAllItems, useSignageAssets, useToastCache, toastMap,
@@ -38,11 +38,13 @@ import "./signage.css";
  * library inside the hub, so this route redirects there — the same inverse-MovedRoute
  * wrapper Beat 4 gave the /media/* pages. Classic is therefore untouched (RULE #1).
  *
- * THE DATA IS THE HUB'S DATA. Every query below is the hub's own hook, so react-query
- * serves BOTH surfaces from ONE cache entry per key: the count in the hub's notice and the
- * count on this page cannot disagree, and a save here invalidates exactly what a save in
- * the hub invalidates. The queue-position rule and the editor mount are shared FUNCTIONS
- * (`makeNextPosition`, `AssetOverlay`), not copies.
+ * DECISION: the page calls the hub's own HOOKS rather than taking a `SignageHubContext`.
+ * react-query serves both surfaces from ONE cache entry per key, so the count in the hub's
+ * notice and the count here cannot disagree and a save invalidates exactly what a save in
+ * the hub invalidates — while a ctx would force this page to construct the screen-program
+ * resolvers (`makeEffFor` and friends) it never renders. Single-sourcing therefore lives at
+ * the FUNCTION level: `groupItemsBySlot` / `makeNextPosition` / `AssetOverlay` / `AssetCard`
+ * / `summarize` / `assetSubtitle` are shared, not copied.
  *
  * Sizes are inline px: nothing inherits font-size under `.terminal-theme` (PR #89).
  */
@@ -68,8 +70,10 @@ export function SlidesPage() {
   const assets = useMemo(() => assetsQ.data ?? [], [assetsQ.data]);
   const toastRows = useMemo(() => toastQ.data ?? [], [toastQ.data]);
   const tmap = useMemo(() => toastMap(toastRows), [toastRows]);
-  // The venue clock the TV resolves weekday rules in, from the shared helper (hub parity —
-  // an OFF TODAY chip must mean the same thing on both surfaces).
+  // DECISION: `useVenueClock()` rather than re-typing the hub's two fallbacks inline. It is
+  // the shared helper over the same two cached queries with the same defaults
+  // (America/Chicago, closeout 4), so an OFF TODAY chip means the same thing here as on the
+  // hub card and on the TV — a second pair of fallbacks is how they would stop meaning it.
   const venueClock = useVenueClock();
 
   // The hub's slow render clock, same 60s cadence (a console, not a display). Without it a
@@ -83,7 +87,14 @@ export function SlidesPage() {
   const now = useMemo(() => new Date(nowTick), [nowTick]);
 
   // The hub's definitions, from the hub's file — one answer to "where does a new slide land
-  // in that screen's queue" (ItemEditor's queue-on-save path uses it).
+  // in that screen's queue".
+  //
+  // `nextPosition` is DEAD BY CONSTRUCTION on this page: ItemEditor only calls it while
+  // saving a NEW item that carries a `queueOnSlotId`, and this page always passes null (see
+  // the DECISION at the editor mount). It is threaded through anyway, from the shared
+  // definition, because the alternative — omitting it — makes the editor fall back to
+  // position 0 the day someone gives this page a queue-on-save path, filing a new slide at
+  // the TOP of a screen's rotation. Cheaper to be correct now than to remember then.
   const itemsBySlot = useMemo(() => groupItemsBySlot(itemsQ.data ?? []), [itemsQ.data]);
   const nextPosition = makeNextPosition(itemsBySlot);
 
@@ -117,10 +128,20 @@ export function SlidesPage() {
           }
         />
 
-        <div className="st-body st-t2" style={{ margin: "0 0 16px" }}>
-          Every card the screens can rotate, built once and shared by every screen. Queue one onto a
-          screen from the SIGNAGE HUB (+ ADD), and set its order and seconds in that screen's QUEUE.
-        </div>
+        {/* The "how do I get an IDLE slide onto a screen" affordance lives HERE, not on the
+            IDLE chip. A ListRow with `onClick` renders a <button>, and an <a> inside a
+            <button> is invalid interactive nesting — it would also split the row's 44px tap
+            target in two. The desktop AssetCard is worse: it is SHARED with the classic hub,
+            so a link inside it would break classic byte-identity. So the chip explains itself
+            with a `title`, and the one clickable route to /signage rides InlineNotice, which
+            gives it a 44px target by construction (an inline <a> inside this sentence
+            measured 158×31 — a real miss on a phone, which is why it is not one). */}
+        <InlineNotice
+          style={{ margin: "0 0 16px" }}
+          message="Every card the screens can rotate, built once and shared by every screen. Queue one onto a screen from that screen's + ADD, and set its order and seconds in its QUEUE."
+          to="/signage"
+          label="SIGNAGE HUB →"
+        />
 
         {assetsQ.isLoading ? (
           <div className="st-body st-t2">Loading slides…</div>
@@ -221,7 +242,7 @@ function AssetListRow({ a, slots, tmap, toastRows, now, venueClock, onOpen }: {
           <StatusChip tone="idle" label={templateBadge(item.template)} />
           {dayLabel && <StatusChip tone="warn" label={`↻ ${dayLabel}${offToday ? " · OFF TODAY" : ""}`} />}
           {a.placements.length === 0
-            ? <StatusChip tone="off" label="IDLE" />
+            ? <StatusChip tone="off" title="Not on any screen yet — queue it from a screen's + ADD in the Signage Hub" label="IDLE" />
             : slots.filter((s) => placed.has(s.id)).map((s) => (
                 <StatusChip key={s.id} tone="live" title={`${s.name} — queued`} label={slotCode(s)} />
               ))}

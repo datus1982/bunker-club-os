@@ -57,6 +57,11 @@ import "./signage.css";
  * v2 nav pointed at /signage#… instead of new routes). `library` / `playlists` are now
  * BOOKMARK COMPATIBILITY in v2 only — Beat 4 gave them real /media/* pages and the effect
  * below forwards them there; classic still expands the section named here.
+ *
+ * DECISION (Beat 6 PR 4): BAR OPS ▸ SLIDES gets NO entry here. The asset section never had
+ * an anchor — no nav link, no bookmark and no `#assets` key ever existed — so there is
+ * nothing to forward to /signage/slides, and adding the key would give classic a behaviour
+ * (expand-on-#assets) it does not have today.
  */
 const HASH_SECTIONS: Record<string, string | null> = {
   screens: null,

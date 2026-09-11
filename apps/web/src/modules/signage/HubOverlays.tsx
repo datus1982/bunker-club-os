@@ -25,6 +25,13 @@ import { placementsFor, type Overlay } from "./signageHubShared";
  *
  * This file renders panels; it owns no data. Every mutation it triggers belongs to the
  * panel components themselves, exactly as before.
+ *
+ * THREE OF THEM ARE ALSO EXPORTED ON THEIR OWN, for the pages that opened out of this hub
+ * and must keep opening the hub's panel rather than a second copy of it:
+ *   · `ProgramOverlay` / `ScheduleOverlay` (Beat 4) — MEDIA ▸ SCREENS & PROGRAMS.
+ *   · `AssetOverlay` (Beat 6 PR 4) — BAR OPS ▸ SLIDES. The `asset` branch below is now a
+ *     call to it, so there is ONE definition of what editing a slide means: which screens
+ *     it reports as its placements, what a save invalidates, where a new slide is queued.
  */
 export interface HubOverlayProps {
   overlay: Overlay | null;

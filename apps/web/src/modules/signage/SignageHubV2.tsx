@@ -113,30 +113,28 @@ export function SignageHubV2({ ctx, overlays }: { ctx: SignageHubContext; overla
           )}
         </div>
 
-        {/* ── B · SLIDES — promoted to its own page (Beat 6 PR 4) ───────── */}
-        {/* The asset library lived here as a collapsible grid. Screen control and slide
-            authoring were competing for the same page (audit §A3), so the slides moved to
-            BAR OPS ▸ SLIDES and this line says where they went — the same pattern Beat 4
-            used for MEDIA, rather than silently dropping a section the manager knows.
-            The count comes from the SAME query the page reads, so the two cannot drift. */}
-        <InlineNotice
-          style={{ marginTop: 32 }}
-          message={ctx.assetsLoading
-            ? "Slides — build and edit the cards the screens rotate."
-            : `Slides (${ctx.assets.length}) — build and edit the cards the screens rotate.`}
-          to="/signage/slides"
-          label="MANAGE SLIDES →"
-        />
-
-        {/* ── B2 · MEDIA — promoted to its own section (Beat 4) ──────────── */}
-        {/* Say where it went (audit finding #6's pattern) rather than silently dropping a
-            section the manager is used to seeing here. CLASSIC still renders MediaSection. */}
-        <InlineNotice
-          style={{ marginTop: 32 }}
-          message="MEDIA has its own section now — LIBRARY · PLAYLISTS · SCREENS & PROGRAMS."
-          to="/media/library"
-          label="GO TO MEDIA →"
-        />
+        {/* ── B · WHERE THINGS WENT ─────────────────────────────────────── */}
+        {/* Two sections have left this page — the media library in Beat 4, the slide library
+            in Beat 6 PR 4 — and each says where it went rather than silently disappearing on
+            a manager who knows it was here. They are ONE block, not a stack: two notices each
+            opening their own 32px section gap read as two unrelated announcements interrupting
+            the page twice. The group takes the section gap; the lines inside sit at the row
+            gap. The slide count comes from the SAME query the SLIDES page reads, so the number
+            here and the number there cannot drift. CLASSIC still renders both sections inline. */}
+        <div style={{ marginTop: 32, display: "flex", flexDirection: "column", gap: 8 }}>
+          <InlineNotice
+            message={ctx.assetsLoading
+              ? "Slides — build and edit the cards the screens rotate."
+              : `Slides (${ctx.assets.length}) — build and edit the cards the screens rotate.`}
+            to="/signage/slides"
+            label="MANAGE SLIDES →"
+          />
+          <InlineNotice
+            message="MEDIA has its own section now — LIBRARY · PLAYLISTS · SCREENS & PROGRAMS."
+            to="/media/library"
+            label="GO TO MEDIA →"
+          />
+        </div>
 
         {/* ── C · RUNNING & UPCOMING (events) ────────────────────────────── */}
         <div id="events" style={{ marginTop: 32 }}>

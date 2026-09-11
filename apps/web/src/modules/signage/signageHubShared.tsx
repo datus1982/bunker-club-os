@@ -51,16 +51,12 @@ export function slotCode(slot: AdminSlot): string {
   return (slot.orientation[0] ?? "?").toUpperCase();
 }
 
-/** Slot ids an asset is queued on (for the editor's read-only "ON: …" line). */
 /**
  * Every queued asset, grouped by the screen it runs on and ordered by its position in that
- * screen's queue — and the next free position in one of those queues.
+ * screen's queue.
  *
  * HOISTED VERBATIM out of SignageHub.tsx (UX overhaul Beat 6 PR 4) so the hub and the
- * BAR OPS ▸ SLIDES page answer "where does a newly created slide land in this screen's
- * rotation" with the SAME definition. `nextPosition` is the number a new slide is written
- * into `slot_queue` with (ItemEditor's queue-on-save path); two copies of it drifting is
- * two different rotation orders for the same action.
+ * BAR OPS ▸ SLIDES page build the same map from the same rows.
  */
 export function groupItemsBySlot(items: AdminItem[]): Map<string, AdminItem[]> {
   const m = new Map<string, AdminItem[]>();
@@ -73,6 +69,14 @@ export function groupItemsBySlot(items: AdminItem[]): Map<string, AdminItem[]> {
   return m;
 }
 
+/**
+ * The next free position in one screen's queue — the number a NEW slide is written into
+ * `slot_queue` with (ItemEditor's queue-on-save path).
+ *
+ * HOISTED VERBATIM with the map above, and for a sharper reason: two copies of this rule
+ * drifting is two different rotation orders for the same action, so the hub and the SLIDES
+ * page must answer "where does a newly created slide land" from ONE definition.
+ */
 export function makeNextPosition(itemsBySlot: Map<string, AdminItem[]>) {
   return (slotId: string) => {
     const list = itemsBySlot.get(slotId) ?? [];
@@ -80,6 +84,7 @@ export function makeNextPosition(itemsBySlot: Map<string, AdminItem[]>) {
   };
 }
 
+/** Slot ids an asset is queued on (for the editor's read-only "ON: …" line). */
 export function placementsFor(assets: AssetWithPlacements[], itemId: string): string[] {
   return assets.find((a) => a.asset.id === itemId)?.placements.map((p) => p.slot_id) ?? [];
 }
@@ -308,9 +313,11 @@ export interface SignageHubContext {
   assets: AssetWithPlacements[];
   assetsLoading: boolean;
   itemsBySlot: Map<string, AdminItem[]>;
-  // `toastRows` / `openAsset` left the contract with the asset library (Beat 6 PR 4): the
-  // slides are their own page now, and the hub view no longer summarises a slide or opens
-  // the editor. The PAGE still holds both — `HubOverlays` takes them as explicit props.
+  // DECISION: `toastRows` / `openAsset` left the contract with the asset library (Beat 6
+  // PR 4). Nothing in the hub view reads them once the slides are their own page — it no
+  // longer summarises a slide or opens the editor — and a context field no consumer reads
+  // is how the next reader learns the wrong thing about what this page does. The PAGE
+  // still holds both; `HubOverlays` takes them as explicit props.
   tmap: Map<string, ToastCacheRow>;
   takeovers: AdminTakeover[];
   events: EventRow[];
