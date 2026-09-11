@@ -91,9 +91,15 @@ export function MediaLibraryPage() {
 
   const present = files.filter((f) => f.status === "present").length;
   const missing = files.filter((f) => f.status === "missing").length;
+  // The header tag never wraps (StaffPageHeader pins `nowrap` so a count can't split mid-phrase),
+  // so the full three-part line pushes a 390px phone into horizontal scroll. Phones get the two
+  // numbers that are not derivable from each other; PRESENT returns at tablet width and up.
+  const narrow = useIsMobile();
   const tag = filesQ.isLoading
     ? "LOADING…"
-    : `${files.length} FILE${files.length === 1 ? "" : "S"} · ${present} PRESENT · ${missing} MISSING`;
+    : narrow
+      ? `${files.length} FILE${files.length === 1 ? "" : "S"} · ${missing} MISSING`
+      : `${files.length} FILE${files.length === 1 ? "" : "S"} · ${present} PRESENT · ${missing} MISSING`;
 
   return (
     <MediaPage title="LIBRARY" tag={tag}>
