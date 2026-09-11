@@ -1,0 +1,199 @@
+import { useState, type CSSProperties } from "react";
+import { Link } from "react-router-dom";
+import {
+  ConfirmDialog, EmptyState, FormField, ListRow, StaffPageHeader, StatusChip,
+} from "@/shared/ui";
+import type { AvailableGroup, Config, ConfiguredGroup } from "./drinksAdminShared";
+
+/**
+ * /admin/drinks (nav label TOP SELLERS), v2 presentation — UX overhaul Beat 3.
+ *
+ * PRESENTATION ONLY. Every query, mutation and Supabase call lives in `DrinksAdmin.tsx`
+ * and arrives here as a callback; this file must never touch the client. Classic renders
+ * byte-identically to before — this view only exists when `ui_version` is `v2` (RULE #1).
+ *
+ * What changes, and why:
+ *  • The page `<h1>` becomes the shared StaffPageHeader, so this page carries the same
+ *    eyebrow/title/tag as every other v2 staff screen.
+ *  • Each rotation group becomes a ListRow — the phone stacks it instead of squeezing a
+ *    name and four controls onto one 390px line (audit findings #1/#2).
+ *  • REMOVE asks first. Classic deletes a group on a single tap with NO confirmation at
+ *    all (there is no window.confirm on this page) — a mis-tap on a phone silently drops
+ *    a rotation group. DECISION (tagged): v2 puts the ratified ConfirmDialog in front of
+ *    it. This is the one behavioural ADDITION in this view; it only ever prevents a
+ *    write, never performs one, and classic is left exactly as it is.
+ *  • The add-group picker becomes one FormField + ADD instead of a wrapping row of
+ *    "+ Group" buttons (at 20 discovered groups that row was the page's worst phone
+ *    overflow risk). Same `onAdd` payload: guid + name.
+ *
+ * DECISION (tagged): ToggleSwitch is NOT used here. The audit's "any on/off →
+ * ToggleSwitch" applies to the DISPLAY form, and `drinks_display_config` has no boolean
+ * at all (header/footer text, a mode enum, two intervals). The per-group on/off keeps the
+ * spec'd shape — a StatusChip that reports state plus the same ON/OFF button that
+ * classic's `toggleGroup` mutation is wired to.
+ *
+ * Sizes are inline px: nothing inherits font-size under `.terminal-theme` (PR #89).
+ */
+export function DrinksAdminV2({
+  configured,
+  addable,
+  cfg,
+  narrow,
+  msg,
+  saving,
+  onAdd,
+  onToggle,
+  onRemove,
+  onMove,
+  onSave,
+}: {
+  configured: ConfiguredGroup[];
+  addable: Pick<AvailableGroup, "toast_menu_guid" | "name">[];
+  cfg: Config;
+  /** Phone (<640px) — from the page's shared useIsMobile, so there is ONE breakpoint. */
+  narrow: boolean;
+  msg: string | null;
+  saving: boolean;
+  onAdd: (g: { toast_menu_guid: string; name: string }) => void;
+  onToggle: (g: ConfiguredGroup) => void;
+  onRemove: (id: string) => void;
+  onMove: (g: ConfiguredGroup, dir: -1 | 1) => void;
+  onSave: (c: Config) => void;
+}) {
+  const [confirmRemove, setConfirmRemove] = useState<ConfiguredGroup | null>(null);
+  const [pick, setPick] = useState("");
+  const enabled = configured.filter((g) => g.enabled).length;
+
+  return (
+    <div style={{ padding: "20px clamp(14px, 4vw, 48px) 40px", maxWidth: 900, margin: "0 auto" }}>
+      <StaffPageHeader
+        eyebrow="BAR OPS ▸ TOP SELLERS"
+        title="TOP SELLERS"
+        tag={`${enabled} OF ${configured.length} GROUP${configured.length === 1 ? "" : "S"} ON`}
+        right={
+          <>
+            <Link to="/drinks" style={linkBtn}>OPEN BOARD</Link>
+            <Link to="/dashboard" style={linkBtn}>DASHBOARD</Link>
+          </>
+        }
+      />
+      <p style={intro}>
+        Toast credentials are server-side only — nothing sensitive is entered here. Sales refresh
+        automatically from the scheduled sync.
+      </p>
+
+      {/* ── ROTATION GROUPS ─────────────────────────────────────────────── */}
+      <div style={sectionLabel}>ROTATION GROUPS</div>
+      {configured.length === 0 ? (
+        <EmptyState
+          eyebrow="NO GROUPS YET"
+          message="Add one below. The board shows a group once the sync has sales for it."
+        />
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {configured.map((g, i, arr) => (
+            <ListRow
+              key={g.id}
+              stacked={narrow}
+              title={`${g.name}${g.toast_menu_guid === "MAIN_MENU_ALL" ? " ★" : ""}`}
+              meta={<StatusChip tone={g.enabled ? "live" : "off"} dot={g.enabled} label={g.enabled ? "ON" : "OFF"} />}
+              actions={
+                <>
+                  <button type="button" style={btn} onClick={() => onMove(g, -1)} disabled={i === 0} aria-label={`Move ${g.name} up`}>▲</button>
+                  <button type="button" style={btn} onClick={() => onMove(g, 1)} disabled={i === arr.length - 1} aria-label={`Move ${g.name} down`}>▼</button>
+                  <button type="button" style={btn} onClick={() => onToggle(g)}>{g.enabled ? "● ON" : "○ OFF"}</button>
+                  <button type="button" className="u-amber" style={btnDanger} onClick={() => setConfirmRemove(g)}>REMOVE</button>
+                </>
+              }
+            />
+          ))}
+        </div>
+      )}
+
+      <form
+        style={{ marginTop: 14, display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap" }}
+        onSubmit={(e) => {
+          e.preventDefault();
+          const g = addable.find((a) => a.toast_menu_guid === pick);
+          if (g) { onAdd({ toast_menu_guid: g.toast_menu_guid, name: g.name }); setPick(""); }
+        }}
+      >
+        <FormField
+          label="ADD A GROUP"
+          hint={addable.length === 0 ? "All discovered groups added. (Run the sync to discover more.)" : undefined}
+          style={{ flex: "1 1 260px", minWidth: 0 }}
+        >
+          <select value={pick} onChange={(e) => setPick(e.target.value)} disabled={addable.length === 0}>
+            <option value="" style={{ background: "#000" }}>— pick a group —</option>
+            {addable.map((g) => (
+              <option key={g.toast_menu_guid} value={g.toast_menu_guid} style={{ background: "#000" }}>{g.name}</option>
+            ))}
+          </select>
+        </FormField>
+        <button type="submit" disabled={!pick} className={pick ? "u-fill u-ink" : ""} style={pick ? { ...btn, background: "var(--terminal-green)", color: "#000", fontWeight: 700 } : btn}>+ ADD</button>
+      </form>
+
+      {/* ── DISPLAY ─────────────────────────────────────────────────────── */}
+      <div className="terminal-separator" style={{ margin: "26px 0 16px" }} />
+      <div style={sectionLabel}>DISPLAY</div>
+      <ConfigFormV2 initial={cfg} onSave={onSave} busy={saving} />
+      {msg && <div style={{ marginTop: 12, fontSize: 17 }}>{msg}</div>}
+
+      {confirmRemove && (
+        <ConfirmDialog
+          title="REMOVE THIS GROUP?"
+          body={<>“{confirmRemove.name}” stops rotating on the TOP SELLERS board. Nothing in Toast changes — you can add the group back from the picker.</>}
+          confirmLabel="REMOVE"
+          danger
+          onConfirm={() => { onRemove(confirmRemove.id); setConfirmRemove(null); }}
+          onCancel={() => setConfirmRemove(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+/** The DISPLAY settings form on the shared FormField. Same fields, same parsing, same
+ *  `onSave(Config)` payload as classic's ConfigForm — only the boxes are shared now. */
+function ConfigFormV2({ initial, onSave, busy }: { initial: Config; onSave: (c: Config) => void; busy: boolean }) {
+  const [c, setC] = useState<Config>(initial);
+  return (
+    <form
+      onSubmit={(e) => { e.preventDefault(); onSave(c); }}
+      style={{ display: "flex", flexDirection: "column", gap: 14, maxWidth: 560 }}
+    >
+      <FormField label="HEADER TEXT">
+        <input value={c.header_text} onChange={(e) => setC({ ...c, header_text: e.target.value })} />
+      </FormField>
+      <FormField label="FOOTER TEXT">
+        <input value={c.footer_text} onChange={(e) => setC({ ...c, footer_text: e.target.value })} />
+      </FormField>
+      <FormField label="MODE">
+        <select value={c.display_mode} onChange={(e) => setC({ ...c, display_mode: e.target.value })}>
+          <option value="rotate" style={{ background: "#000" }}>rotate</option>
+          <option value="single" style={{ background: "#000" }}>single (first group)</option>
+        </select>
+      </FormField>
+      <FormField label="ROTATE EVERY (SECONDS)">
+        <input type="number" min={3} value={c.auto_rotate_seconds} onChange={(e) => setC({ ...c, auto_rotate_seconds: parseInt(e.target.value) || 10 })} />
+      </FormField>
+      <FormField label="SYNC CADENCE HINT (SECONDS)" hint="How often the board re-reads the sync cache.">
+        <input type="number" min={30} value={c.refresh_interval} onChange={(e) => setC({ ...c, refresh_interval: parseInt(e.target.value) || 60 })} />
+      </FormField>
+      <button type="submit" disabled={busy} className="u-fill u-ink" style={{ ...btn, background: "var(--terminal-green)", color: "#000", fontWeight: 700, alignSelf: "flex-start" }}>
+        {busy ? "SAVING…" : "SAVE DISPLAY CONFIG"}
+      </button>
+    </form>
+  );
+}
+
+const sectionLabel: CSSProperties = { fontSize: 20, letterSpacing: 3, opacity: 0.7, margin: "0 0 10px" };
+const intro: CSSProperties = { fontSize: 16, opacity: 0.6, lineHeight: 1.5, margin: "0 0 22px" };
+const btn: CSSProperties = {
+  background: "transparent", color: "var(--terminal-green)", border: "1px solid var(--terminal-green)",
+  padding: "0 16px", minHeight: 44, minWidth: 44, cursor: "pointer", letterSpacing: 1,
+};
+const btnDanger: CSSProperties = { ...btn, borderColor: "var(--terminal-amber, #ffb000)" };
+const linkBtn: CSSProperties = {
+  ...btn, textDecoration: "none", display: "inline-flex", alignItems: "center", fontSize: 16,
+};
