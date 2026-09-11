@@ -56,8 +56,13 @@ export function StatusChip({
         ...style,
       }}
     >
-      {dot && <span style={{ fontSize: 15 }} aria-hidden="true">●</span>}
-      {label}
+      {dot && <span style={{ fontSize: 15, flex: "0 0 auto" }} aria-hidden="true">●</span>}
+      {/* The label needs its own block for text-overflow to fire: `text-overflow` is
+          ignored on a flex CONTAINER, so a long chip (PROGRAM: ALL MEDIA (SHUFFLE) ·
+          override) was being cut mid-word with no ellipsis. */}
+      <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 15 }}>
+        {label}
+      </span>
     </span>
   );
 }
@@ -73,6 +78,6 @@ const chip: CSSProperties = {
   border: "1px solid currentColor",
   whiteSpace: "nowrap",
   maxWidth: "100%",
+  minWidth: 0,
   overflow: "hidden",
-  textOverflow: "ellipsis",
 };
