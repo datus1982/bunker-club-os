@@ -10,8 +10,8 @@ import { hasModule, roleAtLeast, type ModuleKey, type StaffRole } from "@/shared
  * `minRole` → rank. A section renders iff at least one REAL child is visible; a
  * coming-soon child alone never conjures a section.
  *
- * MEDIA links are hash anchors on /signage (addendum ruling 3 — no new routes in this
- * beat); the hub expands + scrolls to the named section.
+ * MEDIA is its own top-level section on its own paths (Beat 4). Those routes are v2-only:
+ * on a classic device they redirect back into the hub, which is where classic keeps them.
  */
 export interface NavChildV2 {
   /** Route, optionally with a `#anchor` (e.g. `/signage#library`). Empty for placeholders. */
@@ -58,12 +58,15 @@ export const SECTIONS_V2: NavSectionV2[] = [
   },
   {
     // Promoted out of the Signage Hub (owner decision A). Organisation only — the
-    // surfaces themselves are unchanged and still live on /signage.
+    // surfaces themselves are unchanged; Beat 4 gave them real paths (Beat 1 pointed
+    // these at /signage#… hash anchors, which still work for old bookmarks).
+    // Gated on `signage`: MEDIA has no module of its own and these pages read/write
+    // signage tables, so the hub's grant is the honest gate.
     label: "MEDIA",
     children: [
-      { to: "/signage#library", label: "LIBRARY", module: "signage" },
-      { to: "/signage#playlists", label: "PLAYLISTS", module: "signage" },
-      { to: "/signage#screens", label: "SCREENS & PROGRAMS", module: "signage" },
+      { to: "/media/library", label: "LIBRARY", module: "signage" },
+      { to: "/media/playlists", label: "PLAYLISTS", module: "signage" },
+      { to: "/media/screens", label: "SCREENS & PROGRAMS", module: "signage" },
     ],
   },
   {

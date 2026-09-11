@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   useAdminSlots, useAllItems, useSignageAssets, useTakeovers, useToastCache, useLiveGame,
   useSlotsRealtime,
@@ -52,8 +52,10 @@ import "./signage.css";
 
 /**
  * Hash anchor id → the CollapsibleSection key it must expand (null = a plain block that
- * only needs scrolling). These ids are rendered on the section roots below and are what
- * the v2 nav's /signage#… links point at (UX overhaul Beat 1 — no new routes).
+ * only needs scrolling). These ids are rendered on the section roots below (Beat 1 — the
+ * v2 nav pointed at /signage#… instead of new routes). `library` / `playlists` are now
+ * BOOKMARK COMPATIBILITY in v2 only — Beat 4 gave them real /media/* pages and the effect
+ * below forwards them there; classic still expands the section named here.
  */
 const HASH_SECTIONS: Record<string, string | null> = {
   screens: null,
@@ -223,9 +225,18 @@ export function SignageHub({ openQueueSlug }: { openQueueSlug?: string }) {
   // after paint. NO hash ⇒ nothing happens at all, so the hub behaves exactly as before.
   // `location.key` is in the deps so re-clicking the same link scrolls again.
   const location = useLocation();
+  const navigate = useNavigate();
   useEffect(() => {
     const id = location.hash.replace(/^#/, "");
     if (!Object.hasOwn(HASH_SECTIONS, id)) return;
+    // Beat 4: in v2 the media surfaces are their own pages and this hub no longer renders
+    // MediaSection at all — so an old #library / #playlists link (a Beat 1 nav bookmark, a
+    // link someone pasted) has to go there instead of scrolling to a section that is gone.
+    // CLASSIC never enters this branch: it still keeps both sections on this page.
+    if (version === "v2" && (id === "library" || id === "playlists")) {
+      navigate(id === "library" ? "/media/library" : "/media/playlists", { replace: true });
+      return;
+    }
     const collapseKey = HASH_SECTIONS[id];
     if (collapseKey) requestOpenHubSection(collapseKey);
     // The hub's sections fill in asynchronously (the media grid is hundreds of cards), so
@@ -242,7 +253,7 @@ export function SignageHub({ openQueueSlug }: { openQueueSlug?: string }) {
     };
     const timers = [0, 150, 400, 900].map((d) => window.setTimeout(jump, d));
     return () => timers.forEach((t) => window.clearTimeout(t));
-  }, [location.hash, location.key]);
+  }, [location.hash, location.key, version, navigate]);
 
   // Queue an existing library asset onto a screen (AddPicker FROM LIBRARY, D6).
   const queueExisting = useMutation({

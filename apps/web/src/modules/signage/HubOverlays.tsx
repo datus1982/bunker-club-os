@@ -113,18 +113,18 @@ export function HubOverlays({
       )}
 
       {overlay?.kind === "program" && (
-        <ProgramPanel
+        <ProgramOverlay
           slot={overlay.slot}
-          hasSchedule={(scheduleBySlot.get(overlay.slot.id)?.length ?? 0) > 0}
-          overrideActive={overrideHoldFor(overlay.slot) !== null}
+          scheduleBySlot={scheduleBySlot}
+          overrideHoldFor={overrideHoldFor}
           panelChoices={panelChoices}
+          qc={qc}
           onClose={() => setOverlay(null)}
-          onChanged={() => qc.invalidateQueries({ queryKey: ["signage-admin", "slots"] })}
         />
       )}
 
       {overlay?.kind === "schedule" && (
-        <ScheduleEditor slot={overlay.slot} timezone={timezone} onClose={() => setOverlay(null)} />
+        <ScheduleOverlay slot={overlay.slot} timezone={timezone} onClose={() => setOverlay(null)} />
       )}
 
       {overlay?.kind === "asset" && (
@@ -148,4 +148,39 @@ export function HubOverlays({
       )}
     </>
   );
+}
+
+/**
+ * SWITCH PROGRAM ▸ and ⧗ SCHEDULE, as standalone mounts (UX overhaul Beat 4).
+ *
+ * PURE MOVE out of the two branches above — same components, same props, derived the
+ * same way. The MEDIA ▸ SCREENS & PROGRAMS page opens THESE, so there is exactly one
+ * place that says what `hasSchedule` / `overrideActive` / `panelChoices` mean and what a
+ * program write invalidates. A second copy on the media page is how the hub and that page
+ * would start disagreeing about a live screen.
+ */
+export function ProgramOverlay({
+  slot, scheduleBySlot, overrideHoldFor, panelChoices, qc, onClose,
+}: {
+  slot: AdminSlot;
+  scheduleBySlot: Map<string, unknown[]>;
+  overrideHoldFor: (slot: AdminSlot) => ProgramHold | null;
+  panelChoices: AdminSlot[];
+  qc: QueryClient;
+  onClose: () => void;
+}) {
+  return (
+    <ProgramPanel
+      slot={slot}
+      hasSchedule={(scheduleBySlot.get(slot.id)?.length ?? 0) > 0}
+      overrideActive={overrideHoldFor(slot) !== null}
+      panelChoices={panelChoices}
+      onClose={onClose}
+      onChanged={() => qc.invalidateQueries({ queryKey: ["signage-admin", "slots"] })}
+    />
+  );
+}
+
+export function ScheduleOverlay({ slot, timezone, onClose }: { slot: AdminSlot; timezone: string; onClose: () => void }) {
+  return <ScheduleEditor slot={slot} timezone={timezone} onClose={onClose} />;
 }

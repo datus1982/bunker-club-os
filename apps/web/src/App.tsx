@@ -60,6 +60,12 @@ const SignageHub = namedLazy(signageRoutes, "SignageHub");
 const EditRotation = namedLazy(signageRoutes, "EditRotation");
 const SlotDisplay = namedLazy(signageRoutes, "SlotDisplay");
 
+// MEDIA, promoted out of the hub (UX overhaul Beat 4) — same chunk as the hub: these pages
+// mount the hub's own media panels + slide-overs.
+const MediaLibrary = namedLazy(signageRoutes, "MediaLibrary");
+const MediaPlaylists = namedLazy(signageRoutes, "MediaPlaylists");
+const MediaScreens = namedLazy(signageRoutes, "MediaScreens");
+
 // Admin shell (dashboard, persistent staff layout, users).
 const Dashboard = namedLazy(dashboardRoutes, "Dashboard");
 const StaffLayout = namedLazy(dashboardRoutes, "StaffLayout");
@@ -195,6 +201,14 @@ export function App() {
             always has; the v2 shell says where the tool went instead (audit finding #6). */}
         <Route path="/signage/broadcast" element={<RequireModule module="signage"><BroadcastMoved /></RequireModule>} />
         <Route path="/signage/events" element={<RequireModule module="signage"><EventsMoved /></RequireModule>} />
+        {/* MEDIA (Beat 4) — v2-only pages for the surfaces that used to sit inside the hub.
+            Gated on the SAME grant the hub is gated on: MEDIA has no module of its own, and
+            every one of these pages reads/writes signage tables. A classic device that lands
+            here is redirected back into the hub by the page itself. */}
+        <Route path="/media" element={<Navigate to="/media/library" replace />} />
+        <Route path="/media/library" element={<RequireModule module="signage"><MediaLibrary /></RequireModule>} />
+        <Route path="/media/playlists" element={<RequireModule module="signage"><MediaPlaylists /></RequireModule>} />
+        <Route path="/media/screens" element={<RequireModule module="signage"><MediaScreens /></RequireModule>} />
         <Route path="/admin/drinks" element={<RequireModule module="drinks"><DrinksAdmin /></RequireModule>} />
         <Route path="/admin/seasons" element={<RequireRole role="admin"><SeasonsAdmin /></RequireRole>} />
         <Route path="/admin/users" element={<RequireRole role="admin"><Users /></RequireRole>} />
