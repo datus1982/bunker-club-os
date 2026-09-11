@@ -53,7 +53,7 @@ export interface SectionNavSection {
 function DrawerLabel({ child }: { child: SectionNavChild }) {
   if (!child.task) return <>{child.label}</>;
   return (
-    <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0, padding: "8px 0" }}>
+    <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0, padding: "6px 0" }}>
       <span>{child.label}</span>
       <span className="st-body st-t3">{child.task}</span>
     </span>

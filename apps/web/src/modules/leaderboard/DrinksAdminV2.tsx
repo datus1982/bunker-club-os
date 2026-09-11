@@ -114,7 +114,7 @@ export function DrinksAdminV2({
               key={g.id}
               stacked={narrow}
               title={`${g.name}${g.toast_menu_guid === "MAIN_MENU_ALL" ? " ★" : ""}`}
-              meta={<StatusChip tone={g.enabled ? "live" : "off"} dot={g.enabled} label={g.enabled ? "ON" : "OFF"} />}
+              meta={<StatusChip tone={g.enabled ? "info" : "off"} dot={g.enabled} label={g.enabled ? "ON" : "OFF"} />}
               actions={
                 <>
                   <button type="button" className="st-btn st-body" style={btn} onClick={() => onMove(g, -1)} disabled={i === 0} aria-label={`Move ${g.name} up`}>▲</button>

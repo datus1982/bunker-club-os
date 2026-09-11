@@ -345,10 +345,21 @@
   outline-offset: 1px;
 }
 
-/* Separators drawn by the theme's own helper inside a v2 page. */
-.terminal-theme.staff-v2 [data-st-page] .terminal-separator {
+/* The theme's own frame/rule helpers, when a v2 page still uses one. `.terminal-border`
+ * is the 2px green rectangle + glow this token sheet exists to retire, and
+ * `.terminal-separator` is a 2px glowing green bar; inside the v2 scope both become the
+ * hairline. (Both base rules are plain (0,1,0), but the `[class*="border"]` family rule
+ * carries !important on border-color, hence the one below.) */
+.terminal-theme.staff-v2 [data-st-page] .terminal-border {
+  border-width: 1px;
   border-color: var(--st-hairline) !important; /* beats .terminal-theme [class*="border"] { border-color: green !important } */
-  background: var(--st-hairline) !important;
+  box-shadow: none;
+}
+.terminal-theme.staff-v2 [data-st-page] .terminal-separator {
+  height: 1px;
+  background: var(--st-hairline);
+  box-shadow: none;
+  margin: var(--st-space-6) 0;
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
