@@ -4,15 +4,15 @@ import { Link, useLocation } from "react-router-dom";
 import {
   useAdminSlots, useAllItems, useSignageAssets, useTakeovers, useToastCache, useLiveGame,
   useSlotsRealtime,
-  screenHealth, activeTakeoverForSlot, featuredItems, toastMap,
+  screenHealth, featuredItems, toastMap,
   type AdminItem, type AdminSlot, type AssetWithPlacements,
 } from "./useSignageAdmin";
 import {
-  resolveSlotMode, useLiveEvents, activeMoment, useVenue,
-  useCloseoutHour, mapScheduleRow, useTriviaArmedEffective,
+  useLiveEvents, activeMoment, useVenue,
+  useCloseoutHour, useTriviaArmedEffective,
   type SlotMode, type ToastCacheRow, type VenueClock,
 } from "./useSignage";
-import { resolveEffectiveProgramWithSource, type ProgramHold } from "./scheduleResolve";
+import type { ProgramHold } from "./scheduleResolve";
 import { useEventsList, schedulePhrase, type EventRow } from "./useEventsAdmin";
 import {
   MONO, SectionLabel, CollapsibleSection, requestOpenHubSection, HealthDot, CopyKioskButton, EventKindBadge,
@@ -21,6 +21,8 @@ import {
 // Hub internals shared with the v2 view + the slide-over host (Beat 3 — verbatim moves).
 import {
   AssetCard, TransportRow, cardBtn, miniBtn, rotationSummary, seedFromEvent,
+  makeEffFor, makeModeFor, makeOverrideHoldFor, makeProgramLabelFor, makeTakeoverMessageFor,
+  makeTransportPlaylistFor, playlistNameMap,
   useEventRowActions, type Overlay, type SignageHubContext,
 } from "./signageHubShared";
 import { HubOverlays } from "./HubOverlays";
@@ -29,7 +31,6 @@ import { useUiVersion } from "@/shared/useUiVersion";
 import { addToQueue } from "./slotQueue";
 import { MediaSection } from "./MediaSection";
 import { useMediaPlaylists, useAllScheduleRows } from "./useMediaAdmin";
-import { isAllMedia, ALL_MEDIA_NAME } from "./mediaProgram";
 import { useRole } from "@/shared/useRole";
 import { useIsMobile } from "@/shared/useIsMobile";
 import "./signage.css";
@@ -107,12 +108,9 @@ export function SignageHub({ openQueueSlug }: { openQueueSlug?: string }) {
   // run the SAME resolver the display runs (schedule rows + hold), never the raw slot.program row (an
   // active daypart would read ROTATION, and an EXPIRED override would read PROGRAM: X forever). now()
   // at render is fine — the hub re-renders on realtime + the 60s slot poll (it is not a TV).
-  const effFor = (slot: AdminSlot) =>
-    resolveEffectiveProgramWithSource(
-      { program: slot.program, program_hold: slot.program_hold, program_set_at: slot.program_set_at },
-      (scheduleBySlot.get(slot.id) ?? []).map(mapScheduleRow),
-      new Date(), timezone, rolloverHour,
-    );
+  // The expression itself now lives in signageHubShared (Beat 4) so the MEDIA ▸ SCREENS &
+  // PROGRAMS page resolves a screen's program from the SAME definition this page does.
+  const effFor = makeEffFor(scheduleBySlot, timezone, rolloverHour);
   const items = itemsQ.data ?? [];
   const assets = assetsQ.data ?? [];
   const toastRows = useMemo(() => toastQ.data ?? [], [toastQ.data]);
@@ -141,30 +139,12 @@ export function SignageHub({ openQueueSlug }: { openQueueSlug?: string }) {
 
   // Playlist names for the screen-card PROGRAM chip (hub/TV parity: a landscape card must read
   // what the TV shows — PLAYLIST '{name}', not the underlying ROTATION mode).
-  const playlistNameById = useMemo(() => {
-    const m = new Map<string, string>();
-    for (const p of playlistsQ.data ?? []) m.set(p.playlist.id, p.playlist.name);
-    return m;
-  }, [playlistsQ.data]);
+  const playlistNameById = useMemo(() => playlistNameMap(playlistsQ.data), [playlistsQ.data]);
   // The EFFECTIVE program label + its source suffix (parity — matches the TV, WARN-1). null = rotation.
-  const programLabelFor = (slot: AdminSlot): string | null => {
-    const { program, source } = effFor(slot);
-    if (!program) return null; // rotation (no override, no active daypart)
-    const base =
-      program.kind === "playlist"
-        ? (isAllMedia(program.playlist_id) ? ALL_MEDIA_NAME : `PLAYLIST '${playlistNameById.get(program.playlist_id) ?? "…"}'`)
-      : program.kind === "capture" ? "LIVE INPUT"
-      : program.kind === "carousel" ? `CAROUSEL · ${program.order === "random" ? "random" : "ordered"}`
-      : "MULTIVIEW";
-    const suffix = source === "scheduled" ? " · scheduled" : source === "override" ? " · override" : source === "pinned" ? " · pinned" : "";
-    return base + suffix;
-  };
+  const programLabelFor = makeProgramLabelFor(effFor, playlistNameById);
   // The hold tier of an ACTIVE override (for the ⧗ chip); null when no override is live (following a
   // schedule / rotation — even if a stale override row lingers in the DB, DECISION-1).
-  const overrideHoldFor = (slot: AdminSlot): ProgramHold | null => {
-    const { source } = effFor(slot);
-    return source === "override" || source === "pinned" ? (slot.program_hold ?? "pin") : null;
-  };
+  const overrideHoldFor = makeOverrideHoldFor(effFor);
 
   // "PUT TRIVIA ON SCREENS" arm (0056/0057): DEFAULT OFF, auto-expires nightly. Trivia only reaches
   // the bar TVs when EFFECTIVELY armed, so the hub must show ROTATION for an un-armed game (hub/TV
@@ -282,18 +262,13 @@ export function SignageHub({ openQueueSlug }: { openQueueSlug?: string }) {
   // four closures are that single site: both presentations render what they return, and
   // neither re-derives. Each is the expression the classic map already inlined, moved up
   // here unchanged — same resolveSlotMode call, same effFor call, same arguments.
-  const takeoverMessageFor = (slot: AdminSlot) => activeTakeoverForSlot(takeovers, slot.id)?.message ?? null;
-  const modeFor = (slot: AdminSlot) =>
-    resolveSlotMode({
-      takeover: !!activeTakeoverForSlot(takeovers, slot.id),
-      liveGame: gameOnScreens, // respects the screens-live gate (parity with the TV)
-      moment: moment ? { stage: moment.stage, interruptGame: moment.event.interrupt_game } : null,
-    });
+  const takeoverMessageFor = makeTakeoverMessageFor(takeovers);
+  // liveGame: gameOnScreens — respects the screens-live gate (parity with the TV).
+  const modeFor = makeModeFor(takeovers, gameOnScreens, moment);
   const scheduleCountFor = (slot: AdminSlot) => scheduleBySlot.get(slot.id)?.length ?? 0;
   // Transport shows only when the EFFECTIVE program (M3 resolver, not the raw row — WARN-1)
   // is a live playlist the TV is actually looping.
-  const transportPlaylistFor = (slot: AdminSlot) =>
-    modeFor(slot) === "rotation" && (effFor(slot).program?.kind === "playlist" || effFor(slot).program?.kind === "carousel");
+  const transportPlaylistFor = makeTransportPlaylistFor(modeFor, effFor);
 
   // The slide-overs render for BOTH presentations from this one set of props.
   const overlays = (

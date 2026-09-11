@@ -1,13 +1,15 @@
 import { useState, type CSSProperties } from "react";
 import {
-  featuredItems,
+  activeTakeoverForSlot, featuredItems,
   type AdminItem, type AdminSlot, type AdminTakeover, type AssetWithPlacements,
 } from "./useSignageAdmin";
 import {
-  resolveRotation, itemAirsToday, recurrenceChipLabel,
+  activeMoment, mapScheduleRow, resolveRotation, resolveSlotMode, itemAirsToday, recurrenceChipLabel,
   type SignageItem, type SlotMode, type ToastCacheRow, type Template, type VenueClock,
 } from "./useSignage";
-import type { ProgramHold } from "./scheduleResolve";
+import { resolveEffectiveProgramWithSource, type ProgramHold } from "./scheduleResolve";
+import { ALL_MEDIA_NAME, isAllMedia } from "./mediaProgram";
+import type { PlaylistWithStats, ScheduleRowRaw } from "./useMediaAdmin";
 import { MONO, summarize, templateIcon, templateBadge, isSmartTemplate } from "./signageAdminShared";
 import { sendTransportCommand, type TransportCmd } from "./mediaTransport";
 import { useMutation } from "@tanstack/react-query";
@@ -321,4 +323,100 @@ export function useEventRowActions(row: EventRow, onChanged: () => void) {
   const toggle = useMutation({ mutationFn: () => (paused ? resumeEvent(row) : pauseEvent(row.id)), onSuccess: onChanged });
   const fire = useMutation({ mutationFn: () => fireNowEvent(row), onSuccess: onChanged });
   return { toggle, fire, done, paused, isLive, st };
+}
+
+/* ── per-slot program resolution, hoisted (UX overhaul Beat 4) ──────────────────
+ *
+ * These are the EXPRESSIONS `SignageHub` used to inline, moved up here UNCHANGED so the
+ * hub and the MEDIA ▸ SCREENS & PROGRAMS page call ONE definition. The hub/TV parity
+ * invariant is the whole reason: a second copy of "what is that screen playing" in the
+ * media page is precisely how the two surfaces would start disagreeing.
+ *
+ * They are FACTORIES, not hooks — each takes the data it reads (already fetched by the
+ * caller's queries) and returns the per-slot closure the caller had before. Nothing here
+ * fetches, and nothing here is TV code: the TV runs `resolveEffectiveProgram` itself.
+ */
+
+/** The effective-program resolver for one page's slots (schedule rows + hold + venue clock). */
+export type EffFor = (slot: AdminSlot) => ReturnType<typeof resolveEffectiveProgramWithSource>;
+
+export function makeEffFor(
+  scheduleBySlot: Map<string, ScheduleRowRaw[]>,
+  timezone: string,
+  rolloverHour: number,
+): EffFor {
+  return (slot: AdminSlot) =>
+    resolveEffectiveProgramWithSource(
+      { program: slot.program, program_hold: slot.program_hold, program_set_at: slot.program_set_at },
+      (scheduleBySlot.get(slot.id) ?? []).map(mapScheduleRow),
+      new Date(), timezone, rolloverHour,
+    );
+}
+
+/** playlist id → name, for the PROGRAM chip (a TV shows the NAME, not the uuid). */
+export function playlistNameMap(playlists: PlaylistWithStats[] | undefined): Map<string, string> {
+  const m = new Map<string, string>();
+  for (const p of playlists ?? []) m.set(p.playlist.id, p.playlist.name);
+  return m;
+}
+
+/** The EFFECTIVE program label + its source suffix (parity — matches the TV). null = rotation. */
+export function makeProgramLabelFor(effFor: EffFor, playlistNameById: Map<string, string>) {
+  return (slot: AdminSlot): string | null => {
+    const { program, source } = effFor(slot);
+    if (!program) return null; // rotation (no override, no active daypart)
+    const base =
+      program.kind === "playlist"
+        ? (isAllMedia(program.playlist_id) ? ALL_MEDIA_NAME : `PLAYLIST '${playlistNameById.get(program.playlist_id) ?? "…"}'`)
+      : program.kind === "capture" ? "LIVE INPUT"
+      : program.kind === "carousel" ? `CAROUSEL · ${program.order === "random" ? "random" : "ordered"}`
+      : "MULTIVIEW";
+    const suffix = source === "scheduled" ? " · scheduled" : source === "override" ? " · override" : source === "pinned" ? " · pinned" : "";
+    return base + suffix;
+  };
+}
+
+/** The hold tier of an ACTIVE override (⧗ chip); null while following a schedule / rotation. */
+export function makeOverrideHoldFor(effFor: EffFor) {
+  return (slot: AdminSlot): ProgramHold | null => {
+    const { source } = effFor(slot);
+    return source === "override" || source === "pinned" ? (slot.program_hold ?? "pin") : null;
+  };
+}
+
+export function makeTakeoverMessageFor(takeovers: AdminTakeover[]) {
+  return (slot: AdminSlot) => activeTakeoverForSlot(takeovers, slot.id)?.message ?? null;
+}
+
+/** The venue-wide mode ladder, per slot (takeover > moment > game > rotation). */
+export function makeModeFor(
+  takeovers: AdminTakeover[],
+  /** A live game that is ARMED onto the screens (parity with the TV's own gate). */
+  gameOnScreens: boolean,
+  moment: ReturnType<typeof activeMoment>,
+) {
+  return (slot: AdminSlot): SlotMode =>
+    resolveSlotMode({
+      takeover: !!activeTakeoverForSlot(takeovers, slot.id),
+      liveGame: gameOnScreens,
+      moment: moment ? { stage: moment.stage, interruptGame: moment.event.interrupt_game } : null,
+    });
+}
+
+/** Transport shows only when the EFFECTIVE program is a playlist the TV is actually looping. */
+export function makeTransportPlaylistFor(modeFor: (slot: AdminSlot) => SlotMode, effFor: EffFor) {
+  return (slot: AdminSlot) =>
+    modeFor(slot) === "rotation" && (effFor(slot).program?.kind === "playlist" || effFor(slot).program?.kind === "carousel");
+}
+
+/**
+ * Is this slot one a media PROGRAM can be sent to?
+ *
+ * The hub's own gate, in one place: landscape screens only (portrait slots stay pure
+ * rotation — that is where the promo queue lives), and never a multiview PANEL (it has no
+ * TV of its own and follows its host). Same predicate `MediaSection`'s PLAY ON row uses
+ * and the same one the hub's PROGRAM / SCHEDULE controls are rendered behind.
+ */
+export function isMediaCapableSlot(slot: AdminSlot): boolean {
+  return slot.orientation === "landscape" && slot.kind !== "panel";
 }
