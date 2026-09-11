@@ -39,6 +39,7 @@ export function DrinksAdminV2({
   addable,
   cfg,
   cfgLoaded,
+  cfgFailed,
   narrow,
   msg,
   saving,
@@ -53,6 +54,8 @@ export function DrinksAdminV2({
   cfg: Config;
   /** False until the saved config has loaded — the form must not seed from defaults. */
   cfgLoaded: boolean;
+  /** The saved-config read failed — never seed the form from defaults in that state. */
+  cfgFailed: boolean;
   /** Phone (<640px) — from the page's shared useIsMobile, so there is ONE breakpoint. */
   narrow: boolean;
   msg: string | null;
@@ -141,7 +144,9 @@ export function DrinksAdminV2({
       <div style={sectionLabel}>DISPLAY</div>
       {cfgLoaded
         ? <ConfigFormV2 initial={cfg} onSave={onSave} busy={saving} />
-        : <p style={{ opacity: 0.6, fontSize: 17 }}>LOADING SAVED SETTINGS…</p>}
+        : cfgFailed
+          ? <p className="u-amber" style={{ fontSize: 17 }}>COULD NOT LOAD SAVED SETTINGS — RELOAD THE PAGE BEFORE EDITING.</p>
+          : <p style={{ opacity: 0.6, fontSize: 17 }}>LOADING SAVED SETTINGS…</p>}
       {msg && <div style={{ marginTop: 12, fontSize: 17 }}>{msg}</div>}
 
       {confirmRemove && (
