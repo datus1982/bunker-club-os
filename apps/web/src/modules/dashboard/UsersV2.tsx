@@ -1,7 +1,8 @@
-import type { CSSProperties } from "react";
+import { useState, type CSSProperties } from "react";
 import type { ModuleKey, StaffRole } from "@/shared/useRole";
 import { moduleLabel } from "@/shared/moduleLabels";
 import {
+  ConfirmDialog,
   EmptyState,
   FormField,
   InlineNotice,
@@ -33,10 +34,26 @@ import { ALL_MODULES, STATUS_LABEL, type InviteResult, type InviteRole, type Sta
  *
  * BEAT 6 (PR 1) — token pass, presentation only. The page root carries `data-st-page`
  * (the token sheet's opt-in hook); text rides the type-role + tier classes; the invite
- * panel is a surface-2 `st-panel`; cards/rows are surface-1. NOT in this PR: the
- * admin-row collapse to one "Full access — admin" line (C4) and the REMOVE danger
- * redesign (D1) — both are PR 3, so REMOVE stays exactly where and what it is (its
- * `u-amber` is re-declared to the calmed #E8B04B by the token sheet).
+ * panel is a surface-2 `st-panel`; cards/rows are surface-1.
+ *
+ * BEAT 6 (PR 3) — owner letters C4 + D1 (as amended). Still presentation only:
+ *  • ADMIN ROWS COLLAPSE (C4). An admin holds every module implicitly and the six
+ *    switches are locked, so the card/table spent six rows (x N admins) rendering a
+ *    decision surface that is not one. Both presentations now show a single
+ *    "Full access — admin" line instead, and the six-control grid renders only where it
+ *    is a real choice (host/staff). The page-foot caption that explained the locked
+ *    switches goes with them — the line itself now says it.
+ *  • REMOVE → "Remove access", in red, in its own danger strip (D1 + the §B geography
+ *    rule). On the phone card it is a footer under a hairline with its own kicker, so it
+ *    no longer sits beside the ROLE select as a same-weight peer. On the desktop table it
+ *    keeps the far-right cell, now divided off by a hairline (see the DECISION there).
+ *  • The window.confirm the page has always run is replaced, in v2 ONLY, by the ratified
+ *    ConfirmDialog — same guard, drawn instead of alerted, verb-named both ways
+ *    ("Remove access" / "Keep access"). Classic keeps `confirm()` untouched: `Users.tsx`
+ *    hands this view the post-confirmation callback and classic the confirming one, so
+ *    there is still exactly ONE remove mutation and no double prompt.
+ *
+ * Sizes are inline px where a span needs one: nothing inherits font-size (PR #89).
  */
 export function UsersV2({
   rows,
@@ -56,6 +73,7 @@ export function UsersV2({
   notice: string | null;
   onToggleModule: (row: StaffRow, key: ModuleKey) => void;
   onChangeRole: (row: StaffRow, role: StaffRole) => void;
+  /** Removes WITHOUT asking — this view owns the confirmation (see the docstring). */
   onRemove: (row: StaffRow) => void;
   invite: {
     emails: string;
@@ -75,6 +93,7 @@ export function UsersV2({
   // the results list for real per-address outcomes.
   const inviteError = invite.results?.find((r) => r.status === "error" && r.email === "—");
   const perAddressResults = invite.results?.filter((r) => r.email !== "—") ?? [];
+  const [confirmRemove, setConfirmRemove] = useState<StaffRow | null>(null);
 
   return (
     <div data-st-page="" style={{ padding: "24px clamp(16px, 4vw, 48px) 48px" }}>
@@ -169,7 +188,7 @@ export function UsersV2({
               row={row}
               onToggleModule={onToggleModule}
               onChangeRole={onChangeRole}
-              onRemove={onRemove}
+              onAskRemove={setConfirmRemove}
             />
           ))}
         </div>
@@ -178,13 +197,49 @@ export function UsersV2({
           rows={rows}
           onToggleModule={onToggleModule}
           onChangeRole={onChangeRole}
-          onRemove={onRemove}
+          onAskRemove={setConfirmRemove}
         />
       )}
 
+      {/* C4: the "admins implicitly hold every module" half is gone — the admin rows now
+          say it themselves, in place, instead of explaining a grid of locked switches
+          three screens further up. */}
       <div className="st-body st-t2" style={{ marginTop: 18 }}>
-        Admins implicitly hold every module (granted &amp; locked). Changes save instantly — no redeploy.
+        Changes save instantly — no redeploy.
       </div>
+
+      {confirmRemove && (
+        <ConfirmDialog
+          title={`Remove access for ${confirmRemove.email}?`}
+          body={<>They lose every module on this venue and the staff console immediately. Their
+            account and any trivia history stay; you can invite them back at any time.</>}
+          confirmLabel="Remove access"
+          cancelLabel="Keep access"
+          danger
+          onConfirm={() => { onRemove(confirmRemove); setConfirmRemove(null); }}
+          onCancel={() => setConfirmRemove(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+/** The one destructive control on this page, in the one place it is allowed to be:
+ *  a strip of its own, under a hairline, never beside a routine control (§B geography). */
+function RemoveAccess({ row, onAskRemove }: { row: StaffRow; onAskRemove: (row: StaffRow) => void }) {
+  return (
+    <button type="button" className="st-btn st-btn-danger st-body" style={removeBtn} onClick={() => onAskRemove(row)}>
+      Remove access
+    </button>
+  );
+}
+
+/** C4: what an admin row shows instead of six locked switches. */
+function FullAccessLine() {
+  return (
+    <div className="st-body st-t2" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+      <span aria-hidden="true">&#128274;</span>
+      <span>Full access — admin</span>
     </div>
   );
 }
@@ -194,12 +249,12 @@ function StaffCard({
   row,
   onToggleModule,
   onChangeRole,
-  onRemove,
+  onAskRemove,
 }: {
   row: StaffRow;
   onToggleModule: (row: StaffRow, key: ModuleKey) => void;
   onChangeRole: (row: StaffRow, role: StaffRole) => void;
-  onRemove: (row: StaffRow) => void;
+  onAskRemove: (row: StaffRow) => void;
 }) {
   const isAdmin = row.role === "admin";
   return (
@@ -216,13 +271,13 @@ function StaffCard({
       meta={
         <div style={{ display: "flex", flexDirection: "column", gap: 6, width: "100%" }}>
           <div className="st-label st-t2">ACCESS</div>
-          {ALL_MODULES.map((m) => (
+          {/* C4: an admin has no decision to make here, so there is nothing to render six
+              times. The switches stay for host/staff, where each one is a real grant. */}
+          {isAdmin ? <FullAccessLine /> : ALL_MODULES.map((m) => (
             <ToggleSwitch
               key={m}
               label={moduleLabel(m)}
-              checked={isAdmin || row.modules.includes(m)}
-              disabled={isAdmin}
-              lockedHint="ADMIN"
+              checked={row.modules.includes(m)}
               onChange={() => onToggleModule(row, m)}
               ariaLabel={`${m} for ${row.email}`}
             />
@@ -247,13 +302,16 @@ function StaffCard({
               <option value="admin">admin</option>
             </select>
           </FormField>
-          {!row.is_self && (
-            <button type="button" className="u-amber st-btn st-body" style={removeBtn} onClick={() => onRemove(row)}>
-              REMOVE
-            </button>
-          )}
         </div>
       }
+      // D1: your own row has no danger strip at all — the page has never offered
+      // remove-self (the RPC refuses it too), so the zone simply does not exist there.
+      footer={row.is_self ? undefined : (
+        <>
+          <span className="st-label st-t2">DANGER ZONE</span>
+          <RemoveAccess row={row} onAskRemove={onAskRemove} />
+        </>
+      )}
     />
   );
 }
@@ -265,12 +323,12 @@ function StaffTable({
   rows,
   onToggleModule,
   onChangeRole,
-  onRemove,
+  onAskRemove,
 }: {
   rows: StaffRow[];
   onToggleModule: (row: StaffRow, key: ModuleKey) => void;
   onChangeRole: (row: StaffRow, role: StaffRole) => void;
-  onRemove: (row: StaffRow) => void;
+  onAskRemove: (row: StaffRow) => void;
 }) {
   return (
     // DECISION: keep classic's `minWidth: 720`. Measured natural width of this table is
@@ -317,22 +375,31 @@ function StaffTable({
                   <option value="admin">admin</option>
                 </select>
               </td>
-              {ALL_MODULES.map((m) => (
+              {/* C4, desktop half: one spanning cell instead of six locked checkboxes. */}
+              {row.role === "admin" ? (
+                <td colSpan={ALL_MODULES.length} style={{ ...td, textAlign: "center" }}>
+                  <FullAccessLine />
+                </td>
+              ) : ALL_MODULES.map((m) => (
                 <td key={m} style={{ ...td, textAlign: "center", padding: "2px 4px" }}>
                   <TapTargetCheckbox
-                    checked={row.role === "admin" || row.modules.includes(m)}
-                    disabled={row.role === "admin"}
+                    checked={row.modules.includes(m)}
                     onChange={() => onToggleModule(row, m)}
                     ariaLabel={`${m} for ${row.email}`}
                   />
                 </td>
               ))}
-              <td style={{ ...td, textAlign: "right" }}>
-                {!row.is_self && (
-                  <button type="button" className="u-amber st-btn st-body" style={removeBtn} onClick={() => onRemove(row)}>
-                    REMOVE
-                  </button>
-                )}
+              {/* DECISION (D1, desktop geography): the table keeps ONE far-right cell for
+                  the destructive control, now fenced off by a hairline on its left edge and
+                  painted in the danger ink. That is the smallest honest shape here: unlike
+                  the phone card, this cell is already six columns away from the ROLE select
+                  (nothing about the grid makes them peers), so a second "danger zone" band
+                  under every table row would add a heading and a rule per row to restate a
+                  separation the layout already has. What was actually wrong at desktop was
+                  the register — an amber bare "REMOVE" reading like every other control —
+                  and that is what changes. */}
+              <td style={{ ...td, textAlign: "right", borderLeft: "1px solid", paddingLeft: 14 }}>
+                {!row.is_self && <RemoveAccess row={row} onAskRemove={onAskRemove} />}
               </td>
             </tr>
           ))}

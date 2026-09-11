@@ -122,10 +122,17 @@ export function Users() {
     invite.mutate({ emails, role: inviteRole, modules: inviteModules });
   };
 
-  /** Confirm-then-remove. Shared by both presentations so the guard can't drift. */
+  /** Confirm-then-remove — the CLASSIC path, unchanged. */
   const removeRow = (row: StaffRow) => {
     if (confirm(`Remove ${row.email}?`)) remove.mutate(row.profile_id);
   };
+
+  /** The same removal, minus the browser prompt: v2 draws the ratified ConfirmDialog
+   *  instead (UX overhaul Beat 6, letter D1 — verb-named "Remove access"/"Keep access").
+   *  Both paths end in the ONE `remove` mutation above and the one RPC beneath it, so the
+   *  guard cannot drift; only who asks the question differs. Classic still gets
+   *  `removeRow`, so it is byte-identical and never double-prompts. */
+  const removeRowConfirmed = (row: StaffRow) => remove.mutate(row.profile_id);
 
   // UX overhaul Beat 2: the v2 presentation (owner decision C — stacked cards on a
   // phone). PRESENTATION ONLY — the data layer, mutations and guards above are the
@@ -140,7 +147,7 @@ export function Users() {
         notice={notice}
         onToggleModule={toggleModule}
         onChangeRole={changeRole}
-        onRemove={removeRow}
+        onRemove={removeRowConfirmed}
         invite={{
           emails: inviteEmails,
           setEmails: setInviteEmails,
