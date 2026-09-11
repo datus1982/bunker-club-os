@@ -52,6 +52,34 @@ export function slotCode(slot: AdminSlot): string {
 }
 
 /** Slot ids an asset is queued on (for the editor's read-only "ON: …" line). */
+/**
+ * Every queued asset, grouped by the screen it runs on and ordered by its position in that
+ * screen's queue — and the next free position in one of those queues.
+ *
+ * HOISTED VERBATIM out of SignageHub.tsx (UX overhaul Beat 6 PR 4) so the hub and the
+ * BAR OPS ▸ SLIDES page answer "where does a newly created slide land in this screen's
+ * rotation" with the SAME definition. `nextPosition` is the number a new slide is written
+ * into `slot_queue` with (ItemEditor's queue-on-save path); two copies of it drifting is
+ * two different rotation orders for the same action.
+ */
+export function groupItemsBySlot(items: AdminItem[]): Map<string, AdminItem[]> {
+  const m = new Map<string, AdminItem[]>();
+  for (const it of items) {
+    if (!it.slot_id) continue;
+    if (!m.has(it.slot_id)) m.set(it.slot_id, []);
+    m.get(it.slot_id)!.push(it);
+  }
+  for (const list of m.values()) list.sort((a, b) => a.sort_order - b.sort_order);
+  return m;
+}
+
+export function makeNextPosition(itemsBySlot: Map<string, AdminItem[]>) {
+  return (slotId: string) => {
+    const list = itemsBySlot.get(slotId) ?? [];
+    return list.length ? Math.max(...list.map((i) => i.sort_order)) + 1 : 0;
+  };
+}
+
 export function placementsFor(assets: AssetWithPlacements[], itemId: string): string[] {
   return assets.find((a) => a.asset.id === itemId)?.placements.map((p) => p.slot_id) ?? [];
 }
@@ -280,7 +308,9 @@ export interface SignageHubContext {
   assets: AssetWithPlacements[];
   assetsLoading: boolean;
   itemsBySlot: Map<string, AdminItem[]>;
-  toastRows: ToastCacheRow[];
+  // `toastRows` / `openAsset` left the contract with the asset library (Beat 6 PR 4): the
+  // slides are their own page now, and the hub view no longer summarises a slide or opens
+  // the editor. The PAGE still holds both — `HubOverlays` takes them as explicit props.
   tmap: Map<string, ToastCacheRow>;
   takeovers: AdminTakeover[];
   events: EventRow[];
@@ -310,7 +340,6 @@ export interface SignageHubContext {
   setOverlay: (o: Overlay | null) => void;
   overflowSlot: string | null;
   toggleOverflow: (slotId: string) => void;
-  openAsset: (a: AssetWithPlacements) => void;
   invalidateEvents: () => void;
 }
 

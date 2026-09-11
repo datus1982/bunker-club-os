@@ -128,14 +128,14 @@ export function HubOverlays({
       )}
 
       {overlay?.kind === "asset" && (
-        <ItemEditor
+        <AssetOverlay
           slots={slots}
           toastRows={toastRows}
+          assets={assets}
           editing={overlay.editing}
           presetTemplate={overlay.preset}
           venueName={venueName}
           queueOnSlotId={overlay.queueOnSlotId}
-          placementSlotIds={overlay.editing ? placementsFor(assets, overlay.editing.id) : undefined}
           nextPosition={nextPosition}
           // Return to the slide-over we came from (QUEUE / ADD) if set, else close to the hub.
           // ItemEditor fires this same onClose on save, delete, AND cancel, so all three exit paths
@@ -183,4 +183,50 @@ export function ProgramOverlay({
 
 export function ScheduleOverlay({ slot, timezone, onClose }: { slot: AdminSlot; timezone: string; onClose: () => void }) {
   return <ScheduleEditor slot={slot} timezone={timezone} onClose={onClose} />;
+}
+
+/**
+ * THE SLIDE EDITOR, as a standalone mount (UX overhaul Beat 6 PR 4).
+ *
+ * PURE MOVE out of the `asset` branch above — same ItemEditor, same props, and
+ * `placementSlotIds` still derived by the same `placementsFor(assets, id)` call. BAR OPS ▸
+ * SLIDES opens THIS, so there is exactly one definition of what editing a slide means:
+ * which screens it reports as its placements, what a save invalidates, and where a new
+ * slide is queued. A second ItemEditor call site is how the hub and that page would start
+ * disagreeing about a slide.
+ *
+ * The one thing the caller owns is `onClose`: the hub returns to the QUEUE / + ADD
+ * slide-over it came from (`returnTo`), the Slides page simply closes back to its list.
+ */
+export function AssetOverlay({
+  slots, toastRows, assets, editing, presetTemplate, venueName, queueOnSlotId, nextPosition,
+  onClose, onSaved, onDeleted,
+}: {
+  slots: AdminSlot[];
+  toastRows: ToastCacheRow[];
+  assets: AssetWithPlacements[];
+  editing: AdminItem | null;
+  presetTemplate: AdminItem["template"] | null;
+  venueName: string | undefined;
+  queueOnSlotId: string | null;
+  nextPosition: (slotId: string) => number;
+  onClose: () => void;
+  onSaved: () => void;
+  onDeleted: () => void;
+}) {
+  return (
+    <ItemEditor
+      slots={slots}
+      toastRows={toastRows}
+      editing={editing}
+      presetTemplate={presetTemplate}
+      venueName={venueName}
+      queueOnSlotId={queueOnSlotId}
+      placementSlotIds={editing ? placementsFor(assets, editing.id) : undefined}
+      nextPosition={nextPosition}
+      onClose={onClose}
+      onSaved={onSaved}
+      onDeleted={onDeleted}
+    />
+  );
 }

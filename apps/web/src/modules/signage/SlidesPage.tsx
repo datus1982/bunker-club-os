@@ -1,0 +1,232 @@
+import { useEffect, useMemo, useState } from "react";
+import { Navigate } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
+import { useUiVersion } from "@/shared/useUiVersion";
+import { EmptyState, ListRow, StaffPageHeader, StatusChip } from "@/shared/ui";
+import { useIsMobile } from "@/shared/useIsMobile";
+import {
+  useAdminSlots, useAllItems, useSignageAssets, useToastCache, toastMap,
+  type AdminItem, type AdminSlot, type AssetWithPlacements,
+} from "./useSignageAdmin";
+import {
+  itemAirsToday, recurrenceChipLabel, useVenue, useVenueClock,
+  type ToastCacheRow, type VenueClock,
+} from "./useSignage";
+import { AssetOverlay } from "./HubOverlays";
+import {
+  AssetCard, assetSubtitle, groupItemsBySlot, makeNextPosition, slotCode,
+} from "./signageHubShared";
+import { MONO, ghost, summarize, templateBadge } from "./signageAdminShared";
+import "./signage.css";
+
+/**
+ * BAR OPS ▸ SLIDES (UX overhaul Beat 6, PR 4 — letter B(a)).
+ *
+ * ORGANISATION ONLY. This is the Signage Hub's ASSET LIBRARY section, moved to a page of
+ * its own: the SAME `signage_items` rows, the SAME `ItemEditor`, the SAME `slot_queue`
+ * placement model. No table changed, no editor changed, no new feature. The hub keeps
+ * SCREEN CONTROL (what is on air, + ADD / QUEUE / TAKEOVER, events, ★ POS) and now carries
+ * a one-line "Manage slides →" link where the embedded library used to sit.
+ *
+ * WHY A PAGE AND NOT A FOLD INTO MEDIA ▸ LIBRARY (code note N1): these are two different
+ * libraries. THIS one is `signage_items` — the TV *slides* a manager authors (drink
+ * specials, announcements, menu-group cards, Top Sellers, Instagram). MEDIA ▸ LIBRARY is
+ * `media_files`, the video catalogue on the bar PC. Different table, different editor,
+ * different placement model.
+ *
+ * v2 ONLY. A device still on the classic shell has no SLIDES nav entry and keeps the
+ * library inside the hub, so this route redirects there — the same inverse-MovedRoute
+ * wrapper Beat 4 gave the /media/* pages. Classic is therefore untouched (RULE #1).
+ *
+ * THE DATA IS THE HUB'S DATA. Every query below is the hub's own hook, so react-query
+ * serves BOTH surfaces from ONE cache entry per key: the count in the hub's notice and the
+ * count on this page cannot disagree, and a save here invalidates exactly what a save in
+ * the hub invalidates. The queue-position rule and the editor mount are shared FUNCTIONS
+ * (`makeNextPosition`, `AssetOverlay`), not copies.
+ *
+ * Sizes are inline px: nothing inherits font-size under `.terminal-theme` (PR #89).
+ */
+
+/** v2-only route guard — the inverse MovedRoute (Beat 4's `V2Only`, same shape). */
+export function Slides() {
+  const [version] = useUiVersion();
+  // A wrapper, not an early return inside the page: flipping the switch while the page is
+  // mounted must mount/unmount a child, never change one component's hook count.
+  if (version !== "v2") return <Navigate to="/signage" replace />;
+  return <SlidesPage />;
+}
+
+export function SlidesPage() {
+  const qc = useQueryClient();
+  const slotsQ = useAdminSlots();
+  const itemsQ = useAllItems();
+  const assetsQ = useSignageAssets();
+  const toastQ = useToastCache();
+  const venueQ = useVenue();
+
+  const slots = useMemo(() => slotsQ.data ?? [], [slotsQ.data]);
+  const assets = useMemo(() => assetsQ.data ?? [], [assetsQ.data]);
+  const toastRows = useMemo(() => toastQ.data ?? [], [toastQ.data]);
+  const tmap = useMemo(() => toastMap(toastRows), [toastRows]);
+  // The venue clock the TV resolves weekday rules in, from the shared helper (hub parity —
+  // an OFF TODAY chip must mean the same thing on both surfaces).
+  const venueClock = useVenueClock();
+
+  // The hub's slow render clock, same 60s cadence (a console, not a display). Without it a
+  // day-scheduled slide's OFF TODAY chip would keep asserting the business day that was
+  // current when the page mounted.
+  const [nowTick, setNowTick] = useState(() => Date.now());
+  useEffect(() => {
+    const id = window.setInterval(() => setNowTick(Date.now()), 60_000);
+    return () => window.clearInterval(id);
+  }, []);
+  const now = useMemo(() => new Date(nowTick), [nowTick]);
+
+  // The hub's definitions, from the hub's file — one answer to "where does a new slide land
+  // in that screen's queue" (ItemEditor's queue-on-save path uses it).
+  const itemsBySlot = useMemo(() => groupItemsBySlot(itemsQ.data ?? []), [itemsQ.data]);
+  const nextPosition = makeNextPosition(itemsBySlot);
+
+  const invalidateItems = () => {
+    qc.invalidateQueries({ queryKey: ["signage-admin", "items"] });
+    qc.invalidateQueries({ queryKey: ["signage-admin", "assets"] });
+  };
+
+  /** null = closed; `item: null` = the + New slide flow. The hub's own overlay shape. */
+  const [editing, setEditing] = useState<{ item: AdminItem | null } | null>(null);
+  const newSlide = () => setEditing({ item: null });
+
+  const narrow = useIsMobile();
+  const count = assets.length;
+
+  return (
+    <div className="terminal-theme staff-ui" style={{ minHeight: "100%", padding: "24px clamp(16px,4vw,40px) 48px", fontFamily: MONO }}>
+      {/* `data-st-page` = the token sheet's opt-in hook, on the CONTENT wrapper only — the
+          editor below is the hub's shared ItemEditor (its live SignagePreview renders a real
+          board whose amber/green must not be repainted). Same rule as the hub and the MEDIA
+          pages. */}
+      <div data-st-page="" style={{ maxWidth: 1100, margin: "0 auto" }}>
+        <StaffPageHeader
+          eyebrow="BAR OPS ▸ SLIDES"
+          title="Slides"
+          tag={assetsQ.isLoading ? "LOADING…" : `${count} SLIDE${count === 1 ? "" : "S"}`}
+          right={
+            <button type="button" onClick={newSlide} className="st-btn st-btn-primary st-body" style={{ ...ghost, fontWeight: 700 }}>
+              + New slide
+            </button>
+          }
+        />
+
+        <div className="st-body st-t2" style={{ margin: "0 0 16px" }}>
+          Every card the screens can rotate, built once and shared by every screen. Queue one onto a
+          screen from the SIGNAGE HUB (+ ADD), and set its order and seconds in that screen's QUEUE.
+        </div>
+
+        {assetsQ.isLoading ? (
+          <div className="st-body st-t2">Loading slides…</div>
+        ) : count === 0 ? (
+          <EmptyState
+            eyebrow="EMPTY LIBRARY"
+            message="No slides yet — build one and it becomes available to every screen."
+            actionLabel="+ NEW SLIDE"
+            onAction={newSlide}
+            primary
+          />
+        ) : narrow ? (
+          // Phone: one tappable row per slide. The 200px-minimum thumbnail grid is a
+          // desktop shape — on a 390px screen it becomes a single column of cards that
+          // scrolls forever, and the thumbnail tells a manager less than the name does.
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            {assets.map((a) => (
+              <AssetListRow
+                key={a.asset.id}
+                a={a}
+                slots={slots}
+                tmap={tmap}
+                toastRows={toastRows}
+                now={now}
+                venueClock={venueClock}
+                onOpen={() => setEditing({ item: a.asset as unknown as AdminItem })}
+              />
+            ))}
+          </div>
+        ) : (
+          // Desktop: the ratified thumbnail grid (D3) is kept — it reads correctly at
+          // 1280 and the picture IS the information there.
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(min(100%,200px),1fr))", gap: 12 }}>
+            {assets.map((a) => (
+              <AssetCard
+                key={a.asset.id}
+                a={a}
+                slots={slots}
+                toastRows={toastRows}
+                tmap={tmap}
+                now={now}
+                venueClock={venueClock}
+                onOpen={() => setEditing({ item: a.asset as unknown as AdminItem })}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* The hub's editor, mounted from the hub's own definition (AssetOverlay). Rendered
+          OUTSIDE the token scope for the reason above. `returnTo` is a hub concept — there
+          is no slide-over behind this one, so every exit path closes back to the list. */}
+      {editing && (
+        <AssetOverlay
+          slots={slots}
+          toastRows={toastRows}
+          assets={assets}
+          editing={editing.item}
+          presetTemplate={null}
+          venueName={venueQ.data?.name}
+          queueOnSlotId={null}
+          nextPosition={nextPosition}
+          onClose={() => setEditing(null)}
+          onSaved={invalidateItems}
+          onDeleted={invalidateItems}
+        />
+      )}
+    </div>
+  );
+}
+
+/* ── slide row (phone) — PURE MOVE from SignageHubV2.tsx ────────────────────── */
+/* The hub read these five values off its `ctx`; this page passes them in as props. The
+   body below is unchanged, token for token. */
+function AssetListRow({ a, slots, tmap, toastRows, now, venueClock, onOpen }: {
+  a: AssetWithPlacements;
+  slots: AdminSlot[];
+  tmap: Map<string, ToastCacheRow>;
+  toastRows: ToastCacheRow[];
+  now: Date;
+  venueClock: VenueClock;
+  onOpen: () => void;
+}) {
+  const item = a.asset as unknown as AdminItem;
+  const dayLabel = recurrenceChipLabel(item.recurrence);
+  const offToday = !!dayLabel && !itemAirsToday(item, now, venueClock);
+  const placed = new Set(a.placements.map((p) => p.slot_id));
+  return (
+    <ListRow
+      // Stacked: this row only renders on a phone, and side-by-side the meta cell gets
+      // squeezed to a few characters — the chips need a line of their own.
+      stacked
+      onClick={onOpen}
+      title={summarize(item, toastRows)}
+      sub={assetSubtitle(item, tmap)}
+      meta={
+        <>
+          <StatusChip tone="idle" label={templateBadge(item.template)} />
+          {dayLabel && <StatusChip tone="warn" label={`↻ ${dayLabel}${offToday ? " · OFF TODAY" : ""}`} />}
+          {a.placements.length === 0
+            ? <StatusChip tone="off" label="IDLE" />
+            : slots.filter((s) => placed.has(s.id)).map((s) => (
+                <StatusChip key={s.id} tone="live" title={`${s.name} — queued`} label={slotCode(s)} />
+              ))}
+        </>
+      }
+    />
+  );
+}

@@ -63,6 +63,9 @@ export const SECTIONS_V2: NavSectionV2[] = [
     label: "BAR OPS",
     children: [
       { to: "/signage", label: "SIGNAGE HUB", module: "signage", task: "See what every screen is showing right now" },
+      // v2-only route (Beat 6 PR 4): on a classic device the page redirects to /signage,
+      // where the slide library still lives inside the hub.
+      { to: "/signage/slides", label: "SLIDES", module: "signage", task: "Build and edit the cards the screens rotate" },
       { to: "/signage#events", label: "EVENTS & PROMOS", module: "signage", task: "Schedule a promo or put one on the screens now" },
       { to: "/admin/drinks", label: "TOP SELLERS", module: "drinks", task: "Which drink groups the sellers board rotates" },
     ],
