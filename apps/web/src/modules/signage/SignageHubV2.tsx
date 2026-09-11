@@ -16,7 +16,6 @@ import {
   AssetCard, TransportRow, assetSubtitle, cardBtn, miniBtn, rotationSummary, seedFromEvent, slotCode,
   useEventRowActions, type SignageHubContext,
 } from "./signageHubShared";
-import { MediaSection } from "./MediaSection";
 import "./signage.css";
 
 /**
@@ -38,9 +37,10 @@ import "./signage.css";
  * phone; every empty state becomes EmptyState; the two arm banners become InlineNotice;
  * and FIRE NOW asks through the ratified ConfirmDialog instead of `window.confirm`.
  *
- * MediaSection is rendered UNCHANGED. It is not version-branched, so re-skinning it here
- * would change classic too (RULE #1) — and Beat 4 promotes MEDIA to its own top-level
- * section, which is where that surface gets its pass. DECISION (tagged).
+ * MediaSection is GONE from this view (Beat 4): MEDIA is its own top-level section now
+ * (/media/library · /media/playlists · /media/screens), and an InlineNotice stands where
+ * the library used to sit so the move is visible rather than silent. CLASSIC still renders
+ * MediaSection inside the hub, unchanged — RULE #1.
  *
  * Sizes are inline px: nothing inherits font-size under `.terminal-theme` (PR #89).
  */
@@ -132,8 +132,15 @@ export function SignageHubV2({ ctx, overlays }: { ctx: SignageHubContext; overla
           )}
         </CollapsibleSection>
 
-        {/* ── B2 · MEDIA LIBRARY — untouched (see the file docstring) ────── */}
-        <MediaSection />
+        {/* ── B2 · MEDIA — promoted to its own section (Beat 4) ──────────── */}
+        {/* Say where it went (audit finding #6's pattern) rather than silently dropping a
+            section the manager is used to seeing here. CLASSIC still renders MediaSection. */}
+        <InlineNotice
+          style={{ marginTop: 32 }}
+          message="MEDIA has its own section now — LIBRARY · PLAYLISTS · SCREENS & PROGRAMS."
+          to="/media/library"
+          label="GO TO MEDIA →"
+        />
 
         {/* ── C · RUNNING & UPCOMING (events) ────────────────────────────── */}
         <div id="events" style={{ marginTop: 32 }}>

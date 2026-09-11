@@ -4,5 +4,10 @@
 export { SignageHub } from "./SignageHub";
 export { EditRotation } from "./EditRotation";
 
+// MEDIA promoted to its own top-level section (UX overhaul Beat 4) — v2 only; on a classic
+// device each of these redirects to the hub anchor that still holds that surface. They ride
+// THIS chunk deliberately: they mount the hub's own media panels and slide-overs.
+export { MediaLibrary, MediaPlaylists, MediaScreens } from "./MediaPages";
+
 // The public rendered slot page (/signage/s/:slug) — built in Phase 5 task 1.
 export { SlotDisplay } from "./SlotDisplay";
