@@ -23,15 +23,26 @@ import { SlideOver } from "./SlideOver";
  *
  * The editor slide-over is rendered by the HOST, not by a panel — the hub opens it over
  * the whole page, and /media/playlists opens it over its own.
+ *
+ * Beat 5 adds `variant`. It defaults to "classic" everywhere, so the hub renders exactly
+ * what it rendered before (RULE #1 — proven by byte-identical `#library`/`#playlists`
+ * markup); only the v2 MEDIA pages pass "v2", and the ONLY thing it changes is the size of
+ * a tap target that became a page's primary control once the library got its own page
+ * (#104 NOTE-3). No behaviour, no copy, no data path differs between the two.
  */
 
+/** Which shell is mounting the panel. "classic" === the hub === today's markup. */
+export type MediaPanelVariant = "classic" | "v2";
+
 /** Library grid — every synced media_files row (thumb, inline-edit title, status, PLAY ON). */
-export function MediaLibraryPanel({ files, loading, screens, hasSchedule }: {
+export function MediaLibraryPanel({ files, loading, screens, hasSchedule, variant = "classic" }: {
   files: MediaFile[];
   loading: boolean;
   /** Landscape screens a film can be sent to (PLAY ON); empty hides that row. */
   screens: AdminSlot[];
   hasSchedule: (slotId: string) => boolean;
+  /** "v2" gives each card the 44px rename affordance; the hub omits it and stays as-is. */
+  variant?: MediaPanelVariant;
 }) {
   if (loading) return <div style={{ fontSize: 18, opacity: 0.7 }}>LOADING MEDIA…</div>;
   if (files.length === 0) {
@@ -45,7 +56,7 @@ export function MediaLibraryPanel({ files, loading, screens, hasSchedule }: {
   }
   return (
     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(min(100%,200px),1fr))", gap: 12 }}>
-      {files.map((f) => <MediaFileCard key={f.id} file={f} screens={screens} hasSchedule={hasSchedule} />)}
+      {files.map((f) => <MediaFileCard key={f.id} file={f} screens={screens} hasSchedule={hasSchedule} variant={variant} />)}
     </div>
   );
 }
@@ -72,11 +83,12 @@ export function MediaPlaylistsPanel({ playlists, loading, onEdit }: {
 }
 
 /* ── a library file card (thumb + inline-editable title + duration + status + PLAY ON) ── */
-function MediaFileCard({ file, screens, hasSchedule }: {
+function MediaFileCard({ file, screens, hasSchedule, variant }: {
   file: MediaFile;
   /** Landscape screens this film can be sent to (empty ⇒ the PLAY ON row is hidden). */
   screens: AdminSlot[];
   hasSchedule: (slotId: string) => boolean;
+  variant: MediaPanelVariant;
 }) {
   const chip = statusChip(file.status);
   const [editingTitle, setEditingTitle] = useState(false);
@@ -128,6 +140,24 @@ function MediaFileCard({ file, screens, hasSchedule }: {
             onKeyDown={(e) => { if (e.key === "Enter") save.mutate(draft); if (e.key === "Escape") setEditingTitle(false); }}
             style={{ width: "100%", background: "#000", color: "var(--terminal-green)", border: "1px solid var(--terminal-green)", padding: "6px 8px", fontSize: 16, fontFamily: MONO }}
           />
+        ) : variant === "v2" ? (
+          // DECISION (Beat 5, closes #104 NOTE-3): in v2 the title row IS the rename control —
+          // a 44px bordered row with a visible ✎ — because promoting the library to its own page
+          // made a bare ~30px text line the page's primary action, 504 times over. Same handler,
+          // same draft state, same `updateMediaTitle` mutation, same Enter/Escape/blur editor:
+          // only the affordance grew. Classic keeps the bare line below, byte-identical.
+          <button
+            type="button"
+            onClick={() => { setDraft(file.title ?? ""); setEditingTitle(true); }}
+            title="Click to rename"
+            style={renameBtn}
+          >
+            <span aria-hidden="true" style={{ fontSize: 17, opacity: 0.55, flex: "0 0 auto" }}>✎</span>
+            {/* The label needs its own block for the ellipsis: `text-overflow` is ignored on a
+                flex CONTAINER (the StatusChip lesson). 20px matches what classic actually
+                renders — `.staff-ui button` pins button text at 20px !important. */}
+            <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 20 }}>{display}</span>
+          </button>
         ) : (
           <button
             type="button"
@@ -210,7 +240,7 @@ function PlaylistRow({ p, onEdit }: { p: PlaylistWithStats; onEdit: () => void }
 }
 
 /* ── create / edit slide-over (hosted by the hub section or the /media/playlists page) ────────────────────────────────────────────── */
-export function PlaylistEditor({ initial, files, onClose }: { initial: PlaylistWithStats | null; files: MediaFile[]; onClose: () => void }) {
+export function PlaylistEditor({ initial, files, onClose, variant = "classic" }: { initial: PlaylistWithStats | null; files: MediaFile[]; onClose: () => void; variant?: MediaPanelVariant }) {
   const isFolder = initial?.playlist.source === "folder";
   const readOnly = isFolder; // folder name + membership are sync-owned
   const [name, setName] = useState(initial?.playlist.name ?? "");
@@ -238,6 +268,10 @@ export function PlaylistEditor({ initial, files, onClose }: { initial: PlaylistW
   const inPlaylist = useMemo(() => new Set(items.map((i) => i.file.id)), [items]);
 
   const title = isFolder ? "VIEW FOLDER PLAYLIST" : initial ? "EDIT PLAYLIST" : "NEW PLAYLIST";
+
+  // The reorder/remove icons sat at 40px — under the 44px floor (#104 NOTE-3). v2 lifts them;
+  // classic keeps 40 so the hub's editor is unchanged.
+  const icon = variant === "v2" ? { ...miniIcon, minWidth: 44, minHeight: 44 } : miniIcon;
 
   return (
     <SlideOver eyebrow="MEDIA ▸ PLAYLIST" title={title} onClose={onClose}>
@@ -287,9 +321,9 @@ export function PlaylistEditor({ initial, files, onClose }: { initial: PlaylistW
                       </div>
                       {!readOnly && (
                         <>
-                          <button type="button" disabled={i === 0 || swap.isPending} onClick={() => swap.mutate({ a: it, b: items[i - 1] })} aria-label="Move up" style={miniIcon}>▲</button>
-                          <button type="button" disabled={i === items.length - 1 || swap.isPending} onClick={() => swap.mutate({ a: it, b: items[i + 1] })} aria-label="Move down" style={miniIcon}>▼</button>
-                          <button type="button" onClick={() => remove.mutate(it.file.id)} className="u-amber" aria-label="Remove" style={miniIcon}>✕</button>
+                          <button type="button" disabled={i === 0 || swap.isPending} onClick={() => swap.mutate({ a: it, b: items[i - 1] })} aria-label="Move up" style={icon}>▲</button>
+                          <button type="button" disabled={i === items.length - 1 || swap.isPending} onClick={() => swap.mutate({ a: it, b: items[i + 1] })} aria-label="Move down" style={icon}>▼</button>
+                          <button type="button" onClick={() => remove.mutate(it.file.id)} className="u-amber" aria-label="Remove" style={icon}>✕</button>
                         </>
                       )}
                     </div>
@@ -349,6 +383,15 @@ const playBtn: CSSProperties = {
   border: "1px solid var(--terminal-green)", background: "transparent", padding: "6px 8px",
   minHeight: 44, width: "100%", cursor: "pointer", textAlign: "left",
   whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+};
+/** v2 rename row — a real 44px tap target, full card width (classic keeps the bare line).
+ *  No `fontSize` here on purpose: `.staff-ui button` pins button text at 20px !important, so
+ *  a value here would be a lie; the two inner spans carry their own inline sizes. */
+const renameBtn: CSSProperties = {
+  width: "100%", minHeight: 44, display: "flex", alignItems: "center", gap: 7,
+  textAlign: "left", background: "transparent", border: "1px solid rgba(0,255,65,0.25)",
+  color: "var(--terminal-green)", fontFamily: MONO, cursor: "pointer", padding: "0 8px",
+  boxSizing: "border-box",
 };
 const miniIcon: CSSProperties = {
   fontFamily: MONO, fontSize: 14, color: "var(--terminal-green)",
