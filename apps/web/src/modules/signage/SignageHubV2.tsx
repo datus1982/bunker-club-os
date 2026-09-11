@@ -51,7 +51,9 @@ export function SignageHubV2({ ctx, overlays }: { ctx: SignageHubContext; overla
   const narrow = useIsMobile();
   const cardNarrow = useIsMobile(720);
 
-  const online = ctx.slots.filter((s) => screenHealth(s.last_seen) === "online").length;
+  // PANEL slots have no TV of their own and never heartbeat — only real screens count here.
+  const screens = ctx.slots.filter((s) => s.kind !== "panel");
+  const online = screens.filter((s) => screenHealth(s.last_seen) === "online").length;
 
   return (
     <div className="terminal-theme staff-ui" style={{ minHeight: "100%", padding: "20px clamp(12px,4vw,40px)", fontFamily: MONO, color: "var(--terminal-green)" }}>
@@ -59,7 +61,7 @@ export function SignageHubV2({ ctx, overlays }: { ctx: SignageHubContext; overla
         <StaffPageHeader
           eyebrow="BAR OPS ▸ SIGNAGE HUB"
           title="SIGNAGE HUB"
-          tag={ctx.slotsLoading ? "LOADING…" : `${ctx.slots.length} SCREEN${ctx.slots.length === 1 ? "" : "S"} · ${online} LIVE`}
+          tag={ctx.slotsLoading ? "LOADING…" : `${screens.length} SCREEN${screens.length === 1 ? "" : "S"} · ${online} LIVE`}
           right={<Link to="/dashboard" style={{ ...ghost, textDecoration: "none", fontSize: 16, display: "inline-flex", alignItems: "center" }}>← DASHBOARD</Link>}
         />
 
@@ -316,7 +318,7 @@ function ScreenCardV2({ slot, ctx, stacked }: { slot: AdminSlot; ctx: SignageHub
           <button type="button" onClick={() => ctx.setOverlay({ kind: "add", slot })} className="u-fill u-ink" style={{ ...cardBtn, background: "var(--terminal-green)", color: "#000", fontWeight: 700, ...(stacked ? null : { padding: "9px 14px" }) }}>+ ADD</button>
           <button type="button" onClick={() => ctx.setOverlay({ kind: "queue", slot })} style={{ ...cardBtn, ...(stacked ? null : { padding: "9px 14px" }) }}>QUEUE</button>
           <button type="button" onClick={() => ctx.setOverlay({ kind: "takeover", slot })} className="u-amber" style={{ ...cardBtn, borderColor: "var(--terminal-amber, #ffb000)", ...(stacked ? null : { padding: "9px 14px" }) }}>TAKEOVER</button>
-          <button type="button" onClick={() => ctx.toggleOverflow(slot.id)} aria-label="More" title="KIOSK URL · PREVIEW · health" style={{ ...cardBtn, padding: "9px 10px", fontSize: 20, opacity: 0.75 }}>⋯</button>
+          <button type="button" onClick={() => ctx.toggleOverflow(slot.id)} aria-label="More" title="KIOSK URL · PREVIEW · health" style={{ ...cardBtn, padding: "9px 10px", minWidth: 44 /* 44px floor: a lone glyph is ~34px wide otherwise */, fontSize: 20, opacity: 0.75 }}>⋯</button>
         </div>
       }
       subStrip={hasSubStrip ? (

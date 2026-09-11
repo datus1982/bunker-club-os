@@ -37,13 +37,17 @@ export function ConfirmDialog({
   onCancel: () => void;
 }) {
   const cancelRef = useRef<HTMLButtonElement | null>(null);
+  // Latest onCancel via a ref: callers pass inline arrows, and the hub re-renders every 60s,
+  // so keying the effect on onCancel would re-run it (and yank focus back to CANCEL) while open.
+  const onCancelRef = useRef(onCancel);
+  onCancelRef.current = onCancel;
 
   useEffect(() => {
-    cancelRef.current?.focus();
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onCancel(); };
+    cancelRef.current?.focus(); // once, on mount
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onCancelRef.current(); };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onCancel]);
+  }, []);
 
   return (
     <div onClick={onCancel} className="terminal-theme staff-ui" style={backdrop}>
