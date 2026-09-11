@@ -9,5 +9,6 @@ export { EditRotation } from "./EditRotation";
 // THIS chunk deliberately: they mount the hub's own media panels and slide-overs.
 export { MediaLibrary, MediaPlaylists, MediaScreens } from "./MediaPages";
 
-// The public rendered slot page (/signage/s/:slug) — built in Phase 5 task 1.
-export { SlotDisplay } from "./SlotDisplay";
+// NB: the public rendered slot page (/signage/s/:slug, built in Phase 5 task 1) deliberately
+// does NOT live here — it is exported from ./displayRoutes so the bar TVs never download the
+// staff console as dead code. Read that file's header before moving anything across the line.

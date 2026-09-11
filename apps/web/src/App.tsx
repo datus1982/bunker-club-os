@@ -38,6 +38,19 @@ const signageRoutes = () => import("./modules/signage/routes");
 const dashboardRoutes = () => import("./modules/dashboard/routes");
 const registrationRoutes = () => import("./modules/registration/routes");
 
+/**
+ * DISPLAY-ONLY loaders — separate `import()` specifiers so the unattended screen routes get
+ * their own chunks and can never be grown by a staff beat (PR #104 reviewer NOTE-6).
+ *
+ * `/signage/s/:slug` is the bar TVs. It used to share `signageRoutes` with SignageHub,
+ * EditRotation and the three /media/* pages, so every TV downloaded the whole staff console
+ * as dead code. Shared LEAF modules (DisplayCanvas, supabaseClient, the trivia boards, the
+ * signage templates) still land in chunks both sides import — that is correct; what must
+ * never recur is a staff PAGE riding the TV's download. See modules/signage/displayRoutes.tsx.
+ */
+const signageDisplayRoutes = () => import("./modules/signage/displayRoutes");
+const leaderboardDisplayRoutes = () => import("./modules/leaderboard/displayRoutes");
+
 // Trivia host tools + public display routes (one shared chunk).
 const Scoring = namedLazy(triviaRoutes, "Scoring");
 const GameSetup = namedLazy(triviaRoutes, "GameSetup");
@@ -48,17 +61,24 @@ const GameTools = namedLazy(triviaRoutes, "GameTools");
 const Teams = namedLazy(triviaRoutes, "Teams");
 const History = namedLazy(triviaRoutes, "History");
 const Settings = namedLazy(triviaRoutes, "Settings");
+// DECISION: GamePreview deliberately STAYS on the trivia chunk. It is the host's
+// off-screen dual-board preview (a laptop, opened for a few minutes during setup), never a
+// mounted screen, and it renders the very boards — LeaderboardBoard / GameDisplayBoard —
+// that the host tools around it already pull in. Splitting it would buy a host no bytes and
+// would cost a second round-trip on a page that is always reached from those same tools.
 const GamePreview = namedLazy(triviaRoutes, "GamePreview");
 
-// Drinks display + admin.
-const DrinksDisplay = namedLazy(leaderboardRoutes, "DrinksDisplay");
+// Drinks: the public board loads from its own display-only module (see the loader comment
+// above); the admin page stays on the staff chunk.
+const DrinksDisplay = namedLazy(leaderboardDisplayRoutes, "DrinksDisplay");
 const DrinksAdmin = namedLazy(leaderboardRoutes, "DrinksAdmin");
 
-// Signage hub (consolidated — Events & Broadcast tabs folded in) + legacy queue redirect
-// + public slot display.
+// Signage hub (consolidated — Events & Broadcast tabs folded in) + legacy queue redirect.
 const SignageHub = namedLazy(signageRoutes, "SignageHub");
 const EditRotation = namedLazy(signageRoutes, "EditRotation");
-const SlotDisplay = namedLazy(signageRoutes, "SlotDisplay");
+
+// The bar TVs. Own chunk, own module — nothing staff-facing may join it.
+const SlotDisplay = namedLazy(signageDisplayRoutes, "SlotDisplay");
 
 // MEDIA, promoted out of the hub (UX overhaul Beat 4) — same chunk as the hub: these pages
 // mount the hub's own media panels + slide-overs.
