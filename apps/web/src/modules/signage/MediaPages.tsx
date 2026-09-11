@@ -282,9 +282,11 @@ function MediaScreenCard({
 
   // DECISION: this page states the MEDIA half of what a screen is doing and leaves the
   // promo-rotation contents to the hub (whose ON AIR card lists the queued assets). The
-  // program-active and preempted sentences are the hub's own wording; the no-program line
-  // is this page's, and points at the hub rather than repeating its asset summary here —
-  // repeating it would mean re-running resolveRotation on a second surface.
+  // program-active sentence is the hub's own wording; the preempted sentences (event/game/
+  // takeover) are this page's shorter forms — the MODE still comes from the shared resolver,
+  // but the event name / takeover message / stale-game date the hub shows are deliberately
+  // left to the hub (reviewer NOTE-1, #104). The no-program line points at the hub rather
+  // than repeating its asset summary — that would mean re-running resolveRotation here.
   const status = programActive ? (
     <><span className="u-amber" style={{ fontSize: "inherit" }}>Playing {programLabel}.</span> Rotation resumes when the program is set back to ROTATION (a game/takeover still preempts it).</>
   ) : mode === "rotation" ? (
