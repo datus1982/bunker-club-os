@@ -71,17 +71,17 @@ export function ToggleSwitch({
       {label != null && <span className="st-body st-t1" style={labelStyle}>{label}</span>}
       {/* Colour by CLASS: `.terminal-theme * { color: green !important }` beats any
           inline colour, so the ON/OFF word rides the token classes. */}
-      <span className={checked ? "st-label st-accent" : "st-label st-t3"} style={state}>
+      <span className={checked ? "st-label st-accent" : "st-label st-t2"} style={state}>
         {disabled ? lockedHint : checked ? "ON" : "OFF"}
       </span>
       <span
         aria-hidden="true"
         className={"st-pill" + (checked ? " st-on" : "")}
-        style={{
-          ...track,
-          borderColor: checked ? staffAccentColors.accent : "rgba(255,255,255,0.16)",
-          background: checked ? "rgba(127,230,168,0.18)" : "transparent",
-        }}
+        // The ON edge is painted by `.st-pill.st-on` in the token sheet, NOT here: the
+        // blanket `[data-st-page] * { border-color: hairline !important }` beats an
+        // inline border-color, so an OFF value written here would never render. The OFF
+        // edge is that hairline, which is what the design asks for anyway.
+        style={{ ...track, background: checked ? "rgba(127,230,168,0.18)" : "transparent" }}
       >
         <span
           className="st-pill"

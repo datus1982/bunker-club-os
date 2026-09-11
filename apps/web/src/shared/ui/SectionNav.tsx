@@ -53,9 +53,17 @@ export interface SectionNavSection {
 function DrawerLabel({ child }: { child: SectionNavChild }) {
   if (!child.task) return <>{child.label}</>;
   return (
-    <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0, padding: "6px 0" }}>
-      <span>{child.label}</span>
-      <span className="st-body st-t3">{child.task}</span>
+    <span style={{ display: "flex", flexDirection: "column", gap: 1, minWidth: 0, padding: "4px 0" }}>
+      {/* `fontSize: "inherit"` is LOAD-BEARING. Wrapping the label in a span moved it out
+          of the <a>'s own size and under `.terminal-theme * { font-size: 1.5rem }` — a
+          class rule on every element, which inheritance (zero specificity) never beats.
+          Without this the drawer labels silently render at 24px (the PR #89 class). */}
+      <span style={{ fontSize: "inherit" }}>{child.label}</span>
+      {/* Helper copy is SECONDARY, not Disabled: §B assigns "labels, captions, helper
+          copy, metadata" to Secondary, and the Disabled tier (0.38α) measures ~3.5:1 —
+          under AA on every surface. Disabled is for disabled controls, placeholders and
+          least-important timestamps only. */}
+      <span className="st-body st-t2">{child.task}</span>
     </span>
   );
 }
@@ -150,7 +158,7 @@ export function SectionNav({
         <div className="sv2-mbar">
           <Link to={home?.to ?? "/dashboard"} className="u-head st-heading st-t1 sv2-brand">{brand}</Link>
           {activeChild && activeChild.to !== home?.to && (
-            <span className="st-t3 sv2-mcrumb" aria-hidden="true">▸ {activeChild.label}</span>
+            <span className="st-t2 sv2-mcrumb" aria-hidden="true">▸ {activeChild.label}</span>
           )}
           <button
             type="button"
@@ -184,7 +192,7 @@ export function SectionNav({
                 {sections.map((s) => (
                   <div key={s.label}>
                     {/* Sticky, deliberately NOT tappable (mockup view 3). */}
-                    <div className="st-label st-t3 sv2-dsect" aria-hidden="true">{s.label}</div>
+                    <div className="st-label st-t2 sv2-dsect" aria-hidden="true">{s.label}</div>
                     {s.children.map((c) =>
                       c.comingSoon ? (
                         <span key={s.label + c.label} className="sv2-dlink sv2-dsub sv2-soon" aria-disabled="true">
@@ -207,7 +215,7 @@ export function SectionNav({
                 ))}
               </div>
               <div className="sv2-drawer-foot">
-                <span className="st-t3 sv2-viewas">{roleLabel}</span>
+                <span className="st-t2 sv2-viewas">{roleLabel}</span>
                 {extra}
                 <button type="button" onClick={onSignOut} className="st-t2 sv2-signout">SIGN OUT</button>
               </div>
@@ -244,19 +252,19 @@ export function SectionNav({
           ))}
         </div>
         {extra}
-        <span className="st-t3 sv2-viewas">{roleLabel}</span>
+        <span className="st-t2 sv2-viewas">{roleLabel}</span>
         <button type="button" onClick={onSignOut} className="st-t2 sv2-signout">SIGN OUT</button>
       </div>
       {activeSection && (
         <div className="sv2-subrow">
-          <span className="st-label st-t3 sv2-subkick">{activeSection.label} ▸</span>
+          <span className="st-label st-t2 sv2-subkick">{activeSection.label} ▸</span>
           {activeSection.children.map((c, i, arr) => {
             const prev = i > 0 ? arr[i - 1] : undefined;
             const groupChanged = i === 0 ? !!c.group : c.group !== prev?.group;
             return (
               <span key={(c.to || c.label) + i} className="sv2-subwrap">
                 {i > 0 && groupChanged && <span className="sv2-divider" aria-hidden="true" />}
-                {groupChanged && c.group && <span className="st-label st-t3 sv2-groupkick">{c.group}</span>}
+                {groupChanged && c.group && <span className="st-label st-t2 sv2-groupkick">{c.group}</span>}
                 {c.comingSoon ? (
                   <span className="sv2-subitem sv2-soon" aria-disabled="true">
                     {c.label}<span className="sv2-soon-tag">COMING SOON</span>

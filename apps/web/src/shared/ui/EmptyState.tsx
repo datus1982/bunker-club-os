@@ -34,7 +34,7 @@ export function EmptyState({
 }) {
   return (
     <div className="st-card" style={{ ...box, ...style }}>
-      {eyebrow != null && <div className="st-label st-t3">{eyebrow}</div>}
+      {eyebrow != null && <div className="st-label st-t2">{eyebrow}</div>}
       <div className="st-body st-t2" style={messageStyle}>{message}</div>
       {actionLabel != null && onAction && (
         <button

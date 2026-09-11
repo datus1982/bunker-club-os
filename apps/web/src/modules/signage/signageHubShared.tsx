@@ -157,9 +157,14 @@ export function AssetCard({
         ) : (
           <span style={{ fontSize: 34, opacity: 0.85 }}>{templateIcon(item.template)}</span>
         )}
+        {/* `u-amber` / `u-green-edge` are CLASSES, not inline values, because under the
+            v2 token scope the blanket `[data-st-page] * { border-color: … !important }`
+            beats an inline border and the SMART TOAST badge stopped reading amber
+            (classic is unaffected: both classes resolve to the same computed colour the
+            inline values already produced). */}
         <span
           className={smart ? "u-amber" : ""}
-          style={{ position: "absolute", top: 6, right: 6, fontSize: 10, letterSpacing: 1, padding: "2px 5px", background: "#020602", border: `1px solid ${smart ? "var(--terminal-amber, #ffb000)" : "var(--terminal-green)"}`, color: smart ? "var(--terminal-amber, #ffb000)" : "var(--terminal-green)" }}
+          style={{ position: "absolute", top: 6, right: 6, fontSize: 10, letterSpacing: 1, padding: "2px 5px", background: "#020602", border: "1px solid currentColor", color: smart ? "var(--terminal-amber, #ffb000)" : "var(--terminal-green)" }}
         >{templateBadge(item.template)}</span>
       </div>
       <div style={{ padding: "9px 10px", display: "flex", flexDirection: "column", gap: 5, minWidth: 0 }}>

@@ -54,7 +54,7 @@ export function FormField({
         {error}
       </span>
     ) : hint != null ? (
-      <span className="st-body st-t3" style={footStyle}>{hint}</span>
+      <span className="st-body st-t2" style={footStyle}>{hint}</span>
     ) : null;
 
   if (group) {

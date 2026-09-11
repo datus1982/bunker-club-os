@@ -64,8 +64,19 @@ export function SignageHubV2({ ctx, overlays }: { ctx: SignageHubContext; overla
   const online = screens.filter((s) => screenHealth(s.last_seen) === "online").length;
 
   return (
-    <div className="terminal-theme staff-ui" data-st-page="" style={{ minHeight: "100%", padding: "24px clamp(16px,4vw,40px) 48px", fontFamily: MONO }}>
-      <div style={{ maxWidth: 1100, margin: "0 auto" }}>
+    <div className="terminal-theme staff-ui" style={{ minHeight: "100%", padding: "24px clamp(16px,4vw,40px) 48px", fontFamily: MONO }}>
+      {/* `data-st-page` sits on the CONTENT wrapper, deliberately NOT on the page root:
+          `{overlays}` below renders the slide-overs the CLASSIC hub opens too (ItemEditor,
+          EventEditor, QueuePanel, AddAssetPicker, TakeoverPanel, ProgramPanel,
+          ScheduleEditor — all `position: fixed` IN TREE, no portals in this app). Inside
+          the token scope the blanket would repaint them: ItemEditor's live SignagePreview
+          renders a real board (`.signage-slot`, whose amber/green works by redefining
+          `--terminal-green` for the BASE colour rule) and the `● NOW` / live-Toast-field
+          `.sig-live` greens — both would go white, so the "pixel-faithful slot" a manager
+          edits against would stop being faithful. Keeping the hook here leaves every
+          shared panel exactly as Beat 3 shipped it. Tokening the panels themselves is a
+          later beat. */}
+      <div data-st-page="" style={{ maxWidth: 1100, margin: "0 auto" }}>
         <StaffPageHeader
           eyebrow="BAR OPS ▸ SIGNAGE HUB"
           title="Signage Hub"
@@ -110,7 +121,7 @@ export function SignageHubV2({ ctx, overlays }: { ctx: SignageHubContext; overla
           summary={ctx.assetsLoading ? "…" : `${ctx.assets.length} asset${ctx.assets.length === 1 ? "" : "s"}`}
           defaultOpen={true}
           headerRight={
-            <button type="button" onClick={() => ctx.setOverlay({ kind: "asset", editing: null, preset: null, queueOnSlotId: null })} style={{ ...ghost, fontWeight: 700 }}>+ NEW ASSET</button>
+            <button type="button" onClick={() => ctx.setOverlay({ kind: "asset", editing: null, preset: null, queueOnSlotId: null })} className="st-btn st-body" style={{ ...ghost, fontWeight: 700 }}>+ New asset</button>
           }
         >
           {ctx.assetsLoading ? (
@@ -155,7 +166,7 @@ export function SignageHubV2({ ctx, overlays }: { ctx: SignageHubContext; overla
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
             <SectionHeading label="RUNNING & UPCOMING" note="promos & events, live and scheduled" style={{ margin: 0 }} />
             {ctx.canEvents && (
-              <button type="button" onClick={() => ctx.setOverlay({ kind: "event", editing: null })} className="u-fill u-ink" style={{ ...ghost, fontWeight: 700, background: "var(--terminal-green)", color: "#000" }}>+ NEW EVENT</button>
+              <button type="button" onClick={() => ctx.setOverlay({ kind: "event", editing: null })} className="st-btn st-btn-primary st-body" style={{ ...ghost, fontWeight: 700 }}>+ New event</button>
             )}
           </div>
           <div style={{ marginTop: 10 }}>
@@ -200,7 +211,7 @@ export function SignageHubV2({ ctx, overlays }: { ctx: SignageHubContext; overla
                   sub={`ran ${schedulePhrase(ev)}${ev.show_on_website ? " · 🌐" : ""}`}
                   meta={<><EventKindBadge kind={ev.kind} /><StatusChip tone="off" label="DONE" /></>}
                   actions={ctx.canEvents
-                    ? <button type="button" style={rowBtnV2} onClick={() => ctx.setOverlay({ kind: "event", editing: null, seed: seedFromEvent(ev) })}>↻ RE-RUN</button>
+                    ? <button type="button" className="st-btn st-body" style={rowBtnV2} onClick={() => ctx.setOverlay({ kind: "event", editing: null, seed: seedFromEvent(ev) })}>↻ Re-run</button>
                     : undefined}
                 />
               ))}
@@ -244,7 +255,7 @@ function SectionHeading({ label, note, style }: { label: string; note?: string; 
     <div style={{ margin: `0 0 10px`, ...style }}>
       {/* Section titles function as EYEBROWS here, so they are Label role and stay caps. */}
       <div className="st-label st-t2">{label}</div>
-      {note && <div className="st-body st-t3" style={{ marginTop: 2 }}>{note}</div>}
+      {note && <div className="st-body st-t2" style={{ marginTop: 2 }}>{note}</div>}
     </div>
   );
 }
@@ -276,8 +287,8 @@ function ScreenCardV2({ slot, ctx, stacked }: { slot: AdminSlot; ctx: SignageHub
         status={summary}
         actions={
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 7 }}>
-            <button type="button" onClick={() => ctx.setOverlay({ kind: "add", slot })} className="u-fill u-ink" style={{ ...cardBtn, background: "var(--terminal-green)", color: "#000", fontWeight: 700, padding: "9px 18px" }}>+ ADD</button>
-            <button type="button" onClick={() => ctx.setOverlay({ kind: "queue", slot })} style={{ ...cardBtn, padding: "9px 18px" }}>QUEUE</button>
+            <button type="button" onClick={() => ctx.setOverlay({ kind: "add", slot })} className="st-btn st-btn-primary st-body" style={{ ...cardBtn, fontWeight: 700, padding: "9px 18px" }}>+ Add</button>
+            <button type="button" onClick={() => ctx.setOverlay({ kind: "queue", slot })} className="st-btn st-body" style={{ ...cardBtn, padding: "9px 18px" }}>Queue</button>
           </div>
         }
       />
@@ -331,25 +342,25 @@ function ScreenCardV2({ slot, ctx, stacked }: { slot: AdminSlot; ctx: SignageHub
       status={status}
       actions={
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr auto", gap: 7 }}>
-          <button type="button" onClick={() => ctx.setOverlay({ kind: "add", slot })} className="u-fill u-ink" style={{ ...cardBtn, background: "var(--terminal-green)", color: "#000", fontWeight: 700, ...(stacked ? null : { padding: "9px 14px" }) }}>+ ADD</button>
-          <button type="button" onClick={() => ctx.setOverlay({ kind: "queue", slot })} style={{ ...cardBtn, ...(stacked ? null : { padding: "9px 14px" }) }}>QUEUE</button>
-          <button type="button" onClick={() => ctx.setOverlay({ kind: "takeover", slot })} className="u-amber" style={{ ...cardBtn, borderColor: "var(--terminal-amber, #ffb000)", ...(stacked ? null : { padding: "9px 14px" }) }}>TAKEOVER</button>
-          <button type="button" onClick={() => ctx.toggleOverflow(slot.id)} aria-label="More" title="KIOSK URL · PREVIEW · health" style={{ ...cardBtn, padding: "9px 10px", minWidth: 44 /* 44px floor: a lone glyph is ~34px wide otherwise */, fontSize: 20, opacity: 0.75 }}>⋯</button>
+          <button type="button" onClick={() => ctx.setOverlay({ kind: "add", slot })} className="st-btn st-btn-primary st-body" style={{ ...cardBtn, fontWeight: 700, ...(stacked ? null : { padding: "9px 14px" }) }}>+ Add</button>
+          <button type="button" onClick={() => ctx.setOverlay({ kind: "queue", slot })} className="st-btn st-body" style={{ ...cardBtn, ...(stacked ? null : { padding: "9px 14px" }) }}>Queue</button>
+          <button type="button" onClick={() => ctx.setOverlay({ kind: "takeover", slot })} className="u-amber st-btn st-body" style={{ ...cardBtn, ...(stacked ? null : { padding: "9px 14px" }) }}>Takeover</button>
+          <button type="button" onClick={() => ctx.toggleOverflow(slot.id)} aria-label="More" title="Kiosk URL · preview · health" className="st-btn st-t2" style={{ ...cardBtn, padding: "9px 10px", minWidth: 44 /* 44px floor: a lone glyph is ~34px wide otherwise */, fontSize: 20 }}>⋯</button>
         </div>
       }
       subStrip={hasSubStrip ? (
         <>
           {/* Media programs + schedules are landscape-only (portrait slots stay pure rotation). */}
           {isLandscape && (
-            <button type="button" onClick={() => ctx.setOverlay({ kind: "program", slot })} className={programActive ? "u-amber" : ""} style={{ ...cardBtn, flex: "1 1 220px", justifyContent: "space-between", padding: "9px 12px", ...(programActive ? { borderColor: "var(--terminal-amber, #ffb000)" } : null) }}>
-              <span style={{ letterSpacing: 1, fontSize: "inherit" }}>▶ PROGRAM: {programActive ? programLabel : "ROTATION"}</span>
-              <span style={{ opacity: 0.7, fontSize: "inherit" }}>SWITCH ▸</span>
+            <button type="button" onClick={() => ctx.setOverlay({ kind: "program", slot })} className={programActive ? "u-amber st-btn st-body" : "st-btn st-body"} style={{ ...cardBtn, flex: "1 1 220px", justifyContent: "space-between", padding: "9px 12px" }}>
+              <span style={{ fontSize: "inherit" }}>▶ Program: {programActive ? programLabel : "ROTATION"}</span>
+              <span className="st-t2" style={{ fontSize: "inherit" }}>Switch ▸</span>
             </button>
           )}
           {isLandscape && (
-            <button type="button" onClick={() => ctx.setOverlay({ kind: "schedule", slot })} style={{ ...cardBtn, flex: "1 1 220px", justifyContent: "space-between", padding: "9px 12px" }}>
-              <span style={{ letterSpacing: 1, fontSize: "inherit" }}>⧗ SCHEDULE{scheduleCount > 0 ? `: ${scheduleCount} DAYPART${scheduleCount === 1 ? "" : "S"}` : ""}</span>
-              <span style={{ opacity: 0.7, fontSize: "inherit" }}>{scheduleCount > 0 ? "EDIT ▸" : "SET UP ▸"}</span>
+            <button type="button" onClick={() => ctx.setOverlay({ kind: "schedule", slot })} className="st-btn st-body" style={{ ...cardBtn, flex: "1 1 220px", justifyContent: "space-between", padding: "9px 12px" }}>
+              <span style={{ fontSize: "inherit" }}>⧗ Schedule{scheduleCount > 0 ? `: ${scheduleCount} DAYPART${scheduleCount === 1 ? "" : "S"}` : ""}</span>
+              <span className="st-t2" style={{ fontSize: "inherit" }}>{scheduleCount > 0 ? "Edit ▸" : "Set up ▸"}</span>
             </button>
           )}
           {ctx.transportPlaylistFor(slot) && (
@@ -370,7 +381,7 @@ function ScreenCardV2({ slot, ctx, stacked }: { slot: AdminSlot; ctx: SignageHub
               rel="noreferrer"
               title="Staff preview only — NEVER point a TV at a ?preview=1 URL (it never shows takeovers or game mode)."
               style={{ ...miniBtn, textDecoration: "none" }}
-            >PREVIEW ↗</a>
+            >Preview ↗</a>
             <CopyKioskButton slug={slot.slug} style={miniBtn} />
           </div>
         </div>
@@ -448,13 +459,13 @@ function EventListRow({
             {canEvents && !done && (
               isLive || paused ? (
                 <button type="button" onClick={() => toggle.mutate()} disabled={toggle.isPending} className={paused ? "st-btn st-body" : "st-btn st-btn-primary st-body"} style={rowBtnV2}>
-                  {paused ? "▶ RESUME" : "❚❚ PAUSE"}
+                  {paused ? "▶ Resume" : "❚❚ Pause"}
                 </button>
               ) : (
-                <button type="button" onClick={() => setConfirmFire(true)} disabled={fire.isPending} className="u-amber st-btn st-body" style={rowBtnV2}>▶ FIRE NOW</button>
+                <button type="button" onClick={() => setConfirmFire(true)} disabled={fire.isPending} className="u-amber st-btn st-body" style={rowBtnV2}>▶ Fire now</button>
               )
             )}
-            {canEvents && <button type="button" onClick={onEdit} className="st-btn st-body" style={rowBtnV2}>EDIT</button>}
+            {canEvents && <button type="button" onClick={onEdit} className="st-btn st-body" style={rowBtnV2}>Edit</button>}
           </>
         }
       />
@@ -463,7 +474,7 @@ function EventListRow({
           title={row.kind === "moment" ? "Fire this moment now?" : "Put this on the screens now?"}
           // The classic window.confirm wording, kept — it is the sentence the owner reads.
           body={row.kind === "moment" ? "It skips the tease and lands in ALERT." : `“${row.name}” goes onto the bar screens immediately.`}
-          confirmLabel="▶ FIRE NOW"
+          confirmLabel="▶ Fire now"
           danger
           busy={fire.isPending}
           onConfirm={() => { fire.mutate(); setConfirmFire(false); }}

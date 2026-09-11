@@ -111,9 +111,10 @@ export const motion = {
 export const type = {
   display: { px: 28, md: 34, line: 1.15, weight: 700, face: "display" },
   heading: { px: 17, md: 19, line: 1.3, weight: 600, face: "display" },
-  body: { px: 14, md: 15, line: 1.5, weight: 400, face: "body" },
+  // 15 at 390, NOT §B's 14 — the owner's PR #14 "body size bump" 15px staff floor wins.
+  body: { px: 15, md: 15, line: 1.5, weight: 400, face: "body" },
   label: { px: 12, md: 12, line: 1.3, weight: 500, face: "body", tracking: "0.06em" },
-  monoData: { px: 14, md: 15, line: 1.4, weight: 500, face: "body" },
+  monoData: { px: 15, md: 15, line: 1.4, weight: 500, face: "body" },
 } as const;
 
 /** The app-wide tap floor. Asserted on WIDTH and height by the beat harnesses. */

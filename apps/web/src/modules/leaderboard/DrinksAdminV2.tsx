@@ -159,7 +159,7 @@ export function DrinksAdminV2({
         ? <ConfigFormV2 initial={cfg} onSave={onSave} busy={saving} />
         : cfgFailed
           ? <p className="st-body st-amber">Could not load saved settings — reload the page before editing.</p>
-          : <p className="st-body st-t3">Loading saved settings…</p>}
+          : <p className="st-body st-t2">Loading saved settings…</p>}
       {msg && <div className="st-body st-t2" style={{ marginTop: 12 }}>{msg}</div>}
 
       {confirmRemove && (

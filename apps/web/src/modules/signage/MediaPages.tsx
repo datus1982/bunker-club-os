@@ -74,20 +74,24 @@ export function MediaScreens() {
 }
 
 /* ── page shell (matches the hub's wrapper exactly) ─────────────────────────── */
-function MediaPage({ title, tag, right, children }: {
+function MediaPage({ title, tag, right, children, overlays }: {
   title: string;
   tag?: ReactNode;
   right?: ReactNode;
   children: ReactNode;
+  /** Slide-overs that are SHARED with the classic hub — rendered OUTSIDE the token
+   *  scope so they look exactly as Beat 3/4 shipped them (see the hub's note). A
+   *  v2-only editor (PlaylistEditor) belongs in `children` and may take the tokens. */
+  overlays?: ReactNode;
 }) {
   return (
-    // `data-st-page` is the token sheet's opt-in hook (theme/staff-tokens-v2.css) — these
-    // three pages are v2-only, so the tokens apply to the whole shell here.
-    <div className="terminal-theme staff-ui" data-st-page="" style={{ minHeight: "100%", padding: "24px clamp(16px,4vw,40px) 48px", fontFamily: MONO }}>
-      <div style={{ maxWidth: 1100, margin: "0 auto" }}>
+    <div className="terminal-theme staff-ui" style={{ minHeight: "100%", padding: "24px clamp(16px,4vw,40px) 48px", fontFamily: MONO }}>
+      {/* `data-st-page` = the token sheet's opt-in hook, on the CONTENT wrapper only. */}
+      <div data-st-page="" style={{ maxWidth: 1100, margin: "0 auto" }}>
         <StaffPageHeader eyebrow="MEDIA" title={title} tag={tag} right={right} />
         {children}
       </div>
+      {overlays}
     </div>
   );
 }
@@ -422,6 +426,25 @@ export function MediaScreensPage() {
     <MediaPage
       title="Screens & programs"
       tag={slotsQ.isLoading ? "LOADING…" : `${screens.length} MEDIA SCREEN${screens.length === 1 ? "" : "S"}`}
+      overlays={
+        <>
+          {/* The hub's own slide-overs, opened with the hub's own props (HubOverlays).
+              SHARED with the classic hub ⇒ rendered outside the token scope. */}
+          {panel?.kind === "program" && (
+            <ProgramOverlay
+              slot={panel.slot}
+              scheduleBySlot={scheduleBySlot}
+              overrideHoldFor={overrideHoldFor}
+              panelChoices={panelChoices}
+              qc={qc}
+              onClose={() => setPanel(null)}
+            />
+          )}
+          {panel?.kind === "schedule" && (
+            <ScheduleOverlay slot={panel.slot} timezone={timezone} onClose={() => setPanel(null)} />
+          )}
+        </>
+      }
     >
       {slotsQ.isLoading ? (
         <div className="st-body st-t2">Loading screens…</div>
@@ -449,20 +472,6 @@ export function MediaScreensPage() {
         </div>
       )}
 
-      {/* The hub's own slide-overs, opened with the hub's own props (HubOverlays). */}
-      {panel?.kind === "program" && (
-        <ProgramOverlay
-          slot={panel.slot}
-          scheduleBySlot={scheduleBySlot}
-          overrideHoldFor={overrideHoldFor}
-          panelChoices={panelChoices}
-          qc={qc}
-          onClose={() => setPanel(null)}
-        />
-      )}
-      {panel?.kind === "schedule" && (
-        <ScheduleOverlay slot={panel.slot} timezone={timezone} onClose={() => setPanel(null)} />
-      )}
     </MediaPage>
   );
 }
@@ -494,7 +503,7 @@ function MediaScreenCard({
   const status = programActive ? (
     <><span className="u-amber" style={{ fontSize: "inherit" }}>Playing {programLabel}.</span> Rotation resumes when the program is set back to ROTATION (a game/takeover still preempts it).</>
   ) : mode === "rotation" ? (
-    <>On the promo rotation — no media program running. SWITCH PROGRAM to put a playlist or the live input on this screen.</>
+    <>On the promo rotation — no media program running. Switch program to put a playlist or the live input on this screen.</>
   ) : mode === "event" ? (
     <><span className="u-amber" style={{ fontSize: "inherit" }}>A scheduled event is holding the screens.</span> Any program resumes when the window ends.</>
   ) : mode === "game" ? (
@@ -531,11 +540,11 @@ function MediaScreenCard({
       status={status}
       actions={
         <div style={{ display: "grid", gridTemplateColumns: stacked ? "1fr" : "1fr 1fr", gap: 7 }}>
-          <button type="button" onClick={onProgram} className={programActive ? "u-amber" : ""} style={{ ...cardBtn, padding: "9px 14px", ...(programActive ? { borderColor: "var(--terminal-amber, #ffb000)" } : null) }}>
-            SWITCH PROGRAM ▸
+          <button type="button" onClick={onProgram} className={programActive ? "u-amber st-btn st-body" : "st-btn st-body"} style={{ ...cardBtn, padding: "9px 14px" }}>
+            Switch program ▸
           </button>
-          <button type="button" onClick={onSchedule} style={{ ...cardBtn, padding: "9px 14px" }}>
-            {scheduleCount > 0 ? `SCHEDULE: ${scheduleCount} ▸` : "SCHEDULE ▸"}
+          <button type="button" onClick={onSchedule} className="st-btn st-body" style={{ ...cardBtn, padding: "9px 14px" }}>
+            {scheduleCount > 0 ? `Schedule: ${scheduleCount} ▸` : "Schedule ▸"}
           </button>
         </div>
       }

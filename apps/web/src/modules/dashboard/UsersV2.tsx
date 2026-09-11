@@ -132,7 +132,7 @@ export function UsersV2({
           <button type="submit" disabled={invite.pending} className="st-btn st-btn-primary st-body" style={btnPrimary}>
             {invite.pending ? "Sending…" : "Send invite →"}
           </button>
-          <span className="st-body st-t3" style={{ flex: "1 1 220px", minWidth: 0 }}>
+          <span className="st-body st-t2" style={{ flex: "1 1 220px", minWidth: 0 }}>
             Creates the account if new, grants the modules above, and emails a one-click sign-in link.
             They appear below immediately.
           </span>
@@ -182,7 +182,7 @@ export function UsersV2({
         />
       )}
 
-      <div className="st-body st-t3" style={{ marginTop: 18 }}>
+      <div className="st-body st-t2" style={{ marginTop: 18 }}>
         Admins implicitly hold every module (granted &amp; locked). Changes save instantly — no redeploy.
       </div>
     </div>
@@ -209,7 +209,7 @@ function StaffCard({
         // overflowWrap, not ellipsis: a long address must WRAP inside a 390px card.
         <span style={{ display: "block", overflowWrap: "anywhere" }}>
           {row.email}
-          {row.is_self && <span className="st-t3"> (you)</span>}
+          {row.is_self && <span className="st-t2"> (you)</span>}
         </span>
       }
       sub={`ROLE: ${row.role.toUpperCase()}${row.is_self ? " · YOUR ACCOUNT" : ""}`}
@@ -300,7 +300,7 @@ function StaffTable({
             <tr key={row.profile_id}>
               <td style={td}>
                 {row.email}
-                {row.is_self && <span className="st-t3"> (you)</span>}
+                {row.is_self && <span className="st-t2"> (you)</span>}
               </td>
               <td style={td}>
                 {/* No FormField here: a table column header IS the caption, so a second

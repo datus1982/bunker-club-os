@@ -386,11 +386,14 @@
   font-weight: 600;
   letter-spacing: 0.4px;
 }
+/* Body is 15px at 390, NOT §B's 14: the owner's PR #14 "body size bump" put a 15px
+ * floor under staff body copy (`.staff-ui .u-bump`), and that ruling wins over the token
+ * sheet on phone readability. md: is 15 in both, so the role is simply flat at 15. */
 .terminal-theme.staff-v2 [data-st-page] .st-body,
 .terminal-theme.staff-v2 .sv2-nav .st-body,
 .terminal-theme.staff-v2 .st-sheet .st-body {
   font-family: var(--st-font-body) !important;
-  font-size: 14px !important;
+  font-size: 15px !important;
   line-height: 1.5;
   font-weight: 400;
   letter-spacing: 0;
@@ -408,7 +411,7 @@
 .terminal-theme.staff-v2 [data-st-page] .st-mono,
 .terminal-theme.staff-v2 .st-sheet .st-mono {
   font-family: var(--st-font-body) !important;
-  font-size: 14px !important;
+  font-size: 15px !important; /* same ruling as Body — the 15px staff floor */
   line-height: 1.4;
   font-weight: 500;
   font-variant-numeric: tabular-nums;
@@ -491,6 +494,23 @@
 .terminal-theme.staff-v2 [data-st-page] .st-row {
   transition: background var(--st-motion-hover) var(--st-ease),
               border-color var(--st-motion-hover) var(--st-ease);
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+ * 7. NO CRT OVERLAY ON A TOKENED SURFACE.
+ * `.terminal-theme::before` (scanlines) and `::after` (vignette) are painted by the base
+ * theme on EVERY `.terminal-theme` root. `SignageHubV2` and `MediaPage` re-wrap their own
+ * content in `.terminal-theme`, so the texture lands on top of the near-black token
+ * ground and fights it. Suppressed ONLY on a root that also carries the opt-in hook —
+ * which means: the v2 shell root keeps its overlay for the CLASSIC pages it hosts
+ * (`/scoring`, `/dashboard`…), and every TV, display and classic staff page is untouched.
+ * terminal-theme.css itself is not modified.
+ * ────────────────────────────────────────────────────────────────────────── */
+.terminal-theme.staff-v2 [data-st-page].terminal-theme::before,
+.terminal-theme.staff-v2 [data-st-page].terminal-theme::after,
+.terminal-theme.staff-v2 [data-st-page] .terminal-theme::before,
+.terminal-theme.staff-v2 [data-st-page] .terminal-theme::after {
+  display: none !important; /* beats .terminal-theme::before/::after (fixed, pointer-events:none) */
 }
 
 @media (prefers-reduced-motion: reduce) {
