@@ -623,7 +623,7 @@ function ScreenCard({
             <button type="button" onClick={onAdd} className="u-fill u-ink" style={{ ...cardBtn, background: "var(--terminal-green)", color: "#000", fontWeight: 700, ...(narrow ? null : { padding: "9px 14px" }) }}>+ ADD</button>
             <button type="button" onClick={onQueue} style={{ ...cardBtn, ...(narrow ? null : { padding: "9px 14px" }) }}>QUEUE</button>
             <button type="button" onClick={onTakeover} className="u-amber" style={{ ...cardBtn, color: "var(--terminal-amber, #ffb000)", borderColor: "var(--terminal-amber, #ffb000)", ...(narrow ? null : { padding: "9px 14px" }) }}>TAKEOVER</button>
-            <button type="button" onClick={onToggleOverflow} aria-label="More" title="KIOSK URL · PREVIEW · health" style={{ ...cardBtn, padding: "9px 10px", fontSize: 20, opacity: 0.75 }}>⋯</button>
+            <button type="button" onClick={onToggleOverflow} aria-label="More" title="KIOSK URL · PREVIEW · health" style={{ ...cardBtn, padding: "9px 10px", minWidth: 44 /* 44px floor: a lone glyph is ~34px wide otherwise */, fontSize: 20, opacity: 0.75 }}>⋯</button>
           </div>
         </div>
       </div>
