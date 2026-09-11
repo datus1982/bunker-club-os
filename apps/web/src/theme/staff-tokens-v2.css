@@ -58,6 +58,7 @@
   --st-accent-edge: rgba(127, 230, 168, 0.3);
   --st-amber-soft: rgba(232, 176, 75, 0.08);
   --st-amber-edge: rgba(232, 176, 75, 0.35);
+  --st-danger-soft: rgba(255, 90, 90, 0.08); /* PR 2: the danger half of the callout pair */
   --st-danger-edge: rgba(255, 90, 90, 0.4);
 
   /* ── hairline (replaces the 2px green rectangle round every card) ────────── */
@@ -487,6 +488,16 @@
 .terminal-theme.staff-v2 [data-st-page] .st-callout-warn {
   background: var(--st-amber-soft) !important;
   border-color: var(--st-amber-edge) !important;
+}
+/* Its danger twin (PR 2 — ADDITIVE, no rule above is touched). §B spends red on
+ * destructive actions and TRUE FAILURE states; the HOME alert strip needs the second
+ * one (a bar screen that is actually offline, a Toast sync that has actually stopped),
+ * and amber for merely-stale would make the two unreadable at a glance. Same mechanism
+ * as the amber callout: the inline `background`/`border-color` a caller might try loses
+ * to the blanket hairline rule, so the treatment has to be a class. */
+.terminal-theme.staff-v2 [data-st-page] .st-callout-danger {
+  background: var(--st-danger-soft) !important;   /* beats the `.st-card` surface-1 fill above */
+  border-color: var(--st-danger-edge) !important; /* beats the blanket `… * { border-color: hairline !important }` */
 }
 
 /* Expand/collapse + hover transitions on the interactive cards. */
