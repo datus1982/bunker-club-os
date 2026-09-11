@@ -422,7 +422,10 @@ const btnPrimary: CSSProperties = {
   minHeight: 44, padding: "0 18px", cursor: "pointer",
 };
 const removeBtn: CSSProperties = {
-  minHeight: 44, padding: "0 14px", cursor: "pointer",
+  // nowrap: in the desktop table this button sits in the narrowest column on the page and
+  // "Remove access" broke across two lines there — a two-line destructive control reads as
+  // a mistake rather than as an action.
+  minHeight: 44, padding: "0 14px", cursor: "pointer", whiteSpace: "nowrap",
 };
 const th: CSSProperties = {
   textAlign: "left", padding: "8px 10px", borderBottom: "1px solid",
