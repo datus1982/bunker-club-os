@@ -420,7 +420,7 @@ export function MediaScreensPage() {
 
   return (
     <MediaPage
-      title="Screens &amp; programs"
+      title="Screens & programs"
       tag={slotsQ.isLoading ? "LOADING…" : `${screens.length} MEDIA SCREEN${screens.length === 1 ? "" : "S"}`}
     >
       {slotsQ.isLoading ? (
