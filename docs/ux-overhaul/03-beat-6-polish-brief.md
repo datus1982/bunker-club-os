@@ -18,9 +18,9 @@ Owner brief: `~/Marvin/decisions/2026-09-11-bunker-os-polish-pass.md`.
 | # | Question | Recommended | Alternative | **Stephen** |
 |---|---|---|---|---|
 | A | Staff text base | **A1** white-alpha text tiers + calmed accent (`#7FE6A8`), green reserved for LIVE | A2 keep green text; only elevation, hairline, radius, case | **A1** |
-| B | Signage Hub asset library | **B1** fold into MEDIA ▸ LIBRARY now | B2 leave in the hub | **B1** — lettered as written; **build HELD on N1** (the hub's library is TV slides, not media files — re-ask sent to Marvin) |
+| B | Signage Hub asset library | **B1** fold into MEDIA ▸ LIBRARY now | B2 leave in the hub | **B → (a) SLIDES PAGE** (Stephen 18:05 CT "slides page is fine, go ahead", after N1): new page **BAR OPS ▸ SLIDES** owning the `signage_items` list + `ItemEditor` as they are (same table, same editor, same `slot_queue` placement — a page move, no data-model change); the hub keeps a one-line "Manage slides (N) →" link where the embedded library was; screen control stays in the hub. No third nav tier. |
 | C | Staff radius | **C1** 6px controls/cards, 10px sheets, pill chips | C2 stay sharp | **C1** |
-| D | REMOVE (Top Sellers, Users) | **D1** red danger budget + geography + tiered confirm now | D2 leave amber, later round | **D1** |
+| D | REMOVE (Top Sellers, Users) | **D1** red danger budget + geography + tiered confirm now | D2 leave amber, later round | **D1, amended (Marvin ruling on N7):** KEEP PR #103's `ConfirmDialog`; REMOVE moves into red (`#FF5A5A`), verb-named ("Remove group" / "Keep group" — never Yes/No), own footer strip never beside the primary. **NO hold-to-confirm in Beat 6** (N10 moot). |
 | E | Trivia-not-armed alert | **E1** HOME-level strip now | E2 stays in Signage Hub | **E1** |
 
 Card additions: real-data shots at 390 + 1280 for HOME, Top Sellers editor, Media Library,
@@ -34,8 +34,8 @@ implemented inside RULE #1, name it and build the rest."
 |---|---|---|---|
 | 1 | `phase-polish-tokens` | §2.1 tokens layer + §2.2 type/case + §2.3 surfaces/hairline/radius on the v2 shell + every `shared/ui` primitive + the v2 pages that only need restyle (Media, Signage Hub chrome, Users, Top Sellers) | dispatched |
 | 2 | `phase-polish-home` | `DashboardV2` — Tonight/Trivia-Control merge (C3) + alert strip (E1, N8 hoist) | after 1 |
-| 3 | `phase-polish-danger` | D1 on Top Sellers + Users, Users admin-row collapse (C4), `ConfirmDialog` hold variant (N10) | after 1 |
-| 4 | `phase-polish-hub-fold` | B1 per N1's answer | HELD |
+| 3 | `phase-polish-danger` | D1 on Top Sellers + Users (ConfirmDialog kept, verb-named, red, footer strip), Users admin-row collapse (C4) | after 1 |
+| 4 | `phase-polish-slides-page` | BAR OPS ▸ SLIDES page (`signage_items` + `ItemEditor`, v2-only route; classic device → `<Navigate to="/signage">` per the Beat 4 `V2Only` pattern) + hub "Manage slides →" link | after 1 (unblocked 18:05 CT) |
 | — | riding 1 or 3 | C5 task-named sub-nav copy, C6 ⋯ convention, A5 Settings EmptyState, A4 badge weight | fold where cheapest |
 
 ---
@@ -90,14 +90,13 @@ sentence-case string; Label-role strings stay caps.
 Card/row/tile/dialog/drawer fills on the elevation tiers; 2px green frames → the hairline;
 radius per C1 via a `.staff-v2`-scoped `border-radius` override (N3).
 
-### 2.4 Danger language (§B) — [gated D]
+### 2.4 Danger language (§B) — D1 as amended
 Verb-named destructive buttons; red budget; geography (Users REMOVE → own danger strip
-under a hairline); tiered confirm (hold-to-confirm ring for Users remove, text-swap for
-Top Sellers group remove, none for toggles). N7 names the collision with the shipped
-`ConfirmDialog` DECISION from PR #103.
+under a hairline). Confirm = the shipped `ConfirmDialog` (PR #103) with verb-named
+buttons ("Remove group" / "Keep group"); no hold-to-confirm, no text-swap in Beat 6.
 
 ### 2.5 IA (§C)
-- C1 Signage Hub → screen-control only — **[gated B, blocked on N1]**
+- C1 Signage Hub → screen-control only via the SLIDES page — **[B = (a), unblocked]**
 - C2 HOME alert strip — **[gated E]**
 - C3 HOME status/module de-dup
 - C4 Users admin rows collapse to one "Full access — admin" line
@@ -106,9 +105,10 @@ Top Sellers group remove, none for toggles). N7 names the collision with the shi
 - A4 Media Library: PRESENT/MISSING badge weight; real-iPhone search check (owner eyeball)
 - A5 Settings placeholder → `EmptyState` "not built yet" read (v2 only)
 
-### 2.6 Trivia/TV adoption (§D)
-Nothing rendered changes. See N6 — recommend deferring even the name-only refactor out of
-this beat.
+### 2.6 Trivia/TV adoption (§D) — OUT of Beat 6 (Marvin ruling on N6)
+Nothing rendered changes. **Follow-up, not a task:** on the next trivia/host touch, name
+the scoring console's spacing constants and label/monoData sizes after the shared tokens
+(zero-render-diff refactor, PNG sha256 proof).
 
 ---
 
@@ -200,12 +200,33 @@ page, every edge function, `supabase/`.
   the arm flag read is the addition (read-only, existing `venue_settings` row).
 - **N9 — The audit's "no iOS codebase exists" is wrong.** Bunker Control (SwiftUI, iPad)
   lives in worktree `.claude/worktrees/agent-a82ad84cd93100297/apps/bunker-control-ios/`
-  (branch `phase-bunker-control-v1`, unpushed, ~16 commits, SF Mono, terminal theme). The
-  token sheet's SwiftUI names should be checked against what that app already defines
-  before they're treated as the source of truth for "unify with iOS."
-- **N10 — Hold-to-confirm (300ms ring) is a new interaction primitive** with an
-  accessibility surface (keyboard/VoiceOver activation path) the audit doesn't specify.
-  Name it in the brief as needing a keyboard fallback (Enter = same as a completed hold).
+  (branch `phase-bunker-control-v1`, unpushed, 17 app commits, iOS 17+, XcodeGen project,
+  `com.bunkerokc.bunkercontrol`). Its theme is ONE file, `BunkerControl/Theme/Theme.swift`
+  (`enum Theme` static lets + `TerminalPanel`/`Chip`/`Eyebrow`/`TerminalButtonStyle`/
+  `EmptyState` views). **Token-name check (Marvin ask, 2026-09-11) — iOS branch NOT changed
+  in this beat; this is the reconciliation list for whoever ports the tokens:**
+
+  | Okuda §B (SwiftUI name) | Bunker Control today | Mismatch |
+  |---|---|---|
+  | `Color.staffBackground` #0B0D10 | `Theme.bg` #050505 | name + value |
+  | `Color.staffSurface1..4` (4 lightness tiers) | `Theme.panel` #0E0E0E, one tier | no elevation ladder on iOS |
+  | `Color.staffTextPrimary/Secondary/Disabled` (white-alpha 0.87/0.60/0.38) | none — primary UI text is `Theme.amber` #FFB000, secondary `dimAmber` (0.55α) | **iOS runs the AMBER color-state as its text base; Okuda's white-alpha base has no counterpart** — the central A1 deviation must be ported deliberately, not renamed |
+  | `Color.staffAccent` #7FE6A8 (calmed) | none — `Theme.green` #00FF41 is used for live/fresh signals | closest role is `staffAccentLive`; there is no calmed accent on iOS |
+  | `Color.staffAccentLive` #00FF41 | `Theme.green` #00FF41 (+ `dimGreen` 0.45α for chrome/rules) | value matches, name differs |
+  | `Color.staffAmber` #E8B04B (ambient/pending) | `Theme.amber` #FFB000 (PRIMARY UI + `HealthChip.stale`) | same hue family, opposite job + uncalmed value |
+  | `Color.staffDanger` #FF5A5A | `Theme.red` ≈ #FF4036 (fault/offline) | value differs; iOS also spends red on offline health, Okuda's budget says failure states are in-budget so OK |
+  | `Color.staffHairline` 1px white 0.08α | `dimGreen`/`dimAmber` 1px strokes on every panel/chip/button | iOS is still the "wireframe" look Okuda removes |
+  | `Radius.staffControl` 6 / `staffCard` 6 / `staffSheet` 10 / chips pill | `cardRadius` 4, buttons 3, chips 2, sheets = iOS default | all differ |
+  | `.staffFont(.display/.heading/.body/.label/.monoData)` 28·17·14·12·14 px (390) | `Theme.title` 30 / `cardTitle` 26 / `body` 17 / `label` 13 / `big` 21, SF Mono `.monospaced` | sizes are iPad-arm's-length by ruling ("dead simple, big buttons"), face is SF Mono not JetBrains/Share Tech — role NAMES can map (title→display, cardTitle→heading, body→body, label→label; `big` and `monoData` have no partner) |
+  | `Spacing` 4·8·12·16·24·32·48 | no scale — literal paddings (18, 9/5, 40, 14) | none exists |
+  | 44px tap floor | `controlHeight` 62 | iOS deliberately larger (owner ruling) |
+  | case rule (Label-only caps) | `Chip`/`Eyebrow`/`EmptyState` force `.uppercased()` in code | same authored-caps pattern as web (N5) |
+  | motion budget | none declared (`isPressed` opacity 0.6 only) | none exists |
+
+  Net: nothing in Bunker Control is named `Color.staff*` / `.staffFont` — a port is a new
+  `Theme` surface, not a rename, and the amber-as-text-base decision on iOS needs Stephen's
+  word before A1 crosses over.
+- **N10 — Hold-to-confirm** — MOOT for Beat 6 (D1 amended: ConfirmDialog kept).
 - **N11 — HOME has no v2 variant today.** `/dashboard` renders the classic `Dashboard`
   inside `StaffShellV2`. Any HOME change (E1, C3, tokens) needs a `DashboardV2` behind the
   same `useUiVersion` branch pattern as Users/DrinksAdmin/SignageHub — additive, but it is
