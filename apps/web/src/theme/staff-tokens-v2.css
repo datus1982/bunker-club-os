@@ -506,10 +506,17 @@
  * (`/scoring`, `/dashboard`…), and every TV, display and classic staff page is untouched.
  * terminal-theme.css itself is not modified.
  * ────────────────────────────────────────────────────────────────────────── */
-.terminal-theme.staff-v2 [data-st-page].terminal-theme::before,
-.terminal-theme.staff-v2 [data-st-page].terminal-theme::after,
-.terminal-theme.staff-v2 [data-st-page] .terminal-theme::before,
-.terminal-theme.staff-v2 [data-st-page] .terminal-theme::after {
+/* `:has()` is the only way to express this: the overlay is painted by an ANCESTOR
+ * (the shell root, and the hub/media pages' own `.terminal-theme` wrapper), while the
+ * opt-in hook is on a DESCENDANT. So a `.terminal-theme` drops its CRT layer exactly
+ * when the page it is currently hosting is a tokened one. `/scoring` under v2 renders no
+ * `[data-st-page]`, so the shell root keeps its overlay there — and on a classic device
+ * `.staff-v2` is never on the page at all. (`:has()` is already a dependency of this
+ * app: `theme/staff-form.css` uses it for the switch focus ring.) */
+.terminal-theme.staff-v2:has([data-st-page])::before,
+.terminal-theme.staff-v2:has([data-st-page])::after,
+.terminal-theme.staff-v2 .terminal-theme:has([data-st-page])::before,
+.terminal-theme.staff-v2 .terminal-theme:has([data-st-page])::after {
   display: none !important; /* beats .terminal-theme::before/::after (fixed, pointer-events:none) */
 }
 

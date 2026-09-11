@@ -52,13 +52,16 @@ export interface SectionNavSection {
  */
 function DrawerLabel({ child }: { child: SectionNavChild }) {
   if (!child.task) return <>{child.label}</>;
+  // BOTH `fontSize: "inherit"` values below are LOAD-BEARING, and the OUTER one is the
+  // one that is easy to miss: wrapping the label in spans moved it out of the <a>'s own
+  // size and under `.terminal-theme * { font-size: 1.5rem }` — a class rule on every
+  // element, which inheritance (zero specificity) never beats. Without the outer
+  // `inherit` the label "inherits" 24px from this wrapper instead of 14/15px from the
+  // link, which is exactly what happened (the PR #89 class, twice in one component).
+  // Hierarchy against the 15px Body task line comes from case + weight + tier, not size.
   return (
-    <span style={{ display: "flex", flexDirection: "column", gap: 1, minWidth: 0, padding: "4px 0" }}>
-      {/* `fontSize: "inherit"` is LOAD-BEARING. Wrapping the label in a span moved it out
-          of the <a>'s own size and under `.terminal-theme * { font-size: 1.5rem }` — a
-          class rule on every element, which inheritance (zero specificity) never beats.
-          Without this the drawer labels silently render at 24px (the PR #89 class). */}
-      <span style={{ fontSize: "inherit" }}>{child.label}</span>
+    <span style={{ display: "flex", flexDirection: "column", gap: 1, minWidth: 0, padding: "4px 0", fontSize: "inherit" }}>
+      <span style={{ fontSize: "inherit", fontWeight: 700, letterSpacing: "0.04em" }}>{child.label}</span>
       {/* Helper copy is SECONDARY, not Disabled: §B assigns "labels, captions, helper
           copy, metadata" to Secondary, and the Disabled tier (0.38α) measures ~3.5:1 —
           under AA on every surface. Disabled is for disabled controls, placeholders and
