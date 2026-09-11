@@ -42,6 +42,14 @@ import "./signage.css";
  * the library used to sit so the move is visible rather than silent. CLASSIC still renders
  * MediaSection inside the hub, unchanged — RULE #1.
  *
+ * BEAT 6 (PR 1) — token pass, CHROME AND CASE ONLY. The page root carries
+ * `data-st-page` (the token sheet's opt-in hook), headings/notes move onto the type
+ * roles, and the loading/help lines onto the text tiers. The ASSET LIBRARY section is
+ * deliberately UNTOUCHED in structure: folding it into MEDIA ▸ LIBRARY is letter B,
+ * PR 4, and it is HELD on code note N1 (the hub's library is signage_items TV SLIDES,
+ * not the media_files video catalog). Nothing about what a card computes changed — the
+ * hub/TV parity invariant above still holds line for line.
+ *
  * Sizes are inline px: nothing inherits font-size under `.terminal-theme` (PR #89).
  */
 export function SignageHubV2({ ctx, overlays }: { ctx: SignageHubContext; overlays: ReactNode }) {
@@ -56,13 +64,13 @@ export function SignageHubV2({ ctx, overlays }: { ctx: SignageHubContext; overla
   const online = screens.filter((s) => screenHealth(s.last_seen) === "online").length;
 
   return (
-    <div className="terminal-theme staff-ui" style={{ minHeight: "100%", padding: "20px clamp(12px,4vw,40px)", fontFamily: MONO, color: "var(--terminal-green)" }}>
+    <div className="terminal-theme staff-ui" data-st-page="" style={{ minHeight: "100%", padding: "24px clamp(16px,4vw,40px) 48px", fontFamily: MONO }}>
       <div style={{ maxWidth: 1100, margin: "0 auto" }}>
         <StaffPageHeader
           eyebrow="BAR OPS ▸ SIGNAGE HUB"
-          title="SIGNAGE HUB"
+          title="Signage Hub"
           tag={ctx.slotsLoading ? "LOADING…" : `${screens.length} SCREEN${screens.length === 1 ? "" : "S"} · ${online} LIVE`}
-          right={<Link to="/dashboard" style={{ ...ghost, textDecoration: "none", fontSize: 16, display: "inline-flex", alignItems: "center" }}>← DASHBOARD</Link>}
+          right={<Link to="/dashboard" className="st-btn st-body st-t2" style={{ ...ghost, textDecoration: "none", display: "inline-flex", alignItems: "center" }}>← Dashboard</Link>}
         />
 
         {/* ── A · ON AIR NOW ─────────────────────────────────────────────── */}
@@ -84,7 +92,7 @@ export function SignageHubV2({ ctx, overlays }: { ctx: SignageHubContext; overla
           )}
 
           {ctx.slotsLoading ? (
-            <div style={{ fontSize: 20 }}>LOADING SCREENS…</div>
+            <div className="st-body st-t2">Loading screens…</div>
           ) : ctx.slots.length === 0 ? (
             <EmptyState eyebrow="NO SCREENS" message="No screens provisioned. Seed one in signage_slots." />
           ) : (
@@ -106,7 +114,7 @@ export function SignageHubV2({ ctx, overlays }: { ctx: SignageHubContext; overla
           }
         >
           {ctx.assetsLoading ? (
-            <div style={{ fontSize: 18, opacity: 0.7 }}>LOADING ASSETS…</div>
+            <div className="st-body st-t2">Loading assets…</div>
           ) : ctx.assets.length === 0 ? (
             <EmptyState
               eyebrow="EMPTY LIBRARY"
@@ -152,7 +160,7 @@ export function SignageHubV2({ ctx, overlays }: { ctx: SignageHubContext; overla
           </div>
           <div style={{ marginTop: 10 }}>
             {ctx.eventsLoading ? (
-              <div style={{ fontSize: 18, opacity: 0.7 }}>LOADING…</div>
+              <div className="st-body st-t2">Loading…</div>
             ) : ctx.events.length === 0 ? (
               <EmptyState
                 eyebrow="NOTHING SCHEDULED"
@@ -203,7 +211,7 @@ export function SignageHubV2({ ctx, overlays }: { ctx: SignageHubContext; overla
         {/* ── D · ★ FEATURED ON POS (read-only) ──────────────────────────── */}
         <div style={{ marginTop: 32 }}>
           <SectionHeading label="★ FEATURED ON POS" note="read-only — flipped at the register" />
-          <div style={{ fontSize: 15, opacity: 0.65, margin: "0 0 10px", lineHeight: 1.5 }}>
+          <div className="st-body st-t2" style={{ margin: "0 0 10px" }}>
             In-stock items in the Toast ★ SCREENS group auto-rotate onto every screen. Toggle these at the POS
             (Quick Edit → In/Out of Stock) — there is no button here (Toast access is read-only).
           </div>
@@ -212,12 +220,12 @@ export function SignageHubV2({ ctx, overlays }: { ctx: SignageHubContext; overla
           ) : (
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(min(100%,220px),1fr))", gap: 8 }}>
               {ctx.featured.map((f) => (
-                <div key={f.guid} className="terminal-border" style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 10px", minWidth: 0 }}>
+                <div key={f.guid} className="st-card" style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", minWidth: 0, border: "1px solid" }}>
                   {f.image
-                    ? <img src={f.image} alt="" style={{ width: 40, height: 40, objectFit: "cover", border: "1px solid var(--terminal-green)", flexShrink: 0 }} />
-                    : <span style={{ width: 40, height: 40, border: "1px solid var(--terminal-green)", flexShrink: 0, display: "inline-block" }} />}
-                  <span className="sig-live" style={{ flex: 1, minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", fontSize: 18 }}>{f.name}</span>
-                  {f.price != null && <span className="sig-live" style={{ fontSize: 17 }}>${f.price}</span>}
+                    ? <img src={f.image} alt="" style={{ width: 40, height: 40, objectFit: "cover", border: "1px solid", flexShrink: 0 }} />
+                    : <span style={{ width: 40, height: 40, border: "1px solid", flexShrink: 0, display: "inline-block" }} />}
+                  <span className="st-body st-t1" style={{ flex: 1, minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{f.name}</span>
+                  {f.price != null && <span className="st-mono st-accent">${f.price}</span>}
                 </div>
               ))}
             </div>
@@ -233,9 +241,10 @@ export function SignageHubV2({ ctx, overlays }: { ctx: SignageHubContext; overla
 /* ── section heading: the shell's eyebrow treatment ────────────────────────── */
 function SectionHeading({ label, note, style }: { label: string; note?: string; style?: CSSProperties }) {
   return (
-    <div style={{ margin: "0 0 10px", ...style }}>
-      <div style={{ fontSize: 13, letterSpacing: 4, opacity: 0.55, textTransform: "uppercase" }}>{label}</div>
-      {note && <div style={{ fontSize: 15, opacity: 0.5, marginTop: 2 }}>{note}</div>}
+    <div style={{ margin: `0 0 10px`, ...style }}>
+      {/* Section titles function as EYEBROWS here, so they are Label role and stay caps. */}
+      <div className="st-label st-t2">{label}</div>
+      {note && <div className="st-body st-t3" style={{ marginTop: 2 }}>{note}</div>}
     </div>
   );
 }
@@ -349,8 +358,8 @@ function ScreenCardV2({ slot, ctx, stacked }: { slot: AdminSlot; ctx: SignageHub
         </>
       ) : undefined}
       overflow={overflowOpen ? (
-        <div className="terminal-border" style={{ padding: "10px 12px", display: "flex", flexDirection: "column", gap: 8 }}>
-          <div style={{ fontSize: 15, opacity: 0.6 }}>
+        <div className="st-panel" style={{ padding: "10px 12px", display: "flex", flexDirection: "column", gap: 8, border: "1px solid" }}>
+          <div className="st-body st-t2">
             SCREEN HEALTH: {health === "online" ? "● LIVE" : health === "stale" ? "◐ STALE" : "○ DOWN"}
             {slot.last_seen ? ` · last seen ${new Date(slot.last_seen).toLocaleString([], { hour: "numeric", minute: "2-digit", month: "numeric", day: "numeric" })}` : " · never checked in"}
           </div>
@@ -438,20 +447,20 @@ function EventListRow({
           <>
             {canEvents && !done && (
               isLive || paused ? (
-                <button type="button" onClick={() => toggle.mutate()} disabled={toggle.isPending} className={paused ? "" : "u-fill u-ink"} style={paused ? rowBtnV2 : { ...rowBtnV2, fontWeight: 700, background: "var(--terminal-green)", color: "#000" }}>
+                <button type="button" onClick={() => toggle.mutate()} disabled={toggle.isPending} className={paused ? "st-btn st-body" : "st-btn st-btn-primary st-body"} style={rowBtnV2}>
                   {paused ? "▶ RESUME" : "❚❚ PAUSE"}
                 </button>
               ) : (
-                <button type="button" onClick={() => setConfirmFire(true)} disabled={fire.isPending} className="u-amber" style={{ ...rowBtnV2, borderColor: "var(--terminal-amber, #ffb000)" }}>▶ FIRE NOW</button>
+                <button type="button" onClick={() => setConfirmFire(true)} disabled={fire.isPending} className="u-amber st-btn st-body" style={rowBtnV2}>▶ FIRE NOW</button>
               )
             )}
-            {canEvents && <button type="button" onClick={onEdit} style={rowBtnV2}>EDIT</button>}
+            {canEvents && <button type="button" onClick={onEdit} className="st-btn st-body" style={rowBtnV2}>EDIT</button>}
           </>
         }
       />
       {confirmFire && (
         <ConfirmDialog
-          title={row.kind === "moment" ? "FIRE THIS MOMENT NOW?" : "PUT THIS ON THE SCREENS NOW?"}
+          title={row.kind === "moment" ? "Fire this moment now?" : "Put this on the screens now?"}
           // The classic window.confirm wording, kept — it is the sentence the owner reads.
           body={row.kind === "moment" ? "It skips the tease and lands in ALERT." : `“${row.name}” goes onto the bar screens immediately.`}
           confirmLabel="▶ FIRE NOW"
@@ -465,8 +474,8 @@ function EventListRow({
   );
 }
 
+/* Geometry only — ink, edge and size come from the token classes on the element. */
 const rowBtnV2: CSSProperties = {
-  fontFamily: MONO, fontSize: 15, letterSpacing: 1, color: "var(--terminal-green)",
-  border: "1px solid var(--terminal-green)", background: "transparent", padding: "7px 11px",
-  minHeight: 44, cursor: "pointer", whiteSpace: "nowrap",
+  fontFamily: MONO, padding: "7px 11px",
+  minHeight: 44, minWidth: 44, cursor: "pointer", whiteSpace: "nowrap",
 };

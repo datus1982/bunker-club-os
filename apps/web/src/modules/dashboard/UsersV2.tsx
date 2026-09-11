@@ -30,6 +30,13 @@ import { ALL_MODULES, STATUS_LABEL, type InviteResult, type InviteRole, type Sta
  * profile_id/email/role/modules/is_self. Surfacing last_sign_in_at needs an RPC change,
  * i.e. a migration, which Beat 2 is not allowed to make. Classic shows no such line
  * either, so nothing regressed; it is a candidate for a later beat.
+ *
+ * BEAT 6 (PR 1) — token pass, presentation only. The page root carries `data-st-page`
+ * (the token sheet's opt-in hook); text rides the type-role + tier classes; the invite
+ * panel is a surface-2 `st-panel`; cards/rows are surface-1. NOT in this PR: the
+ * admin-row collapse to one "Full access — admin" line (C4) and the REMOVE danger
+ * redesign (D1) — both are PR 3, so REMOVE stays exactly where and what it is (its
+ * `u-amber` is re-declared to the calmed #E8B04B by the token sheet).
  */
 export function UsersV2({
   rows,
@@ -70,18 +77,18 @@ export function UsersV2({
   const perAddressResults = invite.results?.filter((r) => r.email !== "—") ?? [];
 
   return (
-    <div style={{ padding: "20px clamp(14px, 4vw, 48px) 40px" }}>
+    <div data-st-page="" style={{ padding: "24px clamp(16px, 4vw, 48px) 48px" }}>
       <StaffPageHeader
         eyebrow="SYSTEM ▸ USERS"
-        title="USERS"
+        title="Users"
         tag={isLoading ? "LOADING…" : `${rows.length} STAFF`}
       />
 
       {notice && <InlineNotice kind="warn" message={notice} style={{ marginBottom: 16 }} />}
 
       {/* ── INVITE STAFF ─────────────────────────────────────────────────────── */}
-      <form onSubmit={invite.onSubmit} style={card}>
-        <div style={cardHead}>INVITE STAFF</div>
+      <form onSubmit={invite.onSubmit} className="st-panel" style={card}>
+        <div className="st-heading st-t1" style={cardHead}>Invite staff</div>
 
         <div style={{ display: "flex", gap: 14, flexWrap: "wrap", alignItems: "flex-start" }}>
           <FormField
@@ -122,22 +129,22 @@ export function UsersV2({
         </FormField>
 
         <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap", marginTop: 16 }}>
-          <button type="submit" disabled={invite.pending} className="u-fill u-ink" style={btnPrimary}>
-            {invite.pending ? "SENDING…" : "SEND INVITE →"}
+          <button type="submit" disabled={invite.pending} className="st-btn st-btn-primary st-body" style={btnPrimary}>
+            {invite.pending ? "Sending…" : "Send invite →"}
           </button>
-          <span style={{ fontSize: 15, opacity: 0.55, flex: "1 1 220px", minWidth: 0 }}>
+          <span className="st-body st-t3" style={{ flex: "1 1 220px", minWidth: 0 }}>
             Creates the account if new, grants the modules above, and emails a one-click sign-in link.
             They appear below immediately.
           </span>
         </div>
 
         {perAddressResults.length > 0 && (
-          <div style={{ marginTop: 14, borderTop: "1px solid rgba(0,255,65,0.25)", paddingTop: 12 }}>
+          <div style={{ marginTop: 14, borderTop: "1px solid", paddingTop: 12 }}>
             {perAddressResults.map((r, i) => (
               <div
                 key={`${r.email}-${i}`}
-                className={r.status === "error" ? "u-amber" : undefined}
-                style={{ fontSize: 17, marginBottom: 4 }}
+                className={r.status === "error" ? "st-body st-danger" : "st-body st-t2"}
+                style={{ marginBottom: 4 }}
               >
                 <b>{r.email}</b> — {STATUS_LABEL[r.status]}
                 {r.detail && r.status === "error" ? `: ${r.detail}` : ""}
@@ -149,7 +156,7 @@ export function UsersV2({
 
       {/* ── STAFF ────────────────────────────────────────────────────────────── */}
       {isLoading ? (
-        <div style={{ fontSize: 20, opacity: 0.7 }}>LOADING STAFF…</div>
+        <div className="st-body st-t2">Loading staff…</div>
       ) : loadError ? (
         <InlineNotice kind="warn" message={`⚠ ${loadError}`} />
       ) : rows.length === 0 ? (
@@ -175,7 +182,7 @@ export function UsersV2({
         />
       )}
 
-      <div style={{ fontSize: 15, opacity: 0.55, marginTop: 18 }}>
+      <div className="st-body st-t3" style={{ marginTop: 18 }}>
         Admins implicitly hold every module (granted &amp; locked). Changes save instantly — no redeploy.
       </div>
     </div>
@@ -200,15 +207,15 @@ function StaffCard({
       stacked
       title={
         // overflowWrap, not ellipsis: a long address must WRAP inside a 390px card.
-        <span style={{ display: "block", overflowWrap: "anywhere", fontSize: 18 /* nothing inherits font-size here */ }}>
+        <span style={{ display: "block", overflowWrap: "anywhere" }}>
           {row.email}
-          {row.is_self && <span style={{ opacity: 0.6 }}> (you)</span>}
+          {row.is_self && <span className="st-t3"> (you)</span>}
         </span>
       }
       sub={`ROLE: ${row.role.toUpperCase()}${row.is_self ? " · YOUR ACCOUNT" : ""}`}
       meta={
         <div style={{ display: "flex", flexDirection: "column", gap: 6, width: "100%" }}>
-          <div style={{ fontSize: 14, letterSpacing: 2, opacity: 0.55 }}>ACCESS</div>
+          <div className="st-label st-t2">ACCESS</div>
           {ALL_MODULES.map((m) => (
             <ToggleSwitch
               key={m}
@@ -241,7 +248,7 @@ function StaffCard({
             </select>
           </FormField>
           {!row.is_self && (
-            <button type="button" className="u-amber" style={removeBtn} onClick={() => onRemove(row)}>
+            <button type="button" className="u-amber st-btn st-body" style={removeBtn} onClick={() => onRemove(row)}>
               REMOVE
             </button>
           )}
@@ -273,15 +280,15 @@ function StaffTable({
     // Dropping it would not have made the table fit 1024; it would only have removed a
     // guard. Either way the PAGE never scrolls sideways: the overflow is this box's.
     <div style={{ overflowX: "auto" }}>
-      <table style={{ borderCollapse: "collapse", width: "100%", minWidth: 720, fontSize: 18 }}>
+      <table className="st-body st-t1" style={{ borderCollapse: "collapse", width: "100%", minWidth: 720 }}>
         <thead>
           <tr>
-            <th style={th}>EMAIL</th>
-            <th style={th}>ROLE</th>
+            <th className="st-label st-t2" style={th}>EMAIL</th>
+            <th className="st-label st-t2" style={th}>ROLE</th>
             {ALL_MODULES.map((m) => (
               // Module captions WRAP (the rest of the header row does not): "EVENTS &
               // PROMOS" on one line pushed the natural table width past a 1024px window.
-              <th key={m} style={{ ...th, textAlign: "center", whiteSpace: "normal", maxWidth: 96 }}>
+              <th key={m} className="st-label st-t2" style={{ ...th, textAlign: "center", whiteSpace: "normal", maxWidth: 96 }}>
                 {moduleLabel(m)}
               </th>
             ))}
@@ -293,7 +300,7 @@ function StaffTable({
             <tr key={row.profile_id}>
               <td style={td}>
                 {row.email}
-                {row.is_self && <span style={{ opacity: 0.6 }}> (you)</span>}
+                {row.is_self && <span className="st-t3"> (you)</span>}
               </td>
               <td style={td}>
                 {/* No FormField here: a table column header IS the caption, so a second
@@ -322,7 +329,7 @@ function StaffTable({
               ))}
               <td style={{ ...td, textAlign: "right" }}>
                 {!row.is_self && (
-                  <button type="button" className="u-amber" style={removeBtn} onClick={() => onRemove(row)}>
+                  <button type="button" className="u-amber st-btn st-body" style={removeBtn} onClick={() => onRemove(row)}>
                     REMOVE
                   </button>
                 )}
@@ -335,28 +342,25 @@ function StaffTable({
   );
 }
 
+/* GEOMETRY ONLY from here down — surface, ink and text size come from the token
+ * classes (`st-panel`, `st-btn`, `st-label`, `st-body`, `st-t*`). An inline colour
+ * cannot beat `.terminal-theme * { color: green !important }`, and the sizes now live
+ * once, in the type roles. */
 const card: CSSProperties = {
-  border: "1px solid var(--terminal-green)",
   padding: "16px clamp(12px,3vw,20px)",
   marginBottom: 28,
-  background: "rgba(0,255,65,0.03)",
 };
-const cardHead: CSSProperties = { fontSize: 20, letterSpacing: 2, marginBottom: 12 };
+const cardHead: CSSProperties = { marginBottom: 12 };
 const btnPrimary: CSSProperties = {
-  background: "var(--terminal-green)", color: "#000",
-  border: "1px solid var(--terminal-green)",
-  minHeight: 44, padding: "0 18px", fontWeight: 700, cursor: "pointer",
+  minHeight: 44, padding: "0 18px", cursor: "pointer",
 };
-// No fontSize here: `.staff-ui button{font-size:1.25rem!important}` pins every staff
-// button at 20px, so an inline size would lose silently (classic's 15px already does).
 const removeBtn: CSSProperties = {
-  background: "transparent", border: "1px solid var(--terminal-amber, #ffb000)",
   minHeight: 44, padding: "0 14px", cursor: "pointer",
 };
 const th: CSSProperties = {
-  textAlign: "left", padding: "8px 10px", borderBottom: "1px solid var(--terminal-green)",
-  fontSize: 15, letterSpacing: 1, opacity: 0.8, whiteSpace: "nowrap",
+  textAlign: "left", padding: "8px 10px", borderBottom: "1px solid",
+  whiteSpace: "nowrap",
 };
 const td: CSSProperties = {
-  padding: "8px 10px", borderBottom: "1px solid rgba(0,255,65,0.2)", verticalAlign: "middle",
+  padding: "8px 10px", borderBottom: "1px solid", verticalAlign: "middle",
 };

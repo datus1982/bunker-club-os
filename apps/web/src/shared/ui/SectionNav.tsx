@@ -21,6 +21,12 @@ import { Link, useNavigate } from "react-router-dom";
  * The drawer is a `role="menu"`: ArrowUp/ArrowDown/Home/End move focus, Escape closes
  * and returns focus to the toggle (audit finding #3 — done here because the nav is new;
  * classic is deliberately NOT retrofitted).
+ *
+ * BEAT 6 (PR 1): text tiers come from the `st-t*` token classes (an inline colour can
+ * never win against `.terminal-theme * { color: green !important }`), and SIGN OUT
+ * drops `u-amber` — §B takes a routine, reversible action off the warning ink. The
+ * ACTIVE treatment still uses `u-fill u-ink`: the token sheet re-declares both inside
+ * the v2 scope, so the fill is the calmed accent and the ink is the ground colour.
  */
 
 export interface SectionNavChild {
@@ -29,10 +35,29 @@ export interface SectionNavChild {
   end?: boolean;
   comingSoon?: boolean;
   group?: string;
+  /** One-line task description, rendered under the label in the mobile drawer (§C5). */
+  task?: string;
 }
 export interface SectionNavSection {
   label: string;
   children: SectionNavChild[];
+}
+
+/**
+ * A drawer entry: the Label-role name, plus the one-line TASK description when the nav
+ * data carries one (audit §C5). Desktop's chip strip has no room for the second line, so
+ * it renders the label alone — the description is a phone-drawer affordance.
+ * Sizes/colour come from the token classes: nothing inherits font-size here (PR #89) and
+ * an inline colour cannot beat `.terminal-theme * { color: green !important }`.
+ */
+function DrawerLabel({ child }: { child: SectionNavChild }) {
+  if (!child.task) return <>{child.label}</>;
+  return (
+    <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0, padding: "8px 0" }}>
+      <span>{child.label}</span>
+      <span className="st-body st-t3">{child.task}</span>
+    </span>
+  );
 }
 
 export function SectionNav({
@@ -123,9 +148,9 @@ export function SectionNav({
     return (
       <nav className="sv2-nav sv2-nav-mobile">
         <div className="sv2-mbar">
-          <Link to={home?.to ?? "/dashboard"} className="u-head sv2-brand">{brand}</Link>
+          <Link to={home?.to ?? "/dashboard"} className="u-head st-heading st-t1 sv2-brand">{brand}</Link>
           {activeChild && activeChild.to !== home?.to && (
-            <span className="sv2-mcrumb" aria-hidden="true">▸ {activeChild.label}</span>
+            <span className="st-t3 sv2-mcrumb" aria-hidden="true">▸ {activeChild.label}</span>
           )}
           <button
             type="button"
@@ -151,7 +176,7 @@ export function SectionNav({
                     onClick={close}
                     className={"sv2-dlink sv2-dhome" + (activeTo === home.to ? " u-fill u-ink sv2-on" : "")}
                   >
-                    {home.label}
+                    <DrawerLabel child={home} />
                   </Link>
                 )}
               </div>
@@ -159,7 +184,7 @@ export function SectionNav({
                 {sections.map((s) => (
                   <div key={s.label}>
                     {/* Sticky, deliberately NOT tappable (mockup view 3). */}
-                    <div className="sv2-dsect" aria-hidden="true">{s.label}</div>
+                    <div className="st-label st-t3 sv2-dsect" aria-hidden="true">{s.label}</div>
                     {s.children.map((c) =>
                       c.comingSoon ? (
                         <span key={s.label + c.label} className="sv2-dlink sv2-dsub sv2-soon" aria-disabled="true">
@@ -174,7 +199,7 @@ export function SectionNav({
                           onClick={close}
                           className={"sv2-dlink sv2-dsub" + (activeTo === c.to ? " u-fill u-ink sv2-on" : "")}
                         >
-                          {c.label}
+                          <DrawerLabel child={c} />
                         </Link>
                       ),
                     )}
@@ -182,9 +207,9 @@ export function SectionNav({
                 ))}
               </div>
               <div className="sv2-drawer-foot">
-                <span className="sv2-viewas">{roleLabel}</span>
+                <span className="st-t3 sv2-viewas">{roleLabel}</span>
                 {extra}
-                <button type="button" onClick={onSignOut} className="u-amber sv2-signout">SIGN OUT</button>
+                <button type="button" onClick={onSignOut} className="st-t2 sv2-signout">SIGN OUT</button>
               </div>
             </div>
           </>
@@ -197,7 +222,7 @@ export function SectionNav({
   return (
     <nav className="sv2-nav">
       <div className="sv2-toprow">
-        <Link to={home?.to ?? "/dashboard"} className="u-head sv2-brand">{brand}</Link>
+        <Link to={home?.to ?? "/dashboard"} className="u-head st-heading st-t1 sv2-brand">{brand}</Link>
         <div className="sv2-sections">
           {home && (
             <Link
@@ -219,19 +244,19 @@ export function SectionNav({
           ))}
         </div>
         {extra}
-        <span className="sv2-viewas">{roleLabel}</span>
-        <button type="button" onClick={onSignOut} className="u-amber sv2-signout">SIGN OUT</button>
+        <span className="st-t3 sv2-viewas">{roleLabel}</span>
+        <button type="button" onClick={onSignOut} className="st-t2 sv2-signout">SIGN OUT</button>
       </div>
       {activeSection && (
         <div className="sv2-subrow">
-          <span className="u-amber sv2-subkick">{activeSection.label} ▸</span>
+          <span className="st-label st-t3 sv2-subkick">{activeSection.label} ▸</span>
           {activeSection.children.map((c, i, arr) => {
             const prev = i > 0 ? arr[i - 1] : undefined;
             const groupChanged = i === 0 ? !!c.group : c.group !== prev?.group;
             return (
               <span key={(c.to || c.label) + i} className="sv2-subwrap">
                 {i > 0 && groupChanged && <span className="sv2-divider" aria-hidden="true" />}
-                {groupChanged && c.group && <span className="sv2-groupkick">{c.group}</span>}
+                {groupChanged && c.group && <span className="st-label st-t3 sv2-groupkick">{c.group}</span>}
                 {c.comingSoon ? (
                   <span className="sv2-subitem sv2-soon" aria-disabled="true">
                     {c.label}<span className="sv2-soon-tag">COMING SOON</span>

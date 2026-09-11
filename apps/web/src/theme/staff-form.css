@@ -14,12 +14,20 @@
  *
  * Sizes are px on the element that renders the text: `.terminal-theme *` sets
  * font-size on EVERY element, so nothing inherits font-size in this app.
+ *
+ * BEAT 6 (PR 1): geometry moved onto the 8pt spacing scale and the focus ring onto the
+ * calmed accent, both read from the `--st-*` custom properties the v2 shell defines on
+ * `.staff-v2` (custom properties DO inherit, so every `.bui-*` element inside the shell
+ * sees them). The fallbacks keep this file honest if a field ever renders outside that
+ * shell. Radius is NOT set here — `.terminal-theme * { border-radius: 0 !important }`
+ * would win; the 6px lives in theme/staff-tokens-v2.css where the !important is
+ * justified inline. Still zero !important in this file.
  * ============================================================================ */
 
 .bui-field {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--st-space-1, 4px);
   min-width: 0;
 }
 
@@ -41,7 +49,7 @@
   min-height: 44px;
   width: 100%;
   box-sizing: border-box;
-  padding: 8px 10px;
+  padding: var(--st-space-2, 8px) var(--st-space-3, 12px);
   border-width: 1px;
   border-style: solid;
   cursor: pointer;
@@ -66,7 +74,7 @@
 .bui-field > input:focus-visible,
 .bui-field > select:focus-visible,
 .bui-field > textarea:focus-visible {
-  outline: 2px solid var(--terminal-green);
+  outline: 2px solid var(--st-accent, var(--terminal-green));
   outline-offset: 1px;
 }
 
@@ -88,6 +96,6 @@
 /* The focus ring the hidden input can no longer show for itself — keyboard focus only,
    like the .bui-field controls (a tap would otherwise leave the last row outlined). */
 .bui-switch:has(> input:focus-visible) {
-  outline: 2px solid var(--terminal-green);
+  outline: 2px solid var(--st-accent, var(--terminal-green));
   outline-offset: 1px;
 }

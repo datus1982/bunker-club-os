@@ -15,3 +15,11 @@ export { InlineNotice } from "./InlineNotice";
 export { FormField } from "./FormField";
 export { ToggleSwitch } from "./ToggleSwitch";
 export { TapTargetCheckbox } from "./TapTargetCheckbox";
+/** The v2 token system (Beat 6 PR 1) — the TS mirror of theme/staff-tokens-v2.css.
+ *  Colour is applied by the `st-*` CLASSES, never by an inline `color` (the base theme
+ *  forces green with !important); these values exist for inline sizes/geometry and for
+ *  the non-`color` properties that legitimately take a literal. */
+export {
+  staffSurface, staffText, staffAccentColors, staffHairline, staffHairlineStrong,
+  radius, space, motion, type as typeRoles, TAP, st,
+} from "./tokens";

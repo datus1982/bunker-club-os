@@ -24,7 +24,8 @@ export function MovedRoute({
   const [version] = useUiVersion();
   if (version !== "v2") return <Navigate to="/signage" replace />;
   return (
-    <div className="sv2-page">
+    // `data-st-page` = the token sheet's opt-in hook; this branch is v2-only.
+    <div className="sv2-page" data-st-page="">
       <div className="sv2-page-inner">
         <StaffPageHeader eyebrow={eyebrow} title={title} tag="MOVED" />
         <InlineNotice message={message} to={to} label={label} />

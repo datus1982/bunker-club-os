@@ -81,7 +81,9 @@ function MediaPage({ title, tag, right, children }: {
   children: ReactNode;
 }) {
   return (
-    <div className="terminal-theme staff-ui" style={{ minHeight: "100%", padding: "20px clamp(12px,4vw,40px)", fontFamily: MONO, color: "var(--terminal-green)" }}>
+    // `data-st-page` is the token sheet's opt-in hook (theme/staff-tokens-v2.css) — these
+    // three pages are v2-only, so the tokens apply to the whole shell here.
+    <div className="terminal-theme staff-ui" data-st-page="" style={{ minHeight: "100%", padding: "24px clamp(16px,4vw,40px) 48px", fontFamily: MONO }}>
       <div style={{ maxWidth: 1100, margin: "0 auto" }}>
         <StaffPageHeader eyebrow="MEDIA" title={title} tag={tag} right={right} />
         {children}
@@ -213,7 +215,7 @@ export function MediaLibraryPage() {
         : `${files.length} FILE${files.length === 1 ? "" : "S"} · ${present} PRESENT · ${missing} MISSING`;
 
   return (
-    <MediaPage title="LIBRARY" tag={tag}>
+    <MediaPage title="Library" tag={tag}>
       {!filesQ.isLoading && files.length === 0 ? (
         // Same sentence the hub section shows — ingestion is folder-drop on the media PC,
         // there is no upload path on this page either.
@@ -345,10 +347,10 @@ export function MediaPlaylistsPage() {
     ? "LOADING…"
     : `${playlists.length} PLAYLIST${playlists.length === 1 ? "" : "S"} · ${inCarousel} IN CAROUSEL`;
 
-  const newPlaylist = <button type="button" onClick={() => setEditing("new")} style={{ ...ghost, fontWeight: 700 }}>+ NEW PLAYLIST</button>;
+  const newPlaylist = <button type="button" onClick={() => setEditing("new")} className="st-btn st-body st-t1" style={ghost}>+ New playlist</button>;
 
   return (
-    <MediaPage title="PLAYLISTS" tag={tag} right={newPlaylist}>
+    <MediaPage title="Playlists" tag={tag} right={newPlaylist}>
       {!playlistsQ.isLoading && playlists.length === 0 ? (
         <EmptyState
           eyebrow="NO PLAYLISTS"
@@ -418,11 +420,11 @@ export function MediaScreensPage() {
 
   return (
     <MediaPage
-      title="SCREENS & PROGRAMS"
+      title="Screens &amp; programs"
       tag={slotsQ.isLoading ? "LOADING…" : `${screens.length} MEDIA SCREEN${screens.length === 1 ? "" : "S"}`}
     >
       {slotsQ.isLoading ? (
-        <div style={{ fontSize: 20 }}>LOADING SCREENS…</div>
+        <div className="st-body st-t2">Loading screens…</div>
       ) : screens.length === 0 ? (
         <EmptyState
           eyebrow="NO MEDIA SCREENS"

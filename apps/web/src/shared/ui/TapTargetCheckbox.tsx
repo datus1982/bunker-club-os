@@ -1,4 +1,5 @@
 import type { CSSProperties, ReactNode } from "react";
+import { radius, space, TAP } from "./tokens";
 
 /**
  * A native checkbox inside a ≥44px label row (audit §5 #10, finding #11).
@@ -13,7 +14,8 @@ import type { CSSProperties, ReactNode } from "react";
  * invite panel uses; without it the control is a plain row.
  *
  * Sizes are px on the element that renders the text — nothing inherits font-size under
- * `.terminal-theme` (PR #89).
+ * `.terminal-theme` (PR #89). BEAT 6 (PR 1): Body role + token geometry; the checked
+ * tint/accent-color come from the token sheet.
  */
 export function TapTargetCheckbox({
   checked,
@@ -36,16 +38,18 @@ export function TapTargetCheckbox({
 }) {
   return (
     <label
+      className={boxed ? "st-box" : undefined}
       style={{
         ...row,
         justifyContent: label == null ? "center" : "flex-start",
-        padding: label == null ? 10 : "0 12px",
+        padding: label == null ? space.s2 + 2 : `0 ${space.s3}px`,
         cursor: disabled ? "default" : "pointer",
         opacity: disabled ? 0.55 : 1,
         ...(boxed
           ? {
-              border: "1px solid var(--terminal-green)",
-              background: checked ? "rgba(0,255,65,0.12)" : "transparent",
+              border: "1px solid",
+              borderRadius: radius.control,
+              background: checked ? "rgba(127,230,168,0.12)" : "transparent",
             }
           : null),
         ...style,
@@ -57,9 +61,9 @@ export function TapTargetCheckbox({
         disabled={disabled}
         onChange={(e) => onChange(e.target.checked)}
         aria-label={label == null ? ariaLabel : undefined}
-        style={{ width: 20, height: 20, cursor: disabled ? "default" : "pointer", accentColor: "var(--terminal-green)" }}
+        style={{ width: 20, height: 20, cursor: disabled ? "default" : "pointer" }}
       />
-      {label != null && <span style={labelStyle}>{label}</span>}
+      {label != null && <span className="st-body st-t1">{label}</span>}
     </label>
   );
 }
@@ -67,8 +71,7 @@ export function TapTargetCheckbox({
 const row: CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
-  gap: 8,
-  minWidth: 44,
-  minHeight: 44,
+  gap: space.s2,
+  minWidth: TAP,
+  minHeight: TAP,
 };
-const labelStyle: CSSProperties = { fontSize: 17, letterSpacing: 0.5 };

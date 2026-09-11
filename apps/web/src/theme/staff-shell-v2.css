@@ -10,6 +10,14 @@
  *
  * Sizes are px on the element that renders the text: `.terminal-theme *` sets
  * font-size on EVERY element, so nothing inherits font-size in this app.
+ *
+ * BEAT 6 (PR 1) — this chrome now reads the token system in theme/staff-tokens-v2.css:
+ * surfaces by elevation tier, one hairline instead of the green frames, the calmed
+ * accent for the active pill, 6px/10px radius, and ONE named motion scale
+ * (`--st-motion-*`) replacing the per-component keyframe durations. The `u-fill u-ink`
+ * active treatment is unchanged in markup — the token sheet re-declares those two
+ * utilities inside the v2 scope, so the fill is the calmed accent and the ink is the
+ * ground colour with no call-site edit.
  * ============================================================================ */
 
 /* ── shared nav chrome ─────────────────────────────────────────────────────── */
@@ -17,36 +25,39 @@
   position: sticky;
   top: 0;
   z-index: 50;
-  background: #000;
-  border-bottom: 1px solid var(--terminal-green);
+  background: var(--st-surface-1);
+  border-bottom: 1px solid var(--st-hairline);
 }
 
 .staff-v2 .sv2-brand {
   display: flex;
   align-items: center;
   min-height: 44px;
-  font-size: 22px;
+  font-size: 18px;
   font-weight: 700;
-  letter-spacing: 2px;
+  letter-spacing: 1px;
   text-decoration: none;
   white-space: nowrap;
   margin-right: 10px;
 }
 
 .staff-v2 .sv2-viewas {
-  font-size: 14px;
-  letter-spacing: 1px;
-  opacity: 0.55;
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
   white-space: nowrap;
 }
 
-/* Sign-out keeps the amber warning ink (`u-amber` supplies the color). */
+/* Sign-out is routine and reversible, so §B takes it OFF the amber warning ink and
+ * onto the neutral secondary treatment (the `u-amber` class is gone from the markup;
+ * red/amber are a budget spent on danger and pending state, not on a routine action). */
 .staff-v2 .sv2-signout {
-  font-size: 15px !important; /* beats .staff-ui button{font-size:1.25rem!important} */
-  letter-spacing: 1px;
+  font-size: 13px !important; /* beats .staff-ui button{font-size:1.25rem!important} */
+  letter-spacing: 0.06em;
   background: transparent;
-  border: 1px solid var(--terminal-amber, #ffb000);
-  padding: 0 12px;
+  border: 1px solid var(--st-hairline-strong);
+  border-radius: var(--st-radius-control);
+  padding: 0 var(--st-space-3);
   min-height: 44px;
   cursor: pointer;
   white-space: nowrap;
@@ -59,10 +70,11 @@
 }
 .staff-v2 .sv2-soon-tag {
   font-size: 10px;
-  letter-spacing: 2px;
+  letter-spacing: 0.06em;
   border: 1px solid currentColor;
-  padding: 1px 5px;
-  margin-left: 8px;
+  border-radius: var(--st-radius-pill);
+  padding: 2px 8px;
+  margin-left: var(--st-space-2);
   white-space: nowrap;
   opacity: 0.9;
 }
@@ -71,9 +83,9 @@
 .staff-v2 .sv2-toprow {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--st-space-2);
   flex-wrap: wrap;
-  padding: 6px 14px;
+  padding: var(--st-space-2) var(--st-space-4);
 }
 .staff-v2 .sv2-sections {
   display: flex;
@@ -86,17 +98,20 @@
   display: inline-flex;
   align-items: center;
   min-height: 44px;
-  padding: 0 14px;
-  font-size: 19px !important; /* beats the forced .staff-ui button size */
-  letter-spacing: 1.5px;
+  padding: 0 var(--st-space-4);
+  font-size: 15px !important; /* beats the forced .staff-ui button size */
+  letter-spacing: 0.04em;
   text-decoration: none;
   border: 1px solid transparent;
   background: transparent;
+  border-radius: var(--st-radius-pill);
   white-space: nowrap;
   cursor: pointer;
+  transition: background var(--st-motion-hover) var(--st-ease),
+              border-color var(--st-motion-hover) var(--st-ease);
 }
 .staff-v2 .sv2-sect:hover {
-  border-color: rgba(0, 255, 65, 0.45);
+  border-color: var(--st-hairline-strong);
 }
 .staff-v2 .sv2-sect.sv2-on {
   font-weight: 700;
@@ -105,11 +120,11 @@
 .staff-v2 .sv2-subrow {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--st-space-1);
   flex-wrap: wrap;
-  padding: 5px 14px;
-  border-top: 1px solid rgba(0, 255, 65, 0.14);
-  background: #020402;
+  padding: var(--st-space-2) var(--st-space-4);
+  border-top: 1px solid var(--st-hairline);
+  background: var(--st-surface-2);
 }
 .staff-v2 .sv2-subwrap {
   display: inline-flex;
@@ -118,41 +133,40 @@
 }
 .staff-v2 .sv2-subkick {
   font-size: 12px;
-  letter-spacing: 3px;
-  opacity: 0.6;
-  margin-right: 6px;
+  letter-spacing: 0.06em;
+  margin-right: var(--st-space-2);
   white-space: nowrap;
 }
 /* Dim group kicker inside the sub-nav (visual grouping only — never a third tier). */
 .staff-v2 .sv2-groupkick {
   font-size: 11px;
-  letter-spacing: 2px;
-  opacity: 0.4;
-  margin: 0 4px 0 2px;
+  letter-spacing: 0.06em;
+  margin: 0 var(--st-space-1) 0 2px;
   white-space: nowrap;
 }
 .staff-v2 .sv2-divider {
   display: inline-block;
   width: 1px;
   height: 20px;
-  background: rgba(0, 255, 65, 0.3);
-  margin: 0 8px;
+  background: var(--st-hairline-strong);
+  margin: 0 var(--st-space-2);
 }
 .staff-v2 .sv2-subitem {
   display: inline-flex;
   align-items: center;
   min-height: 38px;
-  padding: 0 12px;
-  font-size: 16px;
-  letter-spacing: 1px;
+  padding: 0 var(--st-space-3);
+  font-size: 13px;
+  letter-spacing: 0.04em;
   text-decoration: none;
   border: 1px solid transparent;
-  opacity: 0.75;
+  border-radius: var(--st-radius-pill);
   white-space: nowrap;
+  transition: background var(--st-motion-hover) var(--st-ease),
+              border-color var(--st-motion-hover) var(--st-ease);
 }
 .staff-v2 .sv2-subitem:hover {
-  opacity: 1;
-  border-color: rgba(0, 255, 65, 0.3);
+  border-color: var(--st-hairline-strong);
 }
 .staff-v2 .sv2-subitem.sv2-on {
   opacity: 1;
@@ -171,16 +185,16 @@
 .staff-v2 .sv2-mbar {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 12px;
+  gap: var(--st-space-2);
+  padding: var(--st-space-2) var(--st-space-3);
 }
 .staff-v2 .sv2-mcrumb {
   flex: 1;
   min-width: 0;
   text-align: center;
-  font-size: 14px;
-  letter-spacing: 1px;
-  opacity: 0.65;
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -192,11 +206,12 @@
   margin-left: auto;
   min-height: 44px;
   min-width: 92px;
-  padding: 0 14px;
-  font-size: 17px !important; /* beats the forced .staff-ui button size */
-  letter-spacing: 1px;
+  padding: 0 var(--st-space-4);
+  font-size: 13px !important; /* beats the forced .staff-ui button size */
+  letter-spacing: 0.06em;
   background: transparent;
-  border: 1px solid var(--terminal-green);
+  border: 1px solid var(--st-hairline-strong);
+  border-radius: var(--st-radius-control);
   cursor: pointer;
 }
 
@@ -204,7 +219,7 @@
   position: fixed;
   inset: 0;
   z-index: 40;
-  background: rgba(0, 0, 0, 0.55);
+  background: rgba(0, 0, 0, 0.6);
 }
 
 /* Full-height drawer: HOME pinned top, one scroll in the middle, footer pinned. */
@@ -217,15 +232,16 @@
   z-index: 60;
   display: flex;
   flex-direction: column;
-  background: #000;
-  border-top: 1px solid rgba(0, 255, 65, 0.25);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
-  /* Finite, ≤150ms (display/perf rule: nothing infinite anywhere in this app). */
-  animation: sv2-drawer-in 140ms ease-out;
+  background: var(--st-surface-3);
+  border-top: 1px solid var(--st-hairline);
+  /* §B: elevation by lightness, not shadow — the surface-3 fill IS the elevation. */
+  /* Finite, single-axis, on the named motion scale (nothing infinite in this app). */
+  animation: sv2-drawer-in var(--st-motion-sheet) var(--st-ease);
 }
+/* Single-axis per §B (a slide OR a fade, never both). */
 @keyframes sv2-drawer-in {
-  from { opacity: 0; transform: translateY(-8px); }
-  to   { opacity: 1; transform: translateY(0); }
+  from { transform: translateY(-10px); }
+  to   { transform: translateY(0); }
 }
 @media (prefers-reduced-motion: reduce) {
   .staff-v2 .sv2-drawer { animation: none; }
@@ -243,40 +259,39 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
+  gap: var(--st-space-3);
   flex-wrap: wrap;
-  padding: 12px 16px;
-  border-top: 1px solid rgba(0, 255, 65, 0.25);
-  background: #020402;
+  padding: var(--st-space-3) var(--st-space-4);
+  border-top: 1px solid var(--st-hairline);
+  background: var(--st-surface-3);
 }
 
 .staff-v2 .sv2-dlink {
   display: flex;
   align-items: center;
   min-height: 48px;
-  padding: 0 18px;
-  font-size: 19px;
-  letter-spacing: 1px;
+  padding: 0 var(--st-space-4);
+  font-size: 15px;
+  letter-spacing: 0.02em;
   text-decoration: none;
-  border-bottom: 1px solid rgba(0, 255, 65, 0.15);
+  border-bottom: 1px solid var(--st-hairline);
+  transition: background var(--st-motion-hover) var(--st-ease);
 }
 .staff-v2 .sv2-dhome {
-  background: rgba(0, 255, 65, 0.05);
+  background: rgba(255, 255, 255, 0.04);
 }
 .staff-v2 .sv2-dhome.sv2-on {
-  background: var(--terminal-green);
+  background: var(--st-accent);
 }
 .staff-v2 .sv2-dsub {
-  padding-left: 30px;
-  font-size: 18px;
-  opacity: 0.85;
+  padding-left: var(--st-space-8);
+  font-size: 14px;
 }
 .staff-v2 .sv2-dsub.sv2-on {
-  opacity: 1;
   font-weight: 700;
 }
 .staff-v2 .sv2-dlink:focus-visible {
-  outline: 2px solid var(--terminal-green);
+  outline: 2px solid var(--st-accent);
   outline-offset: -2px;
 }
 /* Section names: sticky headers, NOT accordions and NOT tappable (mockup view 3). */
@@ -284,17 +299,16 @@
   position: sticky;
   top: 0;
   z-index: 1;
-  padding: 10px 16px 4px;
+  padding: var(--st-space-3) var(--st-space-4) var(--st-space-1);
   font-size: 11px;
-  letter-spacing: 4px;
-  opacity: 0.5;
-  background: #020402;
-  border-bottom: 1px solid rgba(0, 255, 65, 0.15);
+  letter-spacing: 0.08em;
+  background: var(--st-surface-3);
+  border-bottom: 1px solid var(--st-hairline);
 }
 
 /* ── page frame ────────────────────────────────────────────────────────────── */
 .staff-v2 .sv2-page {
-  padding: 18px clamp(12px, 4vw, 40px);
+  padding: var(--st-space-6) clamp(var(--st-space-4), 4vw, var(--st-space-12));
 }
 .staff-v2 .sv2-page-inner {
   max-width: 1100px;

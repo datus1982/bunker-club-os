@@ -1,0 +1,492 @@
+/* ===== STAFF TOKENS v2 (UX overhaul Beat 6, PR 1) =============================
+ * The token system from docs/ux-overhaul/02-polish-pass-audit-2026-09-11.md §B:
+ * near-black elevation tiers, white-alpha text, a CALMED accent (#7FE6A8 — full
+ * #00FF41 is reserved for a true LIVE state), a 1px hairline in place of the 2px
+ * green frames, 6px/10px radius, the 8pt spacing scale, one motion scale.
+ *
+ * RULE #1 — nothing breaks:
+ *  · This file is imported by `StaffShellV2.tsx` ONLY, and every selector is scoped
+ *    `.terminal-theme.staff-v2 …`. A classic device never puts `.staff-v2` on the
+ *    page, so not one rule here can match a classic surface.
+ *  · terminal-theme.css is NOT touched. Neither is any display/TV surface.
+ *
+ * DECISION (Beat 6 PR 1) — WHY THE SCOPE IS NOT THE WHOLE SHELL.
+ * `/scoring`, `/dashboard`, `/game/setup`, `/teams`, `/game/history`, `/admin/seasons`
+ * have no v2 variant: they render their CLASSIC markup inside the v2 shell on an
+ * opted-in device. A `.terminal-theme.staff-v2 *` override would silently restyle
+ * those frozen trivia/host surfaces (they are frozen "byte-for-byte as shipped").
+ * So every rule below hangs off an explicit opt-in hook instead of the shell root:
+ *    [data-st-page]  — emitted by v2-ONLY page roots (UsersV2, DrinksAdminV2,
+ *                      SignageHubV2, the three MediaPages, MovedRoute, Settings-v2)
+ *    .sv2-nav        — the v2 SectionNav (nav + drawer + backdrop all live inside it)
+ *    .st-sheet       — a v2 overlay root that is not inside a page (ConfirmDialog)
+ * A classic page inside the v2 shell carries none of the three and keeps its green
+ * look exactly (proven: /scoring under v2, before vs after, pixel-identical).
+ *
+ * ON `!important`: `.terminal-theme` forces color, border-radius, control background
+ * and control font-size with !important, and specificity alone cannot beat an
+ * !important. Every !important below therefore beats a NAMED base rule, flagged at
+ * the declaration. The scope selectors are (0,3,0) — they out-specify both the base
+ * family rules (0,1,0 / 0,1,1) and the `u-*` utilities (0,2,0), which is why the
+ * utilities are re-declared at (0,4,0) further down (otherwise every amber/red status
+ * label in v2 would turn white).
+ *
+ * Sizes are px on the element that renders the text: `.terminal-theme *` sets
+ * font-size on EVERY element, so NOTHING inherits font-size in this app (PR #89).
+ * ============================================================================ */
+
+.staff-v2 {
+  /* ── ground + elevation (§B: higher tier = lighter; never shadow) ─────────── */
+  --st-ground: #0b0d10;
+  --st-surface-1: #131618; /* cards, list rows, module tiles */
+  --st-surface-2: #171b1f; /* grouped sections / panels */
+  --st-surface-3: #1a1c25; /* menus, dropdowns, the mobile drawer */
+  --st-surface-4: #22273d; /* modals, confirm dialogs, sheets */
+
+  /* ── text tiers (alpha-on-white, never a bare #FFFFFF) ───────────────────── */
+  --st-text-1: rgba(255, 255, 255, 0.87);
+  --st-text-2: rgba(255, 255, 255, 0.6);
+  --st-text-3: rgba(255, 255, 255, 0.38);
+
+  /* ── accents (spent as accent, not as ground truth) ──────────────────────── */
+  --st-accent: #7fe6a8;      /* calmed: H135 S45 L70 */
+  --st-accent-live: #00ff41; /* RESERVED: a true LIVE dot/label only */
+  --st-amber: #e8b04b;       /* calmed ambient/pending */
+  --st-danger: #ff5a5a;      /* destructive + true failure ONLY */
+
+  --st-accent-soft: rgba(127, 230, 168, 0.12);
+  --st-accent-edge: rgba(127, 230, 168, 0.3);
+  --st-amber-soft: rgba(232, 176, 75, 0.08);
+  --st-amber-edge: rgba(232, 176, 75, 0.35);
+  --st-danger-edge: rgba(255, 90, 90, 0.4);
+
+  /* ── hairline (replaces the 2px green rectangle round every card) ────────── */
+  --st-hairline: rgba(255, 255, 255, 0.08);
+  --st-hairline-strong: rgba(255, 255, 255, 0.16);
+
+  /* ── radius (staff surfaces only — TV/public canon keeps sharp corners) ──── */
+  --st-radius-control: 6px;
+  --st-radius-sheet: 10px;
+  --st-radius-pill: 9999px;
+
+  /* ── 8pt spacing scale ───────────────────────────────────────────────────── */
+  --st-space-1: 4px;
+  --st-space-2: 8px;
+  --st-space-3: 12px;
+  --st-space-4: 16px;
+  --st-space-6: 24px;
+  --st-space-8: 32px;
+  --st-space-12: 48px;
+
+  /* ── motion budget (one named scale; nothing infinite) ───────────────────── */
+  --st-motion-hover: 140ms;  /* hover/press, opacity+background only */
+  --st-motion-sheet: 180ms;  /* drawer/sheet enter, single-axis */
+  --st-motion-expand: 160ms; /* expand/collapse */
+  --st-ease: ease-out;
+
+  --st-font-display: "Share Tech Mono", "JetBrains Mono", monospace;
+  --st-font-body: "JetBrains Mono", "Share Tech Mono", monospace;
+}
+
+/* The page ground. `.terminal-theme` sets `background: var(--terminal-bg)` (#000) at
+ * (0,1,0) with NO !important, so (0,2,0) wins here without one. */
+.terminal-theme.staff-v2 {
+  background: var(--st-ground);
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+ * 1. THE BLANKET: text tier + hairline inside the opt-in scope.
+ * Beats `.terminal-theme, .terminal-theme *, … { color: var(--terminal-green)
+ * !important }` (terminal-theme.css:165-181) — !important is required because that
+ * rule carries one; (0,3,0) vs its (0,1,0).
+ * ────────────────────────────────────────────────────────────────────────── */
+.terminal-theme.staff-v2 [data-st-page],
+.terminal-theme.staff-v2 [data-st-page] *,
+.terminal-theme.staff-v2 .sv2-nav,
+.terminal-theme.staff-v2 .sv2-nav *,
+.terminal-theme.staff-v2 .st-sheet,
+.terminal-theme.staff-v2 .st-sheet * {
+  color: var(--st-text-1) !important; /* beats .terminal-theme * { color: green !important } */
+  /* The phosphor bloom reads as smear on white-alpha text. `.staff-ui.terminal-theme`
+   * sets the 2px glow on the ROOT only and it arrives by inheritance, which any direct
+   * rule beats — no !important needed. */
+  text-shadow: none;
+  border-color: var(--st-hairline);
+}
+
+/* Inline `border: 1px solid rgba(0,255,65,…)` is all over the v2 pages and tables, and
+ * an inline declaration beats a plain stylesheet rule — so the hairline needs
+ * !important. Harmless on the elements that draw no border; the control rule below is
+ * (0,3,1) and the chip/accent rules further down are (0,4,0), so both out-specify it. */
+.terminal-theme.staff-v2 [data-st-page] *,
+.terminal-theme.staff-v2 .sv2-nav *,
+.terminal-theme.staff-v2 .st-sheet * {
+  border-color: var(--st-hairline) !important; /* beats inline border shorthands + .terminal-theme [class*="border"] { border-color: green !important } */
+}
+
+/* Controls carry their own edge treatment (below), but the base paints every one of
+ * them green with !important, so they are re-pointed here. */
+.terminal-theme.staff-v2 [data-st-page] button,
+.terminal-theme.staff-v2 [data-st-page] input,
+.terminal-theme.staff-v2 [data-st-page] select,
+.terminal-theme.staff-v2 [data-st-page] textarea,
+.terminal-theme.staff-v2 [data-st-page] a,
+.terminal-theme.staff-v2 .sv2-nav button,
+.terminal-theme.staff-v2 .sv2-nav a,
+.terminal-theme.staff-v2 .st-sheet button {
+  border-color: var(--st-hairline-strong) !important; /* beats .terminal-theme button/input { border-color: green !important } */
+  background: transparent !important;                  /* beats .terminal-theme button { background: transparent !important } — restated so the surface rules below can out-specify ONE known declaration */
+  transition: background var(--st-motion-hover) var(--st-ease),
+              border-color var(--st-motion-hover) var(--st-ease),
+              opacity var(--st-motion-hover) var(--st-ease);
+}
+
+/* The base's green wash on hover. */
+.terminal-theme.staff-v2 [data-st-page] button:hover,
+.terminal-theme.staff-v2 [data-st-page] a:hover,
+.terminal-theme.staff-v2 .sv2-nav button:hover,
+.terminal-theme.staff-v2 .sv2-nav a:hover,
+.terminal-theme.staff-v2 .st-sheet button:hover {
+  background: rgba(255, 255, 255, 0.06) !important; /* beats .terminal-theme button:hover { background: rgba(0,255,65,.25) !important } */
+  box-shadow: none !important;                      /* beats the same rule's 15px glow */
+  border-color: var(--st-hairline-strong) !important;
+}
+
+.terminal-theme.staff-v2 [data-st-page] button:disabled,
+.terminal-theme.staff-v2 .st-sheet button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.terminal-theme.staff-v2 [data-st-page] button:disabled:hover {
+  background: transparent !important; /* beats the base hover wash above */
+}
+
+/* SVG icons ride the text tier instead of the phosphor. */
+.terminal-theme.staff-v2 [data-st-page] svg,
+.terminal-theme.staff-v2 .sv2-nav svg,
+.terminal-theme.staff-v2 .st-sheet svg {
+  color: currentColor !important; /* beats .terminal-theme svg { color: green !important } */
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+ * 2. RADIUS (C1). Beats `.terminal-theme *, button, input, … { border-radius: 0
+ * !important }` (terminal-theme.css:138-146). Applied to the things that draw a box,
+ * not to `*` — rounding every span would round images and chips by accident.
+ * ────────────────────────────────────────────────────────────────────────── */
+.terminal-theme.staff-v2 [data-st-page] button,
+.terminal-theme.staff-v2 [data-st-page] input,
+.terminal-theme.staff-v2 [data-st-page] select,
+.terminal-theme.staff-v2 [data-st-page] textarea,
+.terminal-theme.staff-v2 [data-st-page] img,
+.terminal-theme.staff-v2 [data-st-page] .st-card,
+.terminal-theme.staff-v2 [data-st-page] .st-panel,
+.terminal-theme.staff-v2 [data-st-page] .st-row,
+.terminal-theme.staff-v2 [data-st-page] .st-box,
+.terminal-theme.staff-v2 [data-st-page] .st-btn,
+.terminal-theme.staff-v2 .sv2-nav .st-btn,
+.terminal-theme.staff-v2 .sv2-nav button,
+.terminal-theme.staff-v2 .st-sheet button {
+  border-radius: var(--st-radius-control) !important; /* beats .terminal-theme * { border-radius: 0 !important } */
+}
+
+.terminal-theme.staff-v2 .st-sheet .st-panel,
+.terminal-theme.staff-v2 [data-st-page] .st-menu,
+.terminal-theme.staff-v2 .sv2-drawer {
+  border-radius: var(--st-radius-sheet) !important; /* beats the same base rule */
+}
+
+/* Chips/pills/badges keep the full pill (§B: the one shape that was already right). */
+.terminal-theme.staff-v2 [data-st-page] .st-chip,
+.terminal-theme.staff-v2 [data-st-page] .st-pill,
+.terminal-theme.staff-v2 .sv2-nav .st-chip,
+.terminal-theme.staff-v2 .sv2-nav .st-pill,
+.terminal-theme.staff-v2 .st-sheet .st-chip,
+.terminal-theme.staff-v2 .st-sheet .st-pill {
+  border-radius: var(--st-radius-pill) !important; /* beats the same base rule AND the control radius above */
+}
+/* The switch track when ON — its accent edge must survive the blanket hairline rule. */
+.terminal-theme.staff-v2 [data-st-page] .st-pill.st-on,
+.terminal-theme.staff-v2 .st-sheet .st-pill.st-on {
+  border-color: var(--st-accent) !important; /* beats the blanket `… span { border-color: hairline !important }` */
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+ * 3. TEXT TIERS + ACCENT ROLES. (0,4,0) — above the blanket (0,3,0).
+ * ────────────────────────────────────────────────────────────────────────── */
+.terminal-theme.staff-v2 [data-st-page] .st-t1,
+.terminal-theme.staff-v2 .sv2-nav .st-t1,
+.terminal-theme.staff-v2 .st-sheet .st-t1 { color: var(--st-text-1) !important; }
+
+.terminal-theme.staff-v2 [data-st-page] .st-t2,
+.terminal-theme.staff-v2 [data-st-page] .st-t2 *,
+.terminal-theme.staff-v2 .sv2-nav .st-t2,
+.terminal-theme.staff-v2 .st-sheet .st-t2 { color: var(--st-text-2) !important; }
+
+.terminal-theme.staff-v2 [data-st-page] .st-t3,
+.terminal-theme.staff-v2 [data-st-page] .st-t3 *,
+.terminal-theme.staff-v2 .sv2-nav .st-t3,
+.terminal-theme.staff-v2 .st-sheet .st-t3 { color: var(--st-text-3) !important; }
+
+.terminal-theme.staff-v2 [data-st-page] .st-accent,
+.terminal-theme.staff-v2 [data-st-page] .st-accent *,
+.terminal-theme.staff-v2 .sv2-nav .st-accent,
+.terminal-theme.staff-v2 .st-sheet .st-accent { color: var(--st-accent) !important; }
+
+/* The ONLY full-saturation green left on a staff surface: a true real-time state. */
+.terminal-theme.staff-v2 [data-st-page] .st-live,
+.terminal-theme.staff-v2 [data-st-page] .st-live *,
+.terminal-theme.staff-v2 .sv2-nav .st-live { color: var(--st-accent-live) !important; }
+
+.terminal-theme.staff-v2 [data-st-page] .st-amber,
+.terminal-theme.staff-v2 [data-st-page] .st-amber *,
+.terminal-theme.staff-v2 .sv2-nav .st-amber,
+.terminal-theme.staff-v2 .st-sheet .st-amber { color: var(--st-amber) !important; }
+
+.terminal-theme.staff-v2 [data-st-page] .st-danger,
+.terminal-theme.staff-v2 [data-st-page] .st-danger *,
+.terminal-theme.staff-v2 .sv2-nav .st-danger,
+.terminal-theme.staff-v2 .st-sheet .st-danger { color: var(--st-danger) !important; }
+
+/* ── the `u-*` utilities, re-declared CALM inside the scope ─────────────────
+ * `.terminal-theme .u-amber` etc. are (0,2,0) !important and would LOSE to the
+ * blanket above (0,3,0) — every amber/red status label in v2 would have gone white.
+ * Re-declared here at (0,4,0) with the calmed token values, so every existing
+ * `u-amber`/`u-red`/`u-idle` call site in the v2 pages keeps meaning what it meant.
+ * (`u-ink`/`u-fill` are the black-on-green filled treatment; in v2 the fill is the
+ * calmed accent, so the ink stays the ground colour.) */
+.terminal-theme.staff-v2 [data-st-page] .u-amber,
+.terminal-theme.staff-v2 [data-st-page] .u-amber *,
+.terminal-theme.staff-v2 .sv2-nav .u-amber,
+.terminal-theme.staff-v2 .st-sheet .u-amber,
+.terminal-theme.staff-v2 .st-sheet .u-amber * {
+  color: var(--st-amber) !important; /* beats .terminal-theme .u-amber (0,2,0) and the blanket (0,3,0) */
+  text-shadow: none !important;      /* beats .terminal-theme .u-amber { text-shadow: … !important } */
+}
+.terminal-theme.staff-v2 [data-st-page] .u-red,
+.terminal-theme.staff-v2 [data-st-page] .u-red *,
+.terminal-theme.staff-v2 .sv2-nav .u-red,
+.terminal-theme.staff-v2 .st-sheet .u-red {
+  color: var(--st-danger) !important; /* beats .terminal-theme .u-red */
+  text-shadow: none !important;
+}
+.terminal-theme.staff-v2 [data-st-page] .u-idle,
+.terminal-theme.staff-v2 [data-st-page] .u-idle *,
+.terminal-theme.staff-v2 .sv2-nav .u-idle,
+.terminal-theme.staff-v2 .st-sheet .u-idle {
+  color: var(--st-text-3) !important; /* beats .terminal-theme .u-idle (#8a8f8a) */
+  text-shadow: none !important;
+}
+.terminal-theme.staff-v2 [data-st-page] .u-ink,
+.terminal-theme.staff-v2 [data-st-page] .u-ink *,
+.terminal-theme.staff-v2 .sv2-nav .u-ink,
+.terminal-theme.staff-v2 .sv2-nav .u-ink *,
+.terminal-theme.staff-v2 .st-sheet .u-ink,
+.terminal-theme.staff-v2 .st-sheet .u-ink * {
+  color: var(--st-ground) !important; /* beats .terminal-theme .u-ink { color:#000 !important } */
+  text-shadow: none !important;
+}
+.terminal-theme.staff-v2 [data-st-page] .u-fill,
+.terminal-theme.staff-v2 .sv2-nav .u-fill,
+.terminal-theme.staff-v2 .st-sheet .u-fill {
+  background: var(--st-accent) !important;   /* beats .terminal-theme .u-fill { background: green !important } */
+  border-color: var(--st-accent) !important;
+  box-shadow: none !important;
+}
+.terminal-theme.staff-v2 [data-st-page] .u-fill:hover,
+.terminal-theme.staff-v2 .sv2-nav .u-fill:hover,
+.terminal-theme.staff-v2 .st-sheet .u-fill:hover {
+  background: var(--st-accent) !important; /* beats .terminal-theme .u-fill:hover { …glow… !important } */
+  box-shadow: none !important;
+  opacity: 0.9;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+ * 4. SURFACES. Elevation by lightness — ground is NEVER a card fill (§B).
+ * ────────────────────────────────────────────────────────────────────────── */
+.terminal-theme.staff-v2 [data-st-page] .st-card,
+.terminal-theme.staff-v2 [data-st-page] .st-row {
+  background: var(--st-surface-1) !important; /* beats inline `background:"#020402"` in the primitives/pages */
+  border: 1px solid var(--st-hairline) !important;
+}
+.terminal-theme.staff-v2 [data-st-page] .st-panel {
+  background: var(--st-surface-2) !important;
+  border: 1px solid var(--st-hairline) !important;
+}
+.terminal-theme.staff-v2 [data-st-page] .st-menu,
+.terminal-theme.staff-v2 .sv2-drawer {
+  background: var(--st-surface-3) !important;
+  border: 1px solid var(--st-hairline) !important;
+}
+.terminal-theme.staff-v2 .st-sheet .st-panel {
+  background: var(--st-surface-4) !important;
+  border: 1px solid var(--st-hairline-strong) !important;
+}
+/* A form control sits one step up from the card it lives on, so the box is readable
+ * against a surface-1 card (the base paints every control transparent !important). */
+.terminal-theme.staff-v2 [data-st-page] input,
+.terminal-theme.staff-v2 [data-st-page] select,
+.terminal-theme.staff-v2 [data-st-page] textarea {
+  background: var(--st-surface-2) !important; /* beats .terminal-theme input/select/textarea { background: transparent !important } and the restatement above */
+}
+.terminal-theme.staff-v2 [data-st-page] input::placeholder,
+.terminal-theme.staff-v2 [data-st-page] textarea::placeholder {
+  color: var(--st-text-3) !important; /* beats .terminal-theme input::placeholder { color: green !important } */
+  opacity: 1 !important;              /* beats the same rule's opacity: .5 !important */
+}
+.terminal-theme.staff-v2 [data-st-page] input[type="checkbox"] {
+  accent-color: var(--st-accent);
+}
+
+/* Focus is the accent, everywhere. */
+.terminal-theme.staff-v2 [data-st-page] :focus-visible,
+.terminal-theme.staff-v2 .sv2-nav :focus-visible,
+.terminal-theme.staff-v2 .st-sheet :focus-visible {
+  outline: 2px solid var(--st-accent);
+  outline-offset: 1px;
+}
+
+/* Separators drawn by the theme's own helper inside a v2 page. */
+.terminal-theme.staff-v2 [data-st-page] .terminal-separator {
+  border-color: var(--st-hairline) !important; /* beats .terminal-theme [class*="border"] { border-color: green !important } */
+  background: var(--st-hairline) !important;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+ * 5. TYPE ROLES (§B). Face + size + case; the CASE of a string itself is copy, not
+ * cascade (only Label role is uppercased here, and only because Label is defined as
+ * an all-caps role). `!important` beats `.staff-ui button { font-size: 1.25rem
+ * !important }`, `.staff-ui input… { 1.1875rem !important }`, `.terminal-theme h2/h3/
+ * label { …!important }` and `.staff-ui * { font-family: JetBrains !important }`.
+ * ────────────────────────────────────────────────────────────────────────── */
+.terminal-theme.staff-v2 [data-st-page] .st-display,
+.terminal-theme.staff-v2 .sv2-nav .st-display {
+  font-family: var(--st-font-display) !important; /* beats .staff-ui * { font-family: JetBrains !important } */
+  font-size: 28px !important;                     /* beats the forced control/heading sizes */
+  line-height: 1.15;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+.terminal-theme.staff-v2 [data-st-page] .st-heading,
+.terminal-theme.staff-v2 .sv2-nav .st-heading,
+.terminal-theme.staff-v2 .st-sheet .st-heading {
+  font-family: var(--st-font-display) !important;
+  font-size: 17px !important;
+  line-height: 1.3;
+  font-weight: 600;
+  letter-spacing: 0.4px;
+}
+.terminal-theme.staff-v2 [data-st-page] .st-body,
+.terminal-theme.staff-v2 .sv2-nav .st-body,
+.terminal-theme.staff-v2 .st-sheet .st-body {
+  font-family: var(--st-font-body) !important;
+  font-size: 14px !important;
+  line-height: 1.5;
+  font-weight: 400;
+  letter-spacing: 0;
+}
+.terminal-theme.staff-v2 [data-st-page] .st-label,
+.terminal-theme.staff-v2 .sv2-nav .st-label,
+.terminal-theme.staff-v2 .st-sheet .st-label {
+  font-family: var(--st-font-body) !important;
+  font-size: 12px !important;
+  line-height: 1.3;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase; /* Label is DEFINED as the all-caps role (§B) */
+}
+.terminal-theme.staff-v2 [data-st-page] .st-mono,
+.terminal-theme.staff-v2 .st-sheet .st-mono {
+  font-family: var(--st-font-body) !important;
+  font-size: 14px !important;
+  line-height: 1.4;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+@media (min-width: 768px) {
+  .terminal-theme.staff-v2 [data-st-page] .st-display,
+  .terminal-theme.staff-v2 .sv2-nav .st-display { font-size: 34px !important; }
+  .terminal-theme.staff-v2 [data-st-page] .st-heading,
+  .terminal-theme.staff-v2 .sv2-nav .st-heading,
+  .terminal-theme.staff-v2 .st-sheet .st-heading { font-size: 19px !important; }
+  .terminal-theme.staff-v2 [data-st-page] .st-body,
+  .terminal-theme.staff-v2 .sv2-nav .st-body,
+  .terminal-theme.staff-v2 .st-sheet .st-body { font-size: 15px !important; }
+  .terminal-theme.staff-v2 [data-st-page] .st-mono,
+  .terminal-theme.staff-v2 .st-sheet .st-mono { font-size: 15px !important; }
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+ * 6. COMPONENT SHAPES the primitives ask for by class.
+ * ────────────────────────────────────────────────────────────────────────── */
+
+/* Status chip. Colour comes from the tone class the chip already carries; the border
+ * rides currentColor so it always agrees with it. */
+.terminal-theme.staff-v2 [data-st-page] .st-chip,
+.terminal-theme.staff-v2 .st-sheet .st-chip {
+  border: 1px solid currentColor !important; /* beats the blanket hairline border-color above */
+  background: rgba(255, 255, 255, 0.04) !important;
+}
+/* A chip whose tone is the calm accent gets the accent wash from the mockup. */
+.terminal-theme.staff-v2 [data-st-page] .st-chip.st-accent {
+  background: var(--st-accent-soft) !important;
+  border-color: var(--st-accent-edge) !important;
+}
+
+/* The one destructive treatment (the REMOVE redesign itself is PR 3 — this is only
+ * the token, so a danger control stops borrowing the amber warning ink). */
+.terminal-theme.staff-v2 [data-st-page] .st-btn-danger,
+.terminal-theme.staff-v2 .st-sheet .st-btn-danger {
+  color: var(--st-danger) !important;        /* beats the blanket text tier */
+  border-color: var(--st-danger-edge) !important; /* beats the control border rule above */
+}
+.terminal-theme.staff-v2 [data-st-page] .st-btn-danger:hover,
+.terminal-theme.staff-v2 .st-sheet .st-btn-danger:hover {
+  background: rgba(255, 90, 90, 0.1) !important; /* beats the neutral hover wash above */
+  border-color: var(--st-danger) !important;
+}
+
+/* A text-tone control (an accent or amber link-button) keeps an edge that agrees with
+ * its ink, above the neutral control border. */
+.terminal-theme.staff-v2 [data-st-page] .st-btn.st-accent,
+.terminal-theme.staff-v2 [data-st-page] .st-btn.st-amber,
+.terminal-theme.staff-v2 .sv2-nav .st-btn.st-accent {
+  border-color: currentColor !important; /* beats the control border-color rule (0,3,1) */
+}
+
+/* The primary (accent-filled) control. */
+.terminal-theme.staff-v2 [data-st-page] .st-btn-primary,
+.terminal-theme.staff-v2 .st-sheet .st-btn-primary,
+.terminal-theme.staff-v2 .sv2-nav .st-btn-primary {
+  background: var(--st-accent) !important;   /* beats .terminal-theme button { background: transparent !important } */
+  border-color: var(--st-accent) !important;
+  color: var(--st-ground) !important;        /* beats the blanket text tier */
+  font-weight: 700;
+}
+.terminal-theme.staff-v2 [data-st-page] .st-btn-primary:hover,
+.terminal-theme.staff-v2 .st-sheet .st-btn-primary:hover,
+.terminal-theme.staff-v2 .sv2-nav .st-btn-primary:hover {
+  background: var(--st-accent) !important;   /* beats the neutral hover wash above */
+  opacity: 0.9;
+}
+
+/* An amber callout box (the alert language §B reserves for ambient/pending). */
+.terminal-theme.staff-v2 [data-st-page] .st-callout-warn {
+  background: var(--st-amber-soft) !important;
+  border-color: var(--st-amber-edge) !important;
+}
+
+/* Expand/collapse + hover transitions on the interactive cards. */
+.terminal-theme.staff-v2 [data-st-page] .st-card,
+.terminal-theme.staff-v2 [data-st-page] .st-row {
+  transition: background var(--st-motion-hover) var(--st-ease),
+              border-color var(--st-motion-hover) var(--st-ease);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .terminal-theme.staff-v2 [data-st-page] *,
+  .terminal-theme.staff-v2 .sv2-nav *,
+  .terminal-theme.staff-v2 .st-sheet * {
+    transition-duration: 0ms !important; /* beats the transitions declared above */
+    animation-duration: 0ms !important;
+  }
+}

@@ -1,4 +1,5 @@
 import { useEffect, useRef, type CSSProperties, type ReactNode } from "react";
+import { radius, space, TAP } from "./tokens";
 
 /**
  * The ratified pinned-footer confirm (audit §5 #8) — the shared replacement for the raw
@@ -9,11 +10,15 @@ import { useEffect, useRef, type CSSProperties, type ReactNode } from "react";
  * self-contained rather than built on that Modal: `modules/trivia/ui.tsx` is host-console
  * code, and a shared primitive must not depend on a module.
  *
- * `danger` paints CONFIRM amber — the app's warning ink (the codebase convention since
- * the 2026-07-13 consistency pass; red is reserved for a live alert state).
- *
  * Both buttons clear the 44px tap floor. Focus moves to CANCEL on open, so the
  * destructive button is never the one a stray Return key presses.
+ *
+ * BEAT 6 (PR 1): the sheet tier — surface-4 panel, 10px radius, hairline. `st-sheet`
+ * on the backdrop is the token scope hook (a dialog is a v2-only overlay that may sit
+ * outside a `[data-st-page]` root). `danger` now paints CONFIRM with the §B danger
+ * token instead of borrowing the amber warning ink — amber is for ambient/pending,
+ * red is the destructive budget. The tiered confirm patterns themselves (hold-to-
+ * confirm, text-swap) are PR 3, not here.
  */
 export function ConfirmDialog({
   title,
@@ -29,7 +34,7 @@ export function ConfirmDialog({
   body?: ReactNode;
   confirmLabel?: ReactNode;
   cancelLabel?: ReactNode;
-  /** Destructive action — CONFIRM renders in the amber warning ink. */
+  /** Destructive action — CONFIRM renders in the danger ink. */
   danger?: boolean;
   /** Disables both buttons while the mutation is in flight. */
   busy?: boolean;
@@ -50,32 +55,29 @@ export function ConfirmDialog({
   }, []);
 
   return (
-    <div onClick={onCancel} className="terminal-theme staff-ui" style={backdrop}>
+    <div onClick={onCancel} className="terminal-theme staff-ui st-sheet" style={backdrop}>
       <div
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        className="terminal-border"
+        className="st-panel"
         style={panel}
       >
         <div style={head}>
-          <div role="heading" aria-level={2} className="u-head" style={titleStyle}>{title}</div>
+          <div role="heading" aria-level={2} className="u-head st-heading st-t1">{title}</div>
         </div>
-        <div className="terminal-separator" style={{ margin: 0 }} />
-        {body != null && <div style={bodyStyle}>{body}</div>}
+        {body != null && <div className="st-body st-t2" style={bodyStyle}>{body}</div>}
         <div style={foot}>
-          <button type="button" ref={cancelRef} onClick={onCancel} disabled={busy} style={btn}>
+          <button type="button" ref={cancelRef} onClick={onCancel} disabled={busy} className="st-btn st-t2" style={btn}>
             {cancelLabel}
           </button>
           <button
             type="button"
             onClick={onConfirm}
             disabled={busy}
-            className={danger ? "u-amber" : "u-fill u-ink"}
-            style={danger
-              ? { ...btn, borderColor: "var(--terminal-amber, #ffb000)" }
-              : { ...btn, background: "var(--terminal-green)", color: "#000", fontWeight: 700 }}
+            className={danger ? "st-btn st-btn-danger" : "st-btn st-btn-primary"}
+            style={btn}
           >
             {confirmLabel}
           </button>
@@ -86,27 +88,22 @@ export function ConfirmDialog({
 }
 
 const backdrop: CSSProperties = {
-  position: "fixed", inset: 0, background: "rgba(0,0,0,0.82)", zIndex: 1100,
-  display: "flex", alignItems: "center", justifyContent: "center", padding: 16,
+  position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", zIndex: 1100,
+  display: "flex", alignItems: "center", justifyContent: "center", padding: space.s4,
 };
 const panel: CSSProperties = {
-  background: "#000", width: "min(520px, 94vw)", maxHeight: "88vh",
+  width: "min(520px, 94vw)", maxHeight: "88vh", borderRadius: radius.sheet,
   display: "flex", flexDirection: "column", overflow: "hidden",
 };
-const head: CSSProperties = { padding: "18px 20px 12px" };
-const titleStyle: CSSProperties = {
-  fontSize: 24, fontWeight: 700, letterSpacing: 1, color: "var(--terminal-green)",
-};
+const head: CSSProperties = { padding: `${space.s6}px ${space.s6}px ${space.s3}px` };
 const bodyStyle: CSSProperties = {
-  flex: "1 1 auto", overflowY: "auto", padding: "14px 20px",
-  fontSize: 17, lineHeight: 1.5, color: "var(--terminal-green)",
+  flex: "1 1 auto", overflowY: "auto", padding: `0 ${space.s6}px ${space.s4}px`,
 };
 const foot: CSSProperties = {
-  display: "flex", gap: 12, justifyContent: "flex-end",
-  padding: "14px 20px", borderTop: "1px solid var(--terminal-green)", background: "#000",
+  display: "flex", gap: space.s3, justifyContent: "flex-end",
+  padding: `${space.s4}px ${space.s6}px`, borderTop: "1px solid",
 };
 const btn: CSSProperties = {
-  minHeight: 44, minWidth: 44, padding: "0 18px", cursor: "pointer",
-  background: "transparent", color: "var(--terminal-green)",
-  border: "1px solid var(--terminal-green)", letterSpacing: 1,
+  minHeight: TAP, minWidth: TAP, padding: `0 ${space.s4 + 2}px`, cursor: "pointer",
+  letterSpacing: 0.5, fontSize: 15,
 };

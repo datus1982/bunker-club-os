@@ -1,4 +1,5 @@
 import type { CSSProperties, ReactNode } from "react";
+import { radius, space, TAP } from "./tokens";
 
 /**
  * A one-line record row: leading label block (title + optional sub), a middle meta
@@ -10,8 +11,9 @@ import type { CSSProperties, ReactNode } from "react";
  * ONE breakpoint source. Every action slot the caller passes must keep the 44px tap
  * floor itself (the shell does not shrink controls).
  *
- * BEAT 1 STATUS: built + exported, deliberately used nowhere yet. Beat 2 swaps the
- * `/admin/users` table onto it (owner decision C). Do not wire it into a page here.
+ * BEAT 6 (PR 1): on the tokens — surface-1 fill, hairline frame, 6px radius, Heading
+ * role title, Body role sub. Colour comes from the `st-*` classes, never inline: the
+ * base theme forces green with !important and an inline colour loses silently.
  */
 export function ListRow({
   title,
@@ -37,16 +39,16 @@ export function ListRow({
   const body = (
     <>
       <div style={{ minWidth: 0, flex: "1 1 auto" }}>
-        <div style={titleStyle}>{title}</div>
-        {sub != null && <div style={subStyle}>{sub}</div>}
+        <div className="st-heading st-t1" style={titleStyle}>{title}</div>
+        {sub != null && <div className="st-body st-t2" style={subStyle}>{sub}</div>}
       </div>
       {meta != null && (
-        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", minWidth: 0 }}>{meta}</div>
+        <div style={{ display: "flex", alignItems: "center", gap: space.s2, flexWrap: "wrap", minWidth: 0 }}>{meta}</div>
       )}
       {actions != null && (
         <div
           style={{
-            display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap",
+            display: "flex", alignItems: "center", gap: space.s2, flexWrap: "wrap",
             marginLeft: stacked ? 0 : "auto",
           }}
         >
@@ -60,28 +62,24 @@ export function ListRow({
     display: "flex",
     flexDirection: stacked ? "column" : "row",
     alignItems: stacked ? "stretch" : "center",
-    gap: stacked ? 8 : 12,
-    padding: "10px 12px",
-    border: "1px solid rgba(0,255,65,0.28)",
-    background: "#020402",
-    minHeight: 44,
+    gap: stacked ? space.s2 : space.s3,
+    padding: `${space.s3}px ${space.s4}px`,
+    borderRadius: radius.control,
+    minHeight: TAP,
     ...style,
   };
 
   if (onClick) {
     return (
-      <button type="button" onClick={onClick} style={{ ...base, textAlign: "left", cursor: "pointer", width: "100%" }}>
+      <button type="button" className="st-row" onClick={onClick} style={{ ...base, textAlign: "left", cursor: "pointer", width: "100%" }}>
         {body}
       </button>
     );
   }
-  return <div style={base}>{body}</div>;
+  return <div className="st-row" style={base}>{body}</div>;
 }
 
 const titleStyle: CSSProperties = {
-  fontSize: 18, letterSpacing: 0.5, color: "var(--terminal-green)",
   overflow: "hidden", textOverflow: "ellipsis",
 };
-const subStyle: CSSProperties = {
-  fontSize: 15, opacity: 0.6, marginTop: 2, color: "var(--terminal-green)",
-};
+const subStyle: CSSProperties = { marginTop: 2 };
