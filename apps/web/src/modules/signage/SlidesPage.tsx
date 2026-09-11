@@ -193,7 +193,10 @@ export function SlidesPage() {
 
       {/* The hub's editor, mounted from the hub's own definition (AssetOverlay). Rendered
           OUTSIDE the token scope for the reason above. `returnTo` is a hub concept — there
-          is no slide-over behind this one, so every exit path closes back to the list. */}
+          is no slide-over behind this one, so every exit path closes back to the list.
+          DECISION: `queueOnSlotId` is always null here — a slide created on this page is
+          IDLE until queued from a screen's + ADD in the hub, byte-matching the hub's own
+          `+ NEW ASSET` overlay (the D5/D6 model). */}
       {editing && (
         <AssetOverlay
           slots={slots}
