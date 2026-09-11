@@ -170,9 +170,11 @@ export function MediaLibraryPage() {
   );
 
   // ── paging ────────────────────────────────────────────────────────────────
-  // Order is whatever useMediaFiles returns — media_files ordered by `filename`, then `id` as a
-  // stable tiebreak for its range paging. No sort control here: a second ordering would change
-  // what "the first 48" means on a surface whose whole job this beat is to make findable.
+  // DECISION: paging keeps the existing order and adds NO sort control. Order is whatever
+  // useMediaFiles returns — media_files ordered by `filename`, then `id` as a stable tiebreak for
+  // its range paging. A second ordering would change what "the first 48" means, and sorting is a
+  // separate question from finding: search answers "where is X", a sort answers "show me the
+  // newest/biggest", which nobody has asked for.
   const [shown, setShown] = useState(PAGE_SIZE);
   useEffect(() => { setShown(PAGE_SIZE); }, [needle, status, noSubsOnly]);
   const visible = useMemo(() => filtered.slice(0, shown), [filtered, shown]);
