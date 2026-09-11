@@ -2,23 +2,27 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { supabase, VENUE_ID } from "@/shared/supabaseClient";
+import { useUiVersion } from "@/shared/useUiVersion";
+import { useIsMobile } from "@/shared/useIsMobile";
+import { DrinksAdminV2 } from "./DrinksAdminV2";
+import { OVERALL, type AvailableGroup, type Config, type ConfiguredGroup } from "./drinksAdminShared";
 
 /**
  * /admin/drinks — drinks board config (docs/08, staff role). Collects NO secrets:
  * Toast credentials live only in edge-fn secrets (SEC-3). This page picks which menu
  * groups the board rotates (from the sync-discovered list + the MAIN_MENU_ALL overall)
  * and edits header/footer/rotation prefs. Sales data comes from the scheduled sync.
+ *
+ * THE DATA + MUTATION LAYER FOR BOTH PRESENTATIONS (UX overhaul Beat 3). Every query and
+ * mutation below is the single source for classic AND `DrinksAdminV2`; the v2 view is
+ * handed callbacks and renders. The classic markup after the branch is unchanged.
  */
-
-interface AvailableGroup { toast_menu_guid: string; name: string; menu_name: string | null; }
-interface ConfiguredGroup { id: string; toast_menu_guid: string; name: string; enabled: boolean; display_order: number; }
-interface Config { header_text: string; footer_text: string; display_mode: string; auto_rotate_seconds: number; refresh_interval: number; }
-
-const OVERALL = { toast_menu_guid: "MAIN_MENU_ALL", name: "Overall Top 5" };
 
 export function DrinksAdmin() {
   const qc = useQueryClient();
   const [msg, setMsg] = useState<string | null>(null);
+  const [version] = useUiVersion();
+  const narrow = useIsMobile();
 
   const available = useQuery({
     queryKey: ["drinks-admin", "available"],
@@ -108,6 +112,26 @@ export function DrinksAdmin() {
   const cfg = config.data ?? { header_text: "TODAY'S TOP DRINKS", footer_text: "■ ONLINE", display_mode: "rotate", auto_rotate_seconds: 10, refresh_interval: 60 };
   const configuredGuids = new Set((configured.data ?? []).map((g) => g.toast_menu_guid));
   const addable = [OVERALL, ...(available.data ?? [])].filter((g) => !configuredGuids.has(g.toast_menu_guid));
+
+  // v2 presentation (Beat 3). Every hook above has already run, so the switch can flip at
+  // any time without changing hook order. Same data, same mutations — only the markup differs.
+  if (version === "v2") {
+    return (
+      <DrinksAdminV2
+        configured={configured.data ?? []}
+        addable={addable}
+        cfg={cfg}
+        narrow={narrow}
+        msg={msg}
+        saving={saveConfig.isPending}
+        onAdd={(g) => addGroup.mutate(g)}
+        onToggle={(g) => toggleGroup.mutate(g)}
+        onRemove={(id) => removeGroup.mutate(id)}
+        onMove={(g, dir) => move.mutate({ g, dir })}
+        onSave={(c) => saveConfig.mutate(c)}
+      />
+    );
+  }
 
   return (
     <div className="terminal-theme" style={{ minHeight: "100vh", padding: "clamp(16px, 4vw, 32px)", fontFamily: "'VT323','Share Tech Mono',monospace", color: "var(--terminal-green)" }}>

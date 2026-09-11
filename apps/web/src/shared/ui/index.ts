@@ -7,6 +7,9 @@
 export { StaffPageHeader } from "./StaffPageHeader";
 export { SectionNav, type SectionNavChild, type SectionNavSection } from "./SectionNav";
 export { ListRow } from "./ListRow";
+export { StatusChip, type StatusTone } from "./StatusChip";
+export { ScreenCard } from "./ScreenCard";
+export { ConfirmDialog } from "./ConfirmDialog";
 export { EmptyState } from "./EmptyState";
 export { InlineNotice } from "./InlineNotice";
 export { FormField } from "./FormField";
