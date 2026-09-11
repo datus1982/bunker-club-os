@@ -48,6 +48,12 @@ jobs:
           VITE_VENUE_ID: ${{ secrets.VITE_VENUE_ID }}
         run: npm run build
 
+      # RULE #1 gate: the bar TVs' chunk closure must carry zero staff-console code
+      # (the PR #106 contract). Reads apps/web/dist only — no deps, no network. A
+      # violating push goes red here, BEFORE the preview/production deploy.
+      - name: Check TV chunk isolation
+        run: node scripts/check-tv-chunk.mjs
+
       - name: Resolve deploy branch
         id: branch
         # main -> production (--branch=main). phase-* -> preview under its own name.
