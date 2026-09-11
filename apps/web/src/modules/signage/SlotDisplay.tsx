@@ -44,7 +44,11 @@ type ToastMap = Map<string, ToastCacheRow>;
 export function SlotDisplay() {
   const { slug = "" } = useParams();
   const { venue, slot, items, takeover, liveGame, toast, schedule, closeoutHour, triviaScreensArmed } = useSlot(slug);
-  useHeartbeat(slug);
+  // A staff `?preview=1` tab is NOT the screen: it must never beat, or a preview left open on
+  // a laptop keeps `last_seen` fresh over a dark TV (PR #106 reviewer NOTE-1). The real TVs
+  // load the bare slug and are unaffected.
+  const [params] = useSearchParams();
+  useHeartbeat(params.has("preview") ? "" : slug);
 
   if (slot.isPending || venue.isPending) {
     return <MessageCanvas title="SYNCING" subtitle="◊ SHELTER AUTHORITY UPLINK" />;
