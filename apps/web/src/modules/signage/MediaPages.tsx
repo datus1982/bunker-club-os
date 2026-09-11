@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { Navigate, useSearchParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { useUiVersion } from "@/shared/useUiVersion";
@@ -139,9 +139,21 @@ export function MediaLibraryPage() {
   // re-run the 504-row filter (and a router navigation) on every character. Seeded from the URL
   // so a bookmark/reload restores the typed text.
   const [text, setText] = useState(urlQuery);
+  // The last value THIS input wrote to the URL. When the URL changes to anything else (a nav tap
+  // to bare /media/library, the /media redirect, back/forward) the URL is the source of truth
+  // and the input follows it — otherwise the pending debounce would re-assert stale text over
+  // the new URL (reviewer WARN-1).
+  const lastWritten = useRef(urlQuery);
+  useEffect(() => {
+    if (urlQuery !== lastWritten.current) { lastWritten.current = urlQuery; setText(urlQuery); }
+  }, [urlQuery]);
   useEffect(() => {
     if (text === urlQuery) return;
-    const id = window.setTimeout(() => setParam("q", text.trim() === "" ? null : text), 150);
+    const id = window.setTimeout(() => {
+      const next = text.trim();
+      lastWritten.current = next;
+      setParam("q", next === "" ? null : next);
+    }, 150);
     return () => window.clearTimeout(id);
   }, [text, urlQuery, setParam]);
 
@@ -151,7 +163,7 @@ export function MediaLibraryPage() {
     if (needle === "") return files;
     // Title AND file name: the title is what the hub renames a file to, the file name is what
     // the folder on the media PC still calls it, and an operator may know either one.
-    return files.filter((f) => `${f.title ?? ""} ${f.filename}`.toLowerCase().includes(needle));
+    return files.filter((f) => [f.title ?? "", f.filename].some((s) => s.toLowerCase().includes(needle)));
   }, [files, needle]);
 
   // Chip counts are totals FOR THE CURRENT SEARCH, so "star" + MISSING reads as a real answer
@@ -265,7 +277,8 @@ function LibraryFilters({ text, onText, status, onStatus, counts, noSubsOnly, on
       <div style={{ display: "flex", gap: 8, alignItems: "flex-end", flexWrap: "wrap" }}>
         <FormField label="SEARCH THE LIBRARY" style={{ flex: "1 1 260px" }}>
           <input
-            type="search"
+            type="text"
+            inputMode="search"
             value={text}
             onChange={(e) => onText(e.target.value)}
             placeholder="TITLE OR FILE NAME"

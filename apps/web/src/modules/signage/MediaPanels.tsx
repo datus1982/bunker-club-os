@@ -98,6 +98,12 @@ function MediaFileCard({ file, screens, hasSchedule, variant }: {
     mutationFn: (t: string) => updateMediaTitle(file.id, t),
     onSettled: () => setEditingTitle(false),
   });
+  // An unchanged draft is NOT a write: blur-saves from a tap-then-tap-away would otherwise fire a
+  // no-op UPDATE that invalidates every open hub/library via realtime (reviewer NOTE-1, #107).
+  const commit = (t: string) => {
+    if (t.trim() === (file.title ?? "").trim()) { setEditingTitle(false); return; }
+    save.mutate(t);
+  };
   const display = (file.title ?? "").trim() || file.filename;
 
   // PLAY ON — write a playlist program that OPENS ON THIS FILE. It targets the virtual ALL MEDIA
@@ -136,9 +142,10 @@ function MediaFileCard({ file, screens, hasSchedule, variant }: {
             autoFocus
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
-            onBlur={() => save.mutate(draft)}
-            onKeyDown={(e) => { if (e.key === "Enter") save.mutate(draft); if (e.key === "Escape") setEditingTitle(false); }}
-            style={{ width: "100%", background: "#000", color: "var(--terminal-green)", border: "1px solid var(--terminal-green)", padding: "6px 8px", fontSize: 16, fontFamily: MONO }}
+            onBlur={() => commit(draft)}
+            onKeyDown={(e) => { if (e.key === "Enter") commit(draft); if (e.key === "Escape") setEditingTitle(false); }}
+            // v2: the input is the thumb's caret target too — 44px like the row that opened it (NOTE-2).
+            style={{ width: "100%", background: "#000", color: "var(--terminal-green)", border: "1px solid var(--terminal-green)", padding: "6px 8px", fontSize: 16, fontFamily: MONO, ...(variant === "v2" ? { minHeight: 44 } : null) }}
           />
         ) : variant === "v2" ? (
           // DECISION (Beat 5, closes #104 NOTE-3): in v2 the title row IS the rename control —
