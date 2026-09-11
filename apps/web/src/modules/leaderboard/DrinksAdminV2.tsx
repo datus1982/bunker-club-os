@@ -38,6 +38,7 @@ export function DrinksAdminV2({
   configured,
   addable,
   cfg,
+  cfgLoaded,
   narrow,
   msg,
   saving,
@@ -50,6 +51,8 @@ export function DrinksAdminV2({
   configured: ConfiguredGroup[];
   addable: Pick<AvailableGroup, "toast_menu_guid" | "name">[];
   cfg: Config;
+  /** False until the saved config has loaded — the form must not seed from defaults. */
+  cfgLoaded: boolean;
   /** Phone (<640px) — from the page's shared useIsMobile, so there is ONE breakpoint. */
   narrow: boolean;
   msg: string | null;
@@ -136,7 +139,9 @@ export function DrinksAdminV2({
       {/* ── DISPLAY ─────────────────────────────────────────────────────── */}
       <div className="terminal-separator" style={{ margin: "26px 0 16px" }} />
       <div style={sectionLabel}>DISPLAY</div>
-      <ConfigFormV2 initial={cfg} onSave={onSave} busy={saving} />
+      {cfgLoaded
+        ? <ConfigFormV2 initial={cfg} onSave={onSave} busy={saving} />
+        : <p style={{ opacity: 0.6, fontSize: 17 }}>LOADING SAVED SETTINGS…</p>}
       {msg && <div style={{ marginTop: 12, fontSize: 17 }}>{msg}</div>}
 
       {confirmRemove && (

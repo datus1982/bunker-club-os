@@ -109,6 +109,10 @@ export function DrinksAdmin() {
     onError: (e) => setMsg(e instanceof Error ? e.message : "save failed"),
   });
 
+  // The DISPLAY form seeds its local state ONCE from `initial`. Mounting it before the saved
+  // row has loaded seeded the hard-coded defaults, and a fast SAVE wrote those defaults over the
+  // saved config (PR #103 reviewer NOTE-3). Gate the form on the query having settled.
+  const cfgLoaded = !config.isPending;
   const cfg = config.data ?? { header_text: "TODAY'S TOP DRINKS", footer_text: "■ ONLINE", display_mode: "rotate", auto_rotate_seconds: 10, refresh_interval: 60 };
   const configuredGuids = new Set((configured.data ?? []).map((g) => g.toast_menu_guid));
   const addable = [OVERALL, ...(available.data ?? [])].filter((g) => !configuredGuids.has(g.toast_menu_guid));
@@ -121,6 +125,7 @@ export function DrinksAdmin() {
         configured={configured.data ?? []}
         addable={addable}
         cfg={cfg}
+        cfgLoaded={cfgLoaded}
         narrow={narrow}
         msg={msg}
         saving={saveConfig.isPending}
@@ -170,7 +175,9 @@ export function DrinksAdmin() {
 
         {/* Display config */}
         <h2 style={{ fontSize: 26 }}>DISPLAY</h2>
-        <ConfigForm initial={cfg} onSave={(c) => saveConfig.mutate(c)} busy={saveConfig.isPending} />
+        {cfgLoaded
+          ? <ConfigForm initial={cfg} onSave={(c) => saveConfig.mutate(c)} busy={saveConfig.isPending} />
+          : <p style={{ opacity: 0.6 }}>LOADING SAVED SETTINGS…</p>}
         {msg && <div style={{ marginTop: 12, fontSize: 20 }}>{msg}</div>}
       </div>
     </div>
