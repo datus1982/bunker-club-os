@@ -412,6 +412,12 @@ export function makeTransportPlaylistFor(modeFor: (slot: AdminSlot) => SlotMode,
 /**
  * Is this slot one a media PROGRAM can be sent to?
  *
+ * DECISION: PANEL slots are NOT listed on MEDIA ▸ SCREENS & PROGRAMS. A panel is the
+ * portrait sidebar inside a landscape MULTIVIEW — it has no TV, no health and no program
+ * of its own, and it is created and pointed at its host from inside the PROGRAM panel.
+ * Listing one as a "screen" would offer controls that do not apply to it. This matches the
+ * gate the hub already renders its PROGRAM / SCHEDULE controls behind.
+ *
  * The hub's own gate, in one place: landscape screens only (portrait slots stay pure
  * rotation — that is where the promo queue lives), and never a multiview PANEL (it has no
  * TV of its own and follows its host). Same predicate `MediaSection`'s PLAY ON row uses

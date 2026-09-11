@@ -28,6 +28,15 @@ import "./signage.css";
  * therefore behaves exactly as it did before this beat (RULE #1), including for anyone
  * who follows a /media/* link someone sent them.
  *
+ * DECISION: /media (bare) redirects to /media/library rather than becoming a fourth
+ * landing page. The section has three real surfaces and a hub-of-a-hub is the thing this
+ * beat exists to remove; LIBRARY is the one a manager opens most.
+ *
+ * DECISION: the routes are gated on has_module('signage'), not a new module key. MEDIA is
+ * an organisational move — every page here reads and writes signage tables (signage_slots,
+ * media_* under the same RLS family), so inventing a grant would hand someone a menu item
+ * whose writes RLS then refuses.
+ *
  * THE PARITY INVARIANT APPLIES HERE TOO: SCREENS & PROGRAMS renders what the hub's own
  * resolver closures return (signageHubShared's factories — the same definitions the hub
  * calls), never its own opinion of what a TV is playing.
@@ -103,6 +112,11 @@ export function MediaLibraryPage() {
 
   return (
     <MediaPage title="LIBRARY" tag={tag}>
+      {/* DECISION: the grid is the hub section's grid, unbounded and unfiltered. Inside the
+          hub it was DEFAULT-COLLAPSED, which is what kept 504 cards out of the way; on its
+          own page nothing collapses it, so this is a long page (the header tag carries the
+          counts). A search/filter box is the obvious next beat — it is a FEATURE, and this
+          beat is organisation only, so it is not smuggled in here. */}
       {!filesQ.isLoading && files.length === 0 ? (
         // Same sentence the hub section shows — ingestion is folder-drop on the media PC,
         // there is no upload path on this page either.
