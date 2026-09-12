@@ -80,9 +80,11 @@ function MediaPage({ title, tag, right, children, overlays }: {
   tag?: ReactNode;
   right?: ReactNode;
   children: ReactNode;
-  /** Slide-overs that are SHARED with the classic hub — rendered OUTSIDE the token
-   *  scope so they look exactly as Beat 3/4 shipped them (see the hub's note). A
-   *  v2-only editor (PlaylistEditor) belongs in `children` and may take the tokens. */
+  /** Slide-overs that are SHARED with the classic hub — rendered OUTSIDE the token scope,
+   *  so each one carries its own `variant` instead of inheriting the page's. Beat 8 PR 2
+   *  flips PROGRAM and SCHEDULE to `variant="v2"` here (Stephen's bug: a v2 page opened a
+   *  classic-green drawer); the rest still render classic until their PR. A v2-only editor
+   *  (PlaylistEditor) belongs in `children` and may take the tokens. */
   overlays?: ReactNode;
 }) {
   return (
@@ -439,11 +441,12 @@ export function MediaScreensPage() {
               overrideHoldFor={overrideHoldFor}
               panelChoices={panelChoices}
               qc={qc}
+              variant="v2"
               onClose={() => setPanel(null)}
             />
           )}
           {panel?.kind === "schedule" && (
-            <ScheduleOverlay slot={panel.slot} timezone={timezone} onClose={() => setPanel(null)} />
+            <ScheduleOverlay slot={panel.slot} timezone={timezone} variant="v2" onClose={() => setPanel(null)} />
           )}
         </>
       }

@@ -295,6 +295,10 @@ export function SignageHub({ openQueueSlug }: { openQueueSlug?: string }) {
       invalidateTakeovers={invalidateTakeovers}
       invalidateEvents={invalidateEvents}
       qc={qc}
+      // Beat 8 PR 2: this node is built once and handed to whichever presentation renders
+      // below, so the version is passed in rather than re-read inside the panels. "classic"
+      // is the default value, so the classic hub's tree is unchanged.
+      variant={version === "v2" ? "v2" : "classic"}
     />
   );
 
