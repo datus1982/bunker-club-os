@@ -1,6 +1,11 @@
 import { Placeholder } from "@/shared/Placeholder";
 import { EmptyState, StaffPageHeader } from "@/shared/ui";
 import { useUiVersion } from "@/shared/useUiVersion";
+import { withTriviaVersion } from "./triviaVersion";
+import { Scoring as ScoringPage } from "./Scoring";
+import { Teams as TeamsPage } from "./Teams";
+import { History as HistoryPage } from "./History";
+import { GameSetup as GameSetupPage } from "./GameSetup";
 
 // Host tools (host+). Real pages ported in Phase 1 (docs/04).
 export const Dashboard = () => <Placeholder title="DASHBOARD" phase="Phase 0/1" />;
@@ -26,11 +31,22 @@ export const Settings = () => {
 };
 export const GameTools = () => <Placeholder title="GAME TOOLS" phase="Phase 1 (docs/04)" />;
 
+/* ── the five trivia staff pages (polish arc 2, PR 3) ──────────────────────────
+ * Each is wrapped in `withTriviaVersion`, which supplies the "render in the v2 token
+ * look?" context. It reads `false` — i.e. classic, byte for byte — unless BOTH device
+ * switches are on v2. The wrapper lives here so `App.tsx`'s route table, and with it
+ * the TV/staff chunk split, is untouched. SEASONS gets the same wrapper in
+ * `modules/seasons/routes.tsx`.
+ *
+ * NOT wrapped, and out of this beat's scope: QuestionEntry / VideoEntry / BulkImport /
+ * GamePreview. The first three are deeper host tools the spec does not name; the last
+ * is an audience-board preview and is frozen unconditionally (§A2). */
+
 // Host tool (host+): live scoring console (docs/04 ARCH-2 decomposition).
-export { Scoring } from "./Scoring";
+export const Scoring = withTriviaVersion(ScoringPage);
 
 // Host tool (host+): regular-team roster (shares TeamEditorDialog with Scoring).
-export { Teams } from "./Teams";
+export const Teams = withTriviaVersion(TeamsPage);
 
 // Public dual-display screen preview (trivia-sandbox) — both boards side by side, no auth.
 // The reusable boards it embeds (LeaderboardBoard / GameDisplayBoard) also drive signage
@@ -38,10 +54,10 @@ export { Teams } from "./Teams";
 export { GamePreview } from "./GamePreview";
 
 // Host tool (host+): read-only game history + view a game's final board.
-export { History } from "./History";
+export const History = withTriviaVersion(HistoryPage);
 
 // Host tool (host+): create a game + its rounds.
-export { GameSetup } from "./GameSetup";
+export const GameSetup = withTriviaVersion(GameSetupPage);
 
 // Host tool (host+): enter questions/answers per round.
 export { QuestionEntry } from "./QuestionEntry";

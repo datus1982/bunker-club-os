@@ -177,6 +177,22 @@
   }
 }
 
+/* Section-level extra — today: the trivia look switch (polish arc 2, PR 3). Pushed to
+ * the far end of the row so it never sits between two navigation chips, and sized to
+ * the row rather than to `.staff-ui button`'s 20px. `UiVersionToggle`'s own note says
+ * it deliberately sets no font-size so it takes the AMBIENT scale of wherever it is
+ * mounted; in this row the ambient scale is the 13px sub-nav chip. The 44px tap floor
+ * from its inline style is untouched — that is the load-bearing half. */
+.staff-v2 .sv2-subextra {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+}
+.staff-v2 .sv2-subextra button {
+  font-size: 13px !important; /* beats .staff-ui button { font-size: 1.25rem !important } */
+  letter-spacing: 0.04em;
+}
+
 /* ── mobile bar + drawer ───────────────────────────────────────────────────── */
 .staff-v2 .sv2-mbar {
   display: flex;
