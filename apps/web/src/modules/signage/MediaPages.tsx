@@ -570,6 +570,8 @@ function MediaScreenCard({
             effProgram={effProgram}
             overrideActive={overrideHold}
             hasSchedule={scheduleCount > 0}
+            mode={mode}
+            stacked={stacked}
             onChanged={onChanged}
           />
           {transportPlaylist && <div style={{ flex: "1 1 300px", minWidth: 0 }}><TransportRow slug={slot.slug} /></div>}
@@ -601,7 +603,7 @@ function MediaScreenCard({
  * these is reversible with the button next to it. The CANCEL label always names what STAYS.
  */
 function ScreenControls({
-  slot, effProgram, overrideActive, hasSchedule, onChanged,
+  slot, effProgram, overrideActive, hasSchedule, mode, stacked, onChanged,
 }: {
   slot: AdminSlot;
   effProgram: SlotProgram | null;
@@ -609,27 +611,45 @@ function ScreenControls({
    *  anything to go BACK from — an expired override's row lingers but the TV has yielded. */
   overrideActive: boolean;
   hasSchedule: boolean;
+  /** The venue mode ladder's answer for this slot — a program set while something preempts
+   *  the screen is real, it just is not what the room sees yet, and the dialog says so. */
+  mode: SlotMode;
+  stacked: boolean;
   onChanged: () => void;
 }) {
   const [pending, setPending] = useState<PendingControl | null>(null);
 
-  // The hub's hold tier for a card-level flip, in one expression: a slot WITH dayparts gets a
-  // plain 'boundary' hold (yields at the next daypart — exactly a hub PROGRAM flip with
-  // SPECIAL EVENT unticked, ProgramPanel.tsx:53), a slot with none gets the permanent 'pin'.
-  // Same rule MediaSection's PLAY ON row applies. SPECIAL EVENT itself stays in the panel:
-  // it is a choice about how long an override outlives the schedule, not a mid-service press.
-  const hold: ProgramHold = hasSchedule ? "boundary" : "pin";
+  // The hub's hold tier for a card-level flip — ProgramPanel.tsx:52-53 MIRRORED, not
+  // paraphrased. No schedule ⇒ the permanent 'pin' (unchanged since M1). With a schedule a
+  // plain flip is a 'boundary' hold that yields at the next daypart… EXCEPT when the override
+  // running right now is already a SPECIAL EVENT hold: the panel seeds its toggle from
+  // `overrideActive && slot.program_hold === "event"` and therefore PRESERVES that tier, and
+  // so must this row. Without it, tapping Framed on a live input a Q-SYS press had pinned for
+  // the night (the edge fn's default hold is 'event') would silently shorten the override to
+  // the next daypart edge — the screen would drop back mid-event. Reading `slot.program_hold`
+  // is parity-safe *because* it is gated on `overrideActive`: an expired override's row
+  // lingers, and the resolver has already said it is not running.
+  const hold: ProgramHold = !hasSchedule
+    ? "pin"
+    : overrideActive && slot.program_hold === "event" ? "event" : "boundary";
 
   const write = useMutation({
     mutationFn: (program: WritableProgram | null) =>
       program === null ? resumeSchedule(slot.id) : setSlotProgram(slot.id, program, hold),
-    onSuccess: () => onChanged(),
-    // DECISION: the dialog closes either way, matching ProgramPanel — this family has no
-    // error surface today (a failed write there simply leaves the old selection standing,
-    // and realtime re-renders the card from the row that did not change). Worth a shared
-    // toast when one exists; inventing one here would be a second opinion about failure.
-    onSettled: () => setPending(null),
+    // The dialog closes ON SUCCESS ONLY. A failed write leaves it open with its buttons live
+    // again, so a manager sees that the press did not take and can try it: this row changes
+    // what is on a TV in the room, and silently dismissing on failure would report a screen
+    // change that never happened. (ProgramPanel closes nothing either way — it has no error
+    // surface at all; when a shared toast exists, that is the better home for the reason.)
+    onSuccess: () => { setPending(null); onChanged(); },
   });
+
+  /** A program set while a game/takeover/event holds the screens is written immediately but
+   *  is not what the room sees — the resolver puts a program at the bottom of the ladder. */
+  const preemptClause = mode === "rotation" ? ""
+    : mode === "game" ? " It takes effect once the game ends."
+    : mode === "takeover" ? " It takes effect once the takeover ends."
+    : " It takes effect once the event window ends.";
 
   const isCapture = effProgram?.kind === "capture";
   const framed = effProgram?.kind === "capture" && effProgram.presentation === "framed";
@@ -667,16 +687,21 @@ function ScreenControls({
       <div style={{ display: "flex", flexWrap: "wrap", alignItems: "flex-start", gap: 7 }}>
         <ControlBtn
           label="Live input"
+          stacked={stacked}
           // Accent = the action you can take; amber = what is already on (the card's own
           // idiom for an active program). Pressing the amber one is a no-op, like tapping
           // the radio that is already selected — never a re-write that would churn the hold.
+          // `aria-disabled` (NOT `disabled`) tells a screen reader that the no-op does
+          // nothing, while keeping the control focusable and un-greyed: the v2 sheet paints
+          // `:disabled` at 0.4 opacity, which would read as unavailable rather than current.
           primary={!isCapture}
           pressed={isCapture}
+          inert={isCapture}
           onPress={() => {
             if (isCapture) return;
             setPending({
               title: `Switch ${slot.name} to live input?`,
-              body: `${slot.name} switches to the live capture feed — the Roku — instead of ${staying}. Pause, resume and next do not apply to a live input.`,
+              body: `${slot.name} switches to the live capture feed — the Roku — instead of ${staying}. Pause, resume and next do not apply to a live input.${preemptClause}`,
               confirmLabel: "Switch to live input",
               cancelLabel: `Keep ${staying}`,
               program: captureProgram("fullbleed"),
@@ -687,15 +712,27 @@ function ScreenControls({
         {/* The two VIEWS of that one input (docs/15: one capture source, ratified). Only
             meaningful while the live input is actually on the screen. */}
         {isCapture && (
-          <>
+          // A RADIOGROUP, not two toggles: these are two mutually exclusive views of one
+          // input, and `aria-pressed` on each would announce two independent on/off buttons
+          // ("Full frame, pressed" beside "Framed, not pressed") instead of one choice with
+          // one answer. Kept as a real element rather than `display: contents` — that has a
+          // history of dropping a container's role out of the accessibility tree, and the
+          // group is a sensible flex item in its own right (the pair wraps together).
+          <div
+            role="radiogroup"
+            aria-label={`${slot.name} live input view`}
+            style={{ display: "flex", flexWrap: "wrap", gap: 7, flex: stacked ? "1 0 auto" : "0 0 auto", minWidth: 0 }}
+          >
             <ControlBtn
               label="Full frame"
+              stacked={stacked}
+              role="radio"
               pressed={!framed}
               onPress={() => {
                 if (!framed) return;
                 setPending({
                   title: `Show the live input full frame on ${slot.name}?`,
-                  body: `${slot.name} fills the whole screen with the capture feed — no header, no ticker.`,
+                  body: `${slot.name} fills the whole screen with the capture feed — no header, no ticker.${preemptClause}`,
                   confirmLabel: "Show it full frame",
                   cancelLabel: "Keep framed",
                   program: captureProgram("fullbleed"),
@@ -704,19 +741,21 @@ function ScreenControls({
             />
             <ControlBtn
               label="Framed"
+              stacked={stacked}
+              role="radio"
               pressed={framed}
               onPress={() => {
                 if (framed) return;
                 setPending({
                   title: `Show the live input framed on ${slot.name}?`,
-                  body: `${slot.name} letterboxes the capture feed inside the signage chrome — the header and the ticker stay on screen.`,
+                  body: `${slot.name} letterboxes the capture feed inside the signage chrome — the header and the ticker stay on screen.${preemptClause}`,
                   confirmLabel: "Show it framed",
                   cancelLabel: "Keep full frame",
                   program: captureProgram("framed"),
                 });
               }}
             />
-          </>
+          </div>
         )}
 
         {/* Only offered when there IS a live override to come back from — the ⧗ chip's test,
@@ -724,14 +763,15 @@ function ScreenControls({
         {overrideActive && (
           <ControlBtn
             label={backLabel}
+            stacked={stacked}
             onPress={() =>
               setPending({
                 title: hasSchedule
                   ? `Put ${slot.name} back on its schedule?`
                   : `Put ${slot.name} back on the rotation?`,
-                body: hasSchedule
+                body: (hasSchedule
                   ? `${slot.name} drops the manual override and follows its dayparts again.`
-                  : `${slot.name} goes back to the promo rotation — drinks, promos, events and ★ featured.`,
+                  : `${slot.name} goes back to the promo rotation — drinks, promos, events and ★ featured.`) + preemptClause,
                 confirmLabel: backLabel,
                 cancelLabel: `Keep ${staying}`,
                 program: null,
@@ -769,12 +809,19 @@ interface PendingControl {
 /** A SCREEN CONTROLS button. `minWidth: TAP` is the 44px floor on the WIDTH axis too — the
  *  Beat 6 lesson that a height-only harness passes a 34px-wide control. */
 function ControlBtn({
-  label, primary = false, pressed, onPress,
+  label, primary = false, pressed, inert = false, role, stacked = false, onPress,
 }: {
   label: string;
   primary?: boolean;
   /** Present = this control is a state: true renders the "already on" amber. */
   pressed?: boolean;
+  /** This control is the current state and does nothing when pressed (AT-only; no styling). */
+  inert?: boolean;
+  /** "radio" for one of a mutually-exclusive pair — it then reports `aria-checked`, not
+   *  `aria-pressed` (a set of pressed toggles announces as independent on/off buttons). */
+  role?: "radio";
+  /** Phone: one control per row, full width. Desktop: natural width, capped. */
+  stacked?: boolean;
   onPress: () => void;
 }) {
   const cls = pressed ? "u-amber st-btn st-body" : primary ? "st-btn st-btn-primary st-body" : "st-btn st-body";
@@ -782,19 +829,31 @@ function ControlBtn({
     <button
       type="button"
       onClick={onPress}
-      aria-pressed={pressed}
+      role={role}
+      aria-checked={role === "radio" ? !!pressed : undefined}
+      aria-pressed={role === "radio" ? undefined : pressed}
+      aria-disabled={inert || undefined}
       className={cls}
       // `whiteSpace: nowrap` for the ConfirmDialog's reason — a verb phrase must stay one
       // line; without it "Back to rotation" folded inside its flex track and stood 65px tall
       // beside a 44px neighbour.
       //
-      // `1 0 auto` is the half that makes nowrap SAFE, and it is measured, not assumed: with
-      // a fixed 150px basis and `minWidth: 44` (which overrides flex's automatic min-content
-      // minimum) the row shrank "Back to rotation" to 158.5px against 158px of text and it
-      // spilled past its own border by a pixel — the exact silent overflow the ConfirmDialog
-      // footer was fixed for. Basis `auto` + shrink 0 means a button is never narrower than
-      // its label; grow 1 still fills the row, and a pair that no longer fits WRAPS.
-      style={{ ...cardBtn, flex: "1 0 auto", minWidth: TAP, padding: "9px 12px", whiteSpace: "nowrap", fontWeight: primary ? 700 : 400 }}
+      // Basis `auto` + `shrink: 0` is the half that makes nowrap SAFE, and it is measured,
+      // not assumed: with a fixed 150px basis and `minWidth: 44` (which overrides flex's
+      // automatic min-content minimum) the row shrank "Back to rotation" to 158.5px against
+      // 158px of text and it spilled past its own border by a pixel — the exact silent
+      // overflow the ConfirmDialog footer was fixed for. A button is now never narrower
+      // than its own label, and a pair that no longer fits WRAPS.
+      //
+      // GROW is per-width (Marvin ruling): on a phone each control takes the row, which is
+      // the tappable thing to do; on desktop `grow: 0` + a 200px cap keeps them reading as
+      // BUTTONS instead of a banner — unclamped they grew to 499.5px and 559.5px at 1280,
+      // making the accent Live input the loudest element on the card.
+      style={{
+        ...cardBtn, flex: stacked ? "1 0 auto" : "0 0 auto", minWidth: TAP,
+        ...(stacked ? null : { maxWidth: 200 }),
+        padding: "9px 12px", whiteSpace: "nowrap", fontWeight: primary ? 700 : 400,
+      }}
     >
       {label}
     </button>
