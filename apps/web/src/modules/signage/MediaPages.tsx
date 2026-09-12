@@ -574,7 +574,7 @@ function MediaScreenCard({
             stacked={stacked}
             onChanged={onChanged}
           />
-          {transportPlaylist && <div style={{ flex: "1 1 300px", minWidth: 0 }}><TransportRow slug={slot.slug} variant="v2" /></div>}
+          {transportPlaylist && <div style={{ flex: "1 1 300px", minWidth: 0 }}><TransportRow slug={slot.slug} variant="v2" stacked={stacked} /></div>}
         </>
       }
     />
