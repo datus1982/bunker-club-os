@@ -110,7 +110,11 @@ export function SlideOver({
           aria-modal="true"
           aria-label={title}
           className={`st-panel st-drawer${isMobile ? " st-drawer-full" : ""}`}
-          style={{ ...panel, display: "flex", flexDirection: "column" }}
+          /* NOTE-7 (review): `overflow: hidden` matches ConfirmDialog's panel. The desktop
+             drawer rounds its two LEFT corners, and without this a header or footer row
+             with its own background paints square into them. Inert on phones (no corners
+             there) and harmless to the body, which does its own scrolling. */
+          style={{ ...panel, display: "flex", flexDirection: "column", overflow: "hidden" }}
         >
           {/* Header — pinned (does not scroll). `borderBottom: "1px solid"` with no colour
               is the ConfirmDialog idiom: the blanket paints it the hairline. */}
@@ -129,7 +133,14 @@ export function SlideOver({
               onClick={onClose}
               aria-label="Close"
               className="st-btn st-body st-t2"
-              style={{ minWidth: TAP, minHeight: TAP, cursor: "pointer", flexShrink: 0 }}
+              /* NOTE-7/8 (review): `border: "1px solid"` — WIDTH and STYLE only; the colour
+                 is the token sheet's (`.st-sheet button { border-color: hairline-strong }`),
+                 the same split ConfirmDialog's footer rows use. Without it this renders as a
+                 BARE GLYPH: the base theme sets `border-color` on a button but never a
+                 width, and Tailwind's preflight zeroes it — so dropping the classic leg's
+                 inline `1px solid var(--terminal-green)` had quietly removed the frame that
+                 makes the close affordance read as a control. */
+              style={{ minWidth: TAP, minHeight: TAP, cursor: "pointer", flexShrink: 0, border: "1px solid" }}
             >✕</button>
           </div>
           {/* Body — the only scrolling region. `st-body` sizes THIS element; its children

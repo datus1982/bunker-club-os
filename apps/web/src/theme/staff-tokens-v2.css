@@ -106,18 +106,29 @@
  * manager edits against a pixel-faithful slot. Its subtree is a TV surface wearing
  * staff clothes: its amber/green works by REDEFINING `--terminal-green` under
  * `.signage-slot`, and the blanket below would repaint the whole board white-alpha and
- * flatten its glow — the preview would stop being the thing it exists to be. So every
- * `*` leg that could reach into a board excludes that subtree. `terminal-theme.css:550`
- * already carries the same carve-out for the staff FONT, so this is the second half of
- * a precedent, not a new idea.
- *   `:not(:where(…))` and not `:not(…)`: `:where()` contributes ZERO specificity, so
- * the selectors stay exactly (0,3,0). A bare `:not(.signage-slot)` would raise them to
- * (0,5,0) and silently out-specify the (0,4,0) tier/utility re-declarations below —
- * every `u-amber`, `u-red` and `st-t2` label in v2 would have gone white. The guard is
- * a NO-OP today and provably so: `.signage-slot` is emitted only by `SlotDisplay` (TV
- * routes, never `.staff-v2`) and `SignagePreview` (only inside `ItemEditor`, only
- * inside a `SlideOver` — which is why it becomes live the moment PR 5 passes
- * `variant="v2"`). It is written on BOTH legs so that PR 5 cannot regress either.
+ * flatten its glow — the preview would stop being the thing it exists to be. So the two
+ * BLANKET `*` legs — the ones that paint every element in the scope — exclude that
+ * subtree, as does the `img` radius rule. `terminal-theme.css:550` already carries the
+ * same carve-out for the staff FONT, so this is the second half of a precedent.
+ *   NOTE-3 (review) — precise scope, since "every `*` leg" would overstate it: the
+ * DESCENDANT legs further down (`… .u-amber *`, `… .st-t2 *`, the `prefers-contrast`
+ * block) are NOT guarded and would still reach into a board. That is moot in practice
+ * and checked, not assumed: the templates (`SignageTemplates.tsx`, `EventStages.tsx`,
+ * `signagePhoto.tsx`) carry ZERO `u-*` and ZERO `st-*` classes — greppable, and worth
+ * re-grepping if a template ever borrows a staff utility.
+ *   NOTE-2 (review) — `:not(:where(…))` and not `:not(…)`, and the arithmetic stated
+ * correctly: `:not()` takes the specificity of its most specific argument, so the FLAT
+ * `:not(.signage-slot, .signage-slot *)` used here would be (0,4,0) — enough to beat the
+ * (0,3,1) control-family rules, and enough to TIE the (0,4,0) tier/utility
+ * re-declarations below and win on source order, turning every `u-amber` / `u-red` /
+ * `st-t2` label in v2 white. (The chained `:not(A):not(B)` form is worse still at
+ * (0,5,0).) `:where()` contributes ZERO specificity, so the selectors stay exactly
+ * (0,3,0) and the cascade below is untouched — proven by measurement, not by reading:
+ * page-leg `u-amber` still reads rgb(232,176,75).
+ *   The guard is a NO-OP today and provably so: `.signage-slot` is emitted only by
+ * `SlotDisplay` (TV routes, never `.staff-v2`) and `SignagePreview` (only inside
+ * `ItemEditor`, only inside a `SlideOver` — which is why it becomes live the moment PR 5
+ * passes `variant="v2"`). It is written on BOTH legs so that PR 5 cannot regress either.
  * ────────────────────────────────────────────────────────────────────────── */
 .terminal-theme.staff-v2 [data-st-page],
 .terminal-theme.staff-v2 [data-st-page] *:not(:where(.signage-slot, .signage-slot *)),
@@ -868,6 +879,15 @@
   box-shadow: none !important;
   border-color: var(--st-hairline-strong) !important;
 }
+/* NOTE-4 (review) — the press twin for a link. Section 8 presses `[data-st-page] a:active`
+ * and `.sv2-nav a:active` but has no sheet leg, and it could not simply gain one: §8 is
+ * declared ABOVE this section, and `a:active` / `a:hover` are both (0,4,1), so an `a:active`
+ * up there would lose to the hover rule directly above by source order. Declared here
+ * instead, immediately after the twin it must beat. Same 80ms/10% press §8 spends. */
+.terminal-theme.staff-v2 .st-sheet a:active {
+  background: rgba(255, 255, 255, 0.1) !important;
+  transition-duration: 80ms;
+}
 .terminal-theme.staff-v2 .st-sheet button:disabled:hover {
   background: transparent !important; /* beats the section-1 hover wash */
 }
@@ -947,11 +967,17 @@
  * meanings depending on nesting depth.
  * ────────────────────────────────────────────────────────────────────────── */
 .terminal-theme.staff-v2 .st-sheet .st-card,
-.terminal-theme.staff-v2 .st-sheet .st-row,
-.terminal-theme.staff-v2 .st-sheet .st-box {
+.terminal-theme.staff-v2 .st-sheet .st-row {
   background: transparent !important; /* beats inline `background:"#020402"` / the green washes in the shared panels — and, per the addendum, carries no tier of its own */
   border: 1px solid var(--st-hairline) !important;
 }
+/* NOTE-6 (review) — `.st-box` is DELIBERATELY NOT in the rule above, and the reason is
+ * stronger than "match the page twin" (which is radius-only). `.st-box` is
+ * `TapTargetCheckbox`'s boxed chip, and its inline background is not an elevation tier at
+ * all — it is the CHECKED STATE: `checked ? "rgba(127,230,168,0.12)" : "transparent"`.
+ * A blanket `background: transparent !important` beat that inline declaration and erased
+ * the tint, so a ticked box inside a slide-over read as unticked. The addendum governs
+ * elevation, never state. `.st-box` keeps its 6px radius twin above and nothing else. */
 /* THE FLOATING-SURFACE EXCEPTION, verbatim: "Floating surfaces (menus/popovers) keep a
  * fill even inside sheets; only in-flow contents separate by hairline." Identical to the
  * `[data-st-page]` twin — same tier, same edge, same 10px above. INERT TODAY (nothing
@@ -971,6 +997,17 @@
 .terminal-theme.staff-v2 .st-sheet .st-row[role="button"]:hover,
 .terminal-theme.staff-v2 .st-sheet .st-row[aria-selected="true"] {
   background: rgba(255, 255, 255, 0.06) !important; /* the same wash section 1 already spends on a control hover */
+}
+/* NOTE-5 (review) — the PRESS twin, and it has to live HERE rather than beside section 8's
+ * press rules. Section 8's `.st-sheet button:active` is (0,4,1); the hover rule directly
+ * above is (0,5,1) and would mask it, so a pressed row would have kept showing the 6%
+ * hover wash and acknowledged nothing. Same value section 8 spends on a press (10%), same
+ * interactive carriers as the hover rule, declared immediately after it so equal-weight
+ * selectors resolve by order the way §8's own comment describes. */
+.terminal-theme.staff-v2 .st-sheet button.st-row:active,
+.terminal-theme.staff-v2 .st-sheet a.st-row:active,
+.terminal-theme.staff-v2 .st-sheet .st-row[role="button"]:active {
+  background: rgba(255, 255, 255, 0.1) !important;
 }
 /* A control sits one step up from the card it lives on. LAST-WINS over the section-1
  * restatement above — see the source-order note in this section's header. */
@@ -999,6 +1036,27 @@
   border-width: 1px;
   border-color: var(--st-hairline) !important; /* beats .terminal-theme [class*="border"] { border-color: green !important } */
   box-shadow: none;
+}
+/* ⚠ WARN-1 (Beat 8 PR 1 review) — THE PANEL FILL, RESTATED. DO NOT MOVE THIS RULE, AND DO
+ * NOT DELETE IT AS A DUPLICATE OF SECTION 4.
+ *
+ * The trivia `Modal` frame is `cx("terminal-border", v2 && "st-panel")`
+ * (modules/trivia/ui.tsx:137) — ONE element carrying BOTH classes. Section 4's
+ * `.st-sheet .st-panel { background: var(--st-surface-4) !important }` and the
+ * `.terminal-border` twin directly above are BOTH (0,4,0), so the later declaration wins,
+ * and the `.terminal-border` twin is the last rule in this file. Result before this fix:
+ * on a device with BOTH switches on v2, every trivia dialog (TeamEditorDialog, ScoreDialog,
+ * AddTeamPicker, GameRecap, the duplicate-name Modal) rendered `rgba(0,0,0,0)` — fully
+ * see-through, with the green page bleeding through the dialog. The Modal's own inline
+ * `background:"#000"` cannot save it: an inline declaration loses to any `!important`.
+ *
+ * The fix is ORDER, not specificity: the same selector and the same declaration as
+ * section 4, restated after the twin that was out-ordering it. A `:not(.st-panel)` on the
+ * `.terminal-border` twin would have been the tempting one-liner and is WRONG — at (0,5,0)
+ * it would out-rank the `.st-callout-warn` / `.st-callout-danger` fills, which are (0,4,0)
+ * and are carried by elements that also carry `.terminal-border`. */
+.terminal-theme.staff-v2 .st-sheet .st-panel {
+  background: var(--st-surface-4) !important;
 }
 /* DECISION — `.terminal-separator` keeps its page twin verbatim, and that is NOT an
  * oversight of the addendum: it is already a bare 1px hairline BAR, not a fill tier. Its
