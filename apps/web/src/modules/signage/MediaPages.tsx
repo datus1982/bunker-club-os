@@ -1,13 +1,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { Navigate, useSearchParams } from "react-router-dom";
-import { useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useUiVersion } from "@/shared/useUiVersion";
-import { EmptyState, FormField, ScreenCard, StaffPageHeader, StatusChip } from "@/shared/ui";
+import { ConfirmDialog, EmptyState, FormField, ScreenCard, StaffPageHeader, StatusChip, space, TAP } from "@/shared/ui";
 import { useIsMobile } from "@/shared/useIsMobile";
 import { screenHealth, useAdminSlots, useSlotsRealtime, useTakeovers, type AdminSlot } from "./useSignageAdmin";
 import { activeMoment, useCloseoutHour, useLiveEvents, useVenue, type SlotMode } from "./useSignage";
 import { useTriviaArmState } from "./triviaArm";
-import { useAllScheduleRows, useMediaFiles, useMediaPlaylists, type PlaylistWithStats } from "./useMediaAdmin";
+import {
+  resumeSchedule, setSlotProgram, useAllScheduleRows, useMediaFiles, useMediaPlaylists,
+  type PlaylistWithStats, type WritableProgram,
+} from "./useMediaAdmin";
+import type { SlotProgram } from "./mediaProgram";
+import type { ProgramHold } from "./scheduleResolve";
 import {
   TransportRow, cardBtn, isMediaCapableSlot,
   makeEffFor, makeModeFor, makeOverrideHoldFor, makeProgramLabelFor, makeTransportPlaylistFor, playlistNameMap,
@@ -467,8 +472,10 @@ export function MediaScreensPage() {
               overrideHold={overrideHoldFor(slot) !== null}
               scheduleCount={scheduleCountFor(slot)}
               transportPlaylist={transportPlaylistFor(slot)}
+              effProgram={effFor(slot).program}
               onProgram={() => setPanel({ kind: "program", slot })}
               onSchedule={() => setPanel({ kind: "schedule", slot })}
+              onChanged={() => qc.invalidateQueries({ queryKey: ["signage-admin", "slots"] })}
             />
           ))}
         </div>
@@ -479,7 +486,8 @@ export function MediaScreensPage() {
 }
 
 function MediaScreenCard({
-  slot, stacked, mode, programLabel, overrideHold, scheduleCount, transportPlaylist, onProgram, onSchedule,
+  slot, stacked, mode, programLabel, overrideHold, scheduleCount, transportPlaylist, effProgram,
+  onProgram, onSchedule, onChanged,
 }: {
   slot: AdminSlot;
   stacked: boolean;
@@ -488,8 +496,13 @@ function MediaScreenCard({
   overrideHold: boolean;
   scheduleCount: number;
   transportPlaylist: boolean;
+  /** The EFFECTIVE program (the shared resolver's answer — never `slot.program`), for the
+   *  SCREEN CONTROLS row's state. `programLabel` is the same resolution, already worded. */
+  effProgram: SlotProgram | null;
   onProgram: () => void;
   onSchedule: () => void;
+  /** Invalidate the slots query after a control writes — the hub's own onChanged. */
+  onChanged: () => void;
 }) {
   const health = screenHealth(slot.last_seen);
   const programActive = mode === "rotation" && !!programLabel;
@@ -550,7 +563,225 @@ function MediaScreenCard({
           </button>
         </div>
       }
-      subStrip={transportPlaylist ? <div style={{ flex: "1 1 300px", minWidth: 0 }}><TransportRow slug={slot.slug} /></div> : undefined}
+      subStrip={
+        <>
+          <ScreenControls
+            slot={slot}
+            effProgram={effProgram}
+            overrideActive={overrideHold}
+            hasSchedule={scheduleCount > 0}
+            onChanged={onChanged}
+          />
+          {transportPlaylist && <div style={{ flex: "1 1 300px", minWidth: 0 }}><TransportRow slug={slot.slug} /></div>}
+        </>
+      }
     />
+  );
+}
+
+/**
+ * SCREEN CONTROLS — the presses a manager makes standing at the bar, on the card itself
+ * (owner ask, 2026-09-12: "that page should also contain screen controls like switching to
+ * the live input views").
+ *
+ * NOT a second opinion about the screen. Every write here is a write `ProgramPanel` already
+ * performs, through the same `setSlotProgram` / `resumeSchedule` and the same hold tier:
+ * LIVE INPUT (ProgramPanel.tsx:165-166), its FULL FRAME / FRAMED pair (:173-176) and RESUME
+ * SCHEDULE (:104). The STATE the buttons reflect is the EFFECTIVE program the shared
+ * resolver returns (`makeEffFor` → `resolveEffectiveProgramWithSource`, the same answer the
+ * TV computes) — never the raw `slot.program` row, whose override may already have expired.
+ * MULTIVIEW, the playlist list, the carousel and DEVICE MATCH deliberately stay one tap
+ * deeper behind `Switch program ▸`: those are decisions, these are the mid-service presses.
+ *
+ * ⚠ OWNER RULING (Stephen, 2026-09-12, via Marvin): "confirmation is a good idea." Every
+ * program write on this row goes through the plain (non-danger) ConfirmDialog — it is not a
+ * default waiting to be tuned away. This row changes what is on a TV in a room full of
+ * people, so the dialog IS the behavior; do not "simplify" it out. Non-danger because
+ * nothing here destroys anything: red is the destructive budget (§B), and every one of
+ * these is reversible with the button next to it. The CANCEL label always names what STAYS.
+ */
+function ScreenControls({
+  slot, effProgram, overrideActive, hasSchedule, onChanged,
+}: {
+  slot: AdminSlot;
+  effProgram: SlotProgram | null;
+  /** Is a manual override LIVE right now (the ⧗ chip's own test)? Decides whether there is
+   *  anything to go BACK from — an expired override's row lingers but the TV has yielded. */
+  overrideActive: boolean;
+  hasSchedule: boolean;
+  onChanged: () => void;
+}) {
+  const [pending, setPending] = useState<PendingControl | null>(null);
+
+  // The hub's hold tier for a card-level flip, in one expression: a slot WITH dayparts gets a
+  // plain 'boundary' hold (yields at the next daypart — exactly a hub PROGRAM flip with
+  // SPECIAL EVENT unticked, ProgramPanel.tsx:53), a slot with none gets the permanent 'pin'.
+  // Same rule MediaSection's PLAY ON row applies. SPECIAL EVENT itself stays in the panel:
+  // it is a choice about how long an override outlives the schedule, not a mid-service press.
+  const hold: ProgramHold = hasSchedule ? "boundary" : "pin";
+
+  const write = useMutation({
+    mutationFn: (program: WritableProgram | null) =>
+      program === null ? resumeSchedule(slot.id) : setSlotProgram(slot.id, program, hold),
+    onSuccess: () => onChanged(),
+    // DECISION: the dialog closes either way, matching ProgramPanel — this family has no
+    // error surface today (a failed write there simply leaves the old selection standing,
+    // and realtime re-renders the card from the row that did not change). Worth a shared
+    // toast when one exists; inventing one here would be a second opinion about failure.
+    onSettled: () => setPending(null),
+  });
+
+  const isCapture = effProgram?.kind === "capture";
+  const framed = effProgram?.kind === "capture" && effProgram.presentation === "framed";
+  const deviceMatch = effProgram?.kind === "capture" ? effProgram.device_match : undefined;
+
+  /** The capture program ProgramPanel writes — including a DEVICE MATCH someone set there.
+   *  The card has no device box, so dropping the field would silently re-point the screen at
+   *  the first camera (the same reset the Q-SYS runbook warns a `capture` command performs).
+   *  `fullbleed` omits the key rather than spelling it: that is CaptureProgram's default and
+   *  the exact shape ProgramPanel writes with FULL FRAME selected. */
+  const captureProgram = (presentation: "framed" | "fullbleed"): WritableProgram => ({
+    kind: "capture",
+    ...(deviceMatch ? { device_match: deviceMatch } : {}),
+    ...(presentation === "framed" ? { presentation: "framed" as const } : {}),
+  });
+
+  /** What CANCEL keeps (the ruling: the cancel label names what STAYS). */
+  const staying = !effProgram
+    ? (hasSchedule ? "schedule" : "rotation")
+    : effProgram.kind === "capture" ? "live input"
+    : effProgram.kind === "playlist" ? "the playlist"
+    : effProgram.kind === "carousel" ? "the carousel"
+    : "multiview";
+
+  const backLabel = hasSchedule ? "Back to schedule" : "Back to rotation";
+
+  return (
+    <div style={{ flex: "1 1 100%", minWidth: 0, display: "flex", flexDirection: "column", gap: space.s2 }}>
+      <div className="st-label st-t3">SCREEN CONTROLS</div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
+        <ControlBtn
+          label="Live input"
+          // Accent = the action you can take; amber = what is already on (the card's own
+          // idiom for an active program). Pressing the amber one is a no-op, like tapping
+          // the radio that is already selected — never a re-write that would churn the hold.
+          primary={!isCapture}
+          pressed={isCapture}
+          onPress={() => {
+            if (isCapture) return;
+            setPending({
+              title: `Switch ${slot.name} to live input?`,
+              body: `${slot.name} switches to the live capture feed — the Roku — instead of ${staying}. Pause, resume and next do not apply to a live input.`,
+              confirmLabel: "Switch to live input",
+              cancelLabel: `Keep ${staying}`,
+              program: captureProgram("fullbleed"),
+            });
+          }}
+        />
+
+        {/* The two VIEWS of that one input (docs/15: one capture source, ratified). Only
+            meaningful while the live input is actually on the screen. */}
+        {isCapture && (
+          <>
+            <ControlBtn
+              label="Full frame"
+              pressed={!framed}
+              onPress={() => {
+                if (!framed) return;
+                setPending({
+                  title: `Show the live input full frame on ${slot.name}?`,
+                  body: `${slot.name} fills the whole screen with the capture feed — no header, no ticker.`,
+                  confirmLabel: "Show it full frame",
+                  cancelLabel: "Keep framed",
+                  program: captureProgram("fullbleed"),
+                });
+              }}
+            />
+            <ControlBtn
+              label="Framed"
+              pressed={framed}
+              onPress={() => {
+                if (framed) return;
+                setPending({
+                  title: `Show the live input framed on ${slot.name}?`,
+                  body: `${slot.name} letterboxes the capture feed inside the signage chrome — the header and the ticker stay on screen.`,
+                  confirmLabel: "Show it framed",
+                  cancelLabel: "Keep full frame",
+                  program: captureProgram("framed"),
+                });
+              }}
+            />
+          </>
+        )}
+
+        {/* Only offered when there IS a live override to come back from — the ⧗ chip's test,
+            so the button and the chip can never disagree about whether one is running. */}
+        {overrideActive && (
+          <ControlBtn
+            label={backLabel}
+            onPress={() =>
+              setPending({
+                title: hasSchedule
+                  ? `Put ${slot.name} back on its schedule?`
+                  : `Put ${slot.name} back on the rotation?`,
+                body: hasSchedule
+                  ? `${slot.name} drops the manual override and follows its dayparts again.`
+                  : `${slot.name} goes back to the promo rotation — drinks, promos, events and ★ featured.`,
+                confirmLabel: backLabel,
+                cancelLabel: `Keep ${staying}`,
+                program: null,
+              })
+            }
+          />
+        )}
+      </div>
+
+      {pending && (
+        <ConfirmDialog
+          title={pending.title}
+          body={pending.body}
+          confirmLabel={pending.confirmLabel}
+          cancelLabel={pending.cancelLabel}
+          busy={write.isPending}
+          onConfirm={() => write.mutate(pending.program)}
+          onCancel={() => setPending(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+/** One queued program write, held until the viewer confirms it. */
+interface PendingControl {
+  title: string;
+  body: string;
+  confirmLabel: string;
+  cancelLabel: string;
+  /** null = back to the schedule / rotation (clears the override). */
+  program: WritableProgram | null;
+}
+
+/** A SCREEN CONTROLS button. `minWidth: TAP` is the 44px floor on the WIDTH axis too — the
+ *  Beat 6 lesson that a height-only harness passes a 34px-wide control. */
+function ControlBtn({
+  label, primary = false, pressed, onPress,
+}: {
+  label: string;
+  primary?: boolean;
+  /** Present = this control is a state: true renders the "already on" amber. */
+  pressed?: boolean;
+  onPress: () => void;
+}) {
+  const cls = pressed ? "u-amber st-btn st-body" : primary ? "st-btn st-btn-primary st-body" : "st-btn st-body";
+  return (
+    <button
+      type="button"
+      onClick={onPress}
+      aria-pressed={pressed}
+      className={cls}
+      style={{ ...cardBtn, flex: "1 1 150px", minWidth: TAP, padding: "9px 12px", fontWeight: primary ? 700 : 400 }}
+    >
+      {label}
+    </button>
   );
 }
