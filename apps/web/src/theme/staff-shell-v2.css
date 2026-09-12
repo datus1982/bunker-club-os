@@ -252,16 +252,19 @@
  * true mirror (back UP to -10px). Borrowing `st-sheet-exit` would have the drawer arrive
  * from above and leave downward — a path, not the same path.
  *
- * `data-state` is set by SectionNav, which keeps the drawer mounted for one exit before
- * unmounting it. No `both` fill-mode: the drawer's own `closing` state stops rendering it
- * on the same tick the timer fires, and a transform-only animation has no invisible-
- * overlay failure mode to guard against. */
+ * `data-state` is set by SectionNav, which keeps the drawer mounted for the exit and
+ * unmounts it 60ms AFTER the animation ends (the timer carries slack so a late frame
+ * cannot clip the last one). WARN-2 (arc 2 review): without a fill-mode the animation
+ * released the element back to its base transform for exactly that slack window —
+ * measured `transform: none` at t=173-217ms with the drawer still on screen, a 3-4 frame
+ * jump back to fully open right before it vanished. `both` holds the final keyframe until
+ * the unmount actually happens. */
 @keyframes sv2-drawer-out {
   from { transform: translateY(0); }
   to   { transform: translateY(-10px); }
 }
 .staff-v2 .sv2-drawer[data-state="exiting"] {
-  animation: sv2-drawer-out 140ms ease-in;
+  animation: sv2-drawer-out 140ms ease-in both;
   pointer-events: none; /* a closing drawer must not eat the tap that lands behind it */
 }
 /* The scrim leaves with it — opacity only (the backdrop has no axis to travel on). */

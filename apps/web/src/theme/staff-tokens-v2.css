@@ -643,9 +643,18 @@
 .terminal-theme.staff-v2 .st-sheet button:disabled:active {
   background: transparent !important;
 }
+/* WARN-1 (arc 2 review): the accent fill has to be RESTATED here, not inherited. The
+ * generic press wash above is (0,4,1) and out-specifies the `.st-btn-primary` base fill
+ * at (0,4,0) — on a mouse that never showed, because `:hover` was always co-active and
+ * `.st-btn-primary:hover` (0,5,0) put the accent back. A TOUCH device has no such twin:
+ * iOS fires `:active` on touchstart and `:hover` only after touchend, so a primary
+ * button / a sheet CONFIRM / a selected chip blinked to a grey translucent box for the
+ * whole press. Measured with :active forced ALONE (no :hover): rgba(255,255,255,0.1)
+ * before this line, the accent after it. */
 .terminal-theme.staff-v2 [data-st-page] .st-btn-primary:active,
 .terminal-theme.staff-v2 .st-sheet .st-btn-primary:active,
 .terminal-theme.staff-v2 .sv2-nav .st-btn-primary:active {
+  background: var(--st-accent) !important; /* beats the generic press wash above — (0,5,0) vs (0,4,1) */
   opacity: 0.82; /* beats `.st-btn-primary:hover { opacity: .9 }` — equal (0,5,0), declared later */
 }
 .terminal-theme.staff-v2 [data-st-page] .st-btn-danger:active,
@@ -661,7 +670,8 @@
 .terminal-theme.staff-v2 [data-st-page] .u-fill:active,
 .terminal-theme.staff-v2 .sv2-nav .u-fill:active,
 .terminal-theme.staff-v2 .st-sheet .u-fill:active {
-  opacity: 0.82 !important; /* beats `.terminal-theme .u-fill { opacity: 1 !important }` (terminal-theme.css:486) — measured: a plain 0.82 here read back as 1 */
+  background: var(--st-accent) !important; /* WARN-1: same touch hazard as the primary above — the generic press wash (0,4,1) beats the `u-fill` base fill (0,4,0), and on iOS there is no co-active `:hover` to put the accent back */
+  opacity: 0.82 !important;                /* beats `.terminal-theme .u-fill { opacity: 1 !important }` (terminal-theme.css:486) — measured: a plain 0.82 here read back as 1 */
 }
 
 /* FOCUS RING: unchanged and deliberately NOT transitioned — a ring should snap in with
@@ -706,5 +716,16 @@
   .terminal-theme.staff-v2 .st-sheet .st-t2,
   .terminal-theme.staff-v2 .st-sheet .st-t3 {
     color: var(--st-text-1) !important; /* secondary/disabled promote to primary contrast */
+  }
+  /* NOTE-3 (arc 2 review) — the spec's four lines above are kept verbatim, and these four
+   * finish the job. Section 2 paints DESCENDANTS of a tier class too (`… .st-t2 *` at
+   * (0,4,0)), so without these a <b>, a glyph span or any wrapped child inside a
+   * secondary line stayed at 0.6α while its parent promoted to 0.87α — measured exactly
+   * that split before this block. */
+  .terminal-theme.staff-v2 [data-st-page] .st-t2 *,
+  .terminal-theme.staff-v2 [data-st-page] .st-t3 *,
+  .terminal-theme.staff-v2 .st-sheet .st-t2 *,
+  .terminal-theme.staff-v2 .st-sheet .st-t3 * {
+    color: var(--st-text-1) !important; /* beats section 2's `… .st-t2 *` — equal (0,4,0), declared later */
   }
 }

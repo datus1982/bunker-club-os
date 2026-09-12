@@ -15,6 +15,7 @@ export { InlineNotice } from "./InlineNotice";
 export { FormField } from "./FormField";
 export { ToggleSwitch } from "./ToggleSwitch";
 export { TapTargetCheckbox } from "./TapTargetCheckbox";
+export { prefersReducedMotion, EXIT_MS, EXIT_SLACK_MS } from "./motion";
 /** The v2 token system (Beat 6 PR 1) — the TS mirror of theme/staff-tokens-v2.css.
  *  Colour is applied by the `st-*` CLASSES, never by an inline `color` (the base theme
  *  forces green with !important); these values exist for inline sizes/geometry and for

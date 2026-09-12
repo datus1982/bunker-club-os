@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
+// ONE definition, shared with ConfirmDialog (arc 2 review NOTE-2).
+import { prefersReducedMotion, EXIT_MS, EXIT_SLACK_MS } from "./motion";
 
 /**
  * The v2 two-tier staff navigation (audit §5 #2, mockup views 1–3).
@@ -28,11 +30,6 @@ import { Link, useNavigate } from "react-router-dom";
  * ACTIVE treatment still uses `u-fill u-ink`: the token sheet re-declares both inside
  * the v2 scope, so the fill is the calmed accent and the ink is the ground colour.
  */
-
-/** The drawer exit's duration — must stay equal to the `sv2-drawer-out` timing in
- *  theme/staff-shell-v2.css (§B reuses 140ms for an exit rather than adding a fifth
- *  constant to the motion scale). */
-const DRAWER_EXIT_MS = 140;
 
 export interface SectionNavChild {
   to: string;
@@ -124,10 +121,17 @@ export function SectionNav({
       if (open) setClosing(false); // re-opened mid-exit: drop the exit, the enter re-runs
       return;
     }
+    // NOTE-2 (arc 2 review): under reduced motion the drawer's animation is `none`, so
+    // holding it mounted for the exit window is not a shorter animation — it is a dead
+    // 200ms pause on an inert drawer. Unmount immediately instead, the way ConfirmDialog
+    // already dismisses.
+    if (prefersReducedMotion()) { setClosing(false); return; }
     setClosing(true);
-    // A timer, not `animationend`: under reduced motion the drawer's animation is
-    // `none`, so no event would ever arrive and the drawer would never unmount.
-    const t = window.setTimeout(() => setClosing(false), DRAWER_EXIT_MS + 60);
+    // A timer, not `animationend`: a suppressed or interrupted animation would never fire
+    // the event, and the drawer would never unmount. The CSS holds the final keyframe
+    // (`animation-fill-mode: both`) across the slack, so the drawer cannot snap back to
+    // open while it waits — that was WARN-2.
+    const t = window.setTimeout(() => setClosing(false), EXIT_MS + EXIT_SLACK_MS);
     return () => window.clearTimeout(t);
   }, [open]);
 
