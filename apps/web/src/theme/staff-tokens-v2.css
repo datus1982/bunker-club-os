@@ -100,13 +100,31 @@
  * Beats `.terminal-theme, .terminal-theme *, … { color: var(--terminal-green)
  * !important }` (terminal-theme.css:165-181) — !important is required because that
  * rule carries one; (0,3,0) vs its (0,1,0).
+ *
+ * THE ONE CARVE-OUT — `.signage-slot` (Beat 8 PR 1, inventory §A row 9).
+ * `SignagePreview` renders the REAL board `TemplateView` inside the staff DOM so a
+ * manager edits against a pixel-faithful slot. Its subtree is a TV surface wearing
+ * staff clothes: its amber/green works by REDEFINING `--terminal-green` under
+ * `.signage-slot`, and the blanket below would repaint the whole board white-alpha and
+ * flatten its glow — the preview would stop being the thing it exists to be. So every
+ * `*` leg that could reach into a board excludes that subtree. `terminal-theme.css:550`
+ * already carries the same carve-out for the staff FONT, so this is the second half of
+ * a precedent, not a new idea.
+ *   `:not(:where(…))` and not `:not(…)`: `:where()` contributes ZERO specificity, so
+ * the selectors stay exactly (0,3,0). A bare `:not(.signage-slot)` would raise them to
+ * (0,5,0) and silently out-specify the (0,4,0) tier/utility re-declarations below —
+ * every `u-amber`, `u-red` and `st-t2` label in v2 would have gone white. The guard is
+ * a NO-OP today and provably so: `.signage-slot` is emitted only by `SlotDisplay` (TV
+ * routes, never `.staff-v2`) and `SignagePreview` (only inside `ItemEditor`, only
+ * inside a `SlideOver` — which is why it becomes live the moment PR 5 passes
+ * `variant="v2"`). It is written on BOTH legs so that PR 5 cannot regress either.
  * ────────────────────────────────────────────────────────────────────────── */
 .terminal-theme.staff-v2 [data-st-page],
-.terminal-theme.staff-v2 [data-st-page] *,
+.terminal-theme.staff-v2 [data-st-page] *:not(:where(.signage-slot, .signage-slot *)),
 .terminal-theme.staff-v2 .sv2-nav,
 .terminal-theme.staff-v2 .sv2-nav *,
 .terminal-theme.staff-v2 .st-sheet,
-.terminal-theme.staff-v2 .st-sheet * {
+.terminal-theme.staff-v2 .st-sheet *:not(:where(.signage-slot, .signage-slot *)) {
   color: var(--st-text-1) !important; /* beats .terminal-theme * { color: green !important } */
   /* The phosphor bloom reads as smear on white-alpha text. `.staff-ui.terminal-theme`
    * sets the 2px glow on the ROOT only and it arrives by inheritance, which any direct
@@ -119,9 +137,9 @@
  * an inline declaration beats a plain stylesheet rule — so the hairline needs
  * !important. Harmless on the elements that draw no border; the control rule below is
  * (0,3,1) and the chip/accent rules further down are (0,4,0), so both out-specify it. */
-.terminal-theme.staff-v2 [data-st-page] *,
+.terminal-theme.staff-v2 [data-st-page] *:not(:where(.signage-slot, .signage-slot *)),
 .terminal-theme.staff-v2 .sv2-nav *,
-.terminal-theme.staff-v2 .st-sheet * {
+.terminal-theme.staff-v2 .st-sheet *:not(:where(.signage-slot, .signage-slot *)) {
   border-color: var(--st-hairline) !important; /* beats inline border shorthands + .terminal-theme [class*="border"] { border-color: green !important } */
 }
 
@@ -178,7 +196,10 @@
 .terminal-theme.staff-v2 [data-st-page] input,
 .terminal-theme.staff-v2 [data-st-page] select,
 .terminal-theme.staff-v2 [data-st-page] textarea,
-.terminal-theme.staff-v2 [data-st-page] img,
+/* `img` carries the same `.signage-slot` carve-out as the section-1 blanket: a board
+ * preview's 12 photos are TV art at TV geometry, and 6px corners on them would make the
+ * "pixel-faithful slot" lie. Zero added specificity (see §1) and a no-op today. */
+.terminal-theme.staff-v2 [data-st-page] img:not(:where(.signage-slot *)),
 .terminal-theme.staff-v2 [data-st-page] .st-card,
 .terminal-theme.staff-v2 [data-st-page] .st-panel,
 .terminal-theme.staff-v2 [data-st-page] .st-row,
@@ -792,4 +813,232 @@
   .terminal-theme.staff-v2 .st-sheet .st-t3 * {
     color: var(--st-text-1) !important; /* beats section 2's `… .st-t2 *` — equal (0,4,0), declared later */
   }
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+ * 10. THE SLIDE-OVER SHEET — thickening the `.st-sheet` scope (Beat 8, PR 1).
+ *
+ * WHY THIS SECTION EXISTS (overlay inventory §D finding 1). `.st-sheet` was introduced
+ * in Beat 6 for ONE tenant: `ConfirmDialog`, a title + a sentence + two buttons. So it
+ * only ever grew the rules that shape ARE — panel surface, radius, heading/body/label
+ * roles, the button treatments, focus, the press washes. It is a genuinely THINNER scope
+ * than `[data-st-page]`: it has no rule for a form control's surface, no `.st-card` /
+ * `.st-row` / `.st-box` fill, no `.st-menu`, no `.terminal-border` re-point, no
+ * `.st-callout-*`, no `.st-display`, and only half of the `u-*` and tier re-declarations.
+ *
+ * Beat 8 moves the SIGNAGE SLIDE-OVERS into that scope (Stephen's ruling, 2026-09-12:
+ * every overlay a v2 page can open must render in the v2 tokens). Those bodies are not
+ * dialogs — they are FORMS: `ScheduleEditor`, `EventEditor` and `ItemEditor` between them
+ * use every one of the rules listed above. Adding `st-sheet` to `SlideOver` without them
+ * would have produced a half-tokened drawer (near-black panel, green inputs) that looks
+ * worse than either end state, so the frame and its rules ship together, in ONE PR, INERT.
+ *
+ * EVERY DECLARATION BELOW IS COPIED FROM ITS `[data-st-page]` TWIN — same values, same
+ * `!important`s, same beats-what comment. Nothing here is invented; a sheet and a page
+ * must not drift into two dialects. Rules already written with BOTH selectors upstream
+ * are not repeated here. The `.st-drawer` block at the bottom is the one genuinely new
+ * thing, and it exists because a full-height edge-anchored drawer is a shape
+ * `ConfirmDialog`'s centred `.st-panel` rule cannot express.
+ *
+ * SOURCE ORDER: this section is LAST on purpose, for the same reason section 8 is.
+ *  · `.st-sheet input { background: surface-2 }` must beat the control restatement
+ *    `.st-sheet input { background: transparent !important }` in section 1 — equal
+ *    (0,3,1), so only order decides it. This mirrors exactly how the page leg does it
+ *    (section 4's input surface sits below section 1's restatement).
+ *  · Nothing here is a `:hover`/`:active` pair, so section 8's press rules are untouched.
+ * ────────────────────────────────────────────────────────────────────────── */
+
+/* ── §1 twins: the control family, hover, disabled ──────────────────────────── */
+/* Section 1 re-points only `.st-sheet button` (a dialog has nothing else). A form does. */
+.terminal-theme.staff-v2 .st-sheet input,
+.terminal-theme.staff-v2 .st-sheet select,
+.terminal-theme.staff-v2 .st-sheet textarea,
+.terminal-theme.staff-v2 .st-sheet a {
+  border-color: var(--st-hairline-strong) !important; /* beats .terminal-theme input/select { border-color: green !important } */
+  background: transparent !important;                  /* beats .terminal-theme input… { background: transparent !important } — restated so the surface rule below can out-specify ONE known declaration */
+  transition: background var(--st-motion-hover) var(--st-ease),
+              border-color var(--st-motion-hover) var(--st-ease),
+              opacity var(--st-motion-hover) var(--st-ease);
+}
+.terminal-theme.staff-v2 .st-sheet a:hover {
+  background: rgba(255, 255, 255, 0.06) !important; /* beats .terminal-theme a:hover's green wash */
+  box-shadow: none !important;
+  border-color: var(--st-hairline-strong) !important;
+}
+.terminal-theme.staff-v2 .st-sheet button:disabled:hover {
+  background: transparent !important; /* beats the section-1 hover wash */
+}
+
+/* ── §2 twins: radius ───────────────────────────────────────────────────────── */
+.terminal-theme.staff-v2 .st-sheet input,
+.terminal-theme.staff-v2 .st-sheet select,
+.terminal-theme.staff-v2 .st-sheet textarea,
+/* `img`: same `.signage-slot` carve-out as §1 — a board preview's photos are TV art at
+ * TV geometry, and this rule is the one that would round them. It is why PR 5 can put
+ * `ItemEditor` in a tokened sheet at all. */
+.terminal-theme.staff-v2 .st-sheet img:not(:where(.signage-slot *)),
+.terminal-theme.staff-v2 .st-sheet .st-card,
+.terminal-theme.staff-v2 .st-sheet .st-row,
+.terminal-theme.staff-v2 .st-sheet .st-box,
+.terminal-theme.staff-v2 .st-sheet .st-btn {
+  border-radius: var(--st-radius-control) !important; /* beats .terminal-theme * { border-radius: 0 !important } */
+}
+.terminal-theme.staff-v2 .st-sheet .st-menu {
+  border-radius: var(--st-radius-sheet) !important; /* beats the same base rule */
+}
+
+/* ── §3 twins: the DESCENDANT legs of the tier/accent/utility roles ─────────── */
+/* Section 3 gives the sheet the bare class but not `… *` for most roles. That gap is
+ * invisible in a dialog (one span, no wrappers) and loud in a form, where every label is
+ * a `<div class="st-t2"><b>…</b> …</div>`: the child would stay at the blanket's 0.87α
+ * while its parent dimmed, splitting one line into two inks (the §9 `prefers-contrast`
+ * block already ships the `.st-t2 *` / `.st-t3 *` sheet legs for exactly this reason —
+ * these are their normal-contrast counterparts). */
+.terminal-theme.staff-v2 .st-sheet .st-t2 * { color: var(--st-text-2) !important; }
+.terminal-theme.staff-v2 .st-sheet .st-t3 * { color: var(--st-text-3) !important; }
+.terminal-theme.staff-v2 .st-sheet .st-accent * { color: var(--st-accent) !important; }
+.terminal-theme.staff-v2 .st-sheet .st-amber * { color: var(--st-amber) !important; }
+.terminal-theme.staff-v2 .st-sheet .st-danger * { color: var(--st-danger) !important; }
+/* `.st-live` has no sheet leg at all upstream — the QUEUE panel's `● NOW` row is the
+ * first sheet-borne true-LIVE mark in the app. */
+.terminal-theme.staff-v2 .st-sheet .st-live,
+.terminal-theme.staff-v2 .st-sheet .st-live * { color: var(--st-accent-live) !important; }
+.terminal-theme.staff-v2 .st-sheet .u-red * {
+  color: var(--st-danger) !important; /* beats .terminal-theme .u-red * */
+  text-shadow: none !important;
+}
+.terminal-theme.staff-v2 .st-sheet .u-idle * {
+  color: var(--st-text-3) !important; /* beats .terminal-theme .u-idle (#8a8f8a) */
+  text-shadow: none !important;
+}
+
+/* ── §4 twins: surfaces, form controls, the theme's own frame helpers ───────── */
+.terminal-theme.staff-v2 .st-sheet .st-card,
+.terminal-theme.staff-v2 .st-sheet .st-row {
+  background: var(--st-surface-1) !important; /* beats inline `background:"#020402"` in the shared panels */
+  border: 1px solid var(--st-hairline) !important;
+}
+/* NOT `.st-sheet .st-panel` → surface-2: section 4 already gives the sheet's OWN panel
+ * surface-4, and a nested `.st-panel` inside a drawer inherits that treatment, exactly as
+ * it does inside a ConfirmDialog today. Re-pointing it here would have split one class
+ * into two meanings depending on nesting depth. */
+.terminal-theme.staff-v2 .st-sheet .st-menu {
+  background: var(--st-surface-3) !important;
+  border: 1px solid var(--st-hairline) !important;
+}
+/* A control sits one step up from the card it lives on. LAST-WINS over the section-1
+ * restatement above — see the source-order note in this section's header. */
+.terminal-theme.staff-v2 .st-sheet input,
+.terminal-theme.staff-v2 .st-sheet select,
+.terminal-theme.staff-v2 .st-sheet textarea {
+  background: var(--st-surface-2) !important; /* beats .terminal-theme input… { background: transparent !important } and the restatement above */
+}
+.terminal-theme.staff-v2 .st-sheet input::placeholder,
+.terminal-theme.staff-v2 .st-sheet textarea::placeholder {
+  color: var(--st-text-3) !important; /* beats .terminal-theme input::placeholder { color: green !important } */
+  opacity: 1 !important;              /* beats the same rule's opacity: .5 !important */
+}
+.terminal-theme.staff-v2 .st-sheet input[type="checkbox"] {
+  accent-color: var(--st-accent);
+}
+/* The 2px green rectangle + glow this token sheet exists to retire, and the 2px glowing
+ * green bar beside it. Every signage slide-over body is built out of `.terminal-border`
+ * boxes, so this is the single highest-traffic rule in the section. */
+.terminal-theme.staff-v2 .st-sheet .terminal-border {
+  border-width: 1px;
+  border-color: var(--st-hairline) !important; /* beats .terminal-theme [class*="border"] { border-color: green !important } */
+  box-shadow: none;
+}
+.terminal-theme.staff-v2 .st-sheet .terminal-separator {
+  height: 1px;
+  background: var(--st-hairline);
+  box-shadow: none;
+  margin: var(--st-space-6) 0;
+}
+
+/* ── §5 twin: the Display role ──────────────────────────────────────────────── */
+/* Base first, md: after — within this section order decides, both being (0,4,0). */
+.terminal-theme.staff-v2 .st-sheet .st-display {
+  font-family: var(--st-font-display) !important; /* beats .staff-ui * { font-family: JetBrains !important } */
+  font-size: 28px !important;                     /* beats the forced control/heading sizes */
+  line-height: 1.15;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+@media (min-width: 768px) {
+  .terminal-theme.staff-v2 .st-sheet .st-display { font-size: 34px !important; }
+}
+
+/* ── §6 twins: component shapes ─────────────────────────────────────────────── */
+.terminal-theme.staff-v2 .st-sheet .st-chip.st-accent {
+  background: var(--st-accent-soft) !important;
+  border-color: var(--st-accent-edge) !important;
+}
+.terminal-theme.staff-v2 .st-sheet .st-btn.st-accent,
+.terminal-theme.staff-v2 .st-sheet .st-btn.st-amber {
+  border-color: currentColor !important; /* beats the control border-color rule (0,3,1) */
+}
+.terminal-theme.staff-v2 .st-sheet .st-callout-warn {
+  background: var(--st-amber-soft) !important;
+  border-color: var(--st-amber-edge) !important;
+}
+.terminal-theme.staff-v2 .st-sheet .st-callout-danger {
+  background: var(--st-danger-soft) !important;   /* beats the `.st-card` surface-1 fill above */
+  border-color: var(--st-danger-edge) !important; /* beats the blanket `… * { border-color: hairline !important }` */
+}
+.terminal-theme.staff-v2 .st-sheet .st-card,
+.terminal-theme.staff-v2 .st-sheet .st-row {
+  transition: background var(--st-motion-hover) var(--st-ease),
+              border-color var(--st-motion-hover) var(--st-ease);
+}
+
+/* DELIBERATELY NOT TWINNED — recorded so the omissions read as choices:
+ *  · `st-mount-fade` (§8) on `.st-card` / `.st-row` / `.terminal-border`. The drawer
+ *    already plays its own enter; fading every card inside it at the same time is two
+ *    animations for one event. A sheet arrives as one object.
+ *  · `button[aria-pressed]`'s colour crossfade (§8). §1's control transition, twinned
+ *    above for inputs, already covers background and border on these buttons; adding the
+ *    colour leg is a motion decision for the beat that tokens the day-chips, not a
+ *    surface one.
+ *  · `.st-panel` → surface-2, and `.st-sheet .st-t1` (already upstream). */
+
+/* ─────────────────────────────────────────────────────────────────────────────
+ * 10b. `.st-drawer` — the edge-anchored shape.
+ *
+ * `.st-sheet .st-panel` is written for a CENTRED dialog: all four corners at the sheet
+ * radius, a hairline frame all the way round, and an 8px Y-rise on enter. A `SlideOver`
+ * is none of those things — it is full-height and welded to the right edge, so three of
+ * its four borders are off-screen and rounding its right corners would round nothing a
+ * viewer can see while leaving its left edge square. §B: a directional surface slides
+ * "from whichever edge it is anchored to", which is the X axis here, not Y.
+ *
+ * `.st-drawer-full` is the phone case (the drawer is the whole screen: no edge, no
+ * corners, no frame). It is a JS class rather than a media query ON PURPOSE — the
+ * geometry is chosen by `useIsMobile(640)` in the component, and a duplicated breakpoint
+ * in CSS is a number that can drift from the one that actually decides the layout.
+ * ────────────────────────────────────────────────────────────────────────── */
+.terminal-theme.staff-v2 .st-sheet .st-panel.st-drawer {
+  /* (0,5,0) beats `.st-sheet .st-panel` (0,4,0) on both properties. */
+  border-radius: var(--st-radius-sheet) 0 0 var(--st-radius-sheet) !important;
+  border-width: 0 0 0 1px !important;
+}
+.terminal-theme.staff-v2 .st-sheet .st-panel.st-drawer.st-drawer-full {
+  border-radius: 0 !important;
+  border-width: 0 !important;
+}
+/* ENTER ONLY (the DECISION and its reasoning live in SlideOver.tsx's header). The panel
+ * carries `data-state="entering"`, so the ratified backdrop fade — bound at §8 via
+ * `.st-sheet:has(.st-panel[data-state="entering"])` — applies with no new rule; this one
+ * replaces only the centred 8px Y-rise. 10px is `sv2-drawer-in`'s existing number
+ * (staff-shell-v2.css:265), the app's other edge-anchored drawer: single axis, transform
+ * only, no new constant. (0,6,0) beats §8's `.st-sheet .st-panel[data-state=…]` (0,5,0),
+ * so it wins regardless of source order — declared here for readability, not specificity.
+ * `prefers-reduced-motion` (§9) zeroes it along with everything else: its selector list
+ * includes `.st-sheet *`, which this element matches. */
+@keyframes st-drawer-enter {
+  from { transform: translateX(10px); }
+  to   { transform: translateX(0); }
+}
+.terminal-theme.staff-v2 .st-sheet .st-panel.st-drawer[data-state="entering"] {
+  animation: st-drawer-enter var(--st-motion-sheet) var(--st-ease);
 }
