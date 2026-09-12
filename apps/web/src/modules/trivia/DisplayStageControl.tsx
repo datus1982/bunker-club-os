@@ -1,4 +1,5 @@
 import type { useDisplayState, DisplayState, DisplayStage, Round } from "./useScoring";
+import { cx, useTriviaV2 } from "./triviaV2";
 import { btnGhost, btnActive } from "./ui";
 
 /**
@@ -30,6 +31,7 @@ export function DisplayStageControl({
   /** The manually-loaded round (Scoring's selected round) — the VIDEO/UP NEXT source. */
   loadedRound: Round | null;
 }) {
+  const v2 = useTriviaV2();
   const stage: DisplayStage = state?.display_stage ?? "qa";
   const loadedHasVideo = !!loadedRound?.video_url;
   // The round id to pin as the landscape's loaded round when starting Video / Up Next.
@@ -58,7 +60,7 @@ export function DisplayStageControl({
 
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-      <span style={{ fontSize: 20, opacity: 0.7 }}>DISPLAY:</span>
+      <span className={cx(v2 && "st-label st-t2")} style={{ fontSize: 20, opacity: v2 ? 1 : 0.7 }}>DISPLAY:</span>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }} role="group" aria-label="Landscape display stage">
         {options.map((o) => {
           const active = stage === o.key;
@@ -78,6 +80,10 @@ export function DisplayStageControl({
               disabled={o.disabled}
               aria-pressed={active}
               title={title}
+              // The stage buttons keep their exact set, order and copy (§A2 zero-surprise).
+              // Only the SELECTED treatment is re-expressed: the theme flattens btnActive's
+              // inline fill, so v2 asks for the accent fill by class, classic keeps its own.
+              className={cx(v2 && "st-body", v2 && active && "st-btn-primary")}
               style={{ ...(active ? btnActive : btnGhost), opacity: o.disabled ? 0.4 : 1 }}
             >
               {o.label}

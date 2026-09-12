@@ -1,4 +1,5 @@
 import type { useDisplayState, DisplayState, BoardStage } from "./useScoring";
+import { cx, useTriviaV2 } from "./triviaV2";
 import { btnGhost, btnActive } from "./ui";
 
 /**
@@ -29,6 +30,7 @@ export function BoardStageControl({
   state: DisplayState | null;
   write: ReturnType<typeof useDisplayState>["write"];
 }) {
+  const v2 = useTriviaV2();
   // Mirror the board's own precedence: an END-GAME / final-round show_game_over lights
   // FINAL even though it left board_stage alone (only this control writes board_stage).
   const stage: BoardStage =
@@ -57,7 +59,7 @@ export function BoardStageControl({
 
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-      <span style={{ fontSize: 20, opacity: 0.7 }}>BOARD:</span>
+      <span className={cx(v2 && "st-label st-t2")} style={{ fontSize: 20, opacity: v2 ? 1 : 0.7 }}>BOARD:</span>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }} role="group" aria-label="Public leaderboard stage">
         {options.map((o) => {
           const active = stage === o.key;
@@ -67,6 +69,9 @@ export function BoardStageControl({
               type="button"
               onClick={() => set(o.key)}
               aria-pressed={active}
+              // Same set, order and copy as shipped (§A2); only the selected treatment is
+              // re-expressed for v2, where the theme flattens btnActive's inline fill.
+              className={cx(v2 && "st-body", v2 && active && "st-btn-primary")}
               style={active ? btnActive : btnGhost}
             >
               {o.label}

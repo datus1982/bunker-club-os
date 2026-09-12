@@ -13,6 +13,7 @@ import {
   type Team,
   type useGameScores,
 } from "./useScoring";
+import { cx, useTriviaV2 } from "./triviaV2";
 import { Modal, Field, input, btnGhost, btnPrimary, btnDanger, checkRow } from "./ui";
 import { useIsMobile } from "@/shared/useIsMobile";
 
@@ -66,6 +67,7 @@ export function RoundGrid({
     [teams],
   );
   const narrow = useIsMobile();
+  const v2 = useTriviaV2();
 
   const [cell, setCell] = useState<{ team: Team; round: Round } | null>(null);
 
@@ -96,9 +98,9 @@ export function RoundGrid({
               <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", alignItems: "center", gap: 8 }}>
                 {/* Mirror is the SAME element type (button) so it renders the identical width
                     under the terminal theme — a <span> got a different global font size. */}
-                <button type="button" aria-hidden tabIndex={-1} style={{ ...clearBtnStyle, justifySelf: "end", visibility: "hidden", pointerEvents: "none" }}>CLEAR</button>
+                <button type="button" aria-hidden tabIndex={-1} className={cx(v2 && "st-btn-danger")} style={{ ...clearBtnStyle, justifySelf: "end", visibility: "hidden", pointerEvents: "none" }}>CLEAR</button>
                 <span style={{ justifySelf: "center" }}>TOTAL</span>
-                <button type="button" onClick={onClearAll} style={{ ...clearBtnStyle, justifySelf: "start" }} title="Clear every score in this game">CLEAR</button>
+                <button type="button" onClick={onClearAll} className={cx(v2 && "st-btn-danger")} style={{ ...clearBtnStyle, justifySelf: "start" }} title="Clear every score in this game">CLEAR</button>
               </div>
             </Th>
             {ties.hasTies && <Th>TIE</Th>}
@@ -112,7 +114,7 @@ export function RoundGrid({
             const rank = rk?.rank ?? 0;
             const tiedPos = ties.tiedPosition.get(team.id);
             return (
-              <tr key={team.id} style={{ borderTop: "1px solid var(--terminal-dim, #0f3)" }}>
+              <tr key={team.id} style={{ borderTop: v2 ? "1px solid rgba(255,255,255,0.08)" : "1px solid var(--terminal-dim, #0f3)" }}>
                 <Td>
                   <span style={{ fontWeight: 700 }}>{tiedPos != null ? `${getOrdinal(tiedPos)}=` : getOrdinal(rank)}</span>
                 </Td>
@@ -133,12 +135,17 @@ export function RoundGrid({
                       <button
                         type="button"
                         onClick={() => setCell({ team, round: r })}
+                        className={cx(v2 && "st-mono", v2 && (s ? "st-t1" : "st-t3"))}
                         style={{
                           ...btnGhost,
                           width: "100%",
                           padding: "4px 6px",
                           cursor: "pointer",
                           borderColor: s ? "var(--terminal-green)" : "rgba(0,255,65,0.3)",
+                          // A scored cell sits one elevation step up so the host can see at
+                          // a glance which cells are filled — the same signal the brighter
+                          // green edge carried in classic (which the hairline blanket flattens).
+                          ...(v2 && s ? { background: "var(--st-surface-2)" } : null),
                         }}
                       >
                         {s ? (
@@ -153,7 +160,7 @@ export function RoundGrid({
                     </Td>
                   );
                 })}
-                <Td><span style={{ fontSize: 24, fontWeight: 700 }}>{total}</span></Td>
+                <Td><span className={cx(v2 && "st-mono st-accent")} style={{ fontSize: 24, fontWeight: 700 }}>{total}</span></Td>
                 {ties.hasTies && (
                   <Td>
                     {ties.availableRanks.has(team.id) ? (
@@ -174,8 +181,8 @@ export function RoundGrid({
                 )}
                 <Td>
                   <div style={{ display: "flex", gap: 4, justifyContent: "center" }}>
-                    <button type="button" onClick={() => onEditTeam(team)} style={{ ...btnGhost, ...iconBtn, fontSize: 16 }} title="Edit team">✎</button>
-                    <button type="button" onClick={() => onRemoveTeam(team)} style={{ ...btnDanger, ...iconBtn, fontSize: 16 }} title="Remove from game">🗑</button>
+                    <button type="button" onClick={() => onEditTeam(team)} className={cx(v2 && "st-body")} style={{ ...btnGhost, ...iconBtn, fontSize: 16 }} title="Edit team">✎</button>
+                    <button type="button" onClick={() => onRemoveTeam(team)} className={cx(v2 && "st-btn-danger st-body")} style={{ ...btnDanger, ...iconBtn, fontSize: 16 }} title="Remove from game">🗑</button>
                   </div>
                 </Td>
               </tr>
@@ -183,7 +190,7 @@ export function RoundGrid({
           })}
           <tr>
             <Td colSpan={cols.length + (ties.hasTies ? 5 : 4)} align="left">
-              <button type="button" onClick={onAddTeam} style={{ ...btnGhost, marginTop: 8 }}>+ ADD TEAM TO GAME</button>
+              <button type="button" onClick={onAddTeam} className={cx(v2 && "st-body")} style={{ ...btnGhost, marginTop: 8 }}>+ ADD TEAM TO GAME</button>
             </Td>
           </tr>
         </tbody>
@@ -281,6 +288,7 @@ function ScoreDialog({
     return s;
   });
   const [error, setError] = useState<string | null>(null);
+  const v2 = useTriviaV2();
 
   // Wildcard may be used only if unused, or already on this round (legacy guard).
   const wildcardAllowed = team.wildcard_used_on_round == null || team.wildcard_used_on_round === round.round_number;
@@ -320,9 +328,9 @@ function ScoreDialog({
       onClose={onClose}
       footer={
         <>
-          {existing && <button type="button" onClick={onDelete} style={btnDanger}>CLEAR</button>}
-          <button type="button" onClick={onClose} style={btnGhost}>CANCEL</button>
-          <button type="button" onClick={save} style={btnPrimary}>SAVE</button>
+          {existing && <button type="button" onClick={onDelete} className={cx(v2 && "st-btn-danger st-body")} style={btnDanger}>CLEAR</button>}
+          <button type="button" onClick={onClose} className={cx(v2 && "st-body")} style={btnGhost}>CANCEL</button>
+          <button type="button" onClick={save} className={cx(v2 && "st-btn-primary st-body")} style={btnPrimary}>SAVE</button>
         </>
       }
     >
@@ -341,28 +349,28 @@ function ScoreDialog({
 
         <label style={{ ...checkRow, opacity: wildcardAllowed ? 1 : 0.5 }}>
           <input type="checkbox" checked={useWild} disabled={!wildcardAllowed} onChange={(e) => setUseWild(e.target.checked)} />
-          <span>WILDCARD — double this round's points {team.wildcard_used_on_round != null && team.wildcard_used_on_round !== round.round_number ? `(used on R${team.wildcard_used_on_round})` : ""}</span>
+          <span className={cx(v2 && "st-body st-t1")}>WILDCARD — double this round's points {team.wildcard_used_on_round != null && team.wildcard_used_on_round !== round.round_number ? `(used on R${team.wildcard_used_on_round})` : ""}</span>
         </label>
 
         {bonusRounds.map((b) => (
-          <div key={b.id} className="terminal-border" style={{ padding: 12, display: "flex", flexDirection: "column", gap: 8 }}>
-            <div style={{ fontSize: 20, fontWeight: 700 }}>
+          <div key={b.id} className={cx("terminal-border", v2 && "st-card")} style={{ padding: 12, display: "flex", flexDirection: "column", gap: 8 }}>
+            <div className={cx(v2 && "st-heading st-t1")} style={{ fontSize: 20, fontWeight: 700 }}>
               BONUS: {b.bonus_description || "SPECIAL"} {b.bonus_type === "three-chance" ? `(THREE-CHANCE · ${bonusPointsFor(b)} PTS HERE)` : `(${bonusPointsFor(b)} PTS)`}
             </div>
             <label style={checkRow}>
               <input type="checkbox" checked={correct.has(b.id)} onChange={() => toggleCorrect(b)} />
-              <span>CORRECT — award {bonusPointsFor(b)} pts</span>
+              <span className={cx(v2 && "st-body st-t1")}>CORRECT — award {bonusPointsFor(b)} pts</span>
             </label>
             {b.bonus_type === "three-chance" && (
               <label style={checkRow}>
                 <input type="checkbox" checked={zero.has(b.id)} onChange={() => toggleZero(b)} />
-                <span>INCORRECT — 0 pts (uses up their one guess)</span>
+                <span className={cx(v2 && "st-body st-t1")}>INCORRECT — 0 pts (uses up their one guess)</span>
               </label>
             )}
           </div>
         ))}
 
-        {error && <div className="terminal-border" style={{ padding: 10, fontSize: 20 }}>⚠ {error}</div>}
+        {error && <div className={cx("terminal-border", v2 && "st-callout-danger st-body st-danger")} style={{ padding: 10, fontSize: 20 }}>⚠ {error}</div>}
       </div>
     </Modal>
   );
@@ -371,10 +379,16 @@ function ScoreDialog({
 /* ── table cells ───────────────────────────────────────────────────────────── */
 
 function Th({ children, align = "center" }: { children: React.ReactNode; align?: "center" | "left" }) {
-  return <th style={{ padding: "6px 10px", textAlign: align, borderBottom: "2px solid var(--terminal-green)", fontWeight: 700, whiteSpace: "nowrap" }}>{children}</th>;
+  const v2 = useTriviaV2();
+  // Label role on the header row; the 2px green rule under it becomes the hairline.
+  return <th className={cx(v2 && "st-label st-t2")} style={{ padding: "6px 10px", textAlign: align, borderBottom: v2 ? "1px solid rgba(255,255,255,0.16)" : "2px solid var(--terminal-green)", fontWeight: 700, whiteSpace: "nowrap" }}>{children}</th>;
 }
 function Td({ children, align = "center", colSpan }: { children: React.ReactNode; align?: "center" | "left"; colSpan?: number }) {
-  return <td colSpan={colSpan} style={{ padding: "6px 10px", textAlign: align, verticalAlign: "middle" }}>{children}</td>;
+  const v2 = useTriviaV2();
+  // Mono role on every data cell — `font-variant-numeric: tabular-nums` is the upgrade
+  // §A2 names for a numbers-heavy grid. A class on the <table> could not do this: nothing
+  // inherits font-size here, so the role has to live on the cell that renders the text.
+  return <td colSpan={colSpan} className={cx(v2 && "st-mono st-t1")} style={{ padding: "6px 10px", textAlign: align, verticalAlign: "middle" }}>{children}</td>;
 }
 
 function medal(rank: number): string {
