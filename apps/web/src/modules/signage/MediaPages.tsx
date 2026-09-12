@@ -659,7 +659,12 @@ function ScreenControls({
   return (
     <div style={{ flex: "1 1 100%", minWidth: 0, display: "flex", flexDirection: "column", gap: space.s2 }}>
       <div className="st-label st-t3">SCREEN CONTROLS</div>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
+      {/* `alignItems: flex-start` is load-bearing, not tidiness: ScreenCard's sub-strip is a
+          wrapping flex row whose LINES stretch (align-content), so a control row that
+          inherited the default `stretch` grew its 44px buttons to the line height — measured
+          65px here beside the transport strip's 80px, two control rows at two different
+          heights on the same card. Top-aligned, every button is its own 44px. */}
+      <div style={{ display: "flex", flexWrap: "wrap", alignItems: "flex-start", gap: 7 }}>
         <ControlBtn
           label="Live input"
           // Accent = the action you can take; amber = what is already on (the card's own
@@ -779,7 +784,17 @@ function ControlBtn({
       onClick={onPress}
       aria-pressed={pressed}
       className={cls}
-      style={{ ...cardBtn, flex: "1 1 150px", minWidth: TAP, padding: "9px 12px", fontWeight: primary ? 700 : 400 }}
+      // `whiteSpace: nowrap` for the ConfirmDialog's reason — a verb phrase must stay one
+      // line; without it "Back to rotation" folded inside its flex track and stood 65px tall
+      // beside a 44px neighbour.
+      //
+      // `1 0 auto` is the half that makes nowrap SAFE, and it is measured, not assumed: with
+      // a fixed 150px basis and `minWidth: 44` (which overrides flex's automatic min-content
+      // minimum) the row shrank "Back to rotation" to 158.5px against 158px of text and it
+      // spilled past its own border by a pixel — the exact silent overflow the ConfirmDialog
+      // footer was fixed for. Basis `auto` + shrink 0 means a button is never narrower than
+      // its label; grow 1 still fills the row, and a pair that no longer fits WRAPS.
+      style={{ ...cardBtn, flex: "1 0 auto", minWidth: TAP, padding: "9px 12px", whiteSpace: "nowrap", fontWeight: primary ? 700 : 400 }}
     >
       {label}
     </button>
