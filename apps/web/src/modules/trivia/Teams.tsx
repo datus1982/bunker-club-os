@@ -2,7 +2,9 @@ import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase, VENUE_ID } from "@/shared/supabaseClient";
+import { ConfirmDialog, StaffPageHeader } from "@/shared/ui";
 import { TeamEditorDialog, type EditableTeam } from "./TeamEditorDialog";
+import { cx, useTriviaV2 } from "./triviaV2";
 import { Modal, input, btnGhost, btnPrimary, btnActive, btnDanger } from "./ui";
 
 /**
@@ -100,6 +102,7 @@ function fmtCreated(iso: string): string {
 
 export function Teams() {
   const qc = useQueryClient();
+  const v2 = useTriviaV2();
   const [view, setView] = useState<View>("regulars");
   const [filter, setFilter] = useState("");
   const [adding, setAdding] = useState(false);
@@ -187,16 +190,32 @@ export function Teams() {
   };
 
   return (
-    <div className="terminal-theme" style={{ minHeight: "100vh", padding: "clamp(16px, 4vw, 40px)", fontFamily: "'VT323','Share Tech Mono',monospace" }}>
+    <div
+      {...(v2 ? { "data-st-page": "" } : { className: "terminal-theme" })}
+      style={{ minHeight: "100vh", padding: "clamp(16px, 4vw, 40px)", ...(v2 ? null : { fontFamily: "'VT323','Share Tech Mono',monospace" }) }}
+    >
       <div style={{ maxWidth: 1100, margin: "0 auto" }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12, marginBottom: 8 }}>
-          <h1 style={{ fontSize: "clamp(28px, 7vw, 48px)", fontWeight: 700, letterSpacing: 2 }}>TEAM ROSTER</h1>
-          <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-            <button type="button" onClick={() => setAdding(true)} style={btnPrimary}>+ ADD TEAM</button>
-            <Link to="/dashboard" style={{ fontSize: 24, opacity: 0.8 }}>← DASHBOARD</Link>
+        {v2 ? (
+          <StaffPageHeader
+            eyebrow="GAMES ▸ TRIVIA ▸ TEAMS"
+            title="Team roster"
+            right={
+              <>
+                <button type="button" onClick={() => setAdding(true)} className="st-btn-primary st-body" style={{ ...btnPrimary, minHeight: 44 }}>+ Add team</button>
+                <Link to="/dashboard" className="st-body st-t2" style={{ textDecoration: "none" }}>← Dashboard</Link>
+              </>
+            }
+          />
+        ) : (
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12, marginBottom: 8 }}>
+            <h1 style={{ fontSize: "clamp(28px, 7vw, 48px)", fontWeight: 700, letterSpacing: 2 }}>TEAM ROSTER</h1>
+            <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+              <button type="button" onClick={() => setAdding(true)} style={btnPrimary}>+ ADD TEAM</button>
+              <Link to="/dashboard" style={{ fontSize: 24, opacity: 0.8 }}>← DASHBOARD</Link>
+            </div>
           </div>
-        </div>
-        <div style={{ fontSize: 20, opacity: 0.6, marginBottom: 16 }}>{BLURB[view]}</div>
+        )}
+        <div className={cx(v2 && "st-body st-t2")} style={{ fontSize: 20, opacity: v2 ? 1 : 0.6, marginBottom: 16 }}>{BLURB[view]}</div>
 
         {/* View filter — wraps to one button per line at 390px; counts come from the shared fetch. */}
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
@@ -209,8 +228,8 @@ export function Teams() {
               // The theme forces `background: transparent !important` on buttons, so
               // btnActive's inline fill is flattened; `u-fill u-ink` (0,2,0) is the
               // codebase's documented way to get the black-on-green selected state.
-              className={view === v.key ? "u-fill u-ink" : undefined}
-              style={{ ...(view === v.key ? btnActive : btnGhost), padding: "8px 14px", fontSize: 18 }}
+              className={cx(view === v.key && (v2 ? "st-btn-primary" : "u-fill u-ink"), v2 && "st-body")}
+              style={{ ...(view === v.key ? btnActive : btnGhost), padding: "8px 14px", fontSize: 18, ...(v2 ? { minHeight: 44 } : null) }}
             >
               {v.label} · {teams.isPending ? "…" : counts[v.key]}
             </button>
@@ -220,66 +239,75 @@ export function Teams() {
         <input
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
-          placeholder="FILTER BY NAME…"
+          placeholder={v2 ? "Filter by name…" : "FILTER BY NAME…"}
           aria-label="Filter teams by name"
+          className={cx(v2 && "st-body")}
           style={{ ...input, width: "100%", minHeight: 44, marginBottom: 16 }}
         />
 
         <div className="terminal-separator" style={{ marginBottom: 24 }} />
 
         {teams.isPending ? (
-          <p style={{ fontSize: 28, opacity: 0.7 }}>LOADING TEAMS…</p>
+          <p className={cx(v2 && "st-body st-t2")} style={{ fontSize: 28, opacity: v2 ? 1 : 0.7 }}>{v2 ? "Loading teams…" : "LOADING TEAMS…"}</p>
         ) : teams.isError ? (
-          <p className="u-amber" style={{ fontSize: 24 }}>⚠ COULD NOT LOAD TEAMS.</p>
+          <p className={cx("u-amber", v2 && "st-body")} style={{ fontSize: 24 }}>{v2 ? "⚠ Could not load teams." : "⚠ COULD NOT LOAD TEAMS."}</p>
         ) : rows.length === 0 ? (
-          <p style={{ fontSize: 28, opacity: 0.7 }}>{filter.trim() ? "NO TEAMS MATCH THAT FILTER." : empty[view]}</p>
+          <p className={cx(v2 && "st-body st-t2")} style={{ fontSize: 28, opacity: v2 ? 1 : 0.7 }}>{filter.trim() ? (v2 ? "No teams match that filter." : "NO TEAMS MATCH THAT FILTER.") : empty[view]}</p>
         ) : (
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 16 }}>
             {rows.map((t) => {
               const s = stats.data?.[t.id];
               const played = s?.games ?? 0;
               return (
-                <div key={t.id} className="terminal-border" style={{ padding: 18, display: "flex", flexDirection: "column", gap: 12 }}>
+                <div key={t.id} className={cx("terminal-border", v2 && "st-card")} style={{ padding: 18, display: "flex", flexDirection: "column", gap: 12 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                     {t.logo_url ? (
                       <img src={t.logo_url} alt="" style={{ width: 48, height: 48, objectFit: "cover", border: "1px solid var(--terminal-green)" }} />
                     ) : (
-                      <div style={{ width: 48, height: 48, border: "1px solid var(--terminal-green)", display: "flex", alignItems: "center", justifyContent: "center", opacity: 0.5 }}>★</div>
+                      <div className={cx(v2 && "st-t3")} style={{ width: 48, height: 48, border: "1px solid var(--terminal-green)", display: "flex", alignItems: "center", justifyContent: "center", opacity: v2 ? 1 : 0.5 }}>★</div>
                     )}
-                    <div style={{ fontSize: 28, fontWeight: 700, minWidth: 0, overflowWrap: "anywhere" }}>{t.name}</div>
+                    <div className={cx(v2 && "st-heading st-t1")} style={{ fontSize: 28, fontWeight: 700, minWidth: 0, overflowWrap: "anywhere" }}>{t.name}</div>
                   </div>
 
                   {/* Pruning evidence: how much has this team actually shown up? */}
-                  <div style={{ fontSize: 19, opacity: 0.75, display: "flex", flexDirection: "column", gap: 2 }}>
+                  {/* Every span below carries its own `st-body`: a class on this wrapper
+                      sets only the wrapper's size, because `.terminal-theme *` sizes every
+                      element and inheritance never beats a class rule (PR #89). */}
+                  <div className={cx(v2 && "st-body st-t2")} style={{ fontSize: 19, opacity: v2 ? 1 : 0.75, display: "flex", flexDirection: "column", gap: 2 }}>
                     {stats.isPending ? (
-                      <span>PLAY HISTORY…</span>
+                      <span className={cx(v2 && "st-body st-t2")}>{v2 ? "Play history…" : "PLAY HISTORY…"}</span>
                     ) : stats.isError ? (
                       // A failed stats read must never read as a verdict: without this every
                       // card falls through to played === 0 and wears the loud NEVER PLAYED
                       // chip — the exact signal that invites archiving, false for the whole
                       // roster. Neutral, dimmed, clearly not an answer.
-                      <span style={{ opacity: 0.7 }}>PLAY HISTORY UNAVAILABLE</span>
+                      <span className={cx(v2 && "st-body st-t3")} style={{ opacity: v2 ? 1 : 0.7 }}>{v2 ? "Play history unavailable" : "PLAY HISTORY UNAVAILABLE"}</span>
                     ) : played === 0 ? (
-                      <span className="u-amber" style={{ fontWeight: 700, opacity: 1 }}>NEVER PLAYED</span>
+                      <span className={cx("u-amber", v2 && "st-chip st-label")} style={{ fontWeight: 700, opacity: 1, ...(v2 ? { alignSelf: "flex-start", padding: "3px 10px" } : null) }}>NEVER PLAYED</span>
                     ) : (
-                      <span>
-                        {played} GAME{played === 1 ? "" : "S"}
-                        {s?.last ? ` · LAST ${fmtGameDate(s.last)}` : ""}
+                      <span className={cx(v2 && "st-body st-t2")}>
+                        {played} {v2 ? (played === 1 ? "game" : "games") : `GAME${played === 1 ? "" : "S"}`}
+                        {s?.last ? (v2 ? ` · last ${fmtGameDate(s.last)}` : ` · LAST ${fmtGameDate(s.last)}`) : ""}
                       </span>
                     )}
-                    <span style={{ opacity: 0.7 }}>
-                      ADDED {fmtCreated(t.created_at)}
-                      {t.is_regular ? " · REGULAR" : " · ONE-OFF"}
-                      {t.archived ? " · ARCHIVED" : ""}
+                    <span className={cx(v2 && "st-body st-t3")} style={{ opacity: v2 ? 1 : 0.7 }}>
+                      {v2 ? "Added " : "ADDED "}{fmtCreated(t.created_at)}
+                      {t.is_regular ? (v2 ? " · regular" : " · REGULAR") : (v2 ? " · one-off" : " · ONE-OFF")}
+                      {t.archived ? (v2 ? " · archived" : " · ARCHIVED") : ""}
                     </span>
                   </div>
 
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    <button type="button" onClick={() => setEditing(t)} style={{ ...btnGhost, flex: 1, minWidth: 120 }}>✎ EDIT</button>
+                  {/* ARCHIVE is the destructive control on this card, so in v2 it gets its
+                      own row under a hairline — the D1 pattern already shipped for Users
+                      ("Remove access") — instead of sitting shoulder to shoulder with EDIT. */}
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", ...(v2 ? { flexDirection: "column", alignItems: "stretch" } : null) }}>
+                    <button type="button" onClick={() => setEditing(t)} className={cx(v2 && "st-body")} style={{ ...btnGhost, flex: 1, minWidth: 120, ...(v2 ? { minHeight: 44 } : null) }}>{v2 ? "✎ Edit" : "✎ EDIT"}</button>
                     {t.archived ? (
-                      <button type="button" onClick={() => setRestoring(t)} style={btnGhost}>UN-ARCHIVE</button>
+                      <button type="button" onClick={() => setRestoring(t)} className={cx(v2 && "st-body")} style={{ ...btnGhost, ...(v2 ? { minHeight: 44 } : null) }}>{v2 ? "Un-archive" : "UN-ARCHIVE"}</button>
                     ) : (
-                      <button type="button" onClick={() => setArchiving(t)} style={btnDanger}>ARCHIVE</button>
+                      <div style={v2 ? { borderTop: "1px solid rgba(255,255,255,0.08)", paddingTop: 8, display: "flex" } : undefined}>
+                        <button type="button" onClick={() => setArchiving(t)} className={cx(v2 && "st-btn-danger st-body")} style={{ ...btnDanger, ...(v2 ? { minHeight: 44, flex: 1 } : null) }}>{v2 ? "Archive team" : "ARCHIVE"}</button>
+                      </div>
                     )}
                   </div>
                 </div>
@@ -292,7 +320,35 @@ export function Teams() {
       {adding && <TeamEditorDialog mode="add" onClose={() => setAdding(false)} onSaved={() => { refresh(); setAdding(false); }} />}
       {editing && <TeamEditorDialog mode="edit" initial={editing} onClose={() => setEditing(null)} onSaved={() => { refresh(); setEditing(null); }} />}
 
-      {archiving && (
+      {/* v2 routes both confirms through the shared ConfirmDialog — verb-named buttons,
+          CANCEL focused on mount, red spent only on the destructive half (D1). Classic
+          keeps its own Modal confirms untouched. */}
+      {archiving && v2 && (
+        <ConfirmDialog
+          danger
+          busy={setArchived.isPending}
+          title={`Archive ${archiving.name}?`}
+          confirmLabel="Archive team"
+          cancelLabel="Keep team"
+          onCancel={() => setArchiving(null)}
+          onConfirm={() => setArchived.mutate({ id: archiving.id, archived: true })}
+          body="They'll be hidden from the roster, from every board and from check-in. Their game history is preserved, and you can un-archive them from the ARCHIVED view."
+        />
+      )}
+
+      {restoring && v2 && (
+        <ConfirmDialog
+          busy={setArchived.isPending}
+          title={`Bring ${restoring.name} back?`}
+          confirmLabel="Un-archive team"
+          cancelLabel="Leave archived"
+          onCancel={() => setRestoring(null)}
+          onConfirm={() => setArchived.mutate({ id: restoring.id, archived: false })}
+          body={`They'll be visible to hosts and on check-in again${restoring.is_regular ? ", in the REGULARS view." : ", in the ONE-OFFS view."}`}
+        />
+      )}
+
+      {archiving && !v2 && (
         <Modal
           title="ARCHIVE TEAM"
           onClose={() => setArchiving(null)}
@@ -307,7 +363,7 @@ export function Teams() {
         </Modal>
       )}
 
-      {restoring && (
+      {restoring && !v2 && (
         <Modal
           title="UN-ARCHIVE TEAM"
           onClose={() => setRestoring(null)}

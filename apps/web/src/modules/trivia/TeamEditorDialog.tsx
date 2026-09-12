@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { supabase, VENUE_ID } from "@/shared/supabaseClient";
 import { log } from "@/shared/log";
+import { cx, useTriviaV2 } from "./triviaV2";
 import { Modal, Field, input, btnPrimary, btnGhost, btnDanger, checkRow } from "./ui";
 
 /**
@@ -72,6 +73,7 @@ export function TeamEditorDialog({
    */
   onUseExisting?: (team: NamedTeam) => void;
 }) {
+  const v2 = useTriviaV2();
   const [name, setName] = useState(initial?.name ?? "");
   const [isRegular, setIsRegular] = useState(initial?.is_regular ?? false);
   const [logoFile, setLogoFile] = useState<File | null>(null);
@@ -257,7 +259,7 @@ export function TeamEditorDialog({
       footer={
         <>
           <button type="button" onClick={onClose} style={btnGhost}>CANCEL</button>
-          <button type="button" onClick={save} disabled={saving || checking || !name.trim()} style={btnPrimary}>
+          <button type="button" onClick={save} disabled={saving || checking || !name.trim()} className={cx(v2 && "st-btn-primary st-body")} style={btnPrimary}>
             {saving ? "SAVING…" : checking ? "CHECKING…" : mode === "add" ? "CREATE" : "SAVE"}
           </button>
         </>
@@ -296,7 +298,7 @@ export function TeamEditorDialog({
                   inputMode="numeric"
                   style={{ ...input, width: 140 }}
                 />
-                <button type="button" onClick={() => setPin(false)} disabled={pinBusy} style={btnPrimary}>
+                <button type="button" onClick={() => setPin(false)} disabled={pinBusy} className={cx(v2 && "st-btn-primary st-body")} style={btnPrimary}>
                   {hasPin ? "RESET PIN" : "SET PIN"}
                 </button>
                 {hasPin && (
@@ -337,7 +339,7 @@ export function TeamEditorDialog({
                         player {r.profile_id.slice(0, 6)}
                         <span style={{ opacity: 0.6, marginLeft: 8 }}>{relTime(r.created_at)}</span>
                       </span>
-                      <button type="button" onClick={() => approveRequest(r.id)} disabled={reqBusy === r.id} style={btnPrimary}>
+                      <button type="button" onClick={() => approveRequest(r.id)} disabled={reqBusy === r.id} className={cx(v2 && "st-btn-primary st-body")} style={btnPrimary}>
                         {reqBusy === r.id ? "…" : "APPROVE"}
                       </button>
                     </div>
@@ -351,7 +353,7 @@ export function TeamEditorDialog({
           </>
         )}
 
-        {error && <div className="terminal-border" style={{ padding: 10, fontSize: 20 }}>⚠ {error}</div>}
+        {error && <div className={cx("terminal-border", v2 && "st-callout-danger st-body st-danger")} style={{ padding: 10, fontSize: 20 }}>⚠ {error}</div>}
       </div>
     </Modal>
 
@@ -365,9 +367,9 @@ export function TeamEditorDialog({
           <>
             <button type="button" onClick={renameEdit} style={btnGhost}>RENAME / EDIT</button>
             {dup.active ? (
-              <button type="button" onClick={useExisting} style={btnPrimary}>USE EXISTING</button>
+              <button type="button" onClick={useExisting} className={cx(v2 && "st-btn-primary st-body")} style={btnPrimary}>USE EXISTING</button>
             ) : (
-              <button type="button" onClick={createAnyway} style={btnDanger}>CREATE ANYWAY</button>
+              <button type="button" onClick={createAnyway} className={cx(v2 && "st-btn-danger st-body")} style={btnDanger}>CREATE ANYWAY</button>
             )}
           </>
         }

@@ -4,6 +4,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase, VENUE_ID } from "@/shared/supabaseClient";
 import { log } from "@/shared/log";
 import { useIsMobile } from "@/shared/useIsMobile";
+import { StaffPageHeader } from "@/shared/ui";
+import { cx, useTriviaV2 } from "./triviaV2";
 
 /**
  * Create Game — host tool (docs/01 route map, host+; /game/setup). Ported from the
@@ -171,18 +173,32 @@ export function GameSetup() {
 
   const teams = regularTeams.data ?? [];
   const narrow = useIsMobile();
+  const v2 = useTriviaV2();
 
   return (
-    <div className="terminal-theme" style={{ minHeight: "100vh", padding: "clamp(16px, 4vw, 40px)", fontFamily: "'VT323','Share Tech Mono',monospace" }}>
+    <div
+      {...(v2 ? { "data-st-page": "" } : { className: "terminal-theme" })}
+      style={{ minHeight: "100vh", padding: "clamp(16px, 4vw, 40px)", ...(v2 ? null : { fontFamily: "'VT323','Share Tech Mono',monospace" }) }}
+    >
       <div style={{ maxWidth: 820, margin: "0 auto" }}>
-        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 8 }}>
-          <h1 style={{ fontSize: 44, fontWeight: 700, letterSpacing: 2 }}>CREATE GAME</h1>
-          <button type="button" onClick={() => navigate("/dashboard")} style={btnGhost}>← DASHBOARD</button>
-        </div>
-        <div className="terminal-separator" style={{ marginBottom: 24 }} />
+        {v2 ? (
+          <StaffPageHeader
+            eyebrow="GAMES ▸ TRIVIA ▸ GAME SETUP"
+            title="Create a game"
+            right={<button type="button" onClick={() => navigate("/dashboard")} className="st-body" style={{ ...btnGhost, minHeight: 44 }}>← Dashboard</button>}
+          />
+        ) : (
+          <>
+            <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 8 }}>
+              <h1 style={{ fontSize: 44, fontWeight: 700, letterSpacing: 2 }}>CREATE GAME</h1>
+              <button type="button" onClick={() => navigate("/dashboard")} style={btnGhost}>← DASHBOARD</button>
+            </div>
+            <div className="terminal-separator" style={{ marginBottom: 24 }} />
+          </>
+        )}
 
         <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 24 }}>
-          <Section title="GAME SETTINGS">
+          <Section title={v2 ? "Game settings" : "GAME SETTINGS"}>
             <Row>
               <Field label="GAME DATE *">
                 <input type="date" value={gameDate} onChange={(e) => setGameDate(e.target.value)} required style={input} />
@@ -201,22 +217,22 @@ export function GameSetup() {
             </Row>
             <label style={checkRow}>
               <input type="checkbox" checked={isPlayoff} onChange={(e) => setIsPlayoff(e.target.checked)} />
-              <span>PLAYOFF GAME (excluded from regular-season standings)</span>
+              <span className={cx(v2 && "st-body st-t1")}>{v2 ? "Playoff game (excluded from regular-season standings)" : "PLAYOFF GAME (excluded from regular-season standings)"}</span>
             </label>
-            <div style={{ fontSize: 20, opacity: 0.6 }}>
+            <div className={cx(v2 && "st-body st-t2")} style={{ fontSize: 20, opacity: v2 ? 1 : 0.6 }}>
               The last round is the FINAL round. Start time sets the holding-screen countdown.
             </div>
           </Section>
 
           <Section
-            title="BONUS QUESTIONS"
-            action={<button type="button" onClick={addBonus} style={btnGhost}>+ ADD BONUS</button>}
+            title={v2 ? "Bonus questions" : "BONUS QUESTIONS"}
+            action={<button type="button" onClick={addBonus} className={cx(v2 && "st-body")} style={{ ...btnGhost, ...(v2 ? { minHeight: 44 } : null) }}>{v2 ? "+ Add bonus" : "+ ADD BONUS"}</button>}
           >
             {bonusQuestions.length === 0 ? (
-              <div style={{ fontSize: 22, opacity: 0.6 }}>No bonus questions added.</div>
+              <div className={cx(v2 && "st-body st-t2")} style={{ fontSize: 22, opacity: v2 ? 1 : 0.6 }}>No bonus questions added.</div>
             ) : (
               bonusQuestions.map((b) => (
-                <div key={b.id} className="terminal-border" style={{ padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
+                <div key={b.id} className={cx("terminal-border", v2 && "st-card")} style={{ padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
                   <div style={{ display: "flex", gap: 12 }}>
                     <input
                       placeholder="Bonus description"
@@ -224,7 +240,10 @@ export function GameSetup() {
                       onChange={(e) => patchBonus(b.id, { description: e.target.value })}
                       style={{ ...input, flex: 1 }}
                     />
-                    <button type="button" onClick={() => removeBonus(b.id)} style={btnGhost}>✕</button>
+                    {/* Removes an UNSAVED row from local form state — nothing is written
+                        yet, so this deliberately does NOT get the ConfirmDialog treatment
+                        (there is nothing to undo, and a sheet on every ✕ is noise). */}
+                    <button type="button" onClick={() => removeBonus(b.id)} aria-label="Remove this bonus question" className={cx(v2 && "st-btn-danger st-body")} style={{ ...btnGhost, ...(v2 ? { minHeight: 44, minWidth: 44 } : null) }}>✕</button>
                   </div>
                   <label style={checkRow}>
                     <input
@@ -236,13 +255,13 @@ export function GameSetup() {
                           : { bonusType: "standard", roundNumbers: undefined, pointsPerRound: undefined })
                       }
                     />
-                    <span>THREE-CHANCE (one answer across 3 rounds, decreasing points)</span>
+                    <span className={cx(v2 && "st-body st-t1")}>{v2 ? "Three-chance (one answer across 3 rounds, decreasing points)" : "THREE-CHANCE (one answer across 3 rounds, decreasing points)"}</span>
                   </label>
                   {b.bonusType === "three-chance" ? (
                     <div style={{ display: "grid", gridTemplateColumns: narrow ? "minmax(0, 1fr)" : "minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr)", gap: 10 }}>
                       {[0, 1, 2].map((idx) => (
                         <div key={idx} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                          <span style={{ fontSize: 18, opacity: 0.7 }}>OPTION {idx + 1}</span>
+                          <span className={cx(v2 && "st-label st-t2")} style={{ fontSize: 18, opacity: v2 ? 1 : 0.7 }}>OPTION {idx + 1}</span>
                           <input type="number" min={1} max={numRounds} placeholder="Round #" value={b.roundNumbers?.[idx] ?? ""} onChange={(e) => { const r = [...(b.roundNumbers ?? [1, 2, 3])]; r[idx] = parseInt(e.target.value) || 1; patchBonus(b.id, { roundNumbers: r }); }} style={input} />
                           <input type="number" min={1} placeholder="Pts" value={b.pointsPerRound?.[idx] ?? ""} onChange={(e) => { const p = [...(b.pointsPerRound ?? [5, 4, 3])]; p[idx] = parseInt(e.target.value) || 1; patchBonus(b.id, { pointsPerRound: p }); }} style={input} />
                         </div>
@@ -263,18 +282,18 @@ export function GameSetup() {
             )}
           </Section>
 
-          <Section title="REGULAR TEAMS (OPTIONAL)">
-            <div style={{ fontSize: 20, opacity: 0.6, marginBottom: 8 }}>
+          <Section title={v2 ? "Regular teams (optional)" : "REGULAR TEAMS (OPTIONAL)"}>
+            <div className={cx(v2 && "st-body st-t2")} style={{ fontSize: 20, opacity: v2 ? 1 : 0.6, marginBottom: 8 }}>
               Pre-select regulars; walk-ups join at check-in (Phase 2).
             </div>
             {regularTeams.isPending ? (
-              <div style={{ fontSize: 22, opacity: 0.6 }}>LOADING…</div>
+              <div className={cx(v2 && "st-body st-t2")} style={{ fontSize: 22, opacity: v2 ? 1 : 0.6 }}>{v2 ? "Loading…" : "LOADING…"}</div>
             ) : teams.length === 0 ? (
-              <div style={{ fontSize: 22, opacity: 0.6 }}>No regular teams yet.</div>
+              <div className={cx(v2 && "st-body st-t2")} style={{ fontSize: 22, opacity: v2 ? 1 : 0.6 }}>No regular teams yet.</div>
             ) : (
               <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: 8 }}>
                 {teams.map((t) => (
-                  <label key={t.id} className="terminal-border" style={{ ...checkRow, padding: "8px 12px" }}>
+                  <label key={t.id} className={cx("terminal-border", v2 && "st-row")} style={{ ...checkRow, padding: "8px 12px" }}>
                     <input
                       type="checkbox"
                       checked={selectedTeams.has(t.id)}
@@ -286,20 +305,20 @@ export function GameSetup() {
                         })
                       }
                     />
-                    <span>{t.name}</span>
+                    <span className={cx(v2 && "st-body st-t1")}>{t.name}</span>
                   </label>
                 ))}
               </div>
             )}
           </Section>
 
-          {error && <div className="terminal-border" style={{ padding: 12, fontSize: 22 }}>⚠ {error}</div>}
+          {error && <div className={cx("terminal-border", v2 && "st-callout-danger st-body st-danger")} style={{ padding: 12, fontSize: 22 }}>⚠ {error}</div>}
 
           <div style={{ display: "flex", gap: 16 }}>
-            <button type="submit" disabled={createGame.isPending} style={{ ...btnPrimary, flex: 1 }}>
-              {createGame.isPending ? "CREATING…" : "CREATE GAME"}
+            <button type="submit" disabled={createGame.isPending} className={cx(v2 && "st-btn-primary st-body")} style={{ ...btnPrimary, flex: 1, ...(v2 ? { minHeight: 44 } : null) }}>
+              {v2 ? (createGame.isPending ? "Creating…" : "Create game") : (createGame.isPending ? "CREATING…" : "CREATE GAME")}
             </button>
-            <button type="button" onClick={() => navigate("/dashboard")} style={btnGhost}>CANCEL</button>
+            <button type="button" onClick={() => navigate("/dashboard")} className={cx(v2 && "st-body")} style={{ ...btnGhost, ...(v2 ? { minHeight: 44 } : null) }}>{v2 ? "Cancel" : "CANCEL"}</button>
           </div>
         </form>
       </div>
@@ -310,10 +329,13 @@ export function GameSetup() {
 /* ── Small presentational helpers ──────────────────────────────────────────── */
 
 function Section({ title, action, children }: { title: string; action?: React.ReactNode; children: React.ReactNode }) {
+  const v2 = useTriviaV2();
   return (
-    <div className="terminal-border" style={{ padding: 20, display: "flex", flexDirection: "column", gap: 12 }}>
+    <div className={cx("terminal-border", v2 && "st-panel")} style={{ padding: 20, display: "flex", flexDirection: "column", gap: 12 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <h2 style={{ fontSize: 28, fontWeight: 700, letterSpacing: 1 }}>{title}</h2>
+        {/* `.terminal-theme h2 { font-size: 2rem !important }` beats the inline 28px, so
+            the Heading role has to be claimed by class in v2. */}
+        <h2 className={cx(v2 && "st-heading st-t1")} style={{ fontSize: 28, fontWeight: 700, letterSpacing: 1 }}>{title}</h2>
         {action}
       </div>
       {children}
@@ -329,9 +351,10 @@ function Row({ children }: { children: React.ReactNode }) {
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  const v2 = useTriviaV2();
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-      <span style={{ fontSize: 20, opacity: 0.8 }}>{label}</span>
+      <span className={cx(v2 && "st-label st-t2")} style={{ fontSize: 20, opacity: v2 ? 1 : 0.8 }}>{label}</span>
       {children}
     </div>
   );
