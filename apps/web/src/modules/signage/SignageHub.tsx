@@ -21,6 +21,7 @@ import {
 // Hub internals shared with the v2 view + the slide-over host (Beat 3 — verbatim moves).
 import {
   AssetCard, TransportRow, cardBtn, miniBtn, rotationSummary, seedFromEvent,
+  groupItemsBySlot, makeNextPosition,
   makeEffFor, makeModeFor, makeOverrideHoldFor, makeProgramLabelFor, makeTakeoverMessageFor,
   makeTransportPlaylistFor, playlistNameMap,
   useEventRowActions, type Overlay, type SignageHubContext,
@@ -57,6 +58,11 @@ import "./signage.css";
  * v2 nav pointed at /signage#… instead of new routes). `library` / `playlists` are now
  * BOOKMARK COMPATIBILITY in v2 only — Beat 4 gave them real /media/* pages and the effect
  * below forwards them there; classic still expands the section named here.
+ *
+ * DECISION (Beat 6 PR 4): BAR OPS ▸ SLIDES gets NO entry here. The asset section never had
+ * an anchor — no nav link, no bookmark and no `#assets` key ever existed — so there is
+ * nothing to forward to /signage/slides, and adding the key would give classic a behaviour
+ * (expand-on-#assets) it does not have today.
  */
 const HASH_SECTIONS: Record<string, string | null> = {
   screens: null,
@@ -163,21 +169,10 @@ export function SignageHub({ openQueueSlug }: { openQueueSlug?: string }) {
       ? liveGame.game_date
       : null;
 
-  const itemsBySlot = useMemo(() => {
-    const m = new Map<string, AdminItem[]>();
-    for (const it of items) {
-      if (!it.slot_id) continue;
-      if (!m.has(it.slot_id)) m.set(it.slot_id, []);
-      m.get(it.slot_id)!.push(it);
-    }
-    for (const list of m.values()) list.sort((a, b) => a.sort_order - b.sort_order);
-    return m;
-  }, [items]);
-
-  const nextPosition = (slotId: string) => {
-    const list = itemsBySlot.get(slotId) ?? [];
-    return list.length ? Math.max(...list.map((i) => i.sort_order)) + 1 : 0;
-  };
+  // Both bodies moved VERBATIM into signageHubShared (Beat 6 PR 4) so BAR OPS ▸ SLIDES
+  // computes a new slide's queue position from the same definition this page does.
+  const itemsBySlot = useMemo(() => groupItemsBySlot(items), [items]);
+  const nextPosition = makeNextPosition(itemsBySlot);
 
   const invalidateItems = () => {
     qc.invalidateQueries({ queryKey: ["signage-admin", "items"] });
@@ -310,7 +305,7 @@ export function SignageHub({ openQueueSlug }: { openQueueSlug?: string }) {
     const ctx: SignageHubContext = {
       slots, slotsLoading: slotsQ.isLoading,
       assets, assetsLoading: assetsQ.isLoading,
-      itemsBySlot, toastRows, tmap, takeovers,
+      itemsBySlot, tmap, takeovers,
       events, pastEvents, eventsLoading: eventsQ.isLoading,
       featured: featuredItems(toastRows),
       now, venueClock, canEvents,
@@ -319,7 +314,7 @@ export function SignageHub({ openQueueSlug }: { openQueueSlug?: string }) {
       overlay, setOverlay,
       overflowSlot,
       toggleOverflow: (slotId) => setOverflowSlot((cur) => (cur === slotId ? null : slotId)),
-      openAsset, invalidateEvents,
+      invalidateEvents,
     };
     return <SignageHubV2 ctx={ctx} overlays={overlays} />;
   }

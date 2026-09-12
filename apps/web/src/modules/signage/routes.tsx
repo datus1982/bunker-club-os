@@ -4,6 +4,10 @@
 export { SignageHub } from "./SignageHub";
 export { EditRotation } from "./EditRotation";
 
+// BAR OPS ▸ SLIDES (UX overhaul Beat 6 PR 4) — the hub's asset library as its own page;
+// v2 only, classic redirects back to /signage where the library still lives inline.
+export { Slides } from "./SlidesPage";
+
 // MEDIA promoted to its own top-level section (UX overhaul Beat 4) — v2 only; on a classic
 // device each of these redirects to the hub anchor that still holds that surface. They ride
 // THIS chunk deliberately: they mount the hub's own media panels and slide-overs.

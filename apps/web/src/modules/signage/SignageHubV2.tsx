@@ -5,15 +5,12 @@ import {
   type StatusTone,
 } from "@/shared/ui";
 import { useIsMobile } from "@/shared/useIsMobile";
-import { screenHealth, type AdminItem, type AdminSlot, type AssetWithPlacements } from "./useSignageAdmin";
-import { itemAirsToday, recurrenceChipLabel, type SlotMode } from "./useSignage";
-import {
-  MONO, CollapsibleSection, CopyKioskButton, EventKindBadge, ghost,
-  summarize, templateBadge,
-} from "./signageAdminShared";
+import { screenHealth, type AdminSlot } from "./useSignageAdmin";
+import type { SlotMode } from "./useSignage";
+import { MONO, CopyKioskButton, EventKindBadge, ghost } from "./signageAdminShared";
 import { schedulePhrase, statusInfo, type EventRow } from "./useEventsAdmin";
 import {
-  AssetCard, TransportRow, assetSubtitle, cardBtn, miniBtn, rotationSummary, seedFromEvent, slotCode,
+  TransportRow, cardBtn, miniBtn, rotationSummary, seedFromEvent,
   useEventRowActions, type SignageHubContext,
 } from "./signageHubShared";
 import "./signage.css";
@@ -42,13 +39,16 @@ import "./signage.css";
  * the library used to sit so the move is visible rather than silent. CLASSIC still renders
  * MediaSection inside the hub, unchanged — RULE #1.
  *
- * BEAT 6 (PR 1) — token pass, CHROME AND CASE ONLY. The page root carries
- * `data-st-page` (the token sheet's opt-in hook), headings/notes move onto the type
- * roles, and the loading/help lines onto the text tiers. The ASSET LIBRARY section is
- * deliberately UNTOUCHED in structure: folding it into MEDIA ▸ LIBRARY is letter B,
- * PR 4, and it is HELD on code note N1 (the hub's library is signage_items TV SLIDES,
- * not the media_files video catalog). Nothing about what a card computes changed — the
- * hub/TV parity invariant above still holds line for line.
+ * BEAT 6 (PR 1) — token pass, CHROME AND CASE ONLY: the page root carries `data-st-page`
+ * (the token sheet's opt-in hook), headings/notes move onto the type roles, and the
+ * loading/help lines onto the text tiers.
+ *
+ * BEAT 6 (PR 4) — THE ASSET LIBRARY IS GONE from this view too (letter B(a)): the slides
+ * are BAR OPS ▸ SLIDES now (`SlidesPage.tsx` — same signage_items rows, same ItemEditor,
+ * same slot_queue placement), and the same say-where-it-went notice stands in its place.
+ * This page is SCREEN CONTROL. CLASSIC still renders the library inline, unchanged.
+ * Nothing about what a card computes changed in either beat — the hub/TV parity invariant
+ * above still holds line for line.
  *
  * Sizes are inline px: nothing inherits font-size under `.terminal-theme` (PR #89).
  */
@@ -118,53 +118,28 @@ export function SignageHubV2({ ctx, overlays }: { ctx: SignageHubContext; overla
           )}
         </div>
 
-        {/* ── B · ASSET LIBRARY ──────────────────────────────────────────── */}
-        <CollapsibleSection
-          style={{ marginTop: 32 }}
-          sectionKey="assets"
-          title="ASSET LIBRARY"
-          summary={ctx.assetsLoading ? "…" : `${ctx.assets.length} asset${ctx.assets.length === 1 ? "" : "s"}`}
-          defaultOpen={true}
-          headerRight={
-            <button type="button" onClick={() => ctx.setOverlay({ kind: "asset", editing: null, preset: null, queueOnSlotId: null })} className="st-btn st-body" style={{ ...ghost, fontWeight: 700 }}>+ New asset</button>
-          }
-        >
-          {ctx.assetsLoading ? (
-            <div className="st-body st-t2">Loading assets…</div>
-          ) : ctx.assets.length === 0 ? (
-            <EmptyState
-              eyebrow="EMPTY LIBRARY"
-              message="No assets yet — build one and it becomes available to every screen."
-              actionLabel="+ NEW ASSET"
-              onAction={() => ctx.setOverlay({ kind: "asset", editing: null, preset: null, queueOnSlotId: null })}
-            />
-          ) : narrow ? (
-            // Phone: one tappable row per asset. The 200px-minimum thumbnail grid is a
-            // desktop shape — on a 390px screen it becomes a single column of cards that
-            // scrolls forever, and the thumbnail tells a manager less than the name does.
-            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              {ctx.assets.map((a) => <AssetListRow key={a.asset.id} a={a} ctx={ctx} />)}
-            </div>
-          ) : (
-            // Desktop: the ratified thumbnail grid (D3) is kept — it reads correctly at
-            // 1280 and the picture IS the information there.
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(min(100%,200px),1fr))", gap: 12 }}>
-              {ctx.assets.map((a) => (
-                <AssetCard key={a.asset.id} a={a} slots={ctx.slots} toastRows={ctx.toastRows} tmap={ctx.tmap} now={ctx.now} venueClock={ctx.venueClock} onOpen={() => ctx.openAsset(a)} />
-              ))}
-            </div>
-          )}
-        </CollapsibleSection>
-
-        {/* ── B2 · MEDIA — promoted to its own section (Beat 4) ──────────── */}
-        {/* Say where it went (audit finding #6's pattern) rather than silently dropping a
-            section the manager is used to seeing here. CLASSIC still renders MediaSection. */}
-        <InlineNotice
-          style={{ marginTop: 32 }}
-          message="MEDIA has its own section now — LIBRARY · PLAYLISTS · SCREENS & PROGRAMS."
-          to="/media/library"
-          label="GO TO MEDIA →"
-        />
+        {/* ── B · WHERE THINGS WENT ─────────────────────────────────────── */}
+        {/* Two sections have left this page — the media library in Beat 4, the slide library
+            in Beat 6 PR 4 — and each says where it went rather than silently disappearing on
+            a manager who knows it was here. They are ONE block, not a stack: two notices each
+            opening their own 32px section gap read as two unrelated announcements interrupting
+            the page twice. The group takes the section gap; the lines inside sit at the row
+            gap. The slide count comes from the SAME query the SLIDES page reads, so the number
+            here and the number there cannot drift. CLASSIC still renders both sections inline. */}
+        <div style={{ marginTop: 32, display: "flex", flexDirection: "column", gap: 8 }}>
+          <InlineNotice
+            message={ctx.assetsLoading
+              ? "Slides — build and edit the cards the screens rotate."
+              : `Slides (${ctx.assets.length}) — build and edit the cards the screens rotate.`}
+            to="/signage/slides"
+            label="MANAGE SLIDES →"
+          />
+          <InlineNotice
+            message="MEDIA has its own section now — LIBRARY · PLAYLISTS · SCREENS & PROGRAMS."
+            to="/media/library"
+            label="GO TO MEDIA →"
+          />
+        </div>
 
         {/* ── C · RUNNING & UPCOMING (events) ────────────────────────────── */}
         <div id="events" style={{ marginTop: 32 }}>
@@ -407,35 +382,6 @@ function modeTone(mode: SlotMode, programActive: boolean): StatusTone {
   if (mode === "takeover") return "alert";
   if (mode === "game" || mode === "event" || programActive) return "warn";
   return "idle";
-}
-
-/* ── B · asset row (phone) ──────────────────────────────────────────────────── */
-function AssetListRow({ a, ctx }: { a: AssetWithPlacements; ctx: SignageHubContext }) {
-  const item = a.asset as unknown as AdminItem;
-  const dayLabel = recurrenceChipLabel(item.recurrence);
-  const offToday = !!dayLabel && !itemAirsToday(item, ctx.now, ctx.venueClock);
-  const placed = new Set(a.placements.map((p) => p.slot_id));
-  return (
-    <ListRow
-      // Stacked: this row only renders on a phone, and side-by-side the meta cell gets
-      // squeezed to a few characters — the chips need a line of their own.
-      stacked
-      onClick={() => ctx.openAsset(a)}
-      title={summarize(item, ctx.toastRows)}
-      sub={assetSubtitle(item, ctx.tmap)}
-      meta={
-        <>
-          <StatusChip tone="idle" label={templateBadge(item.template)} />
-          {dayLabel && <StatusChip tone="warn" label={`↻ ${dayLabel}${offToday ? " · OFF TODAY" : ""}`} />}
-          {a.placements.length === 0
-            ? <StatusChip tone="off" label="IDLE" />
-            : ctx.slots.filter((s) => placed.has(s.id)).map((s) => (
-                <StatusChip key={s.id} tone="live" title={`${s.name} — queued`} label={slotCode(s)} />
-              ))}
-        </>
-      }
-    />
-  );
 }
 
 /* ── C · event row ──────────────────────────────────────────────────────────── */

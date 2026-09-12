@@ -76,6 +76,9 @@ const DrinksAdmin = namedLazy(leaderboardRoutes, "DrinksAdmin");
 // Signage hub (consolidated — Events & Broadcast tabs folded in) + legacy queue redirect.
 const SignageHub = namedLazy(signageRoutes, "SignageHub");
 const EditRotation = namedLazy(signageRoutes, "EditRotation");
+// BAR OPS ▸ SLIDES (Beat 6 PR 4) — same staff chunk as the hub: it mounts the hub's own
+// ItemEditor and reads the hub's own queries. NEVER the display chunk.
+const Slides = namedLazy(signageRoutes, "Slides");
 
 // The bar TVs. Own chunk, own module — nothing staff-facing may join it.
 const SlotDisplay = namedLazy(signageDisplayRoutes, "SlotDisplay");
@@ -215,6 +218,10 @@ export function App() {
 
         {/* Module surfaces — each gated on its own grant; seasons stays admin-only */}
         <Route path="/signage" element={<RequireModule module="signage"><SignageHub /></RequireModule>} />
+        {/* The slide library as its own page (Beat 6 PR 4). Gated on the hub's own grant —
+            it reads and writes signage_items exactly as the hub's embedded library did. A
+            classic device is redirected back to /signage by the page itself. */}
+        <Route path="/signage/slides" element={<RequireModule module="signage"><Slides /></RequireModule>} />
         {/* Legacy per-screen editor bookmark — opens the hub's QUEUE slide-over then normalizes the URL. */}
         <Route path="/signage/screens/:slug" element={<RequireModule module="signage"><EditRotation /></RequireModule>} />
         {/* Retired tabs (folded into the hub). CLASSIC redirects silently, exactly as it
