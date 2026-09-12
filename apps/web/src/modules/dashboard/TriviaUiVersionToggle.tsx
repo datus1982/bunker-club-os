@@ -29,7 +29,12 @@ export function TriviaUiVersionToggle({ style }: { style?: CSSProperties }) {
       title={next === "v2" ? "Switch the trivia pages to the new look" : "Switch the trivia pages back to the current look"}
       style={{ ...btn, ...style }}
     >
-      {version === "v2" ? "← BACK TO CLASSIC TRIVIA" : "TRY THE NEW TRIVIA LOOK →"}
+      {/* The pill NAMES ITSELF (Marvin ruling 2026-09-12). On the phone drawer this sits
+          directly above the shell's own switch, and two dashed pills reading "…NEW
+          LOOK →" / "…BACK TO CLASSIC" are indistinguishable at a glance. Leading with
+          "TRIVIA:" makes the scope the first word you read, in both states and in both
+          places it renders (desktop sub-nav row + drawer footer). */}
+      {version === "v2" ? "← TRIVIA: BACK TO CLASSIC" : "TRIVIA: TRY THE NEW LOOK →"}
     </button>
   );
 }

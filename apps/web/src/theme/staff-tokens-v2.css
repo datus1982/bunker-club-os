@@ -417,6 +417,32 @@
   font-weight: 500;
   font-variant-numeric: tabular-nums;
 }
+/* MONO-DATA-LARGE — the host-desk exemption (polish arc 2, Marvin ruling 2026-09-12,
+ * corrected after the reviewer's measurement).
+ * A NAMED exemption in the same class as Scoring's UPPERCASE button copy: the trivia
+ * scoring grid is read at arm's length by a host running a live show, and its numbers
+ * are the content of the page, not body copy. 24px is deliberate — it is the size the
+ * grid has ALWAYS rendered at (the theme's own `.terminal-theme * { font-size: 1.5rem }`
+ * on unclassed spans), and the x-height maths decide it: 24px JetBrains Mono ≈ 13.2px
+ * x-height vs 20px ≈ 11px. Legibility at the host desk outranks token tidiness, so the
+ * role NAMES the existing size rather than shrinking it.
+ * Carriers: the score cells (their ×2 and ★ bonus marks included) and the TOTAL value.
+ * Team names and rank are NOT carriers — they keep the same 24px unclassed, so the
+ * columns read as one flat data plane; only the column HEADERS step down (Body, 15px).
+ * Same scope as `.st-mono` (no `.sv2-nav`: the nav has no data columns). Flat at both
+ * widths — the md: block below restates it only to keep the role table symmetrical. */
+.terminal-theme.staff-v2 [data-st-page] .st-mono-lg,
+.terminal-theme.staff-v2 .st-sheet .st-mono-lg {
+  font-family: var(--st-font-body) !important;
+  font-size: 24px !important; /* beats .staff-ui button{1.25rem!important} + .scoring-page button{1.125rem!important} */
+  /* 1.4 is the theme's own line-height on these spans, restated rather than tightened:
+   * at the token scale's 1.25 the grid rows lost 7px each (-98px of table) — a reflow,
+   * which §A2 forbids on this page. Same size, same leading, same box. */
+  line-height: 1.4;
+  /* The role deliberately declares NO font-weight: the score spans inherit their own
+   * (700 on the wildcard/bonus markup) and a weight here would flatten them. */
+  font-variant-numeric: tabular-nums;
+}
 @media (min-width: 768px) {
   .terminal-theme.staff-v2 [data-st-page] .st-display,
   .terminal-theme.staff-v2 .sv2-nav .st-display { font-size: 34px !important; }
@@ -428,6 +454,8 @@
   .terminal-theme.staff-v2 .st-sheet .st-body { font-size: 15px !important; }
   .terminal-theme.staff-v2 [data-st-page] .st-mono,
   .terminal-theme.staff-v2 .st-sheet .st-mono { font-size: 15px !important; }
+  .terminal-theme.staff-v2 [data-st-page] .st-mono-lg,
+  .terminal-theme.staff-v2 .st-sheet .st-mono-lg { font-size: 24px !important; }
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
@@ -529,6 +557,37 @@
 .terminal-theme.staff-v2 .terminal-theme:has([data-st-page])::before,
 .terminal-theme.staff-v2 .terminal-theme:has([data-st-page])::after {
   display: none !important; /* beats .terminal-theme::before/::after (fixed, pointer-events:none) */
+}
+/* THE SHEET IS ITS OWN `.terminal-theme` ROOT (polish arc 2, Marvin ruling 2026-09-12).
+ * `ConfirmDialog`'s backdrop is `<div class="terminal-theme staff-ui st-sheet">`, so the
+ * base theme paints scanlines + vignette on it — and the `:has([data-st-page])` rules
+ * above cannot catch it, because a dialog contains no page wrapper. The result was a
+ * tokened sheet with CRT texture over it on EVERY v2 dialog since Beat 6. `.st-sheet` is
+ * a v2-only hook (ConfirmDialog + the trivia Modal's v2 branch are its only emitters),
+ * and this stays scoped under `.staff-v2` so a classic device — where ConfirmDialog also
+ * renders — keeps its overlay byte for byte. */
+.terminal-theme.staff-v2 .st-sheet.terminal-theme::before,
+.terminal-theme.staff-v2 .st-sheet.terminal-theme::after {
+  display: none !important; /* beats .terminal-theme::before/::after */
+}
+
+/* NO MOUNT ANIMATION ON AN OPT-OUT PAGE (polish arc 2 — Scoring).
+ * The motion layer landing on this stack (`phase-arc2-motion`) gives every
+ * `[data-st-page] .terminal-border / .st-card / .st-row` a 140ms `st-mount-fade`. That
+ * is right for between-game admin and WRONG for the live scoring console: spec §A2 says
+ * the room must never see anything "settle", and Scoring's control line, round selector,
+ * answer box, question box, the v2 Modal panel and the ScoreDialog card all match that
+ * selector — so a QuestionPanel remount mid-show would fade in front of an audience.
+ * Scoring's v2 root therefore emits `data-st-motion="off"` beside `data-st-page`, and
+ * this rule cancels the animation inside it. INERT until that motion PR merges, correct
+ * the moment it does; it is written here so the stack merge needs no follow-up. */
+.terminal-theme.staff-v2 [data-st-page][data-st-motion="off"] .terminal-border,
+.terminal-theme.staff-v2 [data-st-page][data-st-motion="off"] .st-card,
+.terminal-theme.staff-v2 [data-st-page][data-st-motion="off"] .st-row,
+/* A dialog opened FROM Scoring is a DOM descendant of the page root, so the opt-out
+ * reaches it too — and only it: dialogs on the other v2 pages keep their motion. */
+.terminal-theme.staff-v2 [data-st-page][data-st-motion="off"] .st-sheet .st-panel {
+  animation: none !important;
 }
 
 @media (prefers-reduced-motion: reduce) {

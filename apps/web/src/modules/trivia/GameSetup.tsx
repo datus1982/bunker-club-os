@@ -243,7 +243,10 @@ export function GameSetup() {
                     {/* Removes an UNSAVED row from local form state — nothing is written
                         yet, so this deliberately does NOT get the ConfirmDialog treatment
                         (there is nothing to undo, and a sheet on every ✕ is noise). */}
-                    <button type="button" onClick={() => removeBonus(b.id)} aria-label="Remove this bonus question" className={cx(v2 && "st-btn-danger st-body")} style={{ ...btnGhost, ...(v2 ? { minHeight: 44, minWidth: 44 } : null) }}>✕</button>
+                    {/* GHOST, not danger: this ✕ drops a row from the unsaved local draft —
+                        nothing exists yet to lose. The red budget is reserved for controls
+                        that delete data that is already in the database. */}
+                    <button type="button" onClick={() => removeBonus(b.id)} aria-label="Remove this bonus question" className={cx(v2 && "st-btn st-body")} style={{ ...btnGhost, ...(v2 ? { minHeight: 44, minWidth: 44 } : null) }}>✕</button>
                   </div>
                   <label style={checkRow}>
                     <input

@@ -104,7 +104,11 @@ export function RoundGrid({
                 {/* Mirror is the SAME element type (button) so it renders the identical width
                     under the terminal theme — a <span> got a different global font size. */}
                 <button type="button" aria-hidden tabIndex={-1} className={cx(v2 && "st-btn-danger")} style={{ ...clearBtnStyle, ...clearFloor, justifySelf: "end", visibility: "hidden", pointerEvents: "none" }}>CLEAR</button>
-                <span style={{ justifySelf: "center" }}>TOTAL</span>
+                {/* The header role has to sit on the SPAN, not the <th> around it: nothing
+                    inherits font-size here, so an unclassed span keeps the theme's 24px
+                    and TOTAL reads as data rather than as the column's name. Body (15px),
+                    not Label (12px) — at 12 the x-height is 6.6px across a host's desk. */}
+                <span className={cx(v2 && "st-body st-t2")} style={{ justifySelf: "center" }}>TOTAL</span>
                 <button type="button" onClick={onClearAll} className={cx(v2 && "st-btn-danger")} style={{ ...clearBtnStyle, ...clearFloor, justifySelf: "start" }} title="Clear every score in this game">CLEAR</button>
               </div>
             </Th>
@@ -120,6 +124,10 @@ export function RoundGrid({
             const tiedPos = ties.tiedPosition.get(team.id);
             return (
               <tr key={team.id} style={{ borderTop: v2 ? "1px solid rgba(255,255,255,0.08)" : "1px solid var(--terminal-dim, #0f3)" }}>
+                {/* RANK + TEAM carry NO role class, deliberately (Marvin ruling): they
+                    render at the theme's 24px today and nothing on the host grid gets
+                    smaller than it is today. The data plane stays flat at 24; only the
+                    column HEADERS step down to Body. */}
                 <Td>
                   <span style={{ fontWeight: 700 }}>{tiedPos != null ? `${getOrdinal(tiedPos)}=` : getOrdinal(rank)}</span>
                 </Td>
@@ -153,19 +161,27 @@ export function RoundGrid({
                           ...(v2 && s ? { background: "var(--st-surface-2)" } : null),
                         }}
                       >
+                        {/* THE SCORE ITSELF — the mono-data-large exemption (24px, tabular).
+                            These spans were unclassed, so they inherited nothing and landed
+                            on the theme's 24px by accident; the role NAMES that size and
+                            adds tabular-nums, so the digits line up column to column and
+                            nothing shrinks. The class has to be on the spans, not the
+                            button: the button's role sizes only its own text nodes, and
+                            nothing inherits font-size here (the PR #89 class) — which is
+                            also why the nested bonus span needs its own copy. */}
                         {s ? (
-                          <span>
+                          <span className={cx(v2 && "st-mono-lg")}>
                             {isWild ? `${s.points}×2` : s.points}
-                            {bonus > 0 && <span title={`+${bonus} bonus`}> ★{bonus}</span>}
+                            {bonus > 0 && <span className={cx(v2 && "st-mono-lg")} title={`+${bonus} bonus`}> ★{bonus}</span>}
                           </span>
                         ) : (
-                          <span style={{ opacity: 0.4 }}>–</span>
+                          <span className={cx(v2 && "st-mono-lg")} style={{ opacity: 0.4 }}>–</span>
                         )}
                       </button>
                     </Td>
                   );
                 })}
-                <Td><span className={cx(v2 && "st-mono st-accent")} style={{ fontSize: 24, fontWeight: 700 }}>{total}</span></Td>
+                <Td><span className={cx(v2 && "st-mono-lg st-accent")} style={{ fontSize: 24, fontWeight: 700 }}>{total}</span></Td>
                 {ties.hasTies && (
                   <Td>
                     {ties.availableRanks.has(team.id) ? (
@@ -385,8 +401,10 @@ function ScoreDialog({
 
 function Th({ children, align = "center" }: { children: React.ReactNode; align?: "center" | "left" }) {
   const v2 = useTriviaV2();
-  // Label role on the header row; the 2px green rule under it becomes the hairline.
-  return <th className={cx(v2 && "st-label st-t2")} style={{ padding: "6px 10px", textAlign: align, borderBottom: v2 ? "1px solid rgba(255,255,255,0.16)" : "2px solid var(--terminal-green)", fontWeight: 700, whiteSpace: "nowrap" }}>{children}</th>;
+  // BODY role (15px), not Label (12px): these headers are read across a host's desk and
+  // the copy is already uppercase, so Label bought caps we already had at the cost of a
+  // 6.6px x-height. The 2px green rule under the row becomes the hairline.
+  return <th className={cx(v2 && "st-body st-t2")} style={{ padding: "6px 10px", textAlign: align, borderBottom: v2 ? "1px solid rgba(255,255,255,0.16)" : "2px solid var(--terminal-green)", fontWeight: 700, whiteSpace: "nowrap" }}>{children}</th>;
 }
 function Td({ children, align = "center", colSpan }: { children: React.ReactNode; align?: "center" | "left"; colSpan?: number }) {
   const v2 = useTriviaV2();

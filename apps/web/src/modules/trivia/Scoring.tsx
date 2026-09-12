@@ -77,6 +77,26 @@ export function Scoring() {
     return byId ?? fromDb ?? cols[0] ?? null;
   }, [selectedRoundId, scores.rounds, cols, display.state?.current_round_id]);
 
+  // ── the three destructive actions, ONE copy each ──────────────────────────────
+  // Both looks reach the same dialogs (v2 = ConfirmDialog, classic = Modal) and used to
+  // carry their own hand-copied handler bodies; END GAME's was nine lines duplicated
+  // verbatim, so a fix to one look could silently miss the other. The call ORDER is
+  // preserved exactly as classic had it — this is a de-duplication, not a rewrite.
+  const doRemoveTeam = () => {
+    if (!removing) return;
+    scores.removeTeam.mutate(removing.id, { onSuccess: () => setRemoving(null) });
+  };
+  const doClearAll = () => scores.clearAllScores.mutate(undefined, { onSuccess: () => setConfirmClear(false) });
+  const endGame = () => {
+    setStatus.mutate("completed" as GameStatus);
+    // Trivia's over → un-arm the bar TVs so they return to rotation/media (WARN-1 #3).
+    // Fire-and-forget; the arm also auto-expires nightly, so a failed disarm self-heals.
+    supabase.rpc("set_trivia_screens_armed", { p_venue_id: VENUE_ID, p_armed: false }).then(undefined, () => {});
+    qc.setQueryData(["signage", "triviaScreensArmed"], { armed: false, at: null });
+    qc.invalidateQueries({ queryKey: ["signage", "triviaScreensArmed"] });
+    display.write.mutate({ show_game_over: true, is_display_active: false }, { onSuccess: () => setConfirmEnd(false) });
+  };
+
   if (gameQuery.isPending) return <Centered text="LOADING GAME…" />;
   if (!game) return <NoGame />;
 
@@ -84,9 +104,13 @@ export function Scoring() {
     // `scoring-page` is KEPT in both looks: it carries the desktop-density rule (§A2, do
     // not change). v2 adds `data-st-page` and drops the nested `.terminal-theme` — the
     // shell root already carries it, and a second one paints its own CRT overlay.
+    // `data-st-motion="off"` is the console's opt-out from the shared mount-fade: §A2
+    // forbids any settling animation here, and the incoming motion layer would otherwise
+    // fade the control line, the round selector and both fixed boxes on every remount.
+    // The rule that reads it lives in staff-tokens-v2.css §7.
     <div
       className={cx(!v2 && "terminal-theme", "scoring-page")}
-      {...(v2 ? { "data-st-page": "" } : null)}
+      {...(v2 ? { "data-st-page": "", "data-st-motion": "off" } : null)}
       style={{ minHeight: "100vh", padding: "clamp(16px, 4vw, 32px)", ...(v2 ? null : { fontFamily: "'VT323','Share Tech Mono',monospace" }) }}
     >
       <div style={{ maxWidth: 1400, margin: "0 auto", display: "flex", flexDirection: "column", gap: 16 }}>
@@ -199,7 +223,7 @@ export function Scoring() {
           confirmLabel="REMOVE TEAM"
           cancelLabel="KEEP TEAM"
           onCancel={() => setRemoving(null)}
-          onConfirm={() => scores.removeTeam.mutate(removing.id, { onSuccess: () => setRemoving(null) })}
+          onConfirm={doRemoveTeam}
           body="Their scores for this game will be deleted. The team itself stays on the roster."
         />
       )}
@@ -212,7 +236,7 @@ export function Scoring() {
           confirmLabel="CLEAR EVERYTHING"
           cancelLabel="KEEP SCORES"
           onCancel={() => setConfirmClear(false)}
-          onConfirm={() => scores.clearAllScores.mutate(undefined, { onSuccess: () => setConfirmClear(false) })}
+          onConfirm={doClearAll}
           body="This deletes every score in this game and resets all wildcards. It cannot be undone."
         />
       )}
@@ -224,15 +248,7 @@ export function Scoring() {
           confirmLabel="END GAME"
           cancelLabel="KEEP PLAYING"
           onCancel={() => setConfirmEnd(false)}
-          onConfirm={() => {
-            setStatus.mutate("completed" as GameStatus);
-            // Trivia's over → un-arm the bar TVs so they return to rotation/media (WARN-1 #3).
-            // Fire-and-forget; the arm also auto-expires nightly, so a failed disarm self-heals.
-            supabase.rpc("set_trivia_screens_armed", { p_venue_id: VENUE_ID, p_armed: false }).then(undefined, () => {});
-            qc.setQueryData(["signage", "triviaScreensArmed"], { armed: false, at: null });
-            qc.invalidateQueries({ queryKey: ["signage", "triviaScreensArmed"] });
-            display.write.mutate({ show_game_over: true, is_display_active: false }, { onSuccess: () => setConfirmEnd(false) });
-          }}
+          onConfirm={endGame}
           body="It marks the game complete, shows GAME OVER on the displays and takes trivia off the bar screens. The game moves to History."
         />
       )}
@@ -244,7 +260,7 @@ export function Scoring() {
           footer={
             <>
               <button type="button" onClick={() => setRemoving(null)} style={btnGhost}>CANCEL</button>
-              <button type="button" onClick={() => scores.removeTeam.mutate(removing.id, { onSuccess: () => setRemoving(null) })} style={btnDanger}>REMOVE</button>
+              <button type="button" onClick={doRemoveTeam} style={btnDanger}>REMOVE</button>
             </>
           }
         >
@@ -259,7 +275,7 @@ export function Scoring() {
           footer={
             <>
               <button type="button" onClick={() => setConfirmClear(false)} style={btnGhost}>CANCEL</button>
-              <button type="button" onClick={() => scores.clearAllScores.mutate(undefined, { onSuccess: () => setConfirmClear(false) })} style={btnDanger}>CLEAR EVERYTHING</button>
+              <button type="button" onClick={doClearAll} style={btnDanger}>CLEAR EVERYTHING</button>
             </>
           }
         >
@@ -276,15 +292,7 @@ export function Scoring() {
               <button type="button" onClick={() => setConfirmEnd(false)} style={btnGhost}>CANCEL</button>
               <button
                 type="button"
-                onClick={() => {
-                  setStatus.mutate("completed" as GameStatus);
-                  // Trivia's over → un-arm the bar TVs so they return to rotation/media (WARN-1 #3).
-                  // Fire-and-forget; the arm also auto-expires nightly, so a failed disarm self-heals.
-                  supabase.rpc("set_trivia_screens_armed", { p_venue_id: VENUE_ID, p_armed: false }).then(undefined, () => {});
-                  qc.setQueryData(["signage", "triviaScreensArmed"], { armed: false, at: null });
-                  qc.invalidateQueries({ queryKey: ["signage", "triviaScreensArmed"] });
-                  display.write.mutate({ show_game_over: true, is_display_active: false }, { onSuccess: () => setConfirmEnd(false) });
-                }}
+                onClick={endGame}
                 style={btnDanger}
               >
                 END GAME
@@ -481,6 +489,10 @@ function TriviaScreensBar({ gameStatus, onEndGame }: { gameStatus?: GameStatus |
         disabled={setArmed.isPending || eff.isPending}
         title={armed ? "Take trivia off the bar TVs — they return to normal rotation/media." : "Put trivia on the bar TVs — shows the SCAN-TO-JOIN board until the game starts, then the live board."}
         className={cx(v2 && (armed ? "st-btn-danger" : "st-btn-primary"))}
+        // DELIBERATELY LOUDER THAN THE BODY ROLE: this pair (and END GAME below) render
+        // at 18px against the 15px everywhere else, because §A2 protects the arm bar's
+        // "unmissable" sizing — these are the two controls that seize or release the
+        // room's TVs. Do not normalise them onto the Body role in a later pass.
         style={{
           ...(armed ? btnDanger : btnPrimary),
           minHeight: 44, fontSize: 22, fontWeight: 700, letterSpacing: 1,

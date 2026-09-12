@@ -192,6 +192,17 @@
   font-size: 13px !important; /* beats .staff-ui button { font-size: 1.25rem !important } */
   letter-spacing: 0.04em;
 }
+/* DESKTOP: the pill sits at the row's own 38px, not its inline 44px tap floor. The
+ * sub-nav is desktop-only chrome sized to a 38px chip (see `.sv2-subitem` above), so a
+ * 44px control inside it grows the whole row by 6px — which would move EVERY page in the
+ * v2 shell down 6px, classic trivia pages included, and break their pixel parity with
+ * `main`. Below 640px the sub-nav is not rendered at all: the pill lives in the drawer
+ * footer there and keeps its full 44px floor from the inline style. */
+@media (min-width: 640px) {
+  .staff-v2 .sv2-subextra button {
+    min-height: 38px !important; /* beats the inline minHeight: 44 */
+  }
+}
 
 /* ── mobile bar + drawer ───────────────────────────────────────────────────── */
 .staff-v2 .sv2-mbar {
