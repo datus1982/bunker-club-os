@@ -285,15 +285,38 @@ export function Teams() {
                     ) : played === 0 ? (
                       <span className={cx("u-amber", v2 && "st-chip st-label")} style={{ fontWeight: 700, opacity: 1, ...(v2 ? { alignSelf: "flex-start", padding: "3px 10px" } : null) }}>NEVER PLAYED</span>
                     ) : (
+                      // Each look gets its own complete child list rather than one list
+                      // with `{v2 ? …}` spliced into the middle of a sentence: identical
+                      // text split across a different number of text nodes measures a
+                      // fraction of a pixel differently, and classic must not move.
                       <span className={cx(v2 && "st-body st-t2")}>
-                        {played} {v2 ? (played === 1 ? "game" : "games") : `GAME${played === 1 ? "" : "S"}`}
-                        {s?.last ? (v2 ? ` · last ${fmtGameDate(s.last)}` : ` · LAST ${fmtGameDate(s.last)}`) : ""}
+                        {v2 ? (
+                          <>
+                            {played} {played === 1 ? "game" : "games"}
+                            {s?.last ? ` · last ${fmtGameDate(s.last)}` : ""}
+                          </>
+                        ) : (
+                          <>
+                            {played} GAME{played === 1 ? "" : "S"}
+                            {s?.last ? ` · LAST ${fmtGameDate(s.last)}` : ""}
+                          </>
+                        )}
                       </span>
                     )}
                     <span className={cx(v2 && "st-body st-t3")} style={{ opacity: v2 ? 1 : 0.7 }}>
-                      {v2 ? "Added " : "ADDED "}{fmtCreated(t.created_at)}
-                      {t.is_regular ? (v2 ? " · regular" : " · REGULAR") : (v2 ? " · one-off" : " · ONE-OFF")}
-                      {t.archived ? (v2 ? " · archived" : " · ARCHIVED") : ""}
+                      {v2 ? (
+                        <>
+                          Added {fmtCreated(t.created_at)}
+                          {t.is_regular ? " · regular" : " · one-off"}
+                          {t.archived ? " · archived" : ""}
+                        </>
+                      ) : (
+                        <>
+                          ADDED {fmtCreated(t.created_at)}
+                          {t.is_regular ? " · REGULAR" : " · ONE-OFF"}
+                          {t.archived ? " · ARCHIVED" : ""}
+                        </>
+                      )}
                     </span>
                   </div>
 
@@ -304,10 +327,16 @@ export function Teams() {
                     <button type="button" onClick={() => setEditing(t)} className={cx(v2 && "st-body")} style={{ ...btnGhost, flex: 1, minWidth: 120, ...(v2 ? { minHeight: 44 } : null) }}>{v2 ? "✎ Edit" : "✎ EDIT"}</button>
                     {t.archived ? (
                       <button type="button" onClick={() => setRestoring(t)} className={cx(v2 && "st-body")} style={{ ...btnGhost, ...(v2 ? { minHeight: 44 } : null) }}>{v2 ? "Un-archive" : "UN-ARCHIVE"}</button>
-                    ) : (
-                      <div style={v2 ? { borderTop: "1px solid rgba(255,255,255,0.08)", paddingTop: 8, display: "flex" } : undefined}>
-                        <button type="button" onClick={() => setArchiving(t)} className={cx(v2 && "st-btn-danger st-body")} style={{ ...btnDanger, ...(v2 ? { minHeight: 44, flex: 1 } : null) }}>{v2 ? "Archive team" : "ARCHIVE"}</button>
+                    ) : v2 ? (
+                      // The hairline strip that sets the destructive control apart exists in
+                      // v2 ONLY. An unconditional wrapper here would add a <div> to the
+                      // classic DOM — caught by the byte-identity gate, which is what it is
+                      // for. Classic renders the bare button exactly as it always has.
+                      <div style={{ borderTop: "1px solid rgba(255,255,255,0.08)", paddingTop: 8, display: "flex" }}>
+                        <button type="button" onClick={() => setArchiving(t)} className="st-btn-danger st-body" style={{ ...btnDanger, minHeight: 44, flex: 1 }}>Archive team</button>
                       </div>
+                    ) : (
+                      <button type="button" onClick={() => setArchiving(t)} style={btnDanger}>ARCHIVE</button>
                     )}
                   </div>
                 </div>

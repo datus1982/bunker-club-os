@@ -227,15 +227,20 @@ function GameCard({
     >
       <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8 }}>
         <div className={cx(v2 && "st-heading st-t1")} style={{ fontSize: 34, fontWeight: 700 }}>{formatGameDate(game.game_date)}</div>
+        {/* Each branch reproduces the OTHER look's children exactly. Splitting a string
+            into an extra `{v2 ? …}` expression would give classic a different TEXT-NODE
+            layout for identical text — invisible in innerHTML, but it measures a
+            fraction of a pixel differently and the computed-style parity gate catches
+            it. Same reason for the two spans below. */}
         <div className={cx(v2 && "st-chip st-label", v2 && (active ? "st-accent" : "st-t2"))} style={{ fontSize: 22, opacity: v2 ? 1 : 0.85, ...(v2 ? { padding: "3px 10px", whiteSpace: "nowrap" } : null) }}>
-          {v2 ? game.status.toUpperCase() : `[${game.status.toUpperCase()}]`}
+          {v2 ? game.status.toUpperCase() : <>[{game.status.toUpperCase()}]</>}
         </div>
       </div>
       {/* Each span carries `st-body` itself — a class on this wrapper sizes only the
           wrapper (`.terminal-theme *` sizes every element; nothing inherits — PR #89). */}
       <div className={cx(v2 && "st-body st-t2")} style={{ fontSize: 22, opacity: v2 ? 1 : 0.8, display: "flex", flexWrap: "wrap", gap: 16 }}>
-        <span className={cx(v2 && "st-body st-t2")}>{rounds ?? "–"} {v2 ? "rounds" : "ROUNDS"}</span>
-        <span className={cx(v2 && "st-body st-t2")}>{teams ?? "–"} {v2 ? "teams" : "TEAMS"}</span>
+        <span className={cx(v2 && "st-body st-t2")}>{v2 ? <>{rounds ?? "–"} rounds</> : <>{rounds ?? "–"} ROUNDS</>}</span>
+        <span className={cx(v2 && "st-body st-t2")}>{v2 ? <>{teams ?? "–"} teams</> : <>{teams ?? "–"} TEAMS</>}</span>
         {game.is_playoff && <span className={cx(v2 && "st-body st-t2")}>{v2 ? "★ Playoff" : "★ PLAYOFF"}</span>}
       </div>
       <div style={{ display: "flex", alignItems: "stretch", gap: 8, marginTop: 6 }}>
