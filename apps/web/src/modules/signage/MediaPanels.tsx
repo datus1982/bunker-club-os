@@ -105,6 +105,20 @@ const V2_STATUS_INK: Record<MediaFile["status"], string> = {
   unsupported: "st-amber",
 };
 
+/**
+ * Split a trailing release year off a Kodi-style title: "Dr. No (1962)" → name "Dr. No", year
+ * "1962". RENDER-TIME ONLY — nothing is written, and the rename editor still edits the whole
+ * stored string (`file.title`), so there is no data change and no rename-semantics change.
+ *
+ * Deliberately conservative: the year must be a 4-digit 19xx/20xx in parentheses at the very END
+ * of the string, with a non-space character before it. A title with no such suffix (every TV
+ * episode row, "Freaks and Geeks - S01E07 - …") comes back unchanged, name = the whole string.
+ */
+function splitTitleYear(s: string): { name: string; year: string | null } {
+  const m = /^(.*\S)\s*\((19\d{2}|20\d{2})\)\s*$/.exec(s);
+  return m ? { name: m[1], year: m[2] } : { name: s, year: null };
+}
+
 /* ── a library file card (thumb + inline-editable title + duration + status + PLAY ON) ── */
 function MediaFileCard({ file, screens, hasSchedule, variant }: {
   file: MediaFile;
@@ -156,6 +170,10 @@ function MediaFileCard({ file, screens, hasSchedule, variant }: {
   const isV2 = variant === "v2";
   const cardImg = isV2 ? posterOrThumbUrl(file.poster_path ?? null, file.thumb_path) : file.thumb;
   const isPoster = isV2 && !!file.poster_path;
+  // §C2 fold: the YEAR is the datum that distinguishes Casino Royale 1954 / 1967 / 2006, and it
+  // sat at the END of the title string — exactly what a 2-line clamp drops. It now renders as its
+  // own element on the meta line, so it can never fall off. Render-time split only.
+  const { name: titleName, year: titleYear } = isV2 ? splitTitleYear(display) : { name: display, year: null };
 
   return (
     <div className="terminal-border" style={{ display: "flex", flexDirection: "column", overflow: "hidden", minWidth: 0 }}>
@@ -195,6 +213,26 @@ function MediaFileCard({ file, screens, hasSchedule, variant }: {
               // demoted Disabled-tier peer of the status badge — do not promote it back.
               style={{ position: "absolute", bottom: 8, right: 8, fontSize: 12, letterSpacing: 1, padding: "1px 5px", background: "rgba(2,6,10,0.8)" }}
             >{formatDuration(file.duration_seconds)}</span>
+            {/* §C2 fold: the rename control leaves the TITLE'S TEXT FLOW and becomes a corner
+                affordance on the poster. Inside the title row its glyph + gap + padding took ~35px
+                of a 152px line — a third of the text budget — which is why "Title (Year)" kept
+                losing its year. The title row is now plain text at full card width, and this is
+                the one control that opens the editor (no doubled affordance). 44×44 hit area, the
+                visible chip drawn on the inner span because `.terminal-theme button` forces a
+                transparent background. Top-RIGHT: top-left is the status badge, bottom-right the
+                runtime chip. */}
+            <button
+              type="button"
+              onClick={() => { setDraft(file.title ?? ""); setEditingTitle(true); }}
+              title={`Rename ${display}`}
+              aria-label={`Rename ${display}`}
+              style={renameOverlayBtn}
+            >
+              <span
+                className="st-pill st-t2"
+                style={{ fontSize: 17, lineHeight: 1, padding: "5px 9px", background: "rgba(2,6,10,0.92)", boxShadow: "inset 0 0 0 1px currentColor" }}
+              >✎</span>
+            </button>
           </>
         ) : (
           <>
@@ -215,40 +253,24 @@ function MediaFileCard({ file, screens, hasSchedule, variant }: {
             style={{ width: "100%", background: "#000", color: "var(--terminal-green)", border: "1px solid var(--terminal-green)", padding: "6px 8px", fontSize: 16, fontFamily: MONO, ...(variant === "v2" ? { minHeight: 44 } : null) }}
           />
         ) : variant === "v2" ? (
-          // DECISION (Beat 5, closes #104 NOTE-3): in v2 the title row IS the rename control —
-          // a 44px bordered row with a visible ✎ — because promoting the library to its own page
-          // made a bare ~30px text line the page's primary action, 504 times over. Same handler,
-          // same draft state, same `updateMediaTitle` mutation, same Enter/Escape/blur editor:
-          // only the affordance grew. Classic keeps the bare line below, byte-identical.
-          <button
-            type="button"
-            onClick={() => { setDraft(file.title ?? ""); setEditingTitle(true); }}
-            // DECISION (§C2): the v2 hover tooltip becomes the FULL TITLE, replacing the
-            // "Click to rename" hint — the spec's "full title reachable" requirement needs the
-            // title attribute, an element gets one, and a clamped title is the thing a manager
-            // hovers to read. The ✎ glyph still names the action. Classic keeps its hint.
+          // §C2 — 2 lines, not 1 with an ellipsis: one line clipped every real title in the
+          // library before its distinguishing part survived. After the fold the row is PLAIN TEXT
+          // at the full card width (the ✎ moved to the poster corner), and the year has been
+          // lifted out onto the meta line — so the two lines carry the NAME and nothing else.
+          // `st-body` carries the size: 15px/1.5 Body role, and it is the only thing that can set
+          // it here (the ConfirmDialog lesson — an !important beats any inline px).
+          // The complete STORED string (name + year, exactly what the rename editor edits) stays
+          // reachable on `title` + `aria-label`.
+          <div
+            className="st-body"
             title={display}
             aria-label={display}
-            style={renameBtn}
-          >
-            <span aria-hidden="true" style={{ fontSize: 17, opacity: 0.55, flex: "0 0 auto" }}>✎</span>
-            {/* §C2 — 2 lines, not 1 with an ellipsis: one line clipped every real title in the
-                library before its distinguishing part (a year, a subtitle) survived. The label
-                still needs its own block (`overflow` is ignored on a flex CONTAINER — the
-                StatusChip lesson); the clamp just replaces nowrap/text-overflow.
-                `st-body` carries the size: 15px/1.5 Body role, and it is the ONLY thing that can
-                set it — `.staff-ui button { font-size: 1.25rem !important }` beats any inline px
-                on a descendant of this button (the ConfirmDialog lesson). The full string stays
-                reachable via the button's `title` + `aria-label` above. */}
-            <span
-              className="st-body"
-              style={{
-                minWidth: 0, overflow: "hidden",
-                display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical",
-                overflowWrap: "anywhere", textAlign: "left",
-              }}
-            >{display}</span>
-          </button>
+            style={{
+              minWidth: 0, overflow: "hidden",
+              display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical",
+              overflowWrap: "anywhere", textAlign: "left",
+            }}
+          >{titleName}</div>
         ) : (
           <button
             type="button"
@@ -257,7 +279,21 @@ function MediaFileCard({ file, screens, hasSchedule, variant }: {
             style={{ width: "100%", textAlign: "left", background: "transparent", border: "none", color: "var(--terminal-green)", fontFamily: MONO, fontSize: 18, cursor: "pointer", padding: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}
           >{display}</button>
         )}
-        <div style={{ fontSize: 12, opacity: 0.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", marginTop: 3 }} title={file.filename}>{file.filename}</div>
+        {isV2 ? (
+          // The meta line carries the provenance path AND — after the §C2 fold — the year, as its
+          // own mono datum. The path keeps its 1-line ellipsis (it is provenance, not the
+          // recognizability problem); the year is `flex: 0 0 auto` so the path can never squeeze it.
+          <div style={{ display: "flex", alignItems: "baseline", gap: 6, marginTop: 3, minWidth: 0 }}>
+            {titleYear && <span className="st-mono st-t2" style={{ flex: "0 0 auto" }}>{titleYear}</span>}
+            <span
+              className="st-t3"
+              style={{ minWidth: 0, fontSize: 12, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}
+              title={file.filename}
+            >{file.filename}</span>
+          </div>
+        ) : (
+          <div style={{ fontSize: 12, opacity: 0.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", marginTop: 3 }} title={file.filename}>{file.filename}</div>
+        )}
 
         {/* PLAY ON — send this film to a screen right now (owner beat). Present files only: a
             missing/unsupported file has nothing to play. */}
@@ -505,14 +541,17 @@ const playBtn: CSSProperties = {
   minHeight: 44, width: "100%", cursor: "pointer", textAlign: "left",
   whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
 };
-/** v2 rename row — a real 44px tap target, full card width (classic keeps the bare line).
- *  No `fontSize` here on purpose: `.staff-ui button` pins button text at 20px !important, so
- *  a value here would be a lie; the two inner spans carry their own inline sizes. */
-const renameBtn: CSSProperties = {
-  width: "100%", minHeight: 44, display: "flex", alignItems: "center", gap: 7,
-  textAlign: "left", background: "transparent", border: "1px solid rgba(0,255,65,0.25)",
-  color: "var(--terminal-green)", fontFamily: MONO, cursor: "pointer", padding: "0 8px",
-  boxSizing: "border-box",
+/** v2 rename control — a 44×44 corner affordance on the poster (§C2 fold), replacing the row that
+ *  used to sit inside the title's text flow. WIDTH and height both clear the tap floor (#103
+ *  NOTE-6: a height-only harness once missed a 34px-wide button). The hit area is transparent and
+ *  borderless; the visible chip is the inner span, because `.terminal-theme button` forces
+ *  `background: transparent !important` and no inline background can win. No `fontSize` here on
+ *  purpose — `.staff-ui button` pins button text at 20px !important, so the span carries its own. */
+const renameOverlayBtn: CSSProperties = {
+  position: "absolute", top: 0, right: 0, width: 44, height: 44,
+  display: "flex", alignItems: "center", justifyContent: "center",
+  background: "transparent", border: "none", padding: 0,
+  color: "var(--terminal-green)", fontFamily: MONO, cursor: "pointer", boxSizing: "border-box",
 };
 const miniIcon: CSSProperties = {
   fontFamily: MONO, fontSize: 14, color: "var(--terminal-green)",
