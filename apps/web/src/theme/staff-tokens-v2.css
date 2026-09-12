@@ -531,11 +531,180 @@
   display: none !important; /* beats .terminal-theme::before/::after (fixed, pointer-events:none) */
 }
 
+/* ─────────────────────────────────────────────────────────────────────────────
+ * 8. THE MOTION LAYER (polish arc 2 — docs/ux-overhaul/04-polish-arc2-audit-2026-09-12.md
+ * §B, and the `#motion` sampler of 04-polish-arc2-round1-mockup.html).
+ *
+ * Nothing here invents a colour or a duration. Every timing is one of the four already
+ * declared at the top of this file, plus the ONE number §B names for a press (80ms —
+ * "a press must feel instant") and the 140ms §B explicitly reuses for an exit rather
+ * than adding a fifth constant.
+ *
+ * THE BUDGET: opacity + background + ONE axis of translate. No `transform: scale()`
+ * anywhere (§B narrows the apple-slice's `:active { scale(.97) }` to fit the house's
+ * already-ratified budget), no `backdrop-filter` anywhere (§B verdict, Stephen's letter
+ * C1: zero translucency on any Bunker staff surface this arc), no stagger, no glow, no
+ * second hairline value.
+ *
+ * WHY THIS SECTION SITS AT THE BOTTOM OF THE FILE — load-bearing, not tidiness:
+ * `:active` and `:hover` carry the SAME specificity, so the only thing that decides a
+ * control that is both pressed AND hovered is SOURCE ORDER. `.st-btn-primary:hover` and
+ * `.st-btn-danger:hover` are declared in section 5 above at (0,5,0); a press rule
+ * written "beside" the generic hover block near the top of the file would be (0,4,1) and
+ * would silently lose to them. Declared last, every `:active` rule below beats its own
+ * `:hover` twin at equal specificity.
+ * ────────────────────────────────────────────────────────────────────────── */
+
+/* ── sheets + dialogs: the SAME path in and out ─────────────────────────────── */
+/* A centre-anchored dialog has no edge to slide from, so its "single axis" is an 8px
+ * Y-rise + opacity (§B). The mobile drawer is anchored to the TOP edge and already ships
+ * its own enter on that same axis — its exit twin lives beside it in staff-shell-v2.css
+ * (DECISION recorded there: mirroring the shipped enter beats importing these keyframes,
+ * which would have it leave DOWNWARD after arriving from above). */
+@keyframes st-sheet-enter {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes st-sheet-exit {
+  from { opacity: 1; transform: translateY(0); }
+  to   { opacity: 0; transform: translateY(8px); }
+}
+@keyframes st-backdrop-enter { from { opacity: 0; } to { opacity: 1; } }
+@keyframes st-backdrop-exit  { from { opacity: 1; } to { opacity: 0; } }
+
+.terminal-theme.staff-v2 .st-sheet .st-panel[data-state="entering"] {
+  animation: st-sheet-enter var(--st-motion-sheet) var(--st-ease);
+}
+.terminal-theme.staff-v2 .st-sheet .st-panel[data-state="exiting"] {
+  /* `both` holds the last frame so the panel cannot flash back to full opacity between
+   * animationend and React's unmount. ConfirmDialog renders null once the exit completes,
+   * so a caller that forgets to unmount cannot strand an invisible click-blocker. */
+  animation: st-sheet-exit 140ms ease-in both;
+}
+/* The backdrop fades WITH its panel (mockup §3: "backdrop + panel fade together") — a
+ * panel rising over an already-solid black rectangle reads as a pop, not as a sheet.
+ * `:has()` keeps the whole state on ONE attribute (the panel's) and is already a
+ * dependency of this file (section 7) and of theme/staff-form.css. */
+.terminal-theme.staff-v2 .st-sheet:has(.st-panel[data-state="entering"]) {
+  animation: st-backdrop-enter var(--st-motion-sheet) var(--st-ease);
+}
+.terminal-theme.staff-v2 .st-sheet:has(.st-panel[data-state="exiting"]) {
+  animation: st-backdrop-exit 140ms ease-in both;
+  pointer-events: none; /* a dismissing sheet must not eat the click that lands behind it */
+}
+
+/* ── list / card mount: opacity only, 140ms, no position, no stagger (§B) ───── */
+/* §B declines a hand-rolled stagger across the 504-card library grid by name, and the
+ * trivia-host-workflow rule is that content must never visibly reflow — so this is a
+ * settle, not an entrance: instant layout, faded-in content. `.terminal-border` is in
+ * the list because the Media Library's file cards and the playlist rows render shared
+ * (classic-shared) markup — reaching them through the class they already carry is what
+ * keeps this beat CSS-only. */
+@keyframes st-mount-fade { from { opacity: 0; } to { opacity: 1; } }
+.terminal-theme.staff-v2 [data-st-page] .st-card,
+.terminal-theme.staff-v2 [data-st-page] .st-row,
+.terminal-theme.staff-v2 [data-st-page] .terminal-border {
+  animation: st-mount-fade var(--st-motion-hover) var(--st-ease);
+}
+
+/* ── chip state change: background + colour crossfade, NO size change (§B) ──── */
+/* A chip that resizes on selection shifts every chip after it and reads as jumpy in a
+ * row a manager is tapping quickly — so only paint is transitioned, never geometry.
+ * `button[aria-pressed]` is the honest hook for the Media Library's filter chips: they
+ * are buttons that already declare their selected state to assistive tech. Section 1's
+ * control transition covers background/border but NOT colour, and a selected chip flips
+ * its ink to the ground colour via `u-fill u-ink`. */
+.terminal-theme.staff-v2 [data-st-page] .st-chip,
+.terminal-theme.staff-v2 .st-sheet .st-chip,
+.terminal-theme.staff-v2 [data-st-page] button[aria-pressed],
+.terminal-theme.staff-v2 .sv2-nav button[aria-pressed] {
+  transition: background-color var(--st-motion-hover) var(--st-ease),
+              border-color var(--st-motion-hover) var(--st-ease),
+              color var(--st-motion-hover) var(--st-ease);
+}
+
+/* ── press, bound to :active (fires on pointer-DOWN, not on click/release) ──── */
+/* THE PRESS RULES COME AFTER THE CHIP RULE ABOVE ON PURPOSE: the chip crossfade is a
+ * `transition` SHORTHAND, which resets transition-duration. Declared the other way round
+ * (the order §B's prose implies) it silently reset every filter chip's press back to
+ * 140ms — measured, not theorised: a chip read `transition-duration: 0.14s` while held. */
+.terminal-theme.staff-v2 [data-st-page] button:active,
+.terminal-theme.staff-v2 [data-st-page] a:active,
+.terminal-theme.staff-v2 .sv2-nav button:active,
+.terminal-theme.staff-v2 .sv2-nav a:active,
+.terminal-theme.staff-v2 .st-sheet button:active {
+  background: rgba(255, 255, 255, 0.1) !important; /* beats the section-1 :hover wash (equal (0,4,1), declared later) AND .terminal-theme button:hover's green !important */
+  transition-duration: 80ms;                        /* faster than the 140ms hover — §B: a press must feel instant */
+}
+/* A disabled control is not pressable. Browsers do not normally activate a disabled
+ * button, but section 1 restates `:disabled:hover` for the same reason — a greyed
+ * control must never flash the press wash. (0,5,1) beats the rule above. */
+.terminal-theme.staff-v2 [data-st-page] button:disabled:active,
+.terminal-theme.staff-v2 .st-sheet button:disabled:active {
+  background: transparent !important;
+}
+.terminal-theme.staff-v2 [data-st-page] .st-btn-primary:active,
+.terminal-theme.staff-v2 .st-sheet .st-btn-primary:active,
+.terminal-theme.staff-v2 .sv2-nav .st-btn-primary:active {
+  opacity: 0.82; /* beats `.st-btn-primary:hover { opacity: .9 }` — equal (0,5,0), declared later */
+}
+.terminal-theme.staff-v2 [data-st-page] .st-btn-danger:active,
+.terminal-theme.staff-v2 .st-sheet .st-btn-danger:active {
+  background: rgba(255, 90, 90, 0.18) !important; /* beats `.st-btn-danger:hover`'s 0.1 wash — equal (0,5,0), declared later */
+}
+/* DECISION — the one selector §B's list leaves out. A SELECTED filter chip carries
+ * `u-fill`, whose `:hover` rule is (0,5,0) and out-specifies the generic press wash at
+ * (0,4,1), so a chip that is already ON acknowledged nothing when pressed again (measured
+ * on `ALL (504)`: idle, hover and active all read rgb(127,230,168)). It is a filled
+ * control exactly like `.st-btn-primary`, so it gets that rule's OWN press value — no new
+ * primitive, no new number, opacity only. */
+.terminal-theme.staff-v2 [data-st-page] .u-fill:active,
+.terminal-theme.staff-v2 .sv2-nav .u-fill:active,
+.terminal-theme.staff-v2 .st-sheet .u-fill:active {
+  opacity: 0.82 !important; /* beats `.terminal-theme .u-fill { opacity: 1 !important }` (terminal-theme.css:486) — measured: a plain 0.82 here read back as 1 */
+}
+
+/* FOCUS RING: unchanged and deliberately NOT transitioned — a ring should snap in with
+ * focus, not animate (§B). The shipped `:focus-visible` rule in section 5 stands exactly
+ * as written; this section adds nothing to it. */
+
+/* ─────────────────────────────────────────────────────────────────────────────
+ * 9. THE THREE `prefers-*` FALLBACKS (§B). `prefers-reduced-motion` shipped in Beat 6;
+ * the other two are added here verbatim from the spec, same scope discipline.
+ * ────────────────────────────────────────────────────────────────────────── */
+
 @media (prefers-reduced-motion: reduce) {
+  /* The three SCOPE ROOTS are now listed beside their descendants: the backdrop
+   * animation above lands on `.st-sheet` ITSELF, which `… .st-sheet *` never matched. */
+  .terminal-theme.staff-v2 [data-st-page],
   .terminal-theme.staff-v2 [data-st-page] *,
+  .terminal-theme.staff-v2 .sv2-nav,
   .terminal-theme.staff-v2 .sv2-nav *,
+  .terminal-theme.staff-v2 .st-sheet,
   .terminal-theme.staff-v2 .st-sheet * {
-    transition-duration: 0ms !important; /* beats the transitions declared above */
-    animation-duration: 0ms !important;
+    transition-duration: 0ms !important; /* beats the transitions declared above, incl. the 80ms press */
+    animation-duration: 0ms !important;  /* beats every keyframe animation declared above */
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  /* Moot in practice (no translucency ships this arc — letter C1) but required so a
+   * future material layer inherits the fallback for free instead of it being forgotten. */
+  .terminal-theme.staff-v2 [data-st-page],
+  .terminal-theme.staff-v2 .st-sheet .st-panel {
+    backdrop-filter: none !important;
+  }
+}
+
+@media (prefers-contrast: more) {
+  .staff-v2 {
+    --st-hairline: rgba(255, 255, 255, 0.35);
+    --st-hairline-strong: rgba(255, 255, 255, 0.5);
+  }
+  .terminal-theme.staff-v2 [data-st-page] .st-t2,
+  .terminal-theme.staff-v2 [data-st-page] .st-t3,
+  .terminal-theme.staff-v2 .st-sheet .st-t2,
+  .terminal-theme.staff-v2 .st-sheet .st-t3 {
+    color: var(--st-text-1) !important; /* secondary/disabled promote to primary contrast */
   }
 }

@@ -239,8 +239,44 @@
   from { transform: translateY(-10px); }
   to   { transform: translateY(0); }
 }
+
+/* ARC 2 §B — the EXIT half: same path, mirrored, quicker (140ms, the number §B reuses
+ * rather than adding a fifth constant to the motion scale).
+ *
+ * DECISION — why this lives here and not on the `st-sheet-{enter,exit}` keyframes in
+ * theme/staff-tokens-v2.css: §B says a directional drawer slides "from whichever edge it
+ * is anchored to", and THIS drawer is anchored to the TOP (`top:56px; left:0; right:0`),
+ * not to a side — so its axis is Y, and it already ships its enter on that axis (above).
+ * The brief's instruction "if a surface already animates enter today, don't double it"
+ * therefore settles both halves: the shipped enter stands untouched, and the exit is its
+ * true mirror (back UP to -10px). Borrowing `st-sheet-exit` would have the drawer arrive
+ * from above and leave downward — a path, not the same path.
+ *
+ * `data-state` is set by SectionNav, which keeps the drawer mounted for one exit before
+ * unmounting it. No `both` fill-mode: the drawer's own `closing` state stops rendering it
+ * on the same tick the timer fires, and a transform-only animation has no invisible-
+ * overlay failure mode to guard against. */
+@keyframes sv2-drawer-out {
+  from { transform: translateY(0); }
+  to   { transform: translateY(-10px); }
+}
+.staff-v2 .sv2-drawer[data-state="exiting"] {
+  animation: sv2-drawer-out 140ms ease-in;
+  pointer-events: none; /* a closing drawer must not eat the tap that lands behind it */
+}
+/* The scrim leaves with it — opacity only (the backdrop has no axis to travel on). */
+@keyframes sv2-backdrop-out {
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}
+.staff-v2 .sv2-backdrop[data-state="exiting"] {
+  animation: sv2-backdrop-out 140ms ease-in both;
+  pointer-events: none;
+}
 @media (prefers-reduced-motion: reduce) {
-  .staff-v2 .sv2-drawer { animation: none; }
+  .staff-v2 .sv2-drawer,
+  .staff-v2 .sv2-drawer[data-state="exiting"],
+  .staff-v2 .sv2-backdrop[data-state="exiting"] { animation: none; }
 }
 .staff-v2 .sv2-drawer-top {
   flex: 0 0 auto;
