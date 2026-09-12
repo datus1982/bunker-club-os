@@ -8,7 +8,9 @@ import {
   type MediaFile, type PlaylistWithStats, type PlaylistItemDetail,
 } from "./useMediaAdmin";
 import type { AdminSlot } from "./useSignageAdmin";
-import { formatDuration, ALL_MEDIA_PLAYLIST_ID } from "./mediaProgram";
+import { formatDuration, posterOrThumbUrl, ALL_MEDIA_PLAYLIST_ID } from "./mediaProgram";
+import { useIsMobile } from "@/shared/useIsMobile";
+import { ConfirmDialog } from "@/shared/ui";
 import { MONO, ghost } from "./signageAdminShared";
 import { SlideOver } from "./SlideOver";
 
@@ -44,6 +46,8 @@ export function MediaLibraryPanel({ files, loading, screens, hasSchedule, varian
   /** "v2" gives each card the 44px rename affordance; the hub omits it and stays as-is. */
   variant?: MediaPanelVariant;
 }) {
+  // Only read in the v2 branch below, but hooks can't sit behind the early returns.
+  const narrow = useIsMobile();
   if (loading) return <div style={{ fontSize: 18, opacity: 0.7 }}>LOADING MEDIA…</div>;
   if (files.length === 0) {
     return (
@@ -54,8 +58,17 @@ export function MediaLibraryPanel({ files, loading, screens, hasSchedule, varian
       </div>
     );
   }
+  // v2 (§C1): a 2:3 poster reads recognizably narrower than the 16:9 crop did, so the column
+  // minimum drops 200 → 160 and the phone gap tightens 12 → 10 — recovering some of the scroll
+  // length the taller card adds, WITHOUT shrinking the image (recognizability over density).
+  // Classic keeps 200/12 exactly.
+  const isV2 = variant === "v2";
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(min(100%,200px),1fr))", gap: 12 }}>
+    <div style={{
+      display: "grid",
+      gridTemplateColumns: `repeat(auto-fill,minmax(min(100%,${isV2 ? 160 : 200}px),1fr))`,
+      gap: isV2 && narrow ? 10 : 12,
+    }}>
       {files.map((f) => <MediaFileCard key={f.id} file={f} screens={screens} hasSchedule={hasSchedule} variant={variant} />)}
     </div>
   );
@@ -91,6 +104,20 @@ const V2_STATUS_INK: Record<MediaFile["status"], string> = {
   missing: "st-danger",
   unsupported: "st-amber",
 };
+
+/**
+ * Split a trailing release year off a Kodi-style title: "Dr. No (1962)" → name "Dr. No", year
+ * "1962". RENDER-TIME ONLY — nothing is written, and the rename editor still edits the whole
+ * stored string (`file.title`), so there is no data change and no rename-semantics change.
+ *
+ * Deliberately conservative: the year must be a 4-digit 19xx/20xx in parentheses at the very END
+ * of the string, with a non-space character before it. A title with no such suffix (every TV
+ * episode row, "Freaks and Geeks - S01E07 - …") comes back unchanged, name = the whole string.
+ */
+function splitTitleYear(s: string): { name: string; year: string | null } {
+  const m = /^(.*\S)\s*\((19\d{2}|20\d{2})\)\s*$/.exec(s);
+  return m ? { name: m[1], year: m[2] } : { name: s, year: null };
+}
 
 /* ── a library file card (thumb + inline-editable title + duration + status + PLAY ON) ── */
 function MediaFileCard({ file, screens, hasSchedule, variant }: {
@@ -134,12 +161,40 @@ function MediaFileCard({ file, screens, hasSchedule, variant }: {
     onSuccess: () => setPicking(false),
   });
   const canPlay = file.status === "present" && screens.length > 0;
+  const isV2 = variant === "v2";
+  // The PLAY-ON row's buttons carry `playBtn`, whose inline `fontSize: 13` is DEAD on a staff page:
+  // `.staff-ui button { font-size: 1.25rem !important }` beats it, so they actually render at 20px
+  // and "▶ PLAY ON…" measured 150/150 against a 150px box — flush to the edge, which is what read
+  // as a truncated word. `st-body` is the v2 way to win that cascade (the ConfirmDialog lesson), so
+  // in v2 these render at the token Body size like every other v2 control. Not a new size: the
+  // rest of the v2 page is already 15px. Classic keeps its 20px buttons untouched.
+  //
+  // The idle label's trailing "…" also goes, in v2 only: an ellipsis flush against the button edge
+  // reads as a TRUNCATED word, which is how "▶ PLAY ON…" got reported as a clipped label. "▾" says
+  // "this opens a picker" and cannot be misread that way. Classic keeps "▶ PLAY ON…".
+  const playBtnCls = isV2 ? "st-body" : undefined;
+
+  // §C1 — the card image, v2 only. Source order is the TV's own waterfall, imported:
+  // poster_path → thumb_path → the ▶ placeholder. The fit rule follows the house's imagery law:
+  // a real one-sheet is pre-cropped to 2:3 by TMDB so cover-fit is safe; a thumb_path fallback is
+  // a raw 16:9 frame grab nobody cropped to 2:3, so it letterboxes (contain) rather than losing
+  // its edges. Classic stays on `file.thumb` in a 110px landscape box, byte-identical.
+  const cardImg = isV2 ? posterOrThumbUrl(file.poster_path ?? null, file.thumb_path) : file.thumb;
+  const isPoster = isV2 && !!file.poster_path;
+  // §C2 fold: the YEAR is the datum that distinguishes Casino Royale 1954 / 1967 / 2006, and it
+  // sat at the END of the title string — exactly what a 2-line clamp drops. It now renders as its
+  // own element on the meta line, so it can never fall off. Render-time split only.
+  const { name: titleName, year: titleYear } = isV2 ? splitTitleYear(display) : { name: display, year: null };
 
   return (
     <div className="terminal-border" style={{ display: "flex", flexDirection: "column", overflow: "hidden", minWidth: 0 }}>
-      <div style={{ position: "relative", height: 110, borderBottom: "1px solid rgba(0,255,65,0.2)", display: "flex", alignItems: "center", justifyContent: "center", background: "#030803" }}>
-        {file.thumb ? (
-          <img src={file.thumb} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", opacity: file.status === "present" ? 1 : 0.45 }} />
+      <div style={{
+        position: "relative",
+        ...(isV2 ? { width: "100%", aspectRatio: "2 / 3" } : { height: 110 }),
+        borderBottom: "1px solid rgba(0,255,65,0.2)", display: "flex", alignItems: "center", justifyContent: "center", background: "#030803",
+      }}>
+        {cardImg ? (
+          <img src={cardImg} alt="" style={{ width: "100%", height: "100%", objectFit: isV2 && !isPoster ? "contain" : "cover", opacity: file.status === "present" ? 1 : 0.45 }} />
         ) : (
           <span style={{ fontSize: 34, opacity: 0.7 }}>▶</span>
         )}
@@ -165,8 +220,30 @@ function MediaFileCard({ file, screens, hasSchedule, variant }: {
             >{chip.label}</span>
             <span
               className="st-t3"
-              style={{ position: "absolute", bottom: 6, right: 6, fontSize: 12, letterSpacing: 1, padding: "1px 5px", background: "rgba(2,6,10,0.8)" }}
+              // bottom/right 6 → 8, matching the taller 2:3 frame's margins (§C1). Still the
+              // demoted Disabled-tier peer of the status badge — do not promote it back.
+              style={{ position: "absolute", bottom: 8, right: 8, fontSize: 12, letterSpacing: 1, padding: "1px 5px", background: "rgba(2,6,10,0.8)" }}
             >{formatDuration(file.duration_seconds)}</span>
+            {/* §C2 fold: the rename control leaves the TITLE'S TEXT FLOW and becomes a corner
+                affordance on the poster. Inside the title row its glyph + gap + padding took ~35px
+                of a 152px line — a third of the text budget — which is why "Title (Year)" kept
+                losing its year. The title row is now plain text at full card width, and this is
+                the one control that opens the editor (no doubled affordance). 44×44 hit area, the
+                visible chip drawn on the inner span because `.terminal-theme button` forces a
+                transparent background. Top-RIGHT: top-left is the status badge, bottom-right the
+                runtime chip. */}
+            <button
+              type="button"
+              onClick={() => { setDraft(file.title ?? ""); setEditingTitle(true); }}
+              title={`Rename ${display}`}
+              aria-label={`Rename ${display}`}
+              style={renameOverlayBtn}
+            >
+              <span
+                className="st-pill st-t2"
+                style={{ fontSize: 17, lineHeight: 1, padding: "5px 9px", background: "rgba(2,6,10,0.92)", boxShadow: "inset 0 0 0 1px currentColor" }}
+              >✎</span>
+            </button>
           </>
         ) : (
           <>
@@ -187,23 +264,24 @@ function MediaFileCard({ file, screens, hasSchedule, variant }: {
             style={{ width: "100%", background: "#000", color: "var(--terminal-green)", border: "1px solid var(--terminal-green)", padding: "6px 8px", fontSize: 16, fontFamily: MONO, ...(variant === "v2" ? { minHeight: 44 } : null) }}
           />
         ) : variant === "v2" ? (
-          // DECISION (Beat 5, closes #104 NOTE-3): in v2 the title row IS the rename control —
-          // a 44px bordered row with a visible ✎ — because promoting the library to its own page
-          // made a bare ~30px text line the page's primary action, 504 times over. Same handler,
-          // same draft state, same `updateMediaTitle` mutation, same Enter/Escape/blur editor:
-          // only the affordance grew. Classic keeps the bare line below, byte-identical.
-          <button
-            type="button"
-            onClick={() => { setDraft(file.title ?? ""); setEditingTitle(true); }}
-            title="Click to rename"
-            style={renameBtn}
-          >
-            <span aria-hidden="true" style={{ fontSize: 17, opacity: 0.55, flex: "0 0 auto" }}>✎</span>
-            {/* The label needs its own block for the ellipsis: `text-overflow` is ignored on a
-                flex CONTAINER (the StatusChip lesson). 20px matches what classic actually
-                renders — `.staff-ui button` pins button text at 20px !important. */}
-            <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 20 }}>{display}</span>
-          </button>
+          // §C2 — 2 lines, not 1 with an ellipsis: one line clipped every real title in the
+          // library before its distinguishing part survived. After the fold the row is PLAIN TEXT
+          // at the full card width (the ✎ moved to the poster corner), and the year has been
+          // lifted out onto the meta line — so the two lines carry the NAME and nothing else.
+          // `st-body` carries the size: 15px/1.5 Body role, and it is the only thing that can set
+          // it here (the ConfirmDialog lesson — an !important beats any inline px).
+          // The complete STORED string (name + year, exactly what the rename editor edits) stays
+          // reachable on `title` + `aria-label`.
+          <div
+            className="st-body"
+            title={display}
+            aria-label={display}
+            style={{
+              minWidth: 0, overflow: "hidden",
+              display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical",
+              overflowWrap: "anywhere", textAlign: "left",
+            }}
+          >{titleName}</div>
         ) : (
           <button
             type="button"
@@ -212,7 +290,21 @@ function MediaFileCard({ file, screens, hasSchedule, variant }: {
             style={{ width: "100%", textAlign: "left", background: "transparent", border: "none", color: "var(--terminal-green)", fontFamily: MONO, fontSize: 18, cursor: "pointer", padding: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}
           >{display}</button>
         )}
-        <div style={{ fontSize: 12, opacity: 0.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", marginTop: 3 }} title={file.filename}>{file.filename}</div>
+        {isV2 ? (
+          // The meta line carries the provenance path AND — after the §C2 fold — the year, as its
+          // own mono datum. The path keeps its 1-line ellipsis (it is provenance, not the
+          // recognizability problem); the year is `flex: 0 0 auto` so the path can never squeeze it.
+          <div style={{ display: "flex", alignItems: "baseline", gap: 6, marginTop: 3, minWidth: 0 }}>
+            {titleYear && <span className="st-mono st-t2" style={{ flex: "0 0 auto" }}>{titleYear}</span>}
+            <span
+              className="st-t3"
+              style={{ minWidth: 0, fontSize: 12, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}
+              title={file.filename}
+            >{file.filename}</span>
+          </div>
+        ) : (
+          <div style={{ fontSize: 12, opacity: 0.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", marginTop: 3 }} title={file.filename}>{file.filename}</div>
+        )}
 
         {/* PLAY ON — send this film to a screen right now (owner beat). Present files only: a
             missing/unsupported file has nothing to play. */}
@@ -223,19 +315,20 @@ function MediaFileCard({ file, screens, hasSchedule, variant }: {
                 type="button"
                 onClick={() => setPicking(true)}
                 title="Play this film now on a screen, then continue through the rest of the library"
+                className={playBtnCls}
                 style={playBtn}
-              >▶ PLAY ON…</button>
+              >{isV2 ? "▶ PLAY ON ▾" : "▶ PLAY ON…"}</button>
             ) : (
               <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                 <div style={{ fontSize: 11, letterSpacing: 1, opacity: 0.6, lineHeight: 1.4 }}>
                   STARTS THIS FILM, THEN THE REST OF THE LIBRARY
                 </div>
                 {screens.map((s) => (
-                  <button key={s.id} type="button" disabled={play.isPending} onClick={() => play.mutate(s)} style={playBtn}>
+                  <button key={s.id} type="button" disabled={play.isPending} onClick={() => play.mutate(s)} className={playBtnCls} style={playBtn}>
                     ▶ {s.name.toUpperCase()}
                   </button>
                 ))}
-                <button type="button" onClick={() => setPicking(false)} style={{ ...playBtn, opacity: 0.6 }}>CANCEL</button>
+                <button type="button" onClick={() => setPicking(false)} className={playBtnCls} style={{ ...playBtn, opacity: 0.6 }}>CANCEL</button>
                 {play.isError && <div className="u-amber" style={{ fontSize: 11 }}>COULD NOT SET PROGRAM</div>}
               </div>
             )}
@@ -291,6 +384,7 @@ export function PlaylistEditor({ initial, files, onClose, variant = "classic" }:
   const readOnly = isFolder; // folder name + membership are sync-owned
   const [name, setName] = useState(initial?.playlist.name ?? "");
   const [createdId, setCreatedId] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const playlistId = initial?.playlist.id ?? createdId;
 
   const detailQ = usePlaylistDetail(playlistId);
@@ -408,12 +502,41 @@ export function PlaylistEditor({ initial, files, onClose, variant = "classic" }:
 
             {!isFolder && (
               <div style={{ marginTop: 4 }}>
-                <button type="button" onClick={() => { if (confirm("Delete this playlist? Clips stay in the library; any screen pointed at it falls back to an empty program until re-pointed.")) del.mutate(); }} className="u-red" style={{ ...ghost, color: "var(--terminal-red,#ff5555)", borderColor: "var(--terminal-red,#ff5555)" }}>DELETE PLAYLIST</button>
+                <button
+                  type="button"
+                  // §C4 — v2 draws the ratified ConfirmDialog instead of the browser's
+                  // `confirm()`; classic keeps `confirm()` untouched. SAME guard, SAME single
+                  // `del` mutation, no double prompt — only the confirm SURFACE differs.
+                  // DECISION: gated on `variant` rather than swapped for both. ConfirmDialog is a
+                  // token-scoped v2 primitive (`st-sheet`/`st-panel`/`st-btn`), so rendering it
+                  // inside the un-tokened classic hub would be a visual change to classic for no
+                  // gain — and Beat 6 set the precedent when Users kept classic on `confirm()`
+                  // and gave only v2 the sheet.
+                  onClick={() => {
+                    if (variant === "v2") { setConfirmDelete(true); return; }
+                    if (confirm("Delete this playlist? Clips stay in the library; any screen pointed at it falls back to an empty program until re-pointed.")) del.mutate();
+                  }}
+                  className="u-red"
+                  style={{ ...ghost, color: "var(--terminal-red,#ff5555)", borderColor: "var(--terminal-red,#ff5555)" }}
+                >DELETE PLAYLIST</button>
               </div>
             )}
           </>
         )}
       </div>
+      {confirmDelete && (
+        <ConfirmDialog
+          title={`Delete ${initial?.playlist.name ?? name}?`}
+          // The existing sentence, verbatim (§C4) — only the surface changes, not the copy.
+          body="Clips stay in the library; any screen pointed at it falls back to an empty program until re-pointed."
+          confirmLabel="Delete playlist"
+          cancelLabel="Keep playlist"
+          danger
+          busy={del.isPending}
+          onConfirm={() => { setConfirmDelete(false); del.mutate(); }}
+          onCancel={() => setConfirmDelete(false)}
+        />
+      )}
     </SlideOver>
   );
 }
@@ -430,14 +553,17 @@ const playBtn: CSSProperties = {
   minHeight: 44, width: "100%", cursor: "pointer", textAlign: "left",
   whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
 };
-/** v2 rename row — a real 44px tap target, full card width (classic keeps the bare line).
- *  No `fontSize` here on purpose: `.staff-ui button` pins button text at 20px !important, so
- *  a value here would be a lie; the two inner spans carry their own inline sizes. */
-const renameBtn: CSSProperties = {
-  width: "100%", minHeight: 44, display: "flex", alignItems: "center", gap: 7,
-  textAlign: "left", background: "transparent", border: "1px solid rgba(0,255,65,0.25)",
-  color: "var(--terminal-green)", fontFamily: MONO, cursor: "pointer", padding: "0 8px",
-  boxSizing: "border-box",
+/** v2 rename control — a 44×44 corner affordance on the poster (§C2 fold), replacing the row that
+ *  used to sit inside the title's text flow. WIDTH and height both clear the tap floor (#103
+ *  NOTE-6: a height-only harness once missed a 34px-wide button). The hit area is transparent and
+ *  borderless; the visible chip is the inner span, because `.terminal-theme button` forces
+ *  `background: transparent !important` and no inline background can win. No `fontSize` here on
+ *  purpose — `.staff-ui button` pins button text at 20px !important, so the span carries its own. */
+const renameOverlayBtn: CSSProperties = {
+  position: "absolute", top: 0, right: 0, width: 44, height: 44,
+  display: "flex", alignItems: "center", justifyContent: "center",
+  background: "transparent", border: "none", padding: 0,
+  color: "var(--terminal-green)", fontFamily: MONO, cursor: "pointer", boxSizing: "border-box",
 };
 const miniIcon: CSSProperties = {
   fontFamily: MONO, fontSize: 14, color: "var(--terminal-green)",

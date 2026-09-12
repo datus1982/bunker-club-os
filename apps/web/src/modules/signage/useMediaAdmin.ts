@@ -17,8 +17,11 @@ import { collectPaged } from "./mediaPagination";
 // (Re-export the display types so hub components import media types from one place.)
 export type { MediaFile, MediaPlaylist, Presentation };
 
+// `poster_path` (migration 0055) rides the ADMIN read only — the staff Library card draws the
+// real one-sheet, with the frame grab as its fallback (polish arc 2 §C1). Query-shape addition,
+// not a schema change: the column already exists and the TV reader already selects it.
 const FILE_COLS =
-  "id, filename, title, hash, duration_seconds, width, height, size_bytes, thumb_path, status, has_subtitles";
+  "id, filename, title, hash, duration_seconds, width, height, size_bytes, thumb_path, poster_path, status, has_subtitles";
 
 /* ── media library (files) ───────────────────────────────────────────────── */
 
