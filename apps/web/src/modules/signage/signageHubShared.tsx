@@ -7,6 +7,7 @@ import {
   activeMoment, mapScheduleRow, resolveRotation, resolveSlotMode, itemAirsToday, recurrenceChipLabel,
   type SignageItem, type SlotMode, type ToastCacheRow, type Template, type VenueClock,
 } from "./useSignage";
+import { TAP } from "@/shared/ui";
 import { resolveEffectiveProgramWithSource, type ProgramHold } from "./scheduleResolve";
 import { ALL_MEDIA_NAME, isAllMedia } from "./mediaProgram";
 import type { PlaylistWithStats, ScheduleRowRaw } from "./useMediaAdmin";
@@ -95,23 +96,61 @@ export function placementsFor(assets: AssetWithPlacements[], itemId: string): st
  * hub tracks NO play/pause state; a paused TV self-heals at the 04:00 reload or the next program
  * write). The channel is torn down per send inside sendTransportCommand.
  */
-export function TransportRow({ slug }: { slug: string }) {
+export function TransportRow({ slug, variant = "classic" }: {
+  slug: string;
+  /**
+   * "classic" (the DEFAULT, and what the classic hub passes by omission) renders the markup
+   * this component has always rendered — same labels, same className, same style keys in the
+   * same order, so the classic hub's DOM stays byte-identical.
+   *
+   * "v2" is the tokened leg: Body-role 15px sentence-case labels on the 44px floor. Only the
+   * PAINT differs — the commands, the broadcast and the 260ms pressed flash are one
+   * code path for both.
+   */
+  variant?: "classic" | "v2";
+}) {
+  const v2 = variant === "v2";
   const [pressed, setPressed] = useState<TransportCmd | null>(null);
   const send = (cmd: TransportCmd) => {
     setPressed(cmd);
     window.setTimeout(() => setPressed((c) => (c === cmd ? null : c)), 260);
     void sendTransportCommand(slug, cmd).catch(() => {});
   };
-  const btns: { cmd: TransportCmd; label: string }[] = [
-    { cmd: "pause", label: "⏸ PAUSE" },
-    { cmd: "resume", label: "▶ RESUME" },
-    { cmd: "next", label: "⏭ NEXT" },
-  ];
+  const btns: { cmd: TransportCmd; label: string }[] = v2
+    // Sentence case is the v2 button rule (Beat 6 §B); the glyphs stay — they are how a
+    // manager finds the right button without reading at arm's length.
+    ? [
+      { cmd: "pause", label: "⏸ Pause" },
+      { cmd: "resume", label: "▶ Resume" },
+      { cmd: "next", label: "⏭ Next" },
+    ]
+    : [
+      { cmd: "pause", label: "⏸ PAUSE" },
+      { cmd: "resume", label: "▶ RESUME" },
+      { cmd: "next", label: "⏭ NEXT" },
+    ];
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 7, gridColumn: "1 / -1" }}>
+    // `alignItems: start` (v2 only) is the 80px fix and it is a GRID default, not a wrap:
+    // grid items stretch in the block axis, and this grid sits on a flex line that the
+    // sub-strip stretches — so each 44px button grew to the line's height. Classic keeps the
+    // stretch it has always had.
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 7, gridColumn: "1 / -1", ...(v2 ? { alignItems: "start" } : null) }}>
       {btns.map(({ cmd, label }) => {
         const on = pressed === cmd;
-        return (
+        return v2 ? (
+          <button
+            key={cmd}
+            type="button"
+            onClick={() => send(cmd)}
+            className={on ? "st-btn st-btn-primary st-body" : "st-btn st-body"}
+            // `minWidth: TAP` is the 44px floor on the WIDTH axis too (Beat 6 NOTE-6), and
+            // `whiteSpace: nowrap` keeps "⏸ Pause" on one line — the label wrapping after the
+            // glyph is the other half of what made this strip 80px tall at 390.
+            style={{ ...cardBtn, justifyContent: "center", minWidth: TAP, padding: "9px 12px", whiteSpace: "nowrap", fontWeight: on ? 700 : 400 }}
+          >
+            {label}
+          </button>
+        ) : (
           <button key={cmd} type="button" onClick={() => send(cmd)} className={on ? "u-fill u-ink" : ""}
             style={{ ...cardBtn, justifyContent: "center", background: on ? "var(--terminal-green)" : "transparent", color: on ? "#000" : "var(--terminal-green)", fontWeight: on ? 700 : 400 }}>
             {label}
