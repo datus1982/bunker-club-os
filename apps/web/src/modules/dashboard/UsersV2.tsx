@@ -85,8 +85,10 @@ export function UsersV2({
       />
 
       {/* `glyph={false}`: the string already starts with "⚠" and it is built in Users.tsx,
-          which CLASSIC renders too — stripping it there would change a classic surface. */}
-      {notice && <InlineNotice kind="warn" glyph={false} message={notice} style={{ marginBottom: 16 }} />}
+          which CLASSIC renders too — stripping it there would change a classic surface.
+          `role="alert"`: this is a mutation error that appears mid-session in response to
+          an action (the primitive's default `status` is for persistent conditions). */}
+      {notice && <InlineNotice kind="warn" role="alert" glyph={false} message={notice} style={{ marginBottom: 16 }} />}
 
       {/* ── INVITE STAFF ─────────────────────────────────────────────────────── */}
       <form onSubmit={invite.onSubmit} className="st-panel" style={card}>
