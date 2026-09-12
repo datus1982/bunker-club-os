@@ -1156,3 +1156,20 @@
 .terminal-theme.staff-v2 .st-sheet .st-panel.st-drawer[data-state="entering"] {
   animation: st-drawer-enter var(--st-motion-sheet) var(--st-ease);
 }
+/* THE EXIT (Beat 8 PR 2 scope-add) — the enter, mirrored, for the same reason the enter
+ * exists: §8's `st-sheet-exit` is the CENTRED dialog's 8px Y-fall, and an edge-anchored
+ * drawer that arrived on X must leave on X. (0,6,0) beats that (0,5,0) rule, so it wins
+ * wherever it is declared. `both` holds the final frame across the ~140–200ms the phase
+ * machine waits before unmounting, so the panel cannot snap back to its open position
+ * between `animationend` and React's unmount (the Beat 7 WARN-2 lesson). Opacity is NOT
+ * animated here — the drawer fades because the BACKDROP it lives inside fades, which is
+ * exactly how its enter works; adding a second opacity would double-fade it.
+ * `prefers-reduced-motion` (§9) zeroes this with everything else, and `useSheetPhase`
+ * short-circuits to an immediate unmount in that case rather than waiting on nothing. */
+@keyframes st-drawer-exit {
+  from { transform: translateX(0); }
+  to   { transform: translateX(10px); }
+}
+.terminal-theme.staff-v2 .st-sheet .st-panel.st-drawer[data-state="exiting"] {
+  animation: st-drawer-exit 140ms ease-in both;
+}

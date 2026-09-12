@@ -442,11 +442,12 @@ export function MediaScreensPage() {
               panelChoices={panelChoices}
               qc={qc}
               variant="v2"
+              openKey={panel}
               onClose={() => setPanel(null)}
             />
           )}
           {panel?.kind === "schedule" && (
-            <ScheduleOverlay slot={panel.slot} timezone={timezone} variant="v2" onClose={() => setPanel(null)} />
+            <ScheduleOverlay slot={panel.slot} timezone={timezone} variant="v2" openKey={panel} onClose={() => setPanel(null)} />
           )}
         </>
       }

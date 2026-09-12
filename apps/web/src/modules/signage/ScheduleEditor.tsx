@@ -51,12 +51,14 @@ const DAYS: { tok: string; label: string }[] = [
 
 type ProgKind = "rotation" | "playlist" | "capture" | "carousel";
 
-export function ScheduleEditor({ slot, timezone, onClose, variant = "classic" }: {
+export function ScheduleEditor({ slot, timezone, onClose, variant = "classic", openKey }: {
   slot: AdminSlot;
   timezone: string;
   onClose: () => void;
   /** "v2" renders the tokened sheet (Beat 8 PR 2). Defaults to the shipped classic drawer. */
   variant?: "classic" | "v2";
+  /** Identity of the open request — forwarded to SlideOver's phase machine. */
+  openKey?: unknown;
 }) {
   const v2 = variant === "v2";
   const rowsQ = useSlotScheduleAdmin(slot.id);
@@ -163,7 +165,7 @@ export function ScheduleEditor({ slot, timezone, onClose, variant = "classic" }:
   const pressed = (on: boolean) => (v2 ? { "aria-pressed": on } : null);
 
   return (
-    <SlideOver eyebrow={`${slot.name} ▸ SCHEDULE`} title={v2 ? "Schedule — dayparts" : "SCHEDULE — DAYPARTS"} onClose={onClose} variant={variant}>
+    <SlideOver eyebrow={`${slot.name} ▸ SCHEDULE`} title={v2 ? "Schedule — dayparts" : "SCHEDULE — DAYPARTS"} onClose={onClose} variant={variant} openKey={openKey}>
       <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
         <div className={v2 ? "st-body st-t2" : undefined} style={v2 ? { lineHeight: 1.5 } : { fontSize: 14, opacity: 0.7, lineHeight: 1.5 }}>
           Programs that flip themselves by time of day. A manual SWITCH PROGRAM still wins until the next daypart (or the 4 AM rollover for a SPECIAL EVENT). Any time no daypart covers falls to ROTATION.

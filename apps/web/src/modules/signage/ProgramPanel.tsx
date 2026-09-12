@@ -48,7 +48,7 @@ import { TAP } from "@/shared/ui/tokens";
  * to a screen reader); that is the only new attribute.
  * ──────────────────────────────────────────────────────────────────────────────────── */
 export function ProgramPanel({
-  slot, hasSchedule, overrideActive, panelChoices, onClose, onChanged, variant = "classic",
+  slot, hasSchedule, overrideActive, panelChoices, onClose, onChanged, variant = "classic", openKey,
 }: {
   slot: AdminSlot;
   /** Does this slot have any dayparts? Decides the default hold + whether SPECIAL EVENT shows. */
@@ -62,6 +62,8 @@ export function ProgramPanel({
   onChanged: () => void;
   /** "v2" renders the tokened sheet (Beat 8 PR 2). Defaults to the shipped classic drawer. */
   variant?: "classic" | "v2";
+  /** Identity of the open request — forwarded to SlideOver's phase machine. */
+  openKey?: unknown;
 }) {
   const v2 = variant === "v2";
   const playlistsQ = useMediaPlaylists();
@@ -125,7 +127,7 @@ export function ProgramPanel({
   const pressed = (on: boolean) => (v2 ? { "aria-pressed": on } : null);
 
   return (
-    <SlideOver eyebrow={`${slot.name} ▸ PROGRAM`} title={v2 ? "Switch program" : "SWITCH PROGRAM"} onClose={onClose} variant={variant}>
+    <SlideOver eyebrow={`${slot.name} ▸ PROGRAM`} title={v2 ? "Switch program" : "SWITCH PROGRAM"} onClose={onClose} variant={variant} openKey={openKey}>
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
         <div className={v2 ? "st-body st-t2" : undefined} style={v2 ? { lineHeight: 1.5 } : { fontSize: 15, opacity: 0.7, lineHeight: 1.5 }}>
           What this screen plays at the bottom of the ladder. A live game, takeover or scheduled MOMENT still preempts any program.
