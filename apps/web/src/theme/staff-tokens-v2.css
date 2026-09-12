@@ -886,13 +886,13 @@
 .terminal-theme.staff-v2 .st-sheet .st-btn {
   border-radius: var(--st-radius-control) !important; /* beats .terminal-theme * { border-radius: 0 !important } */
 }
-/* `.st-menu` takes the 6px CONTROL radius inside a sheet, not the 10px sheet radius its
- * page twin uses (§B addendum, Marvin: the whole sheet-contents set is 6px). A menu that
- * opens INSIDE a drawer is a small surface on that drawer, not a sheet of its own — and
- * the 10px corner is the shape reserved for the thing the viewer opened. The page leg
- * keeps its 10px exactly. */
+/* `.st-menu` MATCHES ITS PAGE TWIN at the 10px sheet radius — see the floating-surface
+ * exception in the §4-twins block below (Marvin, 2026-09-12). An earlier build gave it the
+ * 6px control radius as part of the sheet-CONTENTS set; the follow-up ruling takes it out
+ * of that set, so it goes back to being the page's rule verbatim. One class, one shape,
+ * wherever it opens. */
 .terminal-theme.staff-v2 .st-sheet .st-menu {
-  border-radius: var(--st-radius-control) !important; /* beats .terminal-theme * { border-radius: 0 !important } AND the sheet radius on the page twin */
+  border-radius: var(--st-radius-sheet) !important; /* beats .terminal-theme * { border-radius: 0 !important } */
 }
 
 /* ── §3 twins: the DESCENDANT legs of the tier/accent/utility roles ─────────── */
@@ -933,6 +933,14 @@
  * contents) is precisely the drift the token sheet exists to prevent. So inside a sheet
  * these surfaces carry NO fill at all; the hairline is the separation.
  *
+ * …AND ITS EXCEPTION (Marvin, 2026-09-12, ruling on the open flag this raised):
+ *   "Floating surfaces (menus/popovers) keep a fill even inside sheets; only in-flow
+ *    contents separate by hairline."
+ * The addendum is about ELEVATION, and a popover is not elevated relative to the sheet —
+ * it is OVER it, with the sheet's own content showing through wherever it does not paint.
+ * A transparent floating menu is not calm, it is unreadable. So `.st-menu` is taken back
+ * out of the set below and keeps its page twin verbatim (surface-3, 10px, hairline).
+ *
  * The page leg is untouched. `.st-panel` is also untouched: section 4 already gives the
  * sheet's OWN panel surface-4, and a nested `.st-panel` inherits that, exactly as it does
  * inside a ConfirmDialog today — re-pointing it here would split one class into two
@@ -940,9 +948,17 @@
  * ────────────────────────────────────────────────────────────────────────── */
 .terminal-theme.staff-v2 .st-sheet .st-card,
 .terminal-theme.staff-v2 .st-sheet .st-row,
-.terminal-theme.staff-v2 .st-sheet .st-box,
-.terminal-theme.staff-v2 .st-sheet .st-menu {
+.terminal-theme.staff-v2 .st-sheet .st-box {
   background: transparent !important; /* beats inline `background:"#020402"` / the green washes in the shared panels — and, per the addendum, carries no tier of its own */
+  border: 1px solid var(--st-hairline) !important;
+}
+/* THE FLOATING-SURFACE EXCEPTION, verbatim: "Floating surfaces (menus/popovers) keep a
+ * fill even inside sheets; only in-flow contents separate by hairline." Identical to the
+ * `[data-st-page]` twin — same tier, same edge, same 10px above. INERT TODAY (nothing
+ * emits `.st-menu` yet; the hub's ⋯ OverflowMenu lives on the page, not in a drawer), and
+ * correct the day PR 2–6 opens a popover inside one. */
+.terminal-theme.staff-v2 .st-sheet .st-menu {
+  background: var(--st-surface-3) !important;
   border: 1px solid var(--st-hairline) !important;
 }
 /* Hover/selected on a row inside a sheet is the existing white-alpha wash, NEVER a fill
