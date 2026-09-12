@@ -40,9 +40,22 @@ import type { AvailableGroup, Config, ConfiguredGroup } from "./drinksAdminShare
  *    a StatusChip and again as the `● ON` button's own label. The chip keeps the state
  *    (top-right, where every v2 row reports state) and the button becomes a VERB
  *    ("Turn off" / "Turn on"). Same `onToggle` call, same mutation, nothing else moved.
- *  • REMOVE keeps `u-amber` deliberately: the danger-language redesign (verb label, red
- *    budget, danger-zone geography, tiered confirm) is PR 3, and the token sheet already
- *    re-declares `u-amber` to the calmed #E8B04B inside the v2 scope.
+ *
+ * BEAT 6 (PR 3) — the danger pattern (§B "Danger language", owner letter D1 as amended):
+ *  • REMOVE leaves the ▲▼/Turn-off cluster entirely. Those three are reversible, routine
+ *    controls; a destructive one must not read as their same-weight peer (the "danger has
+ *    no geography" failure mode). Each group row now ends in its own footer strip under a
+ *    hairline holding ONE red, VERB-named control: "Remove group".
+ *  • Red, not the calmed amber it used to borrow: amber is this system's ambient/pending
+ *    ink (it is what "OFF TODAY" and "sync stale" are painted in), so spending it on the
+ *    one destructive control made the two indistinguishable at a glance.
+ *  • The ratified ConfirmDialog stays (PR #103's DECISION; D1's text-swap/hold variants
+ *    were ruled out for Beat 6). Its buttons are now verb-named too — "Remove group" /
+ *    "Keep group", never a bare REMOVE and never Yes/No — so the confirm answers the
+ *    question it asks. Same `onRemove(id)` call, same single mutation in DrinksAdmin.tsx.
+ *  • The OFF chip moves to the `neutral` tone (Secondary tier). PR 1 put it on the
+ *    Disabled tier via `off`; here the chip is the readable state of a control someone
+ *    came to check, not de-emphasis — see the tone note in StatusChip.
  *
  * Sizes are inline px: nothing inherits font-size under `.terminal-theme` (PR #89).
  */
@@ -114,14 +127,23 @@ export function DrinksAdminV2({
               key={g.id}
               stacked={narrow}
               title={`${g.name}${g.toast_menu_guid === "MAIN_MENU_ALL" ? " ★" : ""}`}
-              meta={<StatusChip tone={g.enabled ? "info" : "off"} dot={g.enabled} label={g.enabled ? "ON" : "OFF"} />}
+              meta={<StatusChip tone={g.enabled ? "info" : "neutral"} dot={g.enabled} label={g.enabled ? "ON" : "OFF"} />}
               actions={
                 <>
                   <button type="button" className="st-btn st-body" style={btn} onClick={() => onMove(g, -1)} disabled={i === 0} aria-label={`Move ${g.name} up`}>▲</button>
                   <button type="button" className="st-btn st-body" style={btn} onClick={() => onMove(g, 1)} disabled={i === arr.length - 1} aria-label={`Move ${g.name} down`}>▼</button>
                   {/* VERB, not a second state readout — the StatusChip in `meta` owns the state. */}
                   <button type="button" className="st-btn st-body" style={btn} onClick={() => onToggle(g)}>{g.enabled ? "Turn off" : "Turn on"}</button>
-                  <button type="button" className="u-amber st-btn st-body" style={btnDanger} onClick={() => setConfirmRemove(g)}>REMOVE</button>
+                </>
+              }
+              footer={
+                // The row's own danger zone: a hairline, a quiet kicker, and one red verb.
+                // Nothing reversible may join it (§B geography).
+                <>
+                  <span className="st-label st-t2">DANGER ZONE</span>
+                  <button type="button" className="st-btn st-btn-danger st-body" style={btnDanger} onClick={() => setConfirmRemove(g)}>
+                    Remove group
+                  </button>
                 </>
               }
             />
@@ -166,7 +188,8 @@ export function DrinksAdminV2({
         <ConfirmDialog
           title="Remove this group?"
           body={<>“{confirmRemove.name}” stops rotating on the TOP SELLERS board. Nothing in Toast changes — you can add the group back from the picker.</>}
-          confirmLabel="REMOVE"
+          confirmLabel="Remove group"
+          cancelLabel="Keep group"
           danger
           onConfirm={() => { onRemove(confirmRemove.id); setConfirmRemove(null); }}
           onCancel={() => setConfirmRemove(null)}

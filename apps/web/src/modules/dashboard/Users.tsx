@@ -17,8 +17,9 @@ import {
 
 /**
  * USERS (admin only) — staff accounts + module grants (Phase 4b, migration 0025).
- * Role labels are titles; ACCESS is the module checkboxes. Admin implies every module,
- * so an admin's checkboxes are shown ticked + disabled. Toggling a box grants/revokes
+ * Role labels are titles; ACCESS is the module checkboxes. Admin implies every module:
+ * classic shows an admin's checkboxes ticked + disabled, v2 collapses the whole set to one
+ * "Full access — admin" line (UX overhaul Beat 6, letter C4). Toggling a box grants/revokes
  * instantly (no redeploy) via admin_upsert_staff.
  *
  * INVITE STAFF (phase-staff-invites) uses the invite-staff edge fn — the cold-email path
@@ -122,10 +123,17 @@ export function Users() {
     invite.mutate({ emails, role: inviteRole, modules: inviteModules });
   };
 
-  /** Confirm-then-remove. Shared by both presentations so the guard can't drift. */
+  /** Confirm-then-remove — the CLASSIC path, unchanged. */
   const removeRow = (row: StaffRow) => {
     if (confirm(`Remove ${row.email}?`)) remove.mutate(row.profile_id);
   };
+
+  /** The same removal, minus the browser prompt: v2 draws the ratified ConfirmDialog
+   *  instead (UX overhaul Beat 6, letter D1 — verb-named "Remove access"/"Keep access").
+   *  Both paths end in the ONE `remove` mutation above and the one RPC beneath it, so the
+   *  guard cannot drift; only who asks the question differs. Classic still gets
+   *  `removeRow`, so it is byte-identical and never double-prompts. */
+  const removeRowConfirmed = (row: StaffRow) => remove.mutate(row.profile_id);
 
   // UX overhaul Beat 2: the v2 presentation (owner decision C — stacked cards on a
   // phone). PRESENTATION ONLY — the data layer, mutations and guards above are the
@@ -140,7 +148,7 @@ export function Users() {
         notice={notice}
         onToggleModule={toggleModule}
         onChangeRole={changeRole}
-        onRemove={removeRow}
+        onRemove={removeRowConfirmed}
         invite={{
           emails: inviteEmails,
           setEmails: setInviteEmails,

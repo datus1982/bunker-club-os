@@ -13,6 +13,14 @@ import { radius, space, TAP } from "./tokens";
  * Both buttons clear the 44px tap floor. Focus moves to CANCEL on open, so the
  * destructive button is never the one a stray Return key presses.
  *
+ * BEAT 6 (PR 3): both buttons carry `st-body`. Without it `.staff-ui button { font-size:
+ * 1.25rem !important }` beat the inline 15px and the buttons rendered at 20px, which folded
+ * every verb-named label onto two lines at 390px ("Remove / access"). The class is the only
+ * thing that can win — an inline size cannot beat an !important — so it is load-bearing, not
+ * decoration (the PR #89 lesson, again). `whiteSpace: nowrap` on the shared button style
+ * keeps a two-word verb one word; the widest pair in the app today ("Keep access" +
+ * "Remove access") measures well inside a 390px sheet.
+ *
  * BEAT 6 (PR 1): the sheet tier — surface-4 panel, 10px radius, hairline. `st-sheet`
  * on the backdrop is the token scope hook (a dialog is a v2-only overlay that may sit
  * outside a `[data-st-page]` root). `danger` now paints CONFIRM with the §B danger
@@ -65,18 +73,20 @@ export function ConfirmDialog({
         style={panel}
       >
         <div style={head}>
-          <div role="heading" aria-level={2} className="u-head st-heading st-t1">{title}</div>
+          {/* overflowWrap: a title can carry a raw email, and an address with no hyphen or
+              space has no break opportunity — it would run under the sheet edge. */}
+          <div role="heading" aria-level={2} className="u-head st-heading st-t1" style={{ overflowWrap: "anywhere" }}>{title}</div>
         </div>
         {body != null && <div className="st-body st-t2" style={bodyStyle}>{body}</div>}
         <div style={foot}>
-          <button type="button" ref={cancelRef} onClick={onCancel} disabled={busy} className="st-btn st-t2" style={btn}>
+          <button type="button" ref={cancelRef} onClick={onCancel} disabled={busy} className="st-btn st-body st-t2" style={btn}>
             {cancelLabel}
           </button>
           <button
             type="button"
             onClick={onConfirm}
             disabled={busy}
-            className={danger ? "st-btn st-btn-danger" : "st-btn st-btn-primary"}
+            className={danger ? "st-btn st-body st-btn-danger" : "st-btn st-body st-btn-primary"}
             style={btn}
           >
             {confirmLabel}
@@ -105,5 +115,5 @@ const foot: CSSProperties = {
 };
 const btn: CSSProperties = {
   minHeight: TAP, minWidth: TAP, padding: `0 ${space.s4 + 2}px`, cursor: "pointer",
-  letterSpacing: 0.5, fontSize: 15,
+  letterSpacing: 0.5, fontSize: 15, whiteSpace: "nowrap",
 };

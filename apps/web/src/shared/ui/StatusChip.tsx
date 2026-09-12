@@ -19,6 +19,7 @@ import { space } from "./tokens";
  *   `live`  → #00FF41, the ONE reserved full-saturation green: a true real-time state
  *   `info`  → the calmed accent #7FE6A8
  *   `idle`/`off` → the disabled text tier
+ *   `neutral` → the SECONDARY text tier (see the tone note below)
  *   `warn`  → calmed amber #E8B04B
  *   `alert` → danger red #FF5A5A
  * DECISION (tagged, Beat 3, unchanged): the audit named five tones, but the surfaces
@@ -26,14 +27,25 @@ import { space } from "./tokens";
  * folding red into `warn` would change what an operator reads across the bar. `alert`
  * is that state, not a new one. §B's "red is a budget" is about destructive ACTIONS;
  * a screen that is actually down is the other half of that budget (true failure state).
+ *
+ * BEAT 6 (PR 3) — `neutral` is added, and `idle`/`off` are deliberately NOT changed.
+ * PR 1's addendum ratified `idle`/`off` on the Disabled tier "with a caveat": those two
+ * mark places where nothing is happening (an asset queued nowhere, a finished event) and
+ * de-emphasis is honest there. A CONTROL that is switched off is the opposite case — its
+ * state is the thing an operator came to read — and 3.5:1 is the wrong tier for it. Rather
+ * than re-tier `off` (which would also lift the DONE/IDLE chips it is spent on in the hub),
+ * `neutral` names "a readable state with no colour of its own" and Top Sellers' OFF chip
+ * moves onto it. Tone, not a per-call-site override: the next off-state chip should be able
+ * to ask for the same thing by name.
  */
-export type StatusTone = "live" | "info" | "idle" | "off" | "warn" | "alert";
+export type StatusTone = "live" | "info" | "idle" | "off" | "neutral" | "warn" | "alert";
 
 const TONE_CLASS: Record<StatusTone, string> = {
   live: "st-live",
   info: "st-accent",
   idle: "st-t3",
   off: "st-t3",
+  neutral: "st-t2",
   warn: "st-amber",
   alert: "st-danger",
 };

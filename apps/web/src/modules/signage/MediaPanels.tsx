@@ -82,6 +82,16 @@ export function MediaPlaylistsPanel({ playlists, loading, onEdit }: {
   );
 }
 
+/** v2 status ink (A4). PRESENT earns the calmed accent — the good state is the one an
+ *  operator scanning 504 cards wants to skip past; MISSING is a true failure state and
+ *  therefore inside red's budget; UNSUPPORTED is ambient/pending, i.e. amber. Classic keeps
+ *  `statusChip().cls` exactly as it was (blank / `u-red` / `u-amber`). */
+const V2_STATUS_INK: Record<MediaFile["status"], string> = {
+  present: "st-accent",
+  missing: "st-danger",
+  unsupported: "st-amber",
+};
+
 /* ── a library file card (thumb + inline-editable title + duration + status + PLAY ON) ── */
 function MediaFileCard({ file, screens, hasSchedule, variant }: {
   file: MediaFile;
@@ -133,8 +143,37 @@ function MediaFileCard({ file, screens, hasSchedule, variant }: {
         ) : (
           <span style={{ fontSize: 34, opacity: 0.7 }}>▶</span>
         )}
-        <span className={chip.cls} style={{ position: "absolute", top: 6, left: 6, fontSize: 10, letterSpacing: 1, padding: "2px 5px", background: "#020602", border: "1px solid currentColor" }}>{chip.label}</span>
-        <span style={{ position: "absolute", bottom: 6, right: 6, fontSize: 12, letterSpacing: 1, padding: "1px 5px", background: "#020602", border: "1px solid rgba(0,255,65,0.4)" }}>{formatDuration(file.duration_seconds)}</span>
+        {variant === "v2" ? (
+          // A4 (audit): on a page whose own header says "152 MISSING", whether the file is
+          // actually on the bar PC is the card's headline fact — it was a 10px badge tied
+          // in weight with the runtime counter in the opposite corner. In v2 it becomes the
+          // most prominent thing on the card and the runtime demotes to the Disabled tier.
+          // `st-pill` for the radius (a bare span still loses to the base `border-radius: 0
+          // !important`), the ring via inset box-shadow because the token scope forces
+          // `border-color: hairline !important` on every descendant, and an opaque ground
+          // because a chip's 4%-white wash is unreadable over a bright poster.
+          <>
+            <span
+              className={`st-pill st-body ${V2_STATUS_INK[file.status]}`}
+              style={{
+                position: "absolute", top: 8, left: 8,
+                textTransform: "uppercase", fontWeight: 700, letterSpacing: 1,
+                padding: "3px 10px",
+                background: "rgba(2,6,10,0.92)",
+                boxShadow: "inset 0 0 0 1px currentColor",
+              }}
+            >{chip.label}</span>
+            <span
+              className="st-t3"
+              style={{ position: "absolute", bottom: 6, right: 6, fontSize: 12, letterSpacing: 1, padding: "1px 5px", background: "rgba(2,6,10,0.8)" }}
+            >{formatDuration(file.duration_seconds)}</span>
+          </>
+        ) : (
+          <>
+            <span className={chip.cls} style={{ position: "absolute", top: 6, left: 6, fontSize: 10, letterSpacing: 1, padding: "2px 5px", background: "#020602", border: "1px solid currentColor" }}>{chip.label}</span>
+            <span style={{ position: "absolute", bottom: 6, right: 6, fontSize: 12, letterSpacing: 1, padding: "1px 5px", background: "#020602", border: "1px solid rgba(0,255,65,0.4)" }}>{formatDuration(file.duration_seconds)}</span>
+          </>
+        )}
       </div>
       <div style={{ padding: "8px 10px", minWidth: 0 }}>
         {editingTitle ? (
