@@ -168,7 +168,10 @@ export function RoundGrid({
                             nothing shrinks. The class has to be on the spans, not the
                             button: the button's role sizes only its own text nodes, and
                             nothing inherits font-size here (the PR #89 class) — which is
-                            also why the nested bonus span needs its own copy. */}
+                            also why the nested bonus span needs its own copy.
+                            The <button> itself deliberately keeps `.scoring-page`'s 18px
+                            desktop-density size, which §A2 freezes; the role belongs on
+                            the spans, where the digits actually are. */}
                         {s ? (
                           <span className={cx(v2 && "st-mono-lg")}>
                             {isWild ? `${s.points}×2` : s.points}

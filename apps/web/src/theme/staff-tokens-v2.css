@@ -575,18 +575,23 @@
  * The motion layer landing on this stack (`phase-arc2-motion`) gives every
  * `[data-st-page] .terminal-border / .st-card / .st-row` a 140ms `st-mount-fade`. That
  * is right for between-game admin and WRONG for the live scoring console: spec §A2 says
- * the room must never see anything "settle", and Scoring's control line, round selector,
- * answer box, question box, the v2 Modal panel and the ScoreDialog card all match that
- * selector — so a QuestionPanel remount mid-show would fade in front of an audience.
- * Scoring's v2 root therefore emits `data-st-motion="off"` beside `data-st-page`, and
- * this rule cancels the animation inside it. INERT until that motion PR merges, correct
- * the moment it does; it is written here so the stack merge needs no follow-up. */
+ * the room must never see anything "settle", and Scoring's control line, round selector
+ * and its two fixed boxes all match that selector — so a QuestionPanel remount mid-show
+ * would fade in front of an audience. Scoring's v2 root therefore emits
+ * `data-st-motion="off"` beside `data-st-page`, and this rule cancels the animation
+ * inside it. INERT until that motion PR merges, correct the moment it does; it is
+ * written here so the stack merge needs no follow-up.
+ *
+ * DELIBERATELY NOT LISTED: `.st-sheet .st-panel`. §A2's concern is the PAGE settling
+ * under a watching room, not a dialog the host deliberately opened — and killing the
+ * panel's animation would strand it: the motion PR fades the backdrop off the panel's
+ * own `data-state` via `:has()`, and unmounts ConfirmDialog on the panel's
+ * `animationend`. With no panel animation there is no `animationend`, so a dismissed
+ * Scoring dialog would sit solid for the ~200ms fallback over a backdrop that has
+ * already gone. Scoring's dialogs animate exactly like every other v2 dialog. */
 .terminal-theme.staff-v2 [data-st-page][data-st-motion="off"] .terminal-border,
 .terminal-theme.staff-v2 [data-st-page][data-st-motion="off"] .st-card,
-.terminal-theme.staff-v2 [data-st-page][data-st-motion="off"] .st-row,
-/* A dialog opened FROM Scoring is a DOM descendant of the page root, so the opt-out
- * reaches it too — and only it: dialogs on the other v2 pages keep their motion. */
-.terminal-theme.staff-v2 [data-st-page][data-st-motion="off"] .st-sheet .st-panel {
+.terminal-theme.staff-v2 [data-st-page][data-st-motion="off"] .st-row {
   animation: none !important;
 }
 
