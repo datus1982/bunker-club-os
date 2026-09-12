@@ -74,6 +74,11 @@ export function RoundGrid({
   // Phone-only: expand the small in-grid icon controls to ≥44px tap targets. Desktop keeps
   // its dense layout (the host runs the grid on a laptop — density must not regress).
   const iconBtn = narrow ? { padding: "6px", minWidth: 44, minHeight: 44 } : { padding: "2px 8px" };
+  // CLEAR lives in the TOTAL header with `minHeight: 0`, so it has always been under the
+  // 44px floor on a phone (36px in classic). The v2 Body role takes it to 32px, so v2
+  // restores the floor — PHONE ONLY, because the `.scoring-page` desktop-density rule is
+  // explicitly protected (§A2) and classic's own 36px is not this PR's to change.
+  const clearFloor = v2 && narrow ? { minHeight: 44, minWidth: 44 } : null;
 
   return (
     <div>
@@ -98,9 +103,9 @@ export function RoundGrid({
               <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", alignItems: "center", gap: 8 }}>
                 {/* Mirror is the SAME element type (button) so it renders the identical width
                     under the terminal theme — a <span> got a different global font size. */}
-                <button type="button" aria-hidden tabIndex={-1} className={cx(v2 && "st-btn-danger")} style={{ ...clearBtnStyle, justifySelf: "end", visibility: "hidden", pointerEvents: "none" }}>CLEAR</button>
+                <button type="button" aria-hidden tabIndex={-1} className={cx(v2 && "st-btn-danger")} style={{ ...clearBtnStyle, ...clearFloor, justifySelf: "end", visibility: "hidden", pointerEvents: "none" }}>CLEAR</button>
                 <span style={{ justifySelf: "center" }}>TOTAL</span>
-                <button type="button" onClick={onClearAll} className={cx(v2 && "st-btn-danger")} style={{ ...clearBtnStyle, justifySelf: "start" }} title="Clear every score in this game">CLEAR</button>
+                <button type="button" onClick={onClearAll} className={cx(v2 && "st-btn-danger")} style={{ ...clearBtnStyle, ...clearFloor, justifySelf: "start" }} title="Clear every score in this game">CLEAR</button>
               </div>
             </Th>
             {ties.hasTies && <Th>TIE</Th>}
