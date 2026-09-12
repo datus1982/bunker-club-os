@@ -4,6 +4,8 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import JSZip from "jszip";
 import { supabase } from "@/shared/supabaseClient";
 import { log } from "@/shared/log";
+import { StaffPageHeader } from "@/shared/ui";
+import { cx, useTriviaV2 } from "./triviaV2";
 
 /**
  * Bulk Import from PowerPoint — host tool (host+; /game/:gameId/bulk-import). Ported
@@ -55,6 +57,7 @@ export function BulkImport() {
   const [processing, setProcessing] = useState(false);
   const [importing, setImporting] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
+  const v2 = useTriviaV2();
 
   const game = useQuery({
     queryKey: ["bi", "game", gameId],
@@ -160,60 +163,75 @@ export function BulkImport() {
   if (game.isError || !game.data) return <Centered text="GAME NOT FOUND" />;
 
   return (
-    <div className="terminal-theme" style={{ minHeight: "100vh", padding: 40, fontFamily: "'VT323','Share Tech Mono',monospace" }}>
+    <div
+      {...(v2 ? { "data-st-page": "" } : { className: "terminal-theme" })}
+      style={{ minHeight: "100vh", padding: v2 ? "clamp(16px, 4vw, 40px)" : 40, ...(v2 ? null : { fontFamily: "'VT323','Share Tech Mono',monospace" }) }}
+    >
       <div style={{ maxWidth: 900, margin: "0 auto" }}>
-        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 4 }}>
-          <h1 style={{ fontSize: 44, fontWeight: 700, letterSpacing: 2 }}>BULK IMPORT · POWERPOINT</h1>
-          <button type="button" onClick={() => navigate(`/game/${gameId}/questions`)} style={btnGhost}>← QUESTIONS</button>
-        </div>
-        <div style={{ fontSize: 24, opacity: 0.7 }}>GAME · {game.data.game_date}</div>
-        <div className="terminal-separator" style={{ margin: "16px 0" }} />
+        {v2 ? (
+          <StaffPageHeader
+            eyebrow="GAMES ▸ TRIVIA ▸ IMPORT"
+            title="Bulk import · PowerPoint"
+            right={<button type="button" onClick={() => navigate(`/game/${gameId}/questions`)} className="st-body" style={{ ...btnGhost, minHeight: 44 }}>← Questions</button>}
+          />
+        ) : (
+          <>
+            <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 4 }}>
+              <h1 style={{ fontSize: 44, fontWeight: 700, letterSpacing: 2 }}>BULK IMPORT · POWERPOINT</h1>
+              <button type="button" onClick={() => navigate(`/game/${gameId}/questions`)} style={btnGhost}>← QUESTIONS</button>
+            </div>
+            <div style={{ fontSize: 24, opacity: 0.7 }}>GAME · {game.data.game_date}</div>
+            <div className="terminal-separator" style={{ margin: "16px 0" }} />
+          </>
+        )}
+        {v2 && <div className="st-body st-t2" style={{ marginBottom: 12 }}>Game · {game.data.game_date}</div>}
 
-        <div className="terminal-border" style={{ padding: 20, marginBottom: 20 }}>
-          <div style={{ fontSize: 20, opacity: 0.8, marginBottom: 12 }}>
+        <div className={cx("terminal-border", v2 && "st-card")} style={{ padding: 20, marginBottom: 20 }}>
+          <div className={cx(v2 && "st-body st-t2")} style={{ fontSize: v2 ? undefined : 20, opacity: v2 ? 1 : 0.8, marginBottom: 12 }}>
             Upload the weekly .pptx. Extracts round names, questions + answers, and the picture round.
             Import matches parsed rounds to this game's existing rounds by number — create the game with the right round count first.
           </div>
           <input type="file" accept=".pptx" onChange={(e) => { const f = e.target.files?.[0] ?? null; setFile(f); setParsed(null); setStatus(null); }} style={{ ...input, width: "100%" }} />
-          <div style={{ display: "flex", gap: 12, marginTop: 12 }}>
-            <button type="button" onClick={process} disabled={!file || processing} style={btnPrimary}>
-              {processing ? "PROCESSING…" : "PROCESS POWERPOINT"}
+          {/* `flexWrap` is v2-only: classic must stay byte-identical (RULE #1). */}
+          <div style={{ display: "flex", gap: 12, marginTop: 12, ...(v2 ? { flexWrap: "wrap" as const } : null) }}>
+            <button type="button" onClick={process} disabled={!file || processing} className={cx(v2 && "st-btn st-btn-primary st-body")} style={{ ...btnPrimary, ...(v2 ? { minHeight: 44 } : null) }}>
+              {processing ? (v2 ? "Processing…" : "PROCESSING…") : v2 ? "Process PowerPoint" : "PROCESS POWERPOINT"}
             </button>
-            {file && <span style={{ fontSize: 20, opacity: 0.7, alignSelf: "center" }}>✓ {file.name}</span>}
+            {file && <span className={cx(v2 && "st-body st-t2")} style={{ fontSize: v2 ? undefined : 20, opacity: v2 ? 1 : 0.7, alignSelf: "center" }}>✓ {file.name}</span>}
           </div>
         </div>
 
         {parsed && (
-          <div className="terminal-border" style={{ padding: 20, marginBottom: 20, display: "flex", flexDirection: "column", gap: 12 }}>
-            <div style={{ fontSize: 28, fontWeight: 700 }}>REVIEW — {parsed.length} ROUND(S)</div>
+          <div className={cx("terminal-border", v2 && "st-card")} style={{ padding: 20, marginBottom: 20, display: "flex", flexDirection: "column", gap: 12 }}>
+            <div className={cx(v2 && "st-heading st-t1")} style={{ fontSize: v2 ? undefined : 28, fontWeight: 700 }}>{v2 ? `Review — ${parsed.length} round(s)` : `REVIEW — ${parsed.length} ROUND(S)`}</div>
             {parsed.map((r) => (
-              <div key={r.round_number} className="terminal-border" style={{ padding: 14 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-                  <div style={{ fontSize: 24, fontWeight: 700 }}>ROUND {r.round_number}: {r.round_name}{r.is_picture_round ? " [PICTURE]" : ""}</div>
-                  <div style={{ fontSize: 20, opacity: 0.7 }}>{r.questions.length} {r.is_picture_round ? "answer(s)" : "question(s)"}</div>
+              <div key={r.round_number} className={cx("terminal-border", v2 && "st-row")} style={{ padding: 14 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", ...(v2 ? { gap: 12, flexWrap: "wrap" as const } : null) }}>
+                  <div className={cx(v2 && "st-heading st-t1")} style={{ fontSize: v2 ? undefined : 24, fontWeight: 700 }}>ROUND {r.round_number}: {r.round_name}{r.is_picture_round ? " [PICTURE]" : ""}</div>
+                  <div className={cx(v2 && "st-label st-t2")} style={{ fontSize: v2 ? undefined : 20, opacity: v2 ? 1 : 0.7 }}>{r.questions.length} {r.is_picture_round ? "answer(s)" : "question(s)"}</div>
                 </div>
                 {!r.is_picture_round && r.questions.slice(0, 2).map((q) => (
-                  <div key={q.question_number} style={{ fontSize: 18, marginTop: 6 }}>
-                    <div>Q{q.question_number}: {q.question_text.slice(0, 90)}</div>
-                    <div style={{ opacity: 0.7 }}>A: {q.answer_text || "(no answer)"}</div>
+                  <div key={q.question_number} style={{ fontSize: v2 ? undefined : 18, marginTop: 6 }}>
+                    <div className={cx(v2 && "st-body st-t1")}>Q{q.question_number}: {q.question_text.slice(0, 90)}</div>
+                    <div className={cx(v2 && "st-body st-t2")} style={{ opacity: v2 ? 1 : 0.7 }}>A: {q.answer_text || "(no answer)"}</div>
                   </div>
                 ))}
-                {!r.is_picture_round && r.questions.length > 2 && <div style={{ fontSize: 16, opacity: 0.6, marginTop: 4 }}>… and {r.questions.length - 2} more</div>}
+                {!r.is_picture_round && r.questions.length > 2 && <div className={cx(v2 && "st-body st-t3")} style={{ fontSize: v2 ? undefined : 16, opacity: v2 ? 1 : 0.6, marginTop: 4 }}>… and {r.questions.length - 2} more</div>}
                 {r.is_picture_round && r.picture_image && (
                   <div style={{ marginTop: 8 }}>
                     <img src={URL.createObjectURL(r.picture_image)} alt="picture round" style={{ maxWidth: "100%", maxHeight: 240, objectFit: "contain", border: "1px solid var(--terminal-green)" }} />
-                    {r.questions.length === 0 && <div style={{ fontSize: 18, opacity: 0.7, marginTop: 4 }}>Answers not auto-extracted — enter them in Question Entry after import.</div>}
+                    {r.questions.length === 0 && <div className={cx(v2 && "st-body st-t2")} style={{ fontSize: v2 ? undefined : 18, opacity: v2 ? 1 : 0.7, marginTop: 4 }}>Answers not auto-extracted — enter them in Question Entry after import.</div>}
                   </div>
                 )}
               </div>
             ))}
-            <button type="button" onClick={importToDb} disabled={importing} style={btnPrimary}>
-              {importing ? "IMPORTING…" : "IMPORT TO GAME"}
+            <button type="button" onClick={importToDb} disabled={importing} className={cx(v2 && "st-btn st-btn-primary st-body")} style={{ ...btnPrimary, ...(v2 ? { minHeight: 44 } : null) }}>
+              {importing ? (v2 ? "Importing…" : "IMPORTING…") : v2 ? "Import to game" : "IMPORT TO GAME"}
             </button>
           </div>
         )}
 
-        {status && <div className="terminal-border" style={{ padding: 12, fontSize: 20 }}>{status}</div>}
+        {status && <div className={cx("terminal-border", v2 && "st-card st-body st-t1")} style={{ padding: 12, fontSize: v2 ? undefined : 20 }}>{status}</div>}
       </div>
     </div>
   );
@@ -378,10 +396,16 @@ async function uploadPicture(blob: Blob, gameId: string): Promise<string | null>
   return supabase.storage.from("picture-rounds").getPublicUrl(name).data.publicUrl;
 }
 
+/** Full-screen state card. v2 swaps the nested `.terminal-theme` (green + CRT) for the
+ *  page hook, and puts the role on a CHILD — every token rule is a descendant selector. */
 function Centered({ text }: { text: string }) {
+  const v2 = useTriviaV2();
   return (
-    <div className="terminal-theme" style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 40 }}>
-      {text}
+    <div
+      {...(v2 ? { "data-st-page": "" } : { className: "terminal-theme" })}
+      style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", fontSize: v2 ? undefined : 40 }}
+    >
+      {v2 ? <span className="st-heading st-t2">{text}</span> : text}
     </div>
   );
 }

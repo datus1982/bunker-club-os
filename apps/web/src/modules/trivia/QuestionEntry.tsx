@@ -3,6 +3,8 @@ import { useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/shared/supabaseClient";
 import { log } from "@/shared/log";
+import { StaffPageHeader } from "@/shared/ui";
+import { cx, useTriviaV2 } from "./triviaV2";
 
 /**
  * Question Entry — host tool (host+; /game/:gameId/questions). Ported from the legacy
@@ -90,6 +92,7 @@ export function QuestionEntry() {
     },
   });
 
+  const v2 = useTriviaV2();
   const selectedRound = rounds.data?.find((r) => r.id === selectedRoundId) ?? null;
   const isThreeChance = selectedRound?.round_type === "bonus" && selectedRound?.bonus_type === "three-chance";
 
@@ -194,17 +197,32 @@ export function QuestionEntry() {
   if (game.isError || !game.data) return <Centered text="GAME NOT FOUND" />;
 
   return (
-    <div className="terminal-theme" style={{ minHeight: "100vh", padding: 40, fontFamily: "'VT323','Share Tech Mono',monospace" }}>
+    <div
+      {...(v2 ? { "data-st-page": "" } : { className: "terminal-theme" })}
+      style={{ minHeight: "100vh", padding: v2 ? "clamp(16px, 4vw, 40px)" : 40, ...(v2 ? null : { fontFamily: "'VT323','Share Tech Mono',monospace" }) }}
+    >
       <div style={{ maxWidth: 900, margin: "0 auto" }}>
-        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 4 }}>
-          <h1 style={{ fontSize: 44, fontWeight: 700, letterSpacing: 2 }}>QUESTION ENTRY</h1>
-          <button type="button" onClick={() => navigate("/game/history")} style={btnGhost}>← HISTORY</button>
-        </div>
-        <div style={{ fontSize: 24, opacity: 0.7 }}>GAME · {game.data.game_date}{dirty && "  ·  ⚠ UNSAVED"}</div>
-        <div className="terminal-separator" style={{ margin: "16px 0" }} />
+        {v2 ? (
+          <StaffPageHeader
+            eyebrow="GAMES ▸ TRIVIA ▸ QUESTIONS"
+            title="Question entry"
+            tag={dirty ? "UNSAVED" : undefined}
+            right={<button type="button" onClick={() => navigate("/game/history")} className="st-body" style={{ ...btnGhost, minHeight: 44 }}>← History</button>}
+          />
+        ) : (
+          <>
+            <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 4 }}>
+              <h1 style={{ fontSize: 44, fontWeight: 700, letterSpacing: 2 }}>QUESTION ENTRY</h1>
+              <button type="button" onClick={() => navigate("/game/history")} style={btnGhost}>← HISTORY</button>
+            </div>
+            <div style={{ fontSize: 24, opacity: 0.7 }}>GAME · {game.data.game_date}{dirty && "  ·  ⚠ UNSAVED"}</div>
+            <div className="terminal-separator" style={{ margin: "16px 0" }} />
+          </>
+        )}
+        {v2 && <div className="st-body st-t2" style={{ marginBottom: 12 }}>Game · {game.data.game_date}</div>}
 
-        <div className="terminal-border" style={{ padding: 20, marginBottom: 20 }}>
-          <div style={{ fontSize: 24, marginBottom: 8 }}>SELECT ROUND</div>
+        <div className={cx("terminal-border", v2 && "st-card")} style={{ padding: 20, marginBottom: 20 }}>
+          <div className={cx(v2 && "st-label st-t2")} style={{ fontSize: v2 ? undefined : 24, marginBottom: 8 }}>SELECT ROUND</div>
           <select value={selectedRoundId} onChange={(e) => setSelectedRoundId(e.target.value)} style={{ ...input, width: "100%" }}>
             <option value="">— choose a round —</option>
             {rounds.data?.map((r) => (
@@ -216,18 +234,19 @@ export function QuestionEntry() {
         </div>
 
         {selectedRound && (
-          <div className="terminal-border" style={{ padding: 20, display: "flex", flexDirection: "column", gap: 16 }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-              <div style={{ fontSize: 30, fontWeight: 700 }}>{roundLabel(selectedRound)}</div>
+          <div className={cx("terminal-border", v2 && "st-card")} style={{ padding: 20, display: "flex", flexDirection: "column", gap: 16 }}>
+            {/* `flexWrap` is v2-only: classic must stay byte-identical (RULE #1). */}
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, ...(v2 ? { flexWrap: "wrap" as const } : null) }}>
+              <div className={cx(v2 && "st-heading st-t1")} style={{ fontSize: v2 ? undefined : 30, fontWeight: 700 }}>{roundLabel(selectedRound)}</div>
               <div style={{ display: "flex", gap: 10 }}>
-                <button type="button" onClick={() => setImportOpen((o) => !o)} style={btnGhost}>IMPORT TEXT</button>
-                <button type="button" onClick={() => save.mutate()} disabled={save.isPending} style={btnPrimary}>
-                  {save.isPending ? "SAVING…" : "SAVE ROUND"}
+                <button type="button" onClick={() => setImportOpen((o) => !o)} className={cx(v2 && "st-btn st-body")} style={{ ...btnGhost, ...(v2 ? { minHeight: 44 } : null) }}>{v2 ? "Import text" : "IMPORT TEXT"}</button>
+                <button type="button" onClick={() => save.mutate()} disabled={save.isPending} className={cx(v2 && "st-btn st-btn-primary st-body")} style={{ ...btnPrimary, ...(v2 ? { minHeight: 44 } : null) }}>
+                  {save.isPending ? (v2 ? "Saving…" : "SAVING…") : v2 ? "Save round" : "SAVE ROUND"}
                 </button>
               </div>
             </div>
 
-            <div style={{ fontSize: 20, opacity: 0.7 }}>
+            <div className={cx(v2 && "st-body st-t2")} style={{ fontSize: v2 ? undefined : 20, opacity: v2 ? 1 : 0.7 }}>
               {isThreeChance
                 ? "3 questions (one per round) sharing ONE answer."
                 : selectedRound.round_type === "bonus"
@@ -238,35 +257,35 @@ export function QuestionEntry() {
             {/* Round name */}
             <div style={{ display: "flex", gap: 10, alignItems: "flex-end" }}>
               <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 4 }}>
-                <span style={{ fontSize: 20, opacity: 0.8 }}>ROUND NAME (shown on displays)</span>
+                <span className={cx(v2 && "st-label st-t2")} style={{ fontSize: v2 ? undefined : 20, opacity: v2 ? 1 : 0.8 }}>ROUND NAME (shown on displays)</span>
                 <input value={roundName} onChange={(e) => setRoundName(e.target.value)} placeholder="e.g. GENERAL KNOWLEDGE" style={input} />
               </div>
-              <button type="button" onClick={() => saveRoundName.mutate()} disabled={saveRoundName.isPending || roundName === (selectedRound.round_name ?? "")} style={btnGhost}>
-                UPDATE
+              <button type="button" onClick={() => saveRoundName.mutate()} disabled={saveRoundName.isPending || roundName === (selectedRound.round_name ?? "")} className={cx(v2 && "st-btn st-body")} style={{ ...btnGhost, ...(v2 ? { minHeight: 44 } : null) }}>
+                {v2 ? "Update" : "UPDATE"}
               </button>
             </div>
 
             {selectedRound.picture_url && (
-              <div className="terminal-border" style={{ padding: 12 }}>
-                <div style={{ fontSize: 20, marginBottom: 8 }}>PICTURE ROUND IMAGE</div>
+              <div className={cx("terminal-border", v2 && "st-card")} style={{ padding: 12 }}>
+                <div className={cx(v2 && "st-label st-t2")} style={{ fontSize: v2 ? undefined : 20, marginBottom: 8 }}>PICTURE ROUND IMAGE</div>
                 <img src={selectedRound.picture_url} alt="Picture round" style={{ maxWidth: "100%", border: "1px solid var(--terminal-green)" }} />
               </div>
             )}
 
             {importOpen && (
-              <div className="terminal-border" style={{ padding: 12, display: "flex", flexDirection: "column", gap: 8 }}>
-                <div style={{ fontSize: 20, opacity: 0.8 }}>Paste "Q: …" / "A: …" pairs, then IMPORT into slots:</div>
+              <div className={cx("terminal-border", v2 && "st-card")} style={{ padding: 12, display: "flex", flexDirection: "column", gap: 8 }}>
+                <div className={cx(v2 && "st-body st-t2")} style={{ fontSize: v2 ? undefined : 20, opacity: v2 ? 1 : 0.8 }}>Paste "Q: …" / "A: …" pairs, then IMPORT into slots:</div>
                 <textarea value={importText} onChange={(e) => setImportText(e.target.value)} rows={8} style={{ ...input, fontSize: 18 }} placeholder={"Q: What element is number 6?\nA: Carbon"} />
                 <div style={{ display: "flex", gap: 10 }}>
-                  <button type="button" onClick={runImport} disabled={!importText.trim()} style={btnPrimary}>IMPORT</button>
-                  <button type="button" onClick={() => { setImportOpen(false); setImportText(""); }} style={btnGhost}>CANCEL</button>
+                  <button type="button" onClick={runImport} disabled={!importText.trim()} className={cx(v2 && "st-btn st-btn-primary st-body")} style={{ ...btnPrimary, ...(v2 ? { minHeight: 44 } : null) }}>{v2 ? "Import" : "IMPORT"}</button>
+                  <button type="button" onClick={() => { setImportOpen(false); setImportText(""); }} className={cx(v2 && "st-btn st-body")} style={{ ...btnGhost, ...(v2 ? { minHeight: 44 } : null) }}>{v2 ? "Cancel" : "CANCEL"}</button>
                 </div>
               </div>
             )}
 
             {slots.map((s, i) => (
-              <div key={i} className="terminal-border" style={{ padding: 16, display: "flex", flexDirection: "column", gap: 10 }}>
-                <div style={{ fontSize: 22, fontWeight: 700 }}>
+              <div key={i} className={cx("terminal-border", v2 && "st-card")} style={{ padding: 16, display: "flex", flexDirection: "column", gap: 10 }}>
+                <div className={cx(v2 && "st-heading st-t1")} style={{ fontSize: v2 ? undefined : 22, fontWeight: 700 }}>
                   QUESTION {i + 1}
                   {isThreeChance && selectedRound.bonus_round_numbers?.[i] != null ? ` (ROUND ${selectedRound.bonus_round_numbers[i]})` : ""}
                 </div>
@@ -282,11 +301,11 @@ export function QuestionEntry() {
               </div>
             ))}
 
-            {status && <div className="terminal-border" style={{ padding: 10, fontSize: 20 }}>{status}</div>}
+            {status && <div className={cx("terminal-border", v2 && "st-card st-body st-t1")} style={{ padding: 10, fontSize: v2 ? undefined : 20 }}>{status}</div>}
           </div>
         )}
 
-        {!selectedRound && <div style={{ fontSize: 24, opacity: 0.6, marginTop: 16 }}>Select a round to enter questions.</div>}
+        {!selectedRound && <div className={cx(v2 && "st-body st-t2")} style={{ fontSize: v2 ? undefined : 24, opacity: v2 ? 1 : 0.6, marginTop: 16 }}>Select a round to enter questions.</div>}
       </div>
     </div>
   );
@@ -294,10 +313,16 @@ export function QuestionEntry() {
 
 /* ── helpers ───────────────────────────────────────────────────────────────── */
 
+/** Full-screen state card. v2 swaps the nested `.terminal-theme` (green + CRT) for the
+ *  page hook, and puts the role on a CHILD — every token rule is a descendant selector. */
 function Centered({ text }: { text: string }) {
+  const v2 = useTriviaV2();
   return (
-    <div className="terminal-theme" style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 40 }}>
-      {text}
+    <div
+      {...(v2 ? { "data-st-page": "" } : { className: "terminal-theme" })}
+      style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", fontSize: v2 ? undefined : 40 }}
+    >
+      {v2 ? <span className="st-heading st-t2">{text}</span> : text}
     </div>
   );
 }

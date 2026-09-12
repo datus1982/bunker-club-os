@@ -5,6 +5,7 @@ import { roleAtLeast, useRole } from "@/shared/useRole";
 import { SectionNav } from "@/shared/ui";
 import { HOME_V2, childVisibleV2, resolveActiveV2, visibleSectionsV2 } from "./navV2";
 import { UiVersionToggle } from "./UiVersionToggle";
+import { TriviaUiVersionToggle } from "./TriviaUiVersionToggle";
 import "@/theme/staff-shell-v2.css";
 import "@/theme/staff-tokens-v2.css";
 
@@ -41,6 +42,14 @@ export function StaffShellV2() {
 
   const showNav = !loading && isSignedIn && roleAtLeast(role, "staff");
 
+  // The trivia look switch belongs to the GAMES ▸ TRIVIA row, so it is offered exactly
+  // while a GAMES page is active. GAMES' real children ARE the five pages the switch
+  // governs (SCORING / GAME SETUP / TEAMS / HISTORY / SEASONS — READ THE ROOM is a
+  // coming-soon slot that never navigates), so the section test is exact. The deeper
+  // host tools (/game/:id/questions, /videos, /bulk-import) match no nav child, render
+  // no sub-nav row, and are out of this beat's scope — they stay classic either way.
+  const onGamesSection = activeSection?.label === "GAMES";
+
   return (
     <div className="terminal-theme staff-ui staff-v2" style={{ minHeight: "100vh" }}>
       {showNav && (
@@ -53,6 +62,7 @@ export function StaffShellV2() {
           roleLabel={`VIEWING AS ${(role ?? "—").toUpperCase()}`}
           onSignOut={signOut}
           extra={<UiVersionToggle />}
+          sectionExtra={onGamesSection ? <TriviaUiVersionToggle /> : undefined}
           locationKey={location.key}
         />
       )}

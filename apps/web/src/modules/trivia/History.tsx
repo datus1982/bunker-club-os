@@ -3,7 +3,9 @@ import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase, VENUE_ID } from "@/shared/supabaseClient";
 import { useRole } from "@/shared/useRole";
+import { ConfirmDialog, StaffPageHeader } from "@/shared/ui";
 import { GameRecap } from "./GameRecap";
+import { cx, useTriviaV2 } from "./triviaV2";
 import { Modal, btnGhost, btnDanger } from "./ui";
 
 /**
@@ -50,6 +52,7 @@ interface HistoryGame {
 
 export function History() {
   const qc = useQueryClient();
+  const v2 = useTriviaV2();
   const { can } = useRole();
   const canDelete = can("trivia");
   const [recapGame, setRecapGame] = useState<HistoryGame | null>(null);
@@ -131,18 +134,32 @@ export function History() {
   };
 
   return (
-    <div className="terminal-theme" style={{ minHeight: "100vh", padding: "clamp(16px, 4vw, 40px)", fontFamily: "'VT323','Share Tech Mono',monospace" }}>
+    <div
+      {...(v2 ? { "data-st-page": "" } : { className: "terminal-theme" })}
+      style={{ minHeight: "100vh", padding: "clamp(16px, 4vw, 40px)", ...(v2 ? null : { fontFamily: "'VT323','Share Tech Mono',monospace" }) }}
+    >
       <div style={{ maxWidth: 1100, margin: "0 auto" }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12, marginBottom: 8 }}>
-          <h1 style={{ fontSize: "clamp(28px, 7vw, 48px)", fontWeight: 700, letterSpacing: 2 }}>GAME HISTORY</h1>
-          <Link to="/dashboard" style={{ fontSize: 24, opacity: 0.8 }}>← DASHBOARD</Link>
-        </div>
-        <div className="terminal-separator" style={{ marginBottom: 24 }} />
+        {v2 ? (
+          <StaffPageHeader
+            eyebrow="GAMES ▸ TRIVIA ▸ HISTORY"
+            title="Game history"
+            tag={games.isSuccess ? `${rows.length} GAMES` : undefined}
+            right={<Link to="/dashboard" className="st-body st-t2" style={{ textDecoration: "none" }}>← Dashboard</Link>}
+          />
+        ) : (
+          <>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12, marginBottom: 8 }}>
+              <h1 style={{ fontSize: "clamp(28px, 7vw, 48px)", fontWeight: 700, letterSpacing: 2 }}>GAME HISTORY</h1>
+              <Link to="/dashboard" style={{ fontSize: 24, opacity: 0.8 }}>← DASHBOARD</Link>
+            </div>
+            <div className="terminal-separator" style={{ marginBottom: 24 }} />
+          </>
+        )}
 
         {games.isPending ? (
-          <p style={{ fontSize: 28, opacity: 0.7 }}>LOADING GAMES…</p>
+          <p className={cx(v2 && "st-body st-t2")} style={{ fontSize: 28, opacity: v2 ? 1 : 0.7 }}>{v2 ? "Loading games…" : "LOADING GAMES…"}</p>
         ) : rows.length === 0 ? (
-          <p style={{ fontSize: 28, opacity: 0.7 }}>NO GAMES YET.</p>
+          <p className={cx(v2 && "st-body st-t2")} style={{ fontSize: 28, opacity: v2 ? 1 : 0.7 }}>{v2 ? "No games yet." : "NO GAMES YET."}</p>
         ) : (
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 16 }}>
             {rows.map((g) => (
@@ -199,29 +216,41 @@ function GameCard({
   onOpen: () => void;
   onDelete: () => void;
 }) {
+  const v2 = useTriviaV2();
   const active = game.status === "active";
   return (
     <div
-      className="terminal-border"
-      style={{ padding: 20, display: "flex", flexDirection: "column", gap: 10, boxShadow: active ? "0 0 16px var(--terminal-glow)" : undefined }}
+      className={cx("terminal-border", v2 && "st-card")}
+      // The active card's green glow is the phosphor treatment the token system retires;
+      // in v2 the [ACTIVE] chip carries that signal instead (§B: elevation, never shadow).
+      style={{ padding: 20, display: "flex", flexDirection: "column", gap: 10, boxShadow: active && !v2 ? "0 0 16px var(--terminal-glow)" : undefined }}
     >
       <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8 }}>
-        <div style={{ fontSize: 34, fontWeight: 700 }}>{formatGameDate(game.game_date)}</div>
-        <div style={{ fontSize: 22, opacity: 0.85 }}>[{game.status.toUpperCase()}]</div>
+        <div className={cx(v2 && "st-heading st-t1")} style={{ fontSize: 34, fontWeight: 700 }}>{formatGameDate(game.game_date)}</div>
+        {/* Each branch reproduces the OTHER look's children exactly. Splitting a string
+            into an extra `{v2 ? …}` expression would give classic a different TEXT-NODE
+            layout for identical text — invisible in innerHTML, but it measures a
+            fraction of a pixel differently and the computed-style parity gate catches
+            it. Same reason for the two spans below. */}
+        <div className={cx(v2 && "st-chip st-label", v2 && (active ? "st-accent" : "st-t2"))} style={{ fontSize: 22, opacity: v2 ? 1 : 0.85, ...(v2 ? { padding: "3px 10px", whiteSpace: "nowrap" } : null) }}>
+          {v2 ? game.status.toUpperCase() : <>[{game.status.toUpperCase()}]</>}
+        </div>
       </div>
-      <div style={{ fontSize: 22, opacity: 0.8, display: "flex", flexWrap: "wrap", gap: 16 }}>
-        <span>{rounds ?? "–"} ROUNDS</span>
-        <span>{teams ?? "–"} TEAMS</span>
-        {game.is_playoff && <span>★ PLAYOFF</span>}
+      {/* Each span carries `st-body` itself — a class on this wrapper sizes only the
+          wrapper (`.terminal-theme *` sizes every element; nothing inherits — PR #89). */}
+      <div className={cx(v2 && "st-body st-t2")} style={{ fontSize: 22, opacity: v2 ? 1 : 0.8, display: "flex", flexWrap: "wrap", gap: 16 }}>
+        <span className={cx(v2 && "st-body st-t2")}>{v2 ? <>{rounds ?? "–"} rounds</> : <>{rounds ?? "–"} ROUNDS</>}</span>
+        <span className={cx(v2 && "st-body st-t2")}>{v2 ? <>{teams ?? "–"} teams</> : <>{teams ?? "–"} TEAMS</>}</span>
+        {game.is_playoff && <span className={cx(v2 && "st-body st-t2")}>{v2 ? "★ Playoff" : "★ PLAYOFF"}</span>}
       </div>
       <div style={{ display: "flex", alignItems: "stretch", gap: 8, marginTop: 6 }}>
         <button
           type="button"
           onClick={onOpen}
-          className="terminal-border"
-          style={{ flex: "1 1 auto", padding: "8px 12px", textAlign: "center", fontSize: 24, background: "transparent", cursor: "pointer", fontFamily: "inherit" }}
+          className={cx("terminal-border", v2 && "st-body")}
+          style={{ flex: "1 1 auto", padding: "8px 12px", textAlign: "center", fontSize: 24, background: "transparent", cursor: "pointer", fontFamily: "inherit", ...(v2 ? { minHeight: 44 } : null) }}
         >
-          VIEW RECAP →
+          {v2 ? "View recap →" : "VIEW RECAP →"}
         </button>
         {canDelete && (
           <button
@@ -230,11 +259,15 @@ function GameCard({
             disabled={!!deleteBlocked}
             aria-label={`Delete game ${game.game_date}`}
             title={deleteBlocked ?? "Delete this game"}
+            className={cx(v2 && "st-btn-danger st-body")}
             style={{
               ...btnDanger,
               flex: "0 0 auto",
               padding: "8px 14px",
-              minHeight: 0,
+              // The 44px floor: classic leans on the card's own row height, but a v2
+              // danger control has to clear it on BOTH axes on its own.
+              minHeight: v2 ? 44 : 0,
+              ...(v2 ? { minWidth: 44 } : null),
               fontSize: 22,
               fontFamily: "inherit",
               opacity: deleteBlocked ? 0.35 : undefined,
@@ -247,7 +280,7 @@ function GameCard({
       </div>
       {/* Why DELETE is unavailable — the same condition the RPC enforces (0059). */}
       {canDelete && deleteBlocked && (
-        <div style={{ fontSize: 20, opacity: 0.7, letterSpacing: 1 }}>{deleteBlocked}</div>
+        <div className={cx(v2 && "st-label st-t2")} style={{ fontSize: 20, opacity: v2 ? 1 : 0.7, letterSpacing: 1 }}>{deleteBlocked}</div>
       )}
     </div>
   );
@@ -270,6 +303,39 @@ function DeleteConfirm({
   onCancel: () => void;
   onConfirm: () => void;
 }) {
+  const v2 = useTriviaV2();
+
+  // v2 routes the destructive confirm through the shared ConfirmDialog (D1 danger
+  // pattern, verb-named buttons, CANCEL focused on mount) instead of the local Modal.
+  // Classic keeps its own dialog untouched — the pattern change is v2-only.
+  if (v2) {
+    return (
+      <ConfirmDialog
+        danger
+        busy={pending}
+        title={`Delete ${formatGameDate(game.game_date)}?`}
+        confirmLabel={pending ? "Deleting…" : "Delete game"}
+        cancelLabel="Keep game"
+        onCancel={onCancel}
+        onConfirm={onConfirm}
+        body={
+          <>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 16, marginBottom: 10 }}>
+              <span>{game.status.toUpperCase()}</span>
+              <span>{rounds ?? "–"} rounds</span>
+              <span>{teams ?? "–"} teams</span>
+              {game.is_playoff && <span>★ Playoff</span>}
+            </div>
+            <p style={{ margin: 0, lineHeight: 1.5 }}>
+              This permanently deletes the game and all its rounds, scores and questions. It can't be undone.
+            </p>
+            {error && <p className="st-danger" style={{ marginTop: 10, lineHeight: 1.5 }}>Delete failed: {error}</p>}
+          </>
+        }
+      />
+    );
+  }
+
   return (
     <Modal
       title="DELETE GAME"

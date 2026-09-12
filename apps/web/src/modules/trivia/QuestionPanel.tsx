@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useDisplayState, useRoundQuestions, type Round, type DisplayState } from "./useScoring";
+import { cx, useTriviaV2 } from "./triviaV2";
 import { btnGhost, btnActive } from "./ui";
 import { useIsMobile } from "@/shared/useIsMobile";
 
@@ -33,6 +34,7 @@ export function QuestionPanel({
   const questions = useRoundQuestions(gameId, currentRound, rounds);
   // Below ~700px the two side-by-side panels can't share a row without clipping — stack.
   const stack = useIsMobile(700);
+  const v2 = useTriviaV2();
 
   const [index, setIndex] = useState(0);
   const [showAns, setShowAns] = useState(false);
@@ -59,7 +61,7 @@ export function QuestionPanel({
   }, [currentRound?.id]);
 
   if (!currentRound) {
-    return <div className="terminal-border" style={{ padding: 20, opacity: 0.6, fontSize: 22 }}>No round to project.</div>;
+    return <div className={cx("terminal-border", v2 && "st-panel st-body st-t2")} style={{ padding: 20, opacity: v2 ? 1 : 0.6, fontSize: 22 }}>No round to project.</div>;
   }
 
   // Load a round = pin current_round_id (the single source for Q&A / Video / Up Next) and
@@ -103,11 +105,12 @@ export function QuestionPanel({
       {/* Round selector — its own full-width row so the round title (e.g.
           "ROUND 1 — GENERAL KNOWLEDGE") renders uncut instead of being clipped by the
           selector sharing the question-box header. */}
-      <div className="terminal-border" style={{ padding: "10px 14px", display: "flex", alignItems: "center", gap: 12 }}>
-        <span style={{ fontSize: 18, opacity: 0.7, letterSpacing: 1, flexShrink: 0 }}>ROUND</span>
+      <div className={cx("terminal-border", v2 && "st-panel")} style={{ padding: "10px 14px", display: "flex", alignItems: "center", gap: 12 }}>
+        <span className={cx(v2 && "st-label st-t2")} style={{ fontSize: 18, opacity: v2 ? 1 : 0.7, letterSpacing: 1, flexShrink: 0 }}>ROUND</span>
         <select
           value={currentRound.id}
           onChange={(e) => loadRound(e.target.value)}
+          className={cx(v2 && "st-body st-t1")}
           style={{ ...btnGhost, padding: "6px 12px", fontWeight: 700, flex: 1, minWidth: 0 }}
         >
           {rounds.map((r) => (
@@ -125,10 +128,10 @@ export function QuestionPanel({
       <div style={{ display: "grid", gridTemplateColumns: stack ? "minmax(0, 1fr)" : "minmax(0, 1fr) minmax(0, 1fr)", gap: 16 }}>
         {/* Answer-key column: box + [ SHOW/HIDE ANSWER centered · BACK TO Q1 right ] */}
         <div style={{ display: "flex", flexDirection: "column", gap: 12, minWidth: 0 }}>
-          <div className="terminal-border" style={{ padding: 16, display: "flex", flexDirection: "column", gap: 8, height: BOX_H }}>
+          <div className={cx("terminal-border", v2 && "st-panel")} style={{ padding: 16, display: "flex", flexDirection: "column", gap: 8, height: BOX_H }}>
             <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8 }}>
-              <h3 style={{ fontSize: 24, fontWeight: 700, flexShrink: 0 }}>ANSWER KEY</h3>
-              <span style={{ fontSize: 18, opacity: 0.8, textAlign: "right" }}>{roundLabel(currentRound)}</span>
+              <h3 className={cx(v2 && "st-heading st-t1")} style={{ fontSize: 24, fontWeight: 700, flexShrink: 0 }}>ANSWER KEY</h3>
+              <span className={cx(v2 && "st-label st-t2")} style={{ fontSize: 18, opacity: v2 ? 1 : 0.8, textAlign: "right" }}>{roundLabel(currentRound)}</span>
             </div>
             <div className="terminal-separator" style={{ margin: 0 }} />
             <div style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
@@ -148,13 +151,13 @@ export function QuestionPanel({
                 >
                   {questions.map((a) => (
                     <div key={a.id} style={{ display: "flex", gap: 8, fontSize: 20, lineHeight: 1.2 }}>
-                      <span style={{ fontWeight: 700, flexShrink: 0 }}>{a.question_number > 10 ? "B" : a.question_number}:</span>
-                      <span>{a.answer_text}</span>
+                      <span className={cx(v2 && "st-mono st-t2")} style={{ fontWeight: 700, flexShrink: 0 }}>{a.question_number > 10 ? "B" : a.question_number}:</span>
+                      <span className={cx(v2 && "st-body st-t1")}>{a.answer_text}</span>
                     </div>
                   ))}
                 </div>
               ) : (
-                <div style={{ opacity: 0.5, fontSize: 20 }}>
+                <div className={cx(v2 && "st-body st-t3")} style={{ opacity: v2 ? 1 : 0.5, fontSize: 20 }}>
                   {questions.length === 0 ? "No questions in this round." : "Press SCORE ROUND to reveal this round's answers for grading."}
                 </div>
               )}
@@ -164,37 +167,37 @@ export function QuestionPanel({
               LOADED round), SHOW/HIDE ANSWER (center, AUDIENCE reveal = show_answer), BACK TO
               Q1 (right, answer-review loop). 1fr auto 1fr keeps SHOW ANSWER centered. */}
           <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", alignItems: "center", gap: 8 }}>
-            <button type="button" onClick={() => setScoreRevealed((v) => !v)} style={{ ...(scoreRevealed ? btnActive : btnGhost), justifySelf: "start" }} title="Reveal this round's answers in the host answer key for grading">{scoreRevealed ? "⊟ HIDE ANSWERS" : "⊞ SCORE ROUND"}</button>
-            <button type="button" onClick={toggleAnswer} style={{ ...(showAns ? btnActive : btnGhost), justifySelf: "center" }}>{showAns ? "◉ HIDE ANSWER" : "◎ SHOW ANSWER"}</button>
-            <button type="button" onClick={backToQ1} disabled={index === 0 || total === 0} style={{ ...btnGhost, justifySelf: "end", opacity: index === 0 || total === 0 ? 0.4 : 1 }}>↩ BACK TO Q1</button>
+            <button type="button" onClick={() => setScoreRevealed((v) => !v)} className={cx(v2 && "st-body", v2 && scoreRevealed && "st-btn-primary")} style={{ ...(scoreRevealed ? btnActive : btnGhost), justifySelf: "start" }} title="Reveal this round's answers in the host answer key for grading">{scoreRevealed ? "⊟ HIDE ANSWERS" : "⊞ SCORE ROUND"}</button>
+            <button type="button" onClick={toggleAnswer} className={cx(v2 && "st-body", v2 && showAns && "st-btn-primary")} style={{ ...(showAns ? btnActive : btnGhost), justifySelf: "center" }}>{showAns ? "◉ HIDE ANSWER" : "◎ SHOW ANSWER"}</button>
+            <button type="button" onClick={backToQ1} disabled={index === 0 || total === 0} className={cx(v2 && "st-body")} style={{ ...btnGhost, justifySelf: "end", opacity: index === 0 || total === 0 ? 0.4 : 1 }}>↩ BACK TO Q1</button>
           </div>
         </div>
 
         {/* Question column: box + [ PREV left · SHOW/HIDE QUESTION centered · NEXT right ] */}
         <div style={{ display: "flex", flexDirection: "column", gap: 12, minWidth: 0 }}>
-          <div className="terminal-border" style={{ padding: 16, display: "flex", flexDirection: "column", gap: 10, height: BOX_H }}>
+          <div className={cx("terminal-border", v2 && "st-panel")} style={{ padding: 16, display: "flex", flexDirection: "column", gap: 10, height: BOX_H }}>
             {currentRound.round_type === "final" && currentRound.picture_url ? (
               <div style={{ flex: 1, minHeight: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
                 <img src={currentRound.picture_url} alt="Picture round" style={{ maxHeight: "100%", maxWidth: "100%", objectFit: "contain", border: "1px solid var(--terminal-green)" }} />
               </div>
             ) : total === 0 ? (
-              <div style={{ flex: 1, minHeight: 0, display: "flex", alignItems: "center", justifyContent: "center", opacity: 0.5, fontSize: 20 }}>No questions entered.</div>
+              <div className={cx(v2 && "st-body st-t3")} style={{ flex: 1, minHeight: 0, display: "flex", alignItems: "center", justifyContent: "center", opacity: v2 ? 1 : 0.5, fontSize: 20 }}>No questions entered.</div>
             ) : (
               <>
-                <div style={{ fontSize: 20, opacity: 0.8, flexShrink: 0 }}>
+                <div className={cx(v2 && "st-label st-t2")} style={{ fontSize: 20, opacity: v2 ? 1 : 0.8, flexShrink: 0 }}>
                   {q && q.question_number > 10 ? "BONUS" : `QUESTION ${index + 1} OF ${total}`}
                 </div>
-                <div style={{ flex: 1, minHeight: 0, fontSize: 24, lineHeight: 1.3, overflowY: "auto" }}>{q?.question_text ?? "—"}</div>
-                {showAns && <div style={{ flexShrink: 0, fontSize: 22, fontWeight: 700, color: "var(--terminal-green)", borderTop: "1px solid var(--terminal-green)", paddingTop: 6 }}>▸ {q?.answer_text ?? "—"}</div>}
+                <div className={cx(v2 && "st-body st-t1")} style={{ flex: 1, minHeight: 0, fontSize: 24, lineHeight: 1.3, overflowY: "auto" }}>{q?.question_text ?? "—"}</div>
+                {showAns && <div className={cx(v2 && "st-body st-accent")} style={{ flexShrink: 0, fontSize: 22, fontWeight: 700, color: "var(--terminal-green)", borderTop: "1px solid var(--terminal-green)", paddingTop: 6 }}>▸ {q?.answer_text ?? "—"}</div>}
               </>
             )}
           </div>
           {/* Under the QUESTION box: PREV pinned left edge, SHOW/HIDE QUESTION centered under the
               field, NEXT pinned right edge. 1fr auto 1fr centers the toggle over the column. */}
           <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", alignItems: "center", gap: 8 }}>
-            <button type="button" onClick={prev} disabled={index === 0} style={{ ...btnGhost, justifySelf: "start", opacity: index === 0 ? 0.4 : 1 }}>◀ PREV</button>
-            <button type="button" onClick={toggleActive} style={{ ...(active ? btnActive : btnGhost), justifySelf: "center" }}>{active ? "▣ HIDE QUESTION" : "▢ SHOW QUESTION"}</button>
-            <button type="button" onClick={next} disabled={index >= total - 1} style={{ ...btnGhost, justifySelf: "end", opacity: index >= total - 1 ? 0.4 : 1 }}>NEXT ▶</button>
+            <button type="button" onClick={prev} disabled={index === 0} className={cx(v2 && "st-body")} style={{ ...btnGhost, justifySelf: "start", opacity: index === 0 ? 0.4 : 1 }}>◀ PREV</button>
+            <button type="button" onClick={toggleActive} className={cx(v2 && "st-body", v2 && active && "st-btn-primary")} style={{ ...(active ? btnActive : btnGhost), justifySelf: "center" }}>{active ? "▣ HIDE QUESTION" : "▢ SHOW QUESTION"}</button>
+            <button type="button" onClick={next} disabled={index >= total - 1} className={cx(v2 && "st-body")} style={{ ...btnGhost, justifySelf: "end", opacity: index >= total - 1 ? 0.4 : 1 }}>NEXT ▶</button>
           </div>
         </div>
       </div>

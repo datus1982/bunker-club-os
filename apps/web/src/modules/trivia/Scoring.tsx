@@ -15,6 +15,8 @@ import { QuestionPanel } from "./QuestionPanel";
 import { DisplayStageControl } from "./DisplayStageControl";
 import { BoardStageControl } from "./BoardStageControl";
 import { TeamEditorDialog, type EditableTeam } from "./TeamEditorDialog";
+import { cx, useTriviaV2 } from "./triviaV2";
+import { ConfirmDialog } from "@/shared/ui";
 import { Modal, Field, input, btnGhost, btnPrimary, btnActive, btnDanger } from "./ui";
 import { searchTeams, type TeamHit } from "../registration/useCheckin";
 import { useTriviaArmedEffective } from "../signage/useSignage";
@@ -33,11 +35,21 @@ import { supabase, VENUE_ID } from "@/shared/supabaseClient";
  * clock_started_at) counts up from START; PAUSE/STOP are gone; END GAME lives in the arm
  * box (it disarms too). START only starts the clock + marks the game active (so scoring /
  * the arm resolver work); it does NOT touch the screens — arming is manual.
+ *
+ * POLISH ARC 2 (PR 3) — the v2 token look, behind `bunker.trivia_ui_version`. This is the
+ * zero-surprise surface (spec §A2): the DOM structure, the DISPLAY/BOARD stage-control sets,
+ * their order and positions, the arm bar's place directly under the header, the fixed 300px
+ * question/answer boxes and the `.scoring-page` desktop density are ALL unchanged — only
+ * fill, edge and ink move. Two named exemptions from the general v2 rules live here:
+ *   · Button copy stays UPPERCASE and verb-first (owner letter E1) — muscle-memory copy a
+ *     host reads at a glance mid-show is not the place for a case experiment.
+ *   · No mount or page-transition animation (§A2) — the room must never see this settle.
  */
 export function Scoring() {
   const [params] = useSearchParams();
   const override = params.get("game");
   const qc = useQueryClient();
+  const v2 = useTriviaV2();
 
   const { query: gameQuery, game, setStatus } = useActiveGame(override);
   const scores = useGameScores(game?.id ?? null);
@@ -65,17 +77,48 @@ export function Scoring() {
     return byId ?? fromDb ?? cols[0] ?? null;
   }, [selectedRoundId, scores.rounds, cols, display.state?.current_round_id]);
 
+  // ── the three destructive actions, ONE copy each ──────────────────────────────
+  // Both looks reach the same dialogs (v2 = ConfirmDialog, classic = Modal) and used to
+  // carry their own hand-copied handler bodies; END GAME's was nine lines duplicated
+  // verbatim, so a fix to one look could silently miss the other. The call ORDER is
+  // preserved exactly as classic had it — this is a de-duplication, not a rewrite.
+  const doRemoveTeam = () => {
+    if (!removing) return;
+    scores.removeTeam.mutate(removing.id, { onSuccess: () => setRemoving(null) });
+  };
+  const doClearAll = () => scores.clearAllScores.mutate(undefined, { onSuccess: () => setConfirmClear(false) });
+  const endGame = () => {
+    setStatus.mutate("completed" as GameStatus);
+    // Trivia's over → un-arm the bar TVs so they return to rotation/media (WARN-1 #3).
+    // Fire-and-forget; the arm also auto-expires nightly, so a failed disarm self-heals.
+    supabase.rpc("set_trivia_screens_armed", { p_venue_id: VENUE_ID, p_armed: false }).then(undefined, () => {});
+    qc.setQueryData(["signage", "triviaScreensArmed"], { armed: false, at: null });
+    qc.invalidateQueries({ queryKey: ["signage", "triviaScreensArmed"] });
+    display.write.mutate({ show_game_over: true, is_display_active: false }, { onSuccess: () => setConfirmEnd(false) });
+  };
+
   if (gameQuery.isPending) return <Centered text="LOADING GAME…" />;
   if (!game) return <NoGame />;
 
   return (
-    <div className="terminal-theme scoring-page" style={{ minHeight: "100vh", padding: "clamp(16px, 4vw, 32px)", fontFamily: "'VT323','Share Tech Mono',monospace" }}>
+    // `scoring-page` is KEPT in both looks: it carries the desktop-density rule (§A2, do
+    // not change). v2 adds `data-st-page` and drops the nested `.terminal-theme` — the
+    // shell root already carries it, and a second one paints its own CRT overlay.
+    // `data-st-motion="off"` is the console's opt-out from the shared mount-fade: §A2
+    // forbids any settling animation here, and the incoming motion layer would otherwise
+    // fade the control line, the round selector and both fixed boxes on every remount.
+    // The rule that reads it lives in staff-tokens-v2.css §7.
+    <div
+      className={cx(!v2 && "terminal-theme", "scoring-page")}
+      {...(v2 ? { "data-st-page": "", "data-st-motion": "off" } : null)}
+      style={{ minHeight: "100vh", padding: "clamp(16px, 4vw, 32px)", ...(v2 ? null : { fontFamily: "'VT323','Share Tech Mono',monospace" }) }}
+    >
       <div style={{ maxWidth: 1400, margin: "0 auto", display: "flex", flexDirection: "column", gap: 16 }}>
         {/* Header + nav */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
           <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-            <h1 style={{ fontSize: 40, fontWeight: 700, letterSpacing: 2, lineHeight: 1 }}>SCORING</h1>
-            <div style={{ fontSize: 20, opacity: 0.7 }}>{game.game_date} · [{game.status.toUpperCase()}]{game.is_playoff ? " · ★ PLAYOFF" : ""}</div>
+            <h1 className={cx(v2 && "st-display st-t1")} style={{ fontSize: 40, fontWeight: 700, letterSpacing: 2, lineHeight: 1 }}>SCORING</h1>
+            <div className={cx(v2 && "st-body st-t2")} style={{ fontSize: 20, opacity: v2 ? 1 : 0.7 }}>{game.game_date} · [{game.status.toUpperCase()}]{game.is_playoff ? " · ★ PLAYOFF" : ""}</div>
           </div>
           <nav style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
             {/* Clock + START lead the nav row (owner refinement 2026-07-22 — "an obvious spot
@@ -95,15 +138,15 @@ export function Scoring() {
                 display.write.mutate({ clock_started_at: new Date().toISOString() });
               }}
             />
-            <div style={{ width: 1, alignSelf: "stretch", background: "var(--terminal-green)", opacity: 0.3, margin: "0 4px" }} />
-            <Link to={`/game/${game.id}/questions`} className="u-btn" style={linkBtn}>QUESTIONS</Link>
-            <Link to={`/game/${game.id}/videos`} className="u-btn" style={linkBtn}>VIDEOS</Link>
-            <Link to={`/game/${game.id}/bulk-import`} className="u-btn" style={linkBtn}>IMPORT</Link>
-            <Link to="/teams" className="u-btn" style={linkBtn}>TEAMS</Link>
-            <Link to="/game/history" className="u-btn" style={linkBtn}>HISTORY</Link>
+            <div style={{ width: 1, alignSelf: "stretch", background: v2 ? "rgba(255,255,255,0.16)" : "var(--terminal-green)", opacity: v2 ? 1 : 0.3, margin: "0 4px" }} />
+            <Link to={`/game/${game.id}/questions`} className={cx("u-btn", v2 && "st-body")} style={linkBtn}>QUESTIONS</Link>
+            <Link to={`/game/${game.id}/videos`} className={cx("u-btn", v2 && "st-body")} style={linkBtn}>VIDEOS</Link>
+            <Link to={`/game/${game.id}/bulk-import`} className={cx("u-btn", v2 && "st-body")} style={linkBtn}>IMPORT</Link>
+            <Link to="/teams" className={cx("u-btn", v2 && "st-body")} style={linkBtn}>TEAMS</Link>
+            <Link to="/game/history" className={cx("u-btn", v2 && "st-body")} style={linkBtn}>HISTORY</Link>
             {/* ⧉ PREVIEW pops the dual-board /game/preview window — what the two bar screens
                 would show (holding while not started, live once active), independent of the arm gate. */}
-            <button type="button" onClick={() => window.open(`/game/preview?game=${game.id}`, "bunker-screen-preview", "width=1600,height=900")} style={btnGhost}>⧉ PREVIEW</button>
+            <button type="button" onClick={() => window.open(`/game/preview?game=${game.id}`, "bunker-screen-preview", "width=1600,height=900")} className={cx(v2 && "st-body")} style={btnGhost}>⧉ PREVIEW</button>
           </nav>
         </div>
         <div className="terminal-separator" style={{ margin: 0 }} />
@@ -115,7 +158,8 @@ export function Scoring() {
         {/* Control line: the two INDEPENDENT single-select controls — DISPLAY (landscape) on
             the left, BOARD (portrait) shifted right. Wraps on narrow. (Clock + START moved up
             into the nav row.) */}
-        <div className="terminal-border" style={{ padding: 12, display: "flex", gap: 16, alignItems: "center", justifyContent: "space-between", flexWrap: "wrap" }}>
+        {/* The control line is the one grouped panel on the page — surface-2 in v2 (§A2). */}
+        <div className={cx("terminal-border", v2 && "st-panel")} style={{ padding: 12, display: "flex", gap: 16, alignItems: "center", justifyContent: "space-between", flexWrap: "wrap" }}>
           {display.state && <DisplayStageControl state={display.state} write={display.write} loadedRound={selectedRound} />}
           {display.state && <BoardStageControl state={display.state} write={display.write} />}
         </div>
@@ -132,7 +176,7 @@ export function Scoring() {
 
         {/* The grid */}
         {scores.isPending ? (
-          <div style={{ opacity: 0.6, fontSize: 24 }}>LOADING SCORES…</div>
+          <div className={cx(v2 && "st-body st-t2")} style={{ opacity: v2 ? 1 : 0.6, fontSize: 24 }}>LOADING SCORES…</div>
         ) : (
           <RoundGrid
             teams={scores.teams}
@@ -167,14 +211,56 @@ export function Scoring() {
         />
       )}
 
-      {removing && (
+      {/* The three destructive confirms. In v2 they go through the shared ConfirmDialog —
+          verb-named buttons, CANCEL focused on mount, red spent only on the destructive
+          half (D1). Their TRIGGER buttons on the page keep their exact copy and position
+          (§A2 / letter E1); only the sheet the trigger opens changes. */}
+      {removing && v2 && (
+        <ConfirmDialog
+          danger
+          busy={scores.removeTeam.isPending}
+          title={`Remove ${removing.name} from this game?`}
+          confirmLabel="REMOVE TEAM"
+          cancelLabel="KEEP TEAM"
+          onCancel={() => setRemoving(null)}
+          onConfirm={doRemoveTeam}
+          body="Their scores for this game will be deleted. The team itself stays on the roster."
+        />
+      )}
+
+      {confirmClear && v2 && (
+        <ConfirmDialog
+          danger
+          busy={scores.clearAllScores.isPending}
+          title="Clear every score in this game?"
+          confirmLabel="CLEAR EVERYTHING"
+          cancelLabel="KEEP SCORES"
+          onCancel={() => setConfirmClear(false)}
+          onConfirm={doClearAll}
+          body="This deletes every score in this game and resets all wildcards. It cannot be undone."
+        />
+      )}
+
+      {confirmEnd && v2 && (
+        <ConfirmDialog
+          danger
+          title="End this game?"
+          confirmLabel="END GAME"
+          cancelLabel="KEEP PLAYING"
+          onCancel={() => setConfirmEnd(false)}
+          onConfirm={endGame}
+          body="It marks the game complete, shows GAME OVER on the displays and takes trivia off the bar screens. The game moves to History."
+        />
+      )}
+
+      {removing && !v2 && (
         <Modal
           title="REMOVE TEAM"
           onClose={() => setRemoving(null)}
           footer={
             <>
               <button type="button" onClick={() => setRemoving(null)} style={btnGhost}>CANCEL</button>
-              <button type="button" onClick={() => scores.removeTeam.mutate(removing.id, { onSuccess: () => setRemoving(null) })} style={btnDanger}>REMOVE</button>
+              <button type="button" onClick={doRemoveTeam} style={btnDanger}>REMOVE</button>
             </>
           }
         >
@@ -182,14 +268,14 @@ export function Scoring() {
         </Modal>
       )}
 
-      {confirmClear && (
+      {confirmClear && !v2 && (
         <Modal
           title="CLEAR ALL SCORES"
           onClose={() => setConfirmClear(false)}
           footer={
             <>
               <button type="button" onClick={() => setConfirmClear(false)} style={btnGhost}>CANCEL</button>
-              <button type="button" onClick={() => scores.clearAllScores.mutate(undefined, { onSuccess: () => setConfirmClear(false) })} style={btnDanger}>CLEAR EVERYTHING</button>
+              <button type="button" onClick={doClearAll} style={btnDanger}>CLEAR EVERYTHING</button>
             </>
           }
         >
@@ -197,7 +283,7 @@ export function Scoring() {
         </Modal>
       )}
 
-      {confirmEnd && (
+      {confirmEnd && !v2 && (
         <Modal
           title="END GAME"
           onClose={() => setConfirmEnd(false)}
@@ -206,15 +292,7 @@ export function Scoring() {
               <button type="button" onClick={() => setConfirmEnd(false)} style={btnGhost}>CANCEL</button>
               <button
                 type="button"
-                onClick={() => {
-                  setStatus.mutate("completed" as GameStatus);
-                  // Trivia's over → un-arm the bar TVs so they return to rotation/media (WARN-1 #3).
-                  // Fire-and-forget; the arm also auto-expires nightly, so a failed disarm self-heals.
-                  supabase.rpc("set_trivia_screens_armed", { p_venue_id: VENUE_ID, p_armed: false }).then(undefined, () => {});
-                  qc.setQueryData(["signage", "triviaScreensArmed"], { armed: false, at: null });
-                  qc.invalidateQueries({ queryKey: ["signage", "triviaScreensArmed"] });
-                  display.write.mutate({ show_game_over: true, is_display_active: false }, { onSuccess: () => setConfirmEnd(false) });
-                }}
+                onClick={endGame}
                 style={btnDanger}
               >
                 END GAME
@@ -244,6 +322,7 @@ function AddTeamPicker({
   onCreated: (teamId: string) => void;
   onClose: () => void;
 }) {
+  const v2 = useTriviaV2();
   const [creating, setCreating] = useState(false);
   const [pick, setPick] = useState("");
   const [q, setQ] = useState("");
@@ -287,14 +366,14 @@ function AddTeamPicker({
       onClose={onClose}
       footer={
         <>
-          <button type="button" onClick={() => setCreating(true)} style={btnGhost}>+ CREATE NEW TEAM</button>
-          <button type="button" disabled={!pick} onClick={() => { const t = available.find((x) => x.id === pick); onAddExisting(pick, t?.name ?? null); }} style={btnPrimary}>ADD</button>
+          <button type="button" onClick={() => setCreating(true)} className={cx(v2 && "st-body")} style={btnGhost}>+ CREATE NEW TEAM</button>
+          <button type="button" disabled={!pick} onClick={() => { const t = available.find((x) => x.id === pick); onAddExisting(pick, t?.name ?? null); }} className={cx(v2 && "st-btn-primary st-body")} style={btnPrimary}>ADD</button>
         </>
       }
     >
       <Field label="EXISTING REGULAR TEAM">
         {available.length === 0 ? (
-          <div style={{ opacity: 0.6, fontSize: 20 }}>All regular teams are already in the game — search below or create a new one.</div>
+          <div className={cx(v2 && "st-body st-t2")} style={{ opacity: v2 ? 1 : 0.6, fontSize: 20 }}>All regular teams are already in the game — search below or create a new one.</div>
         ) : (
           <select value={pick} onChange={(e) => setPick(e.target.value)} style={input}>
             <option value="">— select —</option>
@@ -311,6 +390,7 @@ function AddTeamPicker({
           <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 6 }}>
             {hits.map((h) => (
               <button key={h.id} type="button" onClick={() => onAddExisting(h.id, h.name)}
+                className={cx(v2 && "st-body")}
                 style={{ ...btnGhost, textAlign: "left", justifyContent: "flex-start" }}>
                 {h.name}{h.is_regular ? "  ★" : ""}
               </button>
@@ -318,7 +398,7 @@ function AddTeamPicker({
           </div>
         )}
         {q.trim().length >= 2 && hits.length === 0 && (
-          <div style={{ opacity: 0.6, fontSize: 18, marginTop: 6 }}>No teams match “{q}”.</div>
+          <div className={cx(v2 && "st-body st-t2")} style={{ opacity: v2 ? 1 : 0.6, fontSize: 18, marginTop: 6 }}>No teams match “{q}”.</div>
         )}
       </Field>
     </Modal>
@@ -342,6 +422,7 @@ function AddTeamPicker({
  */
 function TriviaScreensBar({ gameStatus, onEndGame }: { gameStatus?: GameStatus | null; onEndGame?: () => void }) {
   const qc = useQueryClient();
+  const v2 = useTriviaV2();
   const eff = useTriviaArmedEffective();
   const armed = eff.armed; // EFFECTIVE (nightly-expiry applied) — a stale arm auto-reads OFF
   const started = gameStatus === "active" || gameStatus === "paused";
@@ -374,22 +455,44 @@ function TriviaScreensBar({ gameStatus, onEndGame }: { gameStatus?: GameStatus |
     : "○ OFF — NOT ON SCREENS";
 
   return (
+    // v2: the bar keeps its position, wording and unmissable sizing (§A2). The 2px
+    // amber/green rectangle becomes the token callout — amber-soft when OFF, a plain
+    // panel when trivia IS on the screens — and the state line is the ONE place in
+    // trivia that spends the reserved full-saturation green (`st-live`), and only when
+    // the boards are genuinely LIVE. ARMED-but-not-started stays amber-calm: armed is
+    // pending, not live.
     <div
-      className={onScreens ? undefined : "u-amber"}
+      className={cx(!onScreens && "u-amber", v2 && (onScreens ? "st-panel" : "st-callout-warn"))}
       style={{
         display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center",
         padding: "10px 14px",
-        border: `2px solid ${onScreens ? "var(--terminal-green)" : "var(--terminal-amber, #ffb000)"}`,
-        background: onScreens ? "transparent" : "rgba(255,176,0,0.08)",
+        border: v2
+          ? "1px solid rgba(255,255,255,0.16)"
+          : `2px solid ${onScreens ? "var(--terminal-green)" : "var(--terminal-amber, #ffb000)"}`,
+        ...(v2 ? null : { background: onScreens ? "transparent" : "rgba(255,176,0,0.08)" }),
       }}
     >
-      <span style={{ fontSize: 20, letterSpacing: 1, opacity: 0.85 }}>BAR SCREENS:</span>
-      <span style={{ fontSize: 24, fontWeight: 700, letterSpacing: 1 }} className={onScreens ? undefined : "u-amber"}>{label}</span>
+      <span className={cx(v2 && "st-label st-t2")} style={{ fontSize: 20, letterSpacing: 1, opacity: v2 ? 1 : 0.85 }}>BAR SCREENS:</span>
+      <span
+        style={{ fontSize: 24, fontWeight: 700, letterSpacing: 1 }}
+        className={cx(
+          !onScreens && "u-amber",
+          v2 && "st-heading",
+          v2 && (state === "live" ? "st-live" : onScreens ? "st-amber" : undefined),
+        )}
+      >
+        {label}
+      </span>
       <button
         type="button"
         onClick={() => setArmed.mutate(!armed)}
         disabled={setArmed.isPending || eff.isPending}
         title={armed ? "Take trivia off the bar TVs — they return to normal rotation/media." : "Put trivia on the bar TVs — shows the SCAN-TO-JOIN board until the game starts, then the live board."}
+        className={cx(v2 && (armed ? "st-btn-danger" : "st-btn-primary"))}
+        // DELIBERATELY LOUDER THAN THE BODY ROLE: this pair (and END GAME below) render
+        // at 18px against the 15px everywhere else, because §A2 protects the arm bar's
+        // "unmissable" sizing — these are the two controls that seize or release the
+        // room's TVs. Do not normalise them onto the Body role in a later pass.
         style={{
           ...(armed ? btnDanger : btnPrimary),
           minHeight: 44, fontSize: 22, fontWeight: 700, letterSpacing: 1,
@@ -403,7 +506,7 @@ function TriviaScreensBar({ gameStatus, onEndGame }: { gameStatus?: GameStatus |
       {onEndGame && (
         <>
           <div style={{ flex: 1, minWidth: 12 }} />
-          <button type="button" onClick={onEndGame} style={{ ...btnDanger, minHeight: 44, fontWeight: 700 }}>END GAME</button>
+          <button type="button" onClick={onEndGame} className={cx(v2 && "st-btn-danger")} style={{ ...btnDanger, minHeight: 44, fontWeight: 700 }}>END GAME</button>
         </>
       )}
     </div>
@@ -417,6 +520,7 @@ function TriviaScreensBar({ gameStatus, onEndGame }: { gameStatus?: GameStatus |
  * `running` (game active/paused) drives the tick; a completed game freezes the last
  * value rather than counting forever, and a null start shows 0:00. */
 function GameClock({ startedAt, running }: { startedAt: string | null; running: boolean }) {
+  const v2 = useTriviaV2();
   const [nowMs, setNowMs] = useState(() => Date.now());
   useEffect(() => {
     if (!running || !startedAt) return;
@@ -429,8 +533,10 @@ function GameClock({ startedAt, running }: { startedAt: string | null; running: 
 
   return (
     <div style={{ display: "flex", alignItems: "baseline", gap: 8 }} title="Game clock — counts up from START">
-      <span style={{ fontSize: 16, opacity: 0.6, letterSpacing: 1 }}>CLOCK</span>
-      <span style={{ fontSize: 34, fontWeight: 700, letterSpacing: 2, fontVariantNumeric: "tabular-nums", minWidth: 96 }}>
+      <span className={cx(v2 && "st-label st-t2")} style={{ fontSize: 16, opacity: v2 ? 1 : 0.6, letterSpacing: 1 }}>CLOCK</span>
+      {/* The clock keeps its 34px inline size in BOTH looks: it is read across a room-lit
+          host desk and `st-mono` would drop it to 15px. Only its ink moves. */}
+      <span className={cx(v2 && "st-t1")} style={{ fontSize: 34, fontWeight: 700, letterSpacing: 2, fontVariantNumeric: "tabular-nums", minWidth: 96 }}>
         {elapsed == null ? "0:00" : formatElapsed(elapsed)}
       </span>
     </div>
@@ -450,8 +556,15 @@ function formatElapsed(ms: number): string {
 /* ── small bits ──────────────────────────────────────────────────────────────── */
 
 function StatusButton({ label, active, onClick, disabled }: { label: string; active?: boolean; onClick: () => void; disabled?: boolean }) {
+  const v2 = useTriviaV2();
   return (
-    <button type="button" onClick={onClick} disabled={disabled} style={{ ...(active ? btnActive : btnGhost), opacity: disabled ? 0.4 : 1, minHeight: 44 }}>
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className={cx(v2 && "st-body", v2 && active && "st-btn-primary")}
+      style={{ ...(active ? btnActive : btnGhost), opacity: disabled ? 0.4 : 1, minHeight: 44 }}
+    >
       {label}
     </button>
   );
@@ -460,45 +573,56 @@ function StatusButton({ label, active, onClick, disabled }: { label: string; act
 const linkBtn: React.CSSProperties = { ...btnGhost, textDecoration: "none", display: "inline-block" };
 
 function Centered({ text }: { text: string }) {
+  const v2 = useTriviaV2();
   return (
-    <div className="terminal-theme" style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 36, fontFamily: "'VT323','Share Tech Mono',monospace" }}>
+    <div
+      className={cx(!v2 && "terminal-theme", v2 && "st-body st-t2")}
+      {...(v2 ? { "data-st-page": "" } : null)}
+      style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 36, ...(v2 ? null : { fontFamily: "'VT323','Share Tech Mono',monospace" }) }}
+    >
       {text}
     </div>
   );
 }
 
 function NoGame() {
+  const v2 = useTriviaV2();
   return (
-    <div className="terminal-theme" style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: "clamp(16px, 4vw, 32px)", fontFamily: "'VT323','Share Tech Mono',monospace" }}>
-      <div className="terminal-border" style={{ width: "min(560px, 100%)", padding: "28px 28px 32px", display: "flex", flexDirection: "column", gap: 18 }}>
+    <div
+      className={cx(!v2 && "terminal-theme")}
+      {...(v2 ? { "data-st-page": "" } : null)}
+      style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: "clamp(16px, 4vw, 32px)", ...(v2 ? null : { fontFamily: "'VT323','Share Tech Mono',monospace" }) }}
+    >
+      <div className={cx("terminal-border", v2 && "st-panel")} style={{ width: "min(560px, 100%)", padding: "28px 28px 32px", display: "flex", flexDirection: "column", gap: 18 }}>
         {/* Persistent armed indicator (WARN-1 #4): even with no game loaded, a stale arm must be
             visible + disarmable. Shows OFF / ARMED · NO GAME LOADED (auto-expires nightly). */}
         <TriviaScreensBar gameStatus={null} />
         <div>
-          <div style={{ fontSize: 40, fontWeight: 700, letterSpacing: 2, lineHeight: 1 }}>NO GAME TONIGHT</div>
-          <div style={{ fontSize: 22, opacity: 0.7, marginTop: 6 }}>No game is set up to score. Here's how to get one running:</div>
+          <div className={cx(v2 && "st-display st-t1")} style={{ fontSize: 40, fontWeight: 700, letterSpacing: 2, lineHeight: 1 }}>NO GAME TONIGHT</div>
+          <div className={cx(v2 && "st-body st-t2")} style={{ fontSize: 22, opacity: v2 ? 1 : 0.7, marginTop: 6 }}>No game is set up to score. Here's how to get one running:</div>
         </div>
         <div className="terminal-separator" style={{ margin: 0 }} />
 
-        <ol style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 16 }}>
+        <ol className={cx(v2 && "st-body")} style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 16 }}>
           <Step n={1} title="CREATE THE GAME">
             {/* The textless-button bug lived here: this CTA is an <a> (React Router Link)
                 carrying btnPrimary's green fill, but `.terminal-theme a` forces the label
                 green too — green-on-green = an invisible label (looked like an empty
                 button). `u-fill u-ink` restores the black-on-green fill (0,2,0 beats the
                 theme's 0,1,1 !important), same pattern as the Dashboard CTAs. */}
-            <Link to="/game/setup" className="u-fill u-ink" style={{ ...btnPrimary, textDecoration: "none", display: "inline-block" }}>+ CREATE GAME →</Link>
+            {/* v2 asks for the accent fill by class; `u-fill u-ink` is the classic idiom. */}
+            <Link to="/game/setup" className={cx(v2 ? "st-btn-primary st-body" : "u-fill u-ink")} style={{ ...btnPrimary, textDecoration: "none", display: "inline-block" }}>+ CREATE GAME →</Link>
           </Step>
           <Step n={2} title="ADD OR BULK-IMPORT QUESTIONS">
             {/* DECISION: /game/:id/bulk-import needs a game id, so there's no pre-game
                 deep link — questions/rounds are added on GameSetup once the game exists.
                 We point back to Game Setup rather than dead-linking a bulk-import route. */}
-            <Link to="/game/setup" className="u-btn" style={{ ...btnGhost, textDecoration: "none", display: "inline-block" }}>GAME SETUP →</Link>
-            <span style={{ fontSize: 18, opacity: 0.6 }}>Build rounds, then type questions or BULK IMPORT them.</span>
+            <Link to="/game/setup" className={cx("u-btn", v2 && "st-body")} style={{ ...btnGhost, textDecoration: "none", display: "inline-block" }}>GAME SETUP →</Link>
+            <span className={cx(v2 && "st-body st-t2")} style={{ fontSize: 18, opacity: v2 ? 1 : 0.6 }}>Build rounds, then type questions or BULK IMPORT them.</span>
           </Step>
           <Step n={3} title="CHECK TEAMS IN">
-            <Link to="/teams" className="u-btn" style={{ ...btnGhost, textDecoration: "none", display: "inline-block" }}>MANAGE TEAMS →</Link>
-            <span style={{ fontSize: 18, opacity: 0.6 }}>Regulars carry over; walk-ups check in from the grid.</span>
+            <Link to="/teams" className={cx("u-btn", v2 && "st-body")} style={{ ...btnGhost, textDecoration: "none", display: "inline-block" }}>MANAGE TEAMS →</Link>
+            <span className={cx(v2 && "st-body st-t2")} style={{ fontSize: 18, opacity: v2 ? 1 : 0.6 }}>Regulars carry over; walk-ups check in from the grid.</span>
           </Step>
         </ol>
       </div>
@@ -508,11 +632,12 @@ function NoGame() {
 
 /** One numbered row in the NO GAME TONIGHT setup path. */
 function Step({ n, title, children }: { n: number; title: string; children: React.ReactNode }) {
+  const v2 = useTriviaV2();
   return (
     <li style={{ display: "flex", gap: 14, alignItems: "flex-start" }}>
-      <span className="u-fill u-ink" style={{ flexShrink: 0, width: 34, height: 34, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, fontWeight: 700 }}>{n}</span>
+      <span className={cx("u-fill u-ink", v2 && "st-mono")} style={{ flexShrink: 0, width: 34, height: 34, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, fontWeight: 700 }}>{n}</span>
       <div style={{ display: "flex", flexDirection: "column", gap: 8, minWidth: 0 }}>
-        <span style={{ fontSize: 22, fontWeight: 700, letterSpacing: 1 }}>{title}</span>
+        <span className={cx(v2 && "st-heading st-t1")} style={{ fontSize: 22, fontWeight: 700, letterSpacing: 1 }}>{title}</span>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center" }}>{children}</div>
       </div>
     </li>

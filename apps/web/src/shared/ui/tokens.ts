@@ -141,6 +141,10 @@ export const st = {
   body: "st-body",
   label: "st-label",
   mono: "st-mono",
+  /** Mono-data-large (24px, tabular) — the NAMED host-desk exemption (polish arc 2):
+   *  the trivia scoring grid's score cells, ×2 / ★ bonus marks and TOTAL column. Team
+   *  names and rank stay on `body`/`mono`. Do not spend it on ordinary body data. */
+  monoLg: "st-mono-lg",
   card: "st-card",
   panel: "st-panel",
   row: "st-row",

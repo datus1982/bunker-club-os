@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { cx, useTriviaV2 } from "./triviaV2";
 import { Modal, btnGhost, btnActive } from "./ui";
 import {
   useGameRecap,
@@ -42,9 +43,12 @@ export function GameRecap({
   onClose: () => void;
 }) {
   const [tab, setTab] = useState<Tab>("summary");
+  const v2 = useTriviaV2();
   const { standings, rounds, questions, isPending, isError } = useGameRecap(game.id, true);
 
-  const title = `RECAP · ${formatGameDate(game.game_date)}${game.is_playoff ? " · ★ PLAYOFF" : ""}`;
+  const title = v2
+    ? `Recap · ${formatGameDate(game.game_date)}${game.is_playoff ? " · ★ Playoff" : ""}`
+    : `RECAP · ${formatGameDate(game.game_date)}${game.is_playoff ? " · ★ PLAYOFF" : ""}`;
 
   return (
     <Modal title={title} onClose={onClose}>
@@ -57,9 +61,9 @@ export function GameRecap({
       <div className="terminal-separator" style={{ margin: 0 }} />
 
       {isError ? (
-        <p className="u-amber" style={{ fontSize: 22 }}>COULD NOT LOAD RECAP.</p>
+        <p className={cx("u-amber", v2 && "st-body")} style={{ fontSize: 22 }}>{v2 ? "Could not load recap." : "COULD NOT LOAD RECAP."}</p>
       ) : isPending ? (
-        <p style={{ fontSize: 24, opacity: 0.7 }}>LOADING RECAP…</p>
+        <p className={cx(v2 && "st-body st-t2")} style={{ fontSize: 24, opacity: v2 ? 1 : 0.7 }}>{v2 ? "Loading recap…" : "LOADING RECAP…"}</p>
       ) : tab === "summary" ? (
         <SummaryTab standings={standings} rounds={rounds} isPlayoff={game.is_playoff} gameDate={game.game_date} />
       ) : tab === "questions" ? (
@@ -72,8 +76,16 @@ export function GameRecap({
 }
 
 function TabButton({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
+  const v2 = useTriviaV2();
   return (
-    <button type="button" onClick={onClick} style={{ ...(active ? btnActive : btnGhost), fontSize: 20, padding: "8px 14px" }}>
+    <button
+      type="button"
+      onClick={onClick}
+      // A selected tab is the token system's one filled treatment; the padding-only
+      // 44px shortfall is closed explicitly in v2 (classic keeps its shipped 38px row).
+      className={cx(v2 && "st-body", v2 && active && "st-btn-primary")}
+      style={{ ...(active ? btnActive : btnGhost), fontSize: 20, padding: "8px 14px", ...(v2 ? { minHeight: 44 } : null) }}
+    >
       {label}
     </button>
   );
@@ -99,6 +111,7 @@ function SummaryTab({
   // every round, bonuses labelled as "BONUS: …".
   const scoringRounds = rounds.filter((r) => r.round_type !== "bonus").length;
   const winningScore = standings.length > 0 ? Math.max(...standings.map((s) => s.total_score)) : null;
+  const v2 = useTriviaV2();
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -109,13 +122,13 @@ function SummaryTab({
         <Stat label="ROUNDS" value={String(scoringRounds)} />
         <Stat label="WINNING SCORE" value={winningScore != null ? String(winningScore) : "–"} />
       </div>
-      {isPlayoff && <div className="u-amber" style={{ fontSize: 20 }}>★ PLAYOFF GAME</div>}
+      {isPlayoff && <div className={cx("u-amber", v2 && "st-body")} style={{ fontSize: 20 }}>{v2 ? "★ Playoff game" : "★ PLAYOFF GAME"}</div>}
 
       {/* Standings board (read-only) */}
       <div>
-        <div style={{ fontSize: 22, opacity: 0.8, marginBottom: 8, letterSpacing: 1 }}>FINAL STANDINGS</div>
+        <div className={cx(v2 && "st-label st-t2")} style={{ fontSize: 22, opacity: v2 ? 1 : 0.8, marginBottom: 8, letterSpacing: 1 }}>FINAL STANDINGS</div>
         {standings.length === 0 ? (
-          <p style={{ fontSize: 22, opacity: 0.7 }}>NO TEAMS RECORDED.</p>
+          <p className={cx(v2 && "st-body st-t2")} style={{ fontSize: 22, opacity: v2 ? 1 : 0.7 }}>{v2 ? "No teams recorded." : "NO TEAMS RECORDED."}</p>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
             {standings
@@ -126,22 +139,25 @@ function SummaryTab({
                 return (
                   <div
                     key={row.team_id}
+                    className={cx(v2 && "st-row")}
                     style={{
                       display: "flex",
                       alignItems: "center",
                       gap: 10,
                       padding: "6px 10px",
                       border: `1px solid ${winner ? AMBER : "var(--terminal-green)"}`,
-                      boxShadow: winner ? `0 0 10px ${AMBER}` : undefined,
+                      // The winner's amber glow is the phosphor treatment v2 retires —
+                      // the amber ink on the row's own text carries it there instead.
+                      boxShadow: winner && !v2 ? `0 0 10px ${AMBER}` : undefined,
                     }}
                   >
-                    <span className={winner ? "u-amber" : undefined} style={{ fontSize: 22, fontWeight: 700, minWidth: 34 }}>{row.place}.</span>
-                    <span className={winner ? "u-amber" : undefined} style={{ fontSize: 22, flex: 1, overflow: "hidden", textOverflow: "ellipsis" }}>
+                    <span className={cx(winner && "u-amber", v2 && "st-mono")} style={{ fontSize: 22, fontWeight: 700, minWidth: 34 }}>{row.place}.</span>
+                    <span className={cx(winner && "u-amber", v2 && "st-body")} style={{ fontSize: 22, flex: 1, overflow: "hidden", textOverflow: "ellipsis" }}>
                       {winner ? "★ " : ""}
                       {row.team_name}
                       {row.wildcard_used ? " ⚡" : ""}
                     </span>
-                    <span className={winner ? "u-amber" : undefined} style={{ fontSize: 24, fontWeight: 700 }}>{row.total_score}</span>
+                    <span className={cx(winner && "u-amber", v2 && "st-mono")} style={{ fontSize: 24, fontWeight: 700 }}>{row.total_score}</span>
                   </div>
                 );
               })}
@@ -153,10 +169,11 @@ function SummaryTab({
 }
 
 function Stat({ label, value }: { label: string; value: string }) {
+  const v2 = useTriviaV2();
   return (
-    <div className="terminal-border" style={{ padding: "8px 10px" }}>
-      <div style={{ fontSize: 18, opacity: 0.7 }}>{label}</div>
-      <div style={{ fontSize: 24, fontWeight: 700 }}>{value}</div>
+    <div className={cx("terminal-border", v2 && "st-card")} style={{ padding: "8px 10px" }}>
+      <div className={cx(v2 && "st-label st-t2")} style={{ fontSize: 18, opacity: v2 ? 1 : 0.7 }}>{label}</div>
+      <div className={cx(v2 && "st-mono st-t1")} style={{ fontSize: 24, fontWeight: 700 }}>{value}</div>
     </div>
   );
 }
@@ -165,8 +182,9 @@ function Stat({ label, value }: { label: string; value: string }) {
 
 function QuestionsTab({ rounds, questions }: { rounds: RecapRound[]; questions: RecapQuestion[] }) {
   const [openRound, setOpenRound] = useState<string | null>(rounds[0]?.id ?? null);
+  const v2 = useTriviaV2();
 
-  if (rounds.length === 0) return <p style={{ fontSize: 22, opacity: 0.7 }}>NO ROUNDS RECORDED.</p>;
+  if (rounds.length === 0) return <p className={cx(v2 && "st-body st-t2")} style={{ fontSize: 22, opacity: v2 ? 1 : 0.7 }}>{v2 ? "No rounds recorded." : "NO ROUNDS RECORDED."}</p>;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -174,10 +192,11 @@ function QuestionsTab({ rounds, questions }: { rounds: RecapRound[]; questions: 
         const isOpen = openRound === r.id;
         const rq = questions.filter((q) => q.round_id === r.id).sort((a, b) => a.question_number - b.question_number);
         return (
-          <div key={r.id} className="terminal-border" style={{ padding: 0 }}>
+          <div key={r.id} className={cx("terminal-border", v2 && "st-card")} style={{ padding: 0 }}>
             <button
               type="button"
               onClick={() => setOpenRound(isOpen ? null : r.id)}
+              className={cx(v2 && "st-body st-t1")}
               style={{
                 ...btnGhost,
                 border: "none",
@@ -197,7 +216,7 @@ function QuestionsTab({ rounds, questions }: { rounds: RecapRound[]; questions: 
                 {r.round_name ? ` — ${r.round_name}` : ""}
                 {r.picture_url ? " [IMG]" : ""}
               </span>
-              <span style={{ fontSize: 18, opacity: 0.7 }}>{rq.length} Q</span>
+              <span className={cx(v2 && "st-label st-t2")} style={{ fontSize: 18, opacity: v2 ? 1 : 0.7 }}>{rq.length} Q</span>
             </button>
             {isOpen && (
               <div style={{ padding: "4px 12px 12px", display: "flex", flexDirection: "column", gap: 8 }}>
@@ -209,7 +228,7 @@ function QuestionsTab({ rounds, questions }: { rounds: RecapRound[]; questions: 
                   />
                 )}
                 {rq.length === 0 ? (
-                  <p style={{ fontSize: 20, opacity: 0.6 }}>NO QUESTIONS ENTERED.</p>
+                  <p className={cx(v2 && "st-body st-t2")} style={{ fontSize: 20, opacity: v2 ? 1 : 0.6 }}>{v2 ? "No questions entered." : "NO QUESTIONS ENTERED."}</p>
                 ) : (
                   rq.map((q) => <QuestionRow key={q.id} q={q} />)
                 )}
@@ -224,19 +243,20 @@ function QuestionsTab({ rounds, questions }: { rounds: RecapRound[]; questions: 
 
 function QuestionRow({ q }: { q: RecapQuestion }) {
   const [showAnswer, setShowAnswer] = useState(false);
+  const v2 = useTriviaV2();
   return (
     <div
       onClick={() => setShowAnswer((v) => !v)}
-      style={{ borderLeft: "2px solid var(--terminal-green)", paddingLeft: 10, cursor: "pointer" }}
+      style={{ borderLeft: v2 ? "2px solid rgba(255,255,255,0.16)" : "2px solid var(--terminal-green)", paddingLeft: 10, cursor: "pointer" }}
     >
-      <div style={{ fontSize: 21, display: "flex", gap: 8 }}>
-        <span style={{ opacity: 0.7, minWidth: 22 }}>{q.question_number}.</span>
+      <div className={cx(v2 && "st-body st-t1")} style={{ fontSize: 21, display: "flex", gap: 8 }}>
+        <span className={cx(v2 && "st-t2")} style={{ opacity: v2 ? 1 : 0.7, minWidth: 22 }}>{q.question_number}.</span>
         <span>{q.question_text || "—"}</span>
       </div>
       {showAnswer ? (
-        <div className="u-amber" style={{ fontSize: 21, marginTop: 4, paddingLeft: 30 }}>▸ {q.answer_text || "—"}</div>
+        <div className={cx("u-amber", v2 && "st-body")} style={{ fontSize: 21, marginTop: 4, paddingLeft: 30 }}>▸ {q.answer_text || "—"}</div>
       ) : (
-        <div style={{ fontSize: 18, marginTop: 2, paddingLeft: 30, opacity: 0.5 }}>tap to reveal answer</div>
+        <div className={cx(v2 && "st-body st-t3")} style={{ fontSize: 18, marginTop: 2, paddingLeft: 30, opacity: v2 ? 1 : 0.5 }}>tap to reveal answer</div>
       )}
     </div>
   );
@@ -246,9 +266,10 @@ function QuestionRow({ q }: { q: RecapQuestion }) {
 
 function VideosTab({ rounds }: { rounds: RecapRound[] }) {
   const videoRounds = rounds.filter((r) => r.video_url && r.video_url.trim().length > 0);
+  const v2 = useTriviaV2();
 
   if (videoRounds.length === 0) {
-    return <p style={{ fontSize: 22, opacity: 0.7 }}>NO VIDEOS IN THIS GAME.</p>;
+    return <p className={cx(v2 && "st-body st-t2")} style={{ fontSize: 22, opacity: v2 ? 1 : 0.7 }}>{v2 ? "No videos in this game." : "NO VIDEOS IN THIS GAME."}</p>;
   }
 
   return (
@@ -257,8 +278,8 @@ function VideosTab({ rounds }: { rounds: RecapRound[] }) {
         const url = r.video_url as string;
         const yt = youtubeId(url);
         return (
-          <div key={r.id} className="terminal-border" style={{ padding: 12, display: "flex", flexDirection: "column", gap: 8 }}>
-            <div style={{ fontSize: 22 }}>
+          <div key={r.id} className={cx("terminal-border", v2 && "st-card")} style={{ padding: 12, display: "flex", flexDirection: "column", gap: 8 }}>
+            <div className={cx(v2 && "st-heading st-t1")} style={{ fontSize: 22 }}>
               {recapRoundLabel(r)}
               {r.round_name ? ` — ${r.round_name}` : ""}
             </div>
@@ -275,6 +296,7 @@ function VideosTab({ rounds }: { rounds: RecapRound[] }) {
               href={url}
               target="_blank"
               rel="noopener noreferrer"
+              className={cx(v2 && "st-body st-accent")}
               style={{ fontSize: 20, wordBreak: "break-all", color: "var(--terminal-green)" }}
             >
               ▸ {url}

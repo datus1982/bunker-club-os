@@ -83,6 +83,7 @@ export function SectionNav({
   roleLabel,
   onSignOut,
   extra,
+  sectionExtra,
   locationKey,
 }: {
   brand?: string;
@@ -97,6 +98,14 @@ export function SectionNav({
   onSignOut: () => void;
   /** Shell-level extras (the classic/v2 switch) — desktop top row + drawer footer. */
   extra?: ReactNode;
+  /**
+   * SECTION-level extra (polish arc 2, PR 3): the trivia look switch, which belongs to
+   * the GAMES ▸ TRIVIA sub-nav row, not to the shell. Desktop renders it at the end of
+   * the sub-nav row; mobile has no sub-nav row, so it joins the drawer footer beside
+   * `extra` — both switches then sit together in the one place a phone user looks for
+   * them. Omitted (and the shell passes nothing) on every non-trivia page.
+   */
+  sectionExtra?: ReactNode;
   /** Router `location.key` — the drawer closes on ANY route change, including browser
    *  back/forward (link taps alone would miss those; classic closes on pathname). */
   locationKey?: string;
@@ -250,6 +259,7 @@ export function SectionNav({
               </div>
               <div className="sv2-drawer-foot">
                 <span className="st-t2 sv2-viewas">{roleLabel}</span>
+                {sectionExtra}
                 {extra}
                 <button type="button" onClick={onSignOut} className="st-t2 sv2-signout">SIGN OUT</button>
               </div>
@@ -314,6 +324,7 @@ export function SectionNav({
               </span>
             );
           })}
+          {sectionExtra && <span className="sv2-subextra">{sectionExtra}</span>}
         </div>
       )}
     </nav>

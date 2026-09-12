@@ -3,6 +3,8 @@ import { useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/shared/supabaseClient";
 import { log } from "@/shared/log";
+import { StaffPageHeader } from "@/shared/ui";
+import { cx, useTriviaV2 } from "./triviaV2";
 
 /**
  * Inter-Round Videos — host tool (host+; /game/:gameId/videos). Ported from the
@@ -28,6 +30,7 @@ export function VideoEntry() {
   const [dirty, setDirty] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const initialized = useRef(false);
+  const v2 = useTriviaV2();
 
   const game = useQuery({
     queryKey: ["ve", "game", gameId],
@@ -83,16 +86,31 @@ export function VideoEntry() {
   if (game.isError || !game.data) return <Centered text="GAME NOT FOUND" />;
 
   return (
-    <div className="terminal-theme" style={{ minHeight: "100vh", padding: 40, fontFamily: "'VT323','Share Tech Mono',monospace" }}>
+    <div
+      {...(v2 ? { "data-st-page": "" } : { className: "terminal-theme" })}
+      style={{ minHeight: "100vh", padding: v2 ? "clamp(16px, 4vw, 40px)" : 40, ...(v2 ? null : { fontFamily: "'VT323','Share Tech Mono',monospace" }) }}
+    >
       <div style={{ maxWidth: 980, margin: "0 auto" }}>
-        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 4 }}>
-          <h1 style={{ fontSize: 44, fontWeight: 700, letterSpacing: 2 }}>INTER-ROUND VIDEOS</h1>
-          <button type="button" onClick={() => navigate("/game/history")} style={btnGhost}>← HISTORY</button>
-        </div>
-        <div style={{ fontSize: 24, opacity: 0.7 }}>GAME · {game.data.game_date}{dirty && "  ·  ⚠ UNSAVED"}</div>
-        <div className="terminal-separator" style={{ margin: "16px 0" }} />
+        {v2 ? (
+          <StaffPageHeader
+            eyebrow="GAMES ▸ TRIVIA ▸ VIDEOS"
+            title="Inter-round videos"
+            tag={dirty ? "UNSAVED" : undefined}
+            right={<button type="button" onClick={() => navigate("/game/history")} className="st-body" style={{ ...btnGhost, minHeight: 44 }}>← History</button>}
+          />
+        ) : (
+          <>
+            <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 4 }}>
+              <h1 style={{ fontSize: 44, fontWeight: 700, letterSpacing: 2 }}>INTER-ROUND VIDEOS</h1>
+              <button type="button" onClick={() => navigate("/game/history")} style={btnGhost}>← HISTORY</button>
+            </div>
+            <div style={{ fontSize: 24, opacity: 0.7 }}>GAME · {game.data.game_date}{dirty && "  ·  ⚠ UNSAVED"}</div>
+            <div className="terminal-separator" style={{ margin: "16px 0" }} />
+          </>
+        )}
+        {v2 && <div className="st-body st-t2" style={{ marginBottom: 12 }}>Game · {game.data.game_date}</div>}
 
-        <div style={{ fontSize: 20, opacity: 0.7, marginBottom: 16 }}>
+        <div className={cx(v2 && "st-body st-t2")} style={{ fontSize: v2 ? undefined : 20, opacity: v2 ? 1 : 0.7, marginBottom: 16 }}>
           YouTube URL per round; the host reveals it during scoring and it autoplays on the audience display.
         </div>
 
@@ -100,11 +118,15 @@ export function VideoEntry() {
           {rounds.data?.map((r) => {
             const embed = youTubeEmbed(urls[r.id] ?? "");
             return (
-              <div key={r.id} className="terminal-border" style={{ padding: 16, display: "flex", gap: 16 }}>
-                <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 8 }}>
-                  <div style={{ fontSize: 24, fontWeight: 700 }}>
+              <div key={r.id} className={cx("terminal-border", v2 && "st-card")} style={{ padding: 16, display: "flex", gap: 16 }}>
+                {/* `minWidth: 0` is v2-only ON PURPOSE: it lets the URL input shrink below
+                    its intrinsic width instead of pushing the preview off the row. It is a
+                    genuine improvement, but classic has to stay byte-identical (RULE #1) —
+                    a parity run caught it changing classic's 390px row height. */}
+                <div style={{ flex: 1, ...(v2 ? { minWidth: 0 } : null), display: "flex", flexDirection: "column", gap: 8 }}>
+                  <div className={cx(v2 && "st-heading st-t1")} style={{ fontSize: v2 ? undefined : 24, fontWeight: 700 }}>
                     {r.round_type === "final" ? "FINAL ROUND" : `ROUND ${r.round_number}`}
-                    {r.round_name ? <span style={{ opacity: 0.7 }}> — {r.round_name}</span> : null}
+                    {r.round_name ? <span className={cx(v2 && "st-heading st-t2")} style={{ opacity: v2 ? 1 : 0.7 }}> — {r.round_name}</span> : null}
                   </div>
                   <input
                     value={urls[r.id] ?? ""}
@@ -112,13 +134,13 @@ export function VideoEntry() {
                     placeholder="https://www.youtube.com/watch?v=…"
                     style={input}
                   />
-                  <div style={{ fontSize: 18, opacity: 0.6 }}>Plays after this round completes.</div>
+                  <div className={cx(v2 && "st-body st-t3")} style={{ fontSize: v2 ? undefined : 18, opacity: v2 ? 1 : 0.6 }}>Plays after this round completes.</div>
                 </div>
                 <div style={{ width: 260, flexShrink: 0, aspectRatio: "16 / 9", background: "#000", border: "1px solid var(--terminal-green)" }}>
                   {embed ? (
                     <iframe width="100%" height="100%" src={embed} title={`preview ${r.round_number}`} frameBorder={0} allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture" style={{ border: 0 }} />
                   ) : (
-                    <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, opacity: 0.5 }}>NO VIDEO</div>
+                    <div className={cx(v2 && "st-label st-t3")} style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: v2 ? undefined : 20, opacity: v2 ? 1 : 0.5 }}>NO VIDEO</div>
                   )}
                 </div>
               </div>
@@ -127,20 +149,28 @@ export function VideoEntry() {
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: 16, marginTop: 20 }}>
-          <button type="button" onClick={() => save.mutate()} disabled={save.isPending} style={btnPrimary}>
-            {save.isPending ? "SAVING…" : "SAVE ALL VIDEOS"}
+          <button type="button" onClick={() => save.mutate()} disabled={save.isPending} className={cx(v2 && "st-btn st-btn-primary st-body")} style={{ ...btnPrimary, ...(v2 ? { minHeight: 44 } : null) }}>
+            {save.isPending ? (v2 ? "Saving…" : "SAVING…") : v2 ? "Save all videos" : "SAVE ALL VIDEOS"}
           </button>
-          {status && <span style={{ fontSize: 22 }}>{status}</span>}
+          {status && <span className={cx(v2 && "st-body st-t1")} style={{ fontSize: v2 ? undefined : 22 }}>{status}</span>}
         </div>
       </div>
     </div>
   );
 }
 
+/** Full-screen state card. v2 drops the nested `.terminal-theme` (which would repaint the
+ *  green + CRT over a tokened page) for the page hook, exactly as the five pages do. */
 function Centered({ text }: { text: string }) {
+  const v2 = useTriviaV2();
   return (
-    <div className="terminal-theme" style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 40 }}>
-      {text}
+    <div
+      {...(v2 ? { "data-st-page": "" } : { className: "terminal-theme" })}
+      style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", fontSize: v2 ? undefined : 40 }}
+    >
+      {/* The role has to be on a CHILD: every token rule is `[data-st-page] .st-…`, a
+          descendant selector, so a class on the hook element itself never matches. */}
+      {v2 ? <span className="st-heading st-t2">{text}</span> : text}
     </div>
   );
 }
