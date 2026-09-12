@@ -88,11 +88,16 @@ export function SignageHubV2({ ctx, overlays }: { ctx: SignageHubContext; overla
         <div id="screens">
           <SectionHeading label="ON AIR NOW" note="what each screen is showing this second" />
 
-          {ctx.gameOffScreens && (
+          {/* PR 2 review WARN-1: `alertNotArmed`, not `gameOffScreens` — a `setup` deck built
+              for a LATER night is not "not on the screens yet", and this banner used to nag
+              about it every time a host got ahead. Same live definition HOME's alert strip
+              reads (triviaArm.ts). CLASSIC keeps `gameOffScreens` exactly as shipped. The ⚠
+              is drawn by InlineNotice now (one mark, every tone). */}
+          {ctx.alertNotArmed && (
             <InlineNotice
               kind="warn"
               style={{ marginBottom: 12 }}
-              message={<>⚠ TRIVIA IS <strong>NOT ON THE SCREENS</strong> — a game exists but hasn't been armed. The bar TVs are on rotation. Arm it with “PUT TRIVIA ON SCREENS” from the Scoring page before game night.</>}
+              message={<>TRIVIA IS <strong>NOT ON THE SCREENS</strong> — a game exists but hasn't been armed. The bar TVs are on rotation. Arm it with “PUT TRIVIA ON SCREENS” from the Scoring page before game night.</>}
             />
           )}
           {ctx.armedNoGame && (

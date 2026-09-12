@@ -84,7 +84,11 @@ export function UsersV2({
         tag={isLoading ? "LOADING…" : `${rows.length} STAFF`}
       />
 
-      {notice && <InlineNotice kind="warn" message={notice} style={{ marginBottom: 16 }} />}
+      {/* `glyph={false}`: the string already starts with "⚠" and it is built in Users.tsx,
+          which CLASSIC renders too — stripping it there would change a classic surface.
+          `role="alert"`: this is a mutation error that appears mid-session in response to
+          an action (the primitive's default `status` is for persistent conditions). */}
+      {notice && <InlineNotice kind="warn" role="alert" glyph={false} message={notice} style={{ marginBottom: 16 }} />}
 
       {/* ── INVITE STAFF ─────────────────────────────────────────────────────── */}
       <form onSubmit={invite.onSubmit} className="st-panel" style={card}>
@@ -158,7 +162,7 @@ export function UsersV2({
       {isLoading ? (
         <div className="st-body st-t2">Loading staff…</div>
       ) : loadError ? (
-        <InlineNotice kind="warn" message={`⚠ ${loadError}`} />
+        <InlineNotice kind="warn" glyph={false} message={`⚠ ${loadError}`} />
       ) : rows.length === 0 ? (
         <EmptyState eyebrow="NO STAFF" message="No staff accounts on this venue yet. Invite one above." />
       ) : narrow ? (

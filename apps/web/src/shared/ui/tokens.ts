@@ -61,6 +61,8 @@ export const staffAccentColors = {
   amber: "#E8B04B",
   /** `Color.staffDanger` — destructive actions and true error states ONLY. */
   danger: "#FF5A5A",
+  /** The 8% wash behind a danger callout (`--st-danger-soft`). */
+  dangerSoft: "rgba(255,90,90,0.08)",
 } as const;
 
 /** `Color.staffHairline` — replaces the 2px solid green frame round every card. */
@@ -149,4 +151,6 @@ export const st = {
   btnPrimary: "st-btn-primary",
   btnDanger: "st-btn-danger",
   calloutWarn: "st-callout-warn",
+  /** The danger twin of `calloutWarn` (PR 2) — a true failure state, not a warning. */
+  calloutDanger: "st-callout-danger",
 } as const;

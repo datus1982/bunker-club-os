@@ -1,12 +1,25 @@
-import { useEffect, useState } from "react";
+import { Suspense, lazy, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { hasModule, roleAtLeast, useRole, type ModuleKey, type StaffRole } from "@/shared/useRole";
+import { hasModule, useRole } from "@/shared/useRole";
 import { useIsMobile } from "@/shared/useIsMobile";
+import { useUiVersion } from "@/shared/useUiVersion";
 import {
   useSyncStatus, useTonight, useActiveSeason, useScreens, formatAge,
   type Freshness, type ScreenSlot,
 } from "./useDashboard";
 import { screenHealth, type ScreenHealth } from "@/modules/signage/useSignageAdmin";
+// Tile table + label helpers (VERBATIM moves) and the alert-strip derivation, shared
+// with the v2 view below — one definition, so the two can never gate differently.
+import { TILES, screenName, tileVisible, tonightLabel, type Tile } from "./dashboardShared";
+
+/**
+ * LAZY ON PURPOSE (PR 2 review NOTE-1). `DashboardV2` pulls in the trivia-arm hook, and
+ * through it `useSignage` — ~36 KB of closure a CLASSIC device would otherwise download on
+ * every visit to a page it never renders. A static import would also put that weight in
+ * front of classic HOME's first paint. The fallback renders one Secondary-tier line rather
+ * than nothing, so a slow network shows a state instead of a blank page.
+ */
+const DashboardV2 = lazy(() => import("./DashboardV2").then((m) => ({ default: m.DashboardV2 })));
 
 /**
  * BUNKER UNIFIED OS home (Phase 4b — the admin shell). One staff-facing landing that
@@ -48,6 +61,33 @@ export function Dashboard() {
   const season = useActiveSeason();
   const screens = useScreens();
   const narrow = useIsMobile();
+  const [version] = useUiVersion();
+
+  // UX overhaul Beat 6 (PR 2, code note N11): HOME finally has a v2 presentation — until
+  // now /dashboard rendered THIS markup inside the v2 shell. Every hook above has already
+  // run, so the per-device switch can flip at any time without changing hook order, and
+  // the v2 view is presentation only: it reads the same query results and calls no
+  // Supabase of its own (the one thing it adds, the trivia arm state, is a read-only hook
+  // it calls itself so a CLASSIC device fires no extra query — RULE #1).
+  if (version === "v2") {
+    return (
+      <Suspense fallback={<div data-st-page="" style={{ padding: "24px clamp(16px, 4vw, 48px)" }}><span className="st-body st-t2">Loading…</span></div>}>
+      <DashboardV2
+        role={role}
+        modules={modules}
+        now={now}
+        narrow={narrow}
+        sync={sync.data}
+        tonight={tonight.data}
+        tonightLoading={tonight.isLoading}
+        season={season.data}
+        seasonLoading={season.isLoading}
+        screens={screens.data}
+        screensLoading={screens.isLoading}
+      />
+      </Suspense>
+    );
+  }
 
   const clock = now.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
   const day = now.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" }).toUpperCase();
@@ -160,7 +200,7 @@ export function Dashboard() {
       {/* ── MODULE GRID ──────────────────────────────────────────────── */}
       <SectionLabel style={{ marginTop: 32 }}>MODULES</SectionLabel>
       <div style={moduleGrid}>
-        {TILES.filter((t) => (t.module ? hasModule(role, modules, t.module) : roleAtLeast(role, t.minRole ?? "staff"))).map((t) => (
+        {TILES.filter((t) => tileVisible(role, modules, t)).map((t) => (
           <ModuleTile key={t.label} tile={t} tonight={tonight.data} season={season.data} />
         ))}
         <DisplaysTile screens={screens.data ?? []} />
@@ -170,26 +210,6 @@ export function Dashboard() {
 }
 
 // ── module tiles ─────────────────────────────────────────────────────────
-
-interface Tile {
-  label: string; to: string; desc: string;
-  module?: ModuleKey;    // shown when the caller holds this grant (admin implied)
-  minRole?: StaffRole;   // used for non-module-scoped tiles (admin-only surfaces)
-  disabled?: string;     // phase note if not yet built
-  hint?: "tonight" | "season";
-}
-
-const TILES: Tile[] = [
-  { label: "TRIVIA CONTROL", to: "/scoring", desc: "Live scoring console — run the game", module: "trivia", hint: "tonight" },
-  { label: "GAME SETUP", to: "/game/setup", desc: "Create a game, rounds & questions", module: "trivia" },
-  { label: "TEAMS", to: "/teams", desc: "Regular-team roster & PINs", module: "trivia" },
-  { label: "HISTORY", to: "/game/history", desc: "Past games & final boards", module: "trivia" },
-  { label: "SEASONS", to: "/admin/seasons", desc: "Standings, playoffs & finals", minRole: "admin", hint: "season" },
-  { label: "TOP SELLERS", to: "/admin/drinks", desc: "Configure the sales-rank TV board", module: "drinks" },
-  { label: "USERS", to: "/admin/users", desc: "Staff accounts & module grants", minRole: "admin" },
-  { label: "SIGNAGE", to: "/signage", desc: "Specials & event screens", module: "signage" },
-  { label: "WEBSITE", to: "/", desc: "Public site content", module: "website", disabled: "Phase 3.5" },
-];
 
 function ModuleTile({ tile, tonight, season }: { tile: Tile; tonight: ReturnType<typeof useTonight>["data"]; season: ReturnType<typeof useActiveSeason>["data"] }) {
   const hint =
@@ -245,13 +265,6 @@ function DisplaysTile({ screens }: { screens: ScreenSlot[] }) {
   );
 }
 
-/** Screen label for the STATUS BOARD: name, else TERMINAL n — location. */
-function screenName(s: ScreenSlot): string {
-  if (s.name) return s.name;
-  const n = String(s.terminal_number ?? 0).padStart(2, "0");
-  return `TERMINAL ${n}${s.location_label ? ` — ${s.location_label}` : ""}`;
-}
-
 function ScreenBadge({ health }: { health: ScreenHealth }) {
   const label = health === "online" ? "● ONLINE" : health === "stale" ? "◐ STALE" : "○ OFFLINE";
   const cls = health === "online" ? "" : health === "stale" ? "u-amber" : "u-red";
@@ -284,17 +297,6 @@ function FreshRow({ label, state, age, note }: { label: string; state: Freshness
       </span>
     </div>
   );
-}
-
-function tonightLabel(status: string): string {
-  switch (status) {
-    case "active": return "LIVE";
-    case "paused": return "PAUSED";
-    case "setup": return "IN SETUP";
-    case "stopped": return "STOPPED";
-    case "completed": return "COMPLETE";
-    default: return status.toUpperCase();
-  }
 }
 
 // ── styles ───────────────────────────────────────────────────────────────

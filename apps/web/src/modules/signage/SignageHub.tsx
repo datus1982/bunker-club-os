@@ -2,14 +2,14 @@ import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
-  useAdminSlots, useAllItems, useSignageAssets, useTakeovers, useToastCache, useLiveGame,
+  useAdminSlots, useAllItems, useSignageAssets, useTakeovers, useToastCache,
   useSlotsRealtime,
   screenHealth, featuredItems, toastMap,
   type AdminItem, type AdminSlot, type AssetWithPlacements,
 } from "./useSignageAdmin";
 import {
   useLiveEvents, activeMoment, useVenue,
-  useCloseoutHour, useTriviaArmedEffective,
+  useCloseoutHour,
   type SlotMode, type ToastCacheRow, type VenueClock,
 } from "./useSignage";
 import type { ProgramHold } from "./scheduleResolve";
@@ -27,6 +27,7 @@ import {
 } from "./signageHubShared";
 import { HubOverlays } from "./HubOverlays";
 import { SignageHubV2 } from "./SignageHubV2";
+import { useTriviaArmState } from "./triviaArm";
 import { useUiVersion } from "@/shared/useUiVersion";
 import { addToQueue } from "./slotQueue";
 import { MediaSection } from "./MediaSection";
@@ -79,7 +80,6 @@ export function SignageHub({ openQueueSlug }: { openQueueSlug?: string }) {
   const assetsQ = useSignageAssets();
   const takeoversQ = useTakeovers();
   const toastQ = useToastCache();
-  const liveGameQ = useLiveGame();
   const liveEventsQ = useLiveEvents();
   const eventsQ = useEventsList();
   const venueQ = useVenue();
@@ -151,17 +151,11 @@ export function SignageHub({ openQueueSlug }: { openQueueSlug?: string }) {
   // "PUT TRIVIA ON SCREENS" arm (0056/0057): DEFAULT OFF, auto-expires nightly. Trivia only reaches
   // the bar TVs when EFFECTIVELY armed, so the hub must show ROTATION for an un-armed game (hub/TV
   // parity) — but staff still need to SEE the armed state, even with no game loaded, so we surface
-  // banners below. useTriviaArmedEffective applies the nightly expiry the same way the TV does.
-  const armed = useTriviaArmedEffective().armed;
-
-  // Venue-wide mode inputs (a live game + a moment each hold EVERY screen); the takeover is now
-  // per-screen (0045), resolved per card. Same ladder the public SlotDisplay renders.
-  const liveGame = liveGameQ.data ?? null;
-  // The game the TVs ACTUALLY show (respects the arm gate) — parity with SlotDisplay's `gameOn`.
-  // An un-armed game still exists (liveGame != null) but must not drive game mode here.
-  const gameOnScreens = !!liveGame && armed;
-  const gameOffScreens = !!liveGame && !armed;
-  const armedNoGame = armed && !liveGame; // armed but nothing to show yet — must stay visible (WARN-1)
+  // banners below. The three sentences (+ the arm read that applies the nightly expiry, + the live
+  // game resolved the TV's way) now live ONCE, in `triviaArm.ts`, because HOME's alert strip reports
+  // the same fact (Beat 6 PR 2, code note N8) and two copies would be two answers. Byte-for-byte the
+  // same arithmetic on the same inputs as before the hoist.
+  const { liveGame, gameOnScreens, gameOffScreens, alertNotArmed, armedNoGame } = useTriviaArmState();
   const moment = activeMoment(liveEvents);
   const eventLabel = moment ? `${moment.event.name.toUpperCase()} · ${moment.stage.toUpperCase()}` : null;
   const staleGameDate =
@@ -320,7 +314,7 @@ export function SignageHub({ openQueueSlug }: { openQueueSlug?: string }) {
       events, pastEvents, eventsLoading: eventsQ.isLoading,
       featured: featuredItems(toastRows),
       now, venueClock, canEvents,
-      gameOffScreens, armedNoGame, eventLabel, staleGameDate,
+      gameOffScreens, alertNotArmed, armedNoGame, eventLabel, staleGameDate,
       modeFor, programLabelFor, overrideHoldFor, takeoverMessageFor, scheduleCountFor, transportPlaylistFor,
       overlay, setOverlay,
       overflowSlot,

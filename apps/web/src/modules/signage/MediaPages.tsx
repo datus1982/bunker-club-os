@@ -4,8 +4,9 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useUiVersion } from "@/shared/useUiVersion";
 import { EmptyState, FormField, ScreenCard, StaffPageHeader, StatusChip } from "@/shared/ui";
 import { useIsMobile } from "@/shared/useIsMobile";
-import { screenHealth, useAdminSlots, useLiveGame, useSlotsRealtime, useTakeovers, type AdminSlot } from "./useSignageAdmin";
-import { activeMoment, useCloseoutHour, useLiveEvents, useTriviaArmedEffective, useVenue, type SlotMode } from "./useSignage";
+import { screenHealth, useAdminSlots, useSlotsRealtime, useTakeovers, type AdminSlot } from "./useSignageAdmin";
+import { activeMoment, useCloseoutHour, useLiveEvents, useVenue, type SlotMode } from "./useSignage";
+import { useTriviaArmState } from "./triviaArm";
 import { useAllScheduleRows, useMediaFiles, useMediaPlaylists, type PlaylistWithStats } from "./useMediaAdmin";
 import {
   TransportRow, cardBtn, isMediaCapableSlot,
@@ -388,9 +389,10 @@ export function MediaScreensPage() {
   const venueQ = useVenue();
   const closeoutQ = useCloseoutHour();
   const takeoversQ = useTakeovers();
-  const liveGameQ = useLiveGame();
   const liveEventsQ = useLiveEvents();
-  const armed = useTriviaArmedEffective().armed;
+  // The same one definition the hub and HOME use (Beat 6 PR 2, code note N8) — this page
+  // needs only `gameOnScreens`, which used to be spelled out here a third time.
+  const { gameOnScreens } = useTriviaArmState();
 
   const slots = useMemo(() => slotsQ.data ?? [], [slotsQ.data]);
   const scheduleBySlot = useMemo(() => schedulesQ.data ?? new Map(), [schedulesQ.data]);
@@ -413,7 +415,7 @@ export function MediaScreensPage() {
   const playlistNameById = useMemo(() => playlistNameMap(playlistsQ.data), [playlistsQ.data]);
   const programLabelFor = makeProgramLabelFor(effFor, playlistNameById);
   const overrideHoldFor = makeOverrideHoldFor(effFor);
-  const modeFor = makeModeFor(takeovers, !!liveGameQ.data && armed, activeMoment(liveEvents));
+  const modeFor = makeModeFor(takeovers, gameOnScreens, activeMoment(liveEvents));
   const transportPlaylistFor = makeTransportPlaylistFor(modeFor, effFor);
   const scheduleCountFor = (slot: AdminSlot) => scheduleBySlot.get(slot.id)?.length ?? 0;
   const panelChoices = useMemo(() => slots.filter((s) => s.orientation === "portrait"), [slots]);
