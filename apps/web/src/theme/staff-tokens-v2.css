@@ -834,11 +834,14 @@
  * worse than either end state, so the frame and its rules ship together, in ONE PR, INERT.
  *
  * EVERY DECLARATION BELOW IS COPIED FROM ITS `[data-st-page]` TWIN — same values, same
- * `!important`s, same beats-what comment. Nothing here is invented; a sheet and a page
- * must not drift into two dialects. Rules already written with BOTH selectors upstream
- * are not repeated here. The `.st-drawer` block at the bottom is the one genuinely new
- * thing, and it exists because a full-height edge-anchored drawer is a shape
- * `ConfirmDialog`'s centred `.st-panel` rule cannot express.
+ * `!important`s, same beats-what comment — WITH ONE RULED EXCEPTION: the fill tiers on
+ * sheet CONTENTS. See the §B addendum at the head of the §4-twins block below (Marvin,
+ * 2026-09-12): contents of a surface-4 sheet do not stack elevation, they separate by
+ * hairline. Everything else is a straight copy; a sheet and a page must not drift into
+ * two dialects. Rules already written with BOTH selectors upstream are not repeated here.
+ * The `.st-drawer` block at the bottom is the one genuinely new thing, and it exists
+ * because a full-height edge-anchored drawer is a shape `ConfirmDialog`'s centred
+ * `.st-panel` rule cannot express.
  *
  * SOURCE ORDER: this section is LAST on purpose, for the same reason section 8 is.
  *  · `.st-sheet input { background: surface-2 }` must beat the control restatement
@@ -883,8 +886,13 @@
 .terminal-theme.staff-v2 .st-sheet .st-btn {
   border-radius: var(--st-radius-control) !important; /* beats .terminal-theme * { border-radius: 0 !important } */
 }
+/* `.st-menu` takes the 6px CONTROL radius inside a sheet, not the 10px sheet radius its
+ * page twin uses (§B addendum, Marvin: the whole sheet-contents set is 6px). A menu that
+ * opens INSIDE a drawer is a small surface on that drawer, not a sheet of its own — and
+ * the 10px corner is the shape reserved for the thing the viewer opened. The page leg
+ * keeps its 10px exactly. */
 .terminal-theme.staff-v2 .st-sheet .st-menu {
-  border-radius: var(--st-radius-sheet) !important; /* beats the same base rule */
+  border-radius: var(--st-radius-control) !important; /* beats .terminal-theme * { border-radius: 0 !important } AND the sheet radius on the page twin */
 }
 
 /* ── §3 twins: the DESCENDANT legs of the tier/accent/utility roles ─────────── */
@@ -912,19 +920,41 @@
   text-shadow: none !important;
 }
 
-/* ── §4 twins: surfaces, form controls, the theme's own frame helpers ───────── */
+/* ── §4 twins: surfaces, form controls, the theme's own frame helpers ─────────
+ *
+ * §B ADDENDUM (2026-09-12, Marvin ruling — Beat 8):
+ *   "Contents of a surface-4 sheet do not stack elevation; they separate by hairline."
+ *
+ * This is the ONE place §10 deliberately does NOT copy its page twin's declarations, and
+ * the ruling says why: the elevation ladder is "higher = lighter", and surface-4 IS the
+ * top of it. On a page a `.st-card` (#131618) sits on ground (#0B0D10) and reads as
+ * raised; inside a #22273D drawer the same fill reads as a HOLE — the first build of this
+ * section shipped exactly that, and the alternative (a fifth, lighter tier for sheet
+ * contents) is precisely the drift the token sheet exists to prevent. So inside a sheet
+ * these surfaces carry NO fill at all; the hairline is the separation.
+ *
+ * The page leg is untouched. `.st-panel` is also untouched: section 4 already gives the
+ * sheet's OWN panel surface-4, and a nested `.st-panel` inherits that, exactly as it does
+ * inside a ConfirmDialog today — re-pointing it here would split one class into two
+ * meanings depending on nesting depth.
+ * ────────────────────────────────────────────────────────────────────────── */
 .terminal-theme.staff-v2 .st-sheet .st-card,
-.terminal-theme.staff-v2 .st-sheet .st-row {
-  background: var(--st-surface-1) !important; /* beats inline `background:"#020402"` in the shared panels */
+.terminal-theme.staff-v2 .st-sheet .st-row,
+.terminal-theme.staff-v2 .st-sheet .st-box,
+.terminal-theme.staff-v2 .st-sheet .st-menu {
+  background: transparent !important; /* beats inline `background:"#020402"` / the green washes in the shared panels — and, per the addendum, carries no tier of its own */
   border: 1px solid var(--st-hairline) !important;
 }
-/* NOT `.st-sheet .st-panel` → surface-2: section 4 already gives the sheet's OWN panel
- * surface-4, and a nested `.st-panel` inside a drawer inherits that treatment, exactly as
- * it does inside a ConfirmDialog today. Re-pointing it here would have split one class
- * into two meanings depending on nesting depth. */
-.terminal-theme.staff-v2 .st-sheet .st-menu {
-  background: var(--st-surface-3) !important;
-  border: 1px solid var(--st-hairline) !important;
+/* Hover/selected on a row inside a sheet is the existing white-alpha wash, NEVER a fill
+ * tier (the addendum again). Scoped to rows that are actually INTERACTIVE — `.st-row` is
+ * a plain <div> on most panels, and washing a static row on mouse-over would invent an
+ * affordance that is not there. `.st-row` has no hover rule on the page leg at all, so
+ * this is sheet-only by construction. */
+.terminal-theme.staff-v2 .st-sheet button.st-row:hover,
+.terminal-theme.staff-v2 .st-sheet a.st-row:hover,
+.terminal-theme.staff-v2 .st-sheet .st-row[role="button"]:hover,
+.terminal-theme.staff-v2 .st-sheet .st-row[aria-selected="true"] {
+  background: rgba(255, 255, 255, 0.06) !important; /* the same wash section 1 already spends on a control hover */
 }
 /* A control sits one step up from the card it lives on. LAST-WINS over the section-1
  * restatement above — see the source-order note in this section's header. */
@@ -941,14 +971,24 @@
 .terminal-theme.staff-v2 .st-sheet input[type="checkbox"] {
   accent-color: var(--st-accent);
 }
-/* The 2px green rectangle + glow this token sheet exists to retire, and the 2px glowing
- * green bar beside it. Every signage slide-over body is built out of `.terminal-border`
- * boxes, so this is the single highest-traffic rule in the section. */
+/* The 2px green rectangle + glow this token sheet exists to retire. Every signage
+ * slide-over body is built out of `.terminal-border` boxes, so this is the single
+ * highest-traffic rule in the section.
+ * `background: transparent` is the §B addendum applied here too, and it is load-bearing
+ * rather than tidy: several of those boxes carry an INLINE `rgba(0,255,65,0.03…04)` green
+ * wash (QueuePanel's banner and list frames), which would otherwise survive into a
+ * tokened sheet as a faint phosphor tint on a near-black panel. */
 .terminal-theme.staff-v2 .st-sheet .terminal-border {
+  background: transparent !important; /* beats the inline green washes in the shared panels */
   border-width: 1px;
   border-color: var(--st-hairline) !important; /* beats .terminal-theme [class*="border"] { border-color: green !important } */
   box-shadow: none;
 }
+/* DECISION — `.terminal-separator` keeps its page twin verbatim, and that is NOT an
+ * oversight of the addendum: it is already a bare 1px hairline BAR, not a fill tier. Its
+ * `background` IS the hairline. Applying the letter of the ruling (transparent + a 1px
+ * border) would render a 3px double rule with nothing between the lines and delete the
+ * only thing the element does. "Separate by hairline" is exactly what it already is. */
 .terminal-theme.staff-v2 .st-sheet .terminal-separator {
   height: 1px;
   background: var(--st-hairline);
