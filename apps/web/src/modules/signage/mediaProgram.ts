@@ -126,6 +126,11 @@ export interface MediaFile {
   has_subtitles: boolean;
   /** Public URL of the mirrored thumbnail in the signage bucket (null when unsynced). */
   thumb: string | null;
+  /** The real movie one-sheet mirrored by `scripts/fetch-movie-posters.ts` (migration 0055),
+   *  when the fetch found one. OPTIONAL on this interface because only the ADMIN read selects
+   *  it (`useMediaAdmin`'s FILE_COLS): the display reader's own FILE_COLS below is deliberately
+   *  untouched so no TV query shape changes (RULE #1). */
+  poster_path?: string | null;
 }
 
 export type Presentation = "framed" | "fullbleed";
@@ -145,6 +150,23 @@ export interface MediaPlaylist {
 /** Turn a signage-bucket thumb path into a public URL (mirrors useInstagram's pattern). */
 export function thumbUrl(path: string | null): string | null {
   return path ? supabase.storage.from("signage").getPublicUrl(path).data.publicUrl : null;
+}
+
+/**
+ * The picture for a film: the real one-sheet when the poster fetch found one, else the shell's
+ * own frame grab, else null (the caller draws its placeholder).
+ *
+ * This waterfall shipped inline on the TV NOW PLAYING card (`useSignage.ts`'s now-playing
+ * reader) and is now ALSO what the staff Library card draws (polish arc 2 §C1). It lives here,
+ * named and exported, so there is exactly ONE definition of "which image represents this film"
+ * — the spec's "same fallback function, imported, not re-derived".
+ *
+ * Which of the two won matters to the caller's fit rule: a poster is pre-cropped to 2:3 by the
+ * source (TMDB) so it may cover-fit, while a 16:9 frame grab was never cropped to that ratio and
+ * must contain-fit. Callers decide that from `!!poster_path`, not from the returned URL.
+ */
+export function posterOrThumbUrl(posterPath: string | null, thumbPath: string | null): string | null {
+  return thumbUrl(posterPath) ?? thumbUrl(thumbPath);
 }
 
 const FILE_COLS =

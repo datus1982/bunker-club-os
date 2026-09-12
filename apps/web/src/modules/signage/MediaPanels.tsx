@@ -8,7 +8,9 @@ import {
   type MediaFile, type PlaylistWithStats, type PlaylistItemDetail,
 } from "./useMediaAdmin";
 import type { AdminSlot } from "./useSignageAdmin";
-import { formatDuration, ALL_MEDIA_PLAYLIST_ID } from "./mediaProgram";
+import { formatDuration, posterOrThumbUrl, ALL_MEDIA_PLAYLIST_ID } from "./mediaProgram";
+import { useIsMobile } from "@/shared/useIsMobile";
+import { ConfirmDialog } from "@/shared/ui";
 import { MONO, ghost } from "./signageAdminShared";
 import { SlideOver } from "./SlideOver";
 
@@ -44,6 +46,8 @@ export function MediaLibraryPanel({ files, loading, screens, hasSchedule, varian
   /** "v2" gives each card the 44px rename affordance; the hub omits it and stays as-is. */
   variant?: MediaPanelVariant;
 }) {
+  // Only read in the v2 branch below, but hooks can't sit behind the early returns.
+  const narrow = useIsMobile();
   if (loading) return <div style={{ fontSize: 18, opacity: 0.7 }}>LOADING MEDIA…</div>;
   if (files.length === 0) {
     return (
@@ -54,8 +58,17 @@ export function MediaLibraryPanel({ files, loading, screens, hasSchedule, varian
       </div>
     );
   }
+  // v2 (§C1): a 2:3 poster reads recognizably narrower than the 16:9 crop did, so the column
+  // minimum drops 200 → 160 and the phone gap tightens 12 → 10 — recovering some of the scroll
+  // length the taller card adds, WITHOUT shrinking the image (recognizability over density).
+  // Classic keeps 200/12 exactly.
+  const isV2 = variant === "v2";
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(min(100%,200px),1fr))", gap: 12 }}>
+    <div style={{
+      display: "grid",
+      gridTemplateColumns: `repeat(auto-fill,minmax(min(100%,${isV2 ? 160 : 200}px),1fr))`,
+      gap: isV2 && narrow ? 10 : 12,
+    }}>
       {files.map((f) => <MediaFileCard key={f.id} file={f} screens={screens} hasSchedule={hasSchedule} variant={variant} />)}
     </div>
   );
@@ -135,11 +148,24 @@ function MediaFileCard({ file, screens, hasSchedule, variant }: {
   });
   const canPlay = file.status === "present" && screens.length > 0;
 
+  // §C1 — the card image, v2 only. Source order is the TV's own waterfall, imported:
+  // poster_path → thumb_path → the ▶ placeholder. The fit rule follows the house's imagery law:
+  // a real one-sheet is pre-cropped to 2:3 by TMDB so cover-fit is safe; a thumb_path fallback is
+  // a raw 16:9 frame grab nobody cropped to 2:3, so it letterboxes (contain) rather than losing
+  // its edges. Classic stays on `file.thumb` in a 110px landscape box, byte-identical.
+  const isV2 = variant === "v2";
+  const cardImg = isV2 ? posterOrThumbUrl(file.poster_path ?? null, file.thumb_path) : file.thumb;
+  const isPoster = isV2 && !!file.poster_path;
+
   return (
     <div className="terminal-border" style={{ display: "flex", flexDirection: "column", overflow: "hidden", minWidth: 0 }}>
-      <div style={{ position: "relative", height: 110, borderBottom: "1px solid rgba(0,255,65,0.2)", display: "flex", alignItems: "center", justifyContent: "center", background: "#030803" }}>
-        {file.thumb ? (
-          <img src={file.thumb} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", opacity: file.status === "present" ? 1 : 0.45 }} />
+      <div style={{
+        position: "relative",
+        ...(isV2 ? { width: "100%", aspectRatio: "2 / 3" } : { height: 110 }),
+        borderBottom: "1px solid rgba(0,255,65,0.2)", display: "flex", alignItems: "center", justifyContent: "center", background: "#030803",
+      }}>
+        {cardImg ? (
+          <img src={cardImg} alt="" style={{ width: "100%", height: "100%", objectFit: isV2 && !isPoster ? "contain" : "cover", opacity: file.status === "present" ? 1 : 0.45 }} />
         ) : (
           <span style={{ fontSize: 34, opacity: 0.7 }}>▶</span>
         )}
@@ -165,7 +191,9 @@ function MediaFileCard({ file, screens, hasSchedule, variant }: {
             >{chip.label}</span>
             <span
               className="st-t3"
-              style={{ position: "absolute", bottom: 6, right: 6, fontSize: 12, letterSpacing: 1, padding: "1px 5px", background: "rgba(2,6,10,0.8)" }}
+              // bottom/right 6 → 8, matching the taller 2:3 frame's margins (§C1). Still the
+              // demoted Disabled-tier peer of the status badge — do not promote it back.
+              style={{ position: "absolute", bottom: 8, right: 8, fontSize: 12, letterSpacing: 1, padding: "1px 5px", background: "rgba(2,6,10,0.8)" }}
             >{formatDuration(file.duration_seconds)}</span>
           </>
         ) : (
@@ -195,14 +223,31 @@ function MediaFileCard({ file, screens, hasSchedule, variant }: {
           <button
             type="button"
             onClick={() => { setDraft(file.title ?? ""); setEditingTitle(true); }}
-            title="Click to rename"
+            // DECISION (§C2): the v2 hover tooltip becomes the FULL TITLE, replacing the
+            // "Click to rename" hint — the spec's "full title reachable" requirement needs the
+            // title attribute, an element gets one, and a clamped title is the thing a manager
+            // hovers to read. The ✎ glyph still names the action. Classic keeps its hint.
+            title={display}
+            aria-label={display}
             style={renameBtn}
           >
             <span aria-hidden="true" style={{ fontSize: 17, opacity: 0.55, flex: "0 0 auto" }}>✎</span>
-            {/* The label needs its own block for the ellipsis: `text-overflow` is ignored on a
-                flex CONTAINER (the StatusChip lesson). 20px matches what classic actually
-                renders — `.staff-ui button` pins button text at 20px !important. */}
-            <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 20 }}>{display}</span>
+            {/* §C2 — 2 lines, not 1 with an ellipsis: one line clipped every real title in the
+                library before its distinguishing part (a year, a subtitle) survived. The label
+                still needs its own block (`overflow` is ignored on a flex CONTAINER — the
+                StatusChip lesson); the clamp just replaces nowrap/text-overflow.
+                `st-body` carries the size: 15px/1.5 Body role, and it is the ONLY thing that can
+                set it — `.staff-ui button { font-size: 1.25rem !important }` beats any inline px
+                on a descendant of this button (the ConfirmDialog lesson). The full string stays
+                reachable via the button's `title` + `aria-label` above. */}
+            <span
+              className="st-body"
+              style={{
+                minWidth: 0, overflow: "hidden",
+                display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical",
+                overflowWrap: "anywhere", textAlign: "left",
+              }}
+            >{display}</span>
           </button>
         ) : (
           <button
@@ -291,6 +336,7 @@ export function PlaylistEditor({ initial, files, onClose, variant = "classic" }:
   const readOnly = isFolder; // folder name + membership are sync-owned
   const [name, setName] = useState(initial?.playlist.name ?? "");
   const [createdId, setCreatedId] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const playlistId = initial?.playlist.id ?? createdId;
 
   const detailQ = usePlaylistDetail(playlistId);
@@ -408,12 +454,41 @@ export function PlaylistEditor({ initial, files, onClose, variant = "classic" }:
 
             {!isFolder && (
               <div style={{ marginTop: 4 }}>
-                <button type="button" onClick={() => { if (confirm("Delete this playlist? Clips stay in the library; any screen pointed at it falls back to an empty program until re-pointed.")) del.mutate(); }} className="u-red" style={{ ...ghost, color: "var(--terminal-red,#ff5555)", borderColor: "var(--terminal-red,#ff5555)" }}>DELETE PLAYLIST</button>
+                <button
+                  type="button"
+                  // §C4 — v2 draws the ratified ConfirmDialog instead of the browser's
+                  // `confirm()`; classic keeps `confirm()` untouched. SAME guard, SAME single
+                  // `del` mutation, no double prompt — only the confirm SURFACE differs.
+                  // DECISION: gated on `variant` rather than swapped for both. ConfirmDialog is a
+                  // token-scoped v2 primitive (`st-sheet`/`st-panel`/`st-btn`), so rendering it
+                  // inside the un-tokened classic hub would be a visual change to classic for no
+                  // gain — and Beat 6 set the precedent when Users kept classic on `confirm()`
+                  // and gave only v2 the sheet.
+                  onClick={() => {
+                    if (variant === "v2") { setConfirmDelete(true); return; }
+                    if (confirm("Delete this playlist? Clips stay in the library; any screen pointed at it falls back to an empty program until re-pointed.")) del.mutate();
+                  }}
+                  className="u-red"
+                  style={{ ...ghost, color: "var(--terminal-red,#ff5555)", borderColor: "var(--terminal-red,#ff5555)" }}
+                >DELETE PLAYLIST</button>
               </div>
             )}
           </>
         )}
       </div>
+      {confirmDelete && (
+        <ConfirmDialog
+          title={`Delete ${initial?.playlist.name ?? name}?`}
+          // The existing sentence, verbatim (§C4) — only the surface changes, not the copy.
+          body="Clips stay in the library; any screen pointed at it falls back to an empty program until re-pointed."
+          confirmLabel="Delete playlist"
+          cancelLabel="Keep playlist"
+          danger
+          busy={del.isPending}
+          onConfirm={() => { setConfirmDelete(false); del.mutate(); }}
+          onCancel={() => setConfirmDelete(false)}
+        />
+      )}
     </SlideOver>
   );
 }

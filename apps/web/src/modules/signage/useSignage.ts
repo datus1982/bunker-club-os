@@ -5,7 +5,7 @@ import { logError } from "@/shared/log";
 import { fetchSlotQueuePublic } from "./slotQueue";
 import { eventStage, isTakeoverStage, type LiveEvent } from "./eventStage";
 import type { SlotProgram } from "./mediaProgram";
-import { thumbUrl } from "./mediaProgram";
+import { posterOrThumbUrl, thumbUrl } from "./mediaProgram";
 import { nextRollover, type ScheduleRow, type ProgramHold, type ScheduleProgram } from "./scheduleResolve";
 import { itemAirsNow, DEFAULT_VENUE_CLOCK, type ItemRecurrence, type VenueClock } from "./itemSchedule";
 import { slotRenderFieldsUnchanged, TV_SLOT_RENDER_FIELDS } from "./slotRealtime";
@@ -348,7 +348,7 @@ export function useNowPlayingSources(slugs: string[]) {
                 title: f.title,
                 filename: f.filename,
                 // poster_path preferred (real one-sheet), thumb_path fallback (frame grab), else null.
-                posterUrl: thumbUrl(f.poster_path) ?? thumbUrl(f.thumb_path),
+                posterUrl: posterOrThumbUrl(f.poster_path, f.thumb_path),
                 thumbUrl: thumbUrl(f.thumb_path),
                 hasPoster: !!f.poster_path,
                 hasSubtitles: !!f.has_subtitles,
