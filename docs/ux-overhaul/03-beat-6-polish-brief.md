@@ -29,13 +29,13 @@ NOT in scope: Read the Room; flipping the `ui_version` default; any trivia/host 
 any TV route; the iPhone search-input check; NO SUBTITLES semantics. "If any token cannot be
 implemented inside RULE #1, name it and build the rest."
 
-### PR plan
+### PR plan (numbers as of 2026-09-11 ~00:05Z next day; merge plan = merge #112/#111/#110 into `phase-polish-tokens` first [preview deploys only], then #109 into `main` = ONE prod deploy in Marvin's window)
 | PR | Branch | Scope | Status |
 |---|---|---|---|
-| 1 | `phase-polish-tokens` | §2.1 tokens layer + §2.2 type/case + §2.3 surfaces/hairline/radius on the v2 shell + every `shared/ui` primitive + the v2 pages that only need restyle (Media, Signage Hub chrome, Users, Top Sellers) | dispatched |
-| 2 | `phase-polish-home` | `DashboardV2` — Tonight/Trivia-Control merge (C3) + alert strip (E1, N8 hoist) | after 1 |
-| 3 | `phase-polish-danger` | D1 on Top Sellers + Users (ConfirmDialog kept, verb-named, red, footer strip), Users admin-row collapse (C4) | after 1 |
-| 4 | `phase-polish-slides-page` | BAR OPS ▸ SLIDES page (`signage_items` + `ItemEditor`, v2-only route; classic device → `<Navigate to="/signage">` per the Beat 4 `V2Only` pattern) + hub "Manage slides →" link | after 1 (unblocked 18:05 CT) |
+| 1 | `phase-polish-tokens` | §2.1 tokens layer + §2.2 type/case + §2.3 surfaces/hairline/radius on the v2 shell + every `shared/ui` primitive + the v2 pages that only need restyle (Media, Signage Hub chrome, Users, Top Sellers) | **#109 OPEN** — PASS WITH NOTES + ADDENDUM RESOLVED, Stephen KEEP; merge held for the after-close window |
+| 2 | `phase-polish-home` | `DashboardV2` — Tonight/Trivia-Control merge (C3) + alert strip (E1, N8 hoist) | **#112 OPEN** (stacked on #109) — PASS WITH NOTES, WARNs + rulings folded, addendum pending |
+| 3 | `phase-polish-danger` | D1 on Top Sellers + Users (ConfirmDialog kept, verb-named, red, footer strip), Users admin-row collapse (C4) | **#111 OPEN** (stacked on #109) — PASS WITH NOTES, WARNs folded, addendum pending |
+| 4 | `phase-polish-slides-page` | BAR OPS ▸ SLIDES page (`signage_items` + `ItemEditor`, v2-only route; classic device → `<Navigate to="/signage">` per the Beat 4 `V2Only` pattern) + hub "Manage slides →" link | **#110 OPEN** (stacked on #109) — PASS WITH NOTES zero WARNs, addendum RESOLVED (tag nit closed) |
 | — | riding 1 or 3 | C5 task-named sub-nav copy, C6 ⋯ convention, A5 Settings EmptyState, A4 badge weight | fold where cheapest |
 
 ---
