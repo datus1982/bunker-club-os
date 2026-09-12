@@ -1,12 +1,18 @@
 import type { CSSProperties, ReactNode } from "react";
+import { radius, space, TAP } from "./tokens";
 
 /**
  * The shared empty state (audit §5 #7 — closes the green-on-green class: the trivia
  * NO-GAME button was a filled green button with green text, i.e. invisible, PR #17).
  *
- * Contrast contract: the action renders OUTLINED (green ink on black) by default, so
- * it can never be green-on-green. `primary` opts into the filled treatment and pairs
- * it with `u-ink` (black text on the green fill) — the only legible filled variant.
+ * Contrast contract: the action renders OUTLINED (text tier on the card fill) by
+ * default, so it can never be same-on-same. `primary` opts into the accent fill and
+ * pairs it with `st-btn-primary`, which paints the ground colour ON the accent — the
+ * only legible filled variant.
+ *
+ * BEAT 6 (PR 1): surface-1 card, hairline, 6px radius; eyebrow on the Label role,
+ * message on Body. Colour comes from classes (inline colour loses to the base
+ * `!important`).
  */
 export function EmptyState({
   eyebrow,
@@ -16,26 +22,26 @@ export function EmptyState({
   primary = false,
   style,
 }: {
-  /** Dim kicker above the message, e.g. "NO GAME LOADED". */
+  /** Dim kicker above the message, e.g. "NO GAME LOADED". Label role — stays caps. */
   eyebrow?: ReactNode;
   message: ReactNode;
   /** Optional single action. Omitted → the box is informational only. */
   actionLabel?: ReactNode;
   onAction?: () => void;
-  /** Filled action (black-on-green) instead of outlined. */
+  /** Accent-filled action instead of outlined. */
   primary?: boolean;
   style?: CSSProperties;
 }) {
   return (
-    <div style={{ ...box, ...style }}>
-      {eyebrow != null && <div style={eyebrowStyle}>{eyebrow}</div>}
-      <div style={messageStyle}>{message}</div>
+    <div className="st-card" style={{ ...box, ...style }}>
+      {eyebrow != null && <div className="st-label st-t2">{eyebrow}</div>}
+      <div className="st-body st-t2" style={messageStyle}>{message}</div>
       {actionLabel != null && onAction && (
         <button
           type="button"
           onClick={onAction}
-          className={primary ? "u-fill u-ink" : ""}
-          style={primary ? { ...action, ...actionPrimary } : action}
+          className={primary ? "st-btn st-btn-primary" : "st-btn"}
+          style={action}
         >
           {actionLabel}
         </button>
@@ -46,18 +52,12 @@ export function EmptyState({
 
 const box: CSSProperties = {
   display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-  gap: 10, textAlign: "center",
-  padding: "26px 18px",
-  border: "1px solid rgba(0,255,65,0.35)",
-  background: "#020402",
+  gap: space.s3, textAlign: "center",
+  padding: `${space.s6}px ${space.s4}px`,
+  borderRadius: radius.control,
 };
-const eyebrowStyle: CSSProperties = { fontSize: 13, letterSpacing: 4, opacity: 0.5, color: "var(--terminal-green)" };
-const messageStyle: CSSProperties = { fontSize: 18, lineHeight: 1.5, opacity: 0.85, color: "var(--terminal-green)", maxWidth: 460 };
+const messageStyle: CSSProperties = { maxWidth: 460 };
 const action: CSSProperties = {
-  minHeight: 44, padding: "0 18px", cursor: "pointer",
-  background: "transparent", color: "var(--terminal-green)",
-  border: "1px solid var(--terminal-green)", letterSpacing: 1,
-};
-const actionPrimary: CSSProperties = {
-  background: "var(--terminal-green)", color: "#000", fontWeight: 700,
+  minHeight: TAP, minWidth: TAP, padding: `0 ${space.s4 + 2}px`, cursor: "pointer",
+  letterSpacing: 0.5, fontSize: 15,
 };

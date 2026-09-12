@@ -4,8 +4,9 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useUiVersion } from "@/shared/useUiVersion";
 import { EmptyState, FormField, ScreenCard, StaffPageHeader, StatusChip } from "@/shared/ui";
 import { useIsMobile } from "@/shared/useIsMobile";
-import { screenHealth, useAdminSlots, useLiveGame, useSlotsRealtime, useTakeovers, type AdminSlot } from "./useSignageAdmin";
-import { activeMoment, useCloseoutHour, useLiveEvents, useTriviaArmedEffective, useVenue, type SlotMode } from "./useSignage";
+import { screenHealth, useAdminSlots, useSlotsRealtime, useTakeovers, type AdminSlot } from "./useSignageAdmin";
+import { activeMoment, useCloseoutHour, useLiveEvents, useVenue, type SlotMode } from "./useSignage";
+import { useTriviaArmState } from "./triviaArm";
 import { useAllScheduleRows, useMediaFiles, useMediaPlaylists, type PlaylistWithStats } from "./useMediaAdmin";
 import {
   TransportRow, cardBtn, isMediaCapableSlot,
@@ -74,18 +75,24 @@ export function MediaScreens() {
 }
 
 /* ── page shell (matches the hub's wrapper exactly) ─────────────────────────── */
-function MediaPage({ title, tag, right, children }: {
+function MediaPage({ title, tag, right, children, overlays }: {
   title: string;
   tag?: ReactNode;
   right?: ReactNode;
   children: ReactNode;
+  /** Slide-overs that are SHARED with the classic hub — rendered OUTSIDE the token
+   *  scope so they look exactly as Beat 3/4 shipped them (see the hub's note). A
+   *  v2-only editor (PlaylistEditor) belongs in `children` and may take the tokens. */
+  overlays?: ReactNode;
 }) {
   return (
-    <div className="terminal-theme staff-ui" style={{ minHeight: "100%", padding: "20px clamp(12px,4vw,40px)", fontFamily: MONO, color: "var(--terminal-green)" }}>
-      <div style={{ maxWidth: 1100, margin: "0 auto" }}>
+    <div className="terminal-theme staff-ui" style={{ minHeight: "100%", padding: "24px clamp(16px,4vw,40px) 48px", fontFamily: MONO }}>
+      {/* `data-st-page` = the token sheet's opt-in hook, on the CONTENT wrapper only. */}
+      <div data-st-page="" style={{ maxWidth: 1100, margin: "0 auto" }}>
         <StaffPageHeader eyebrow="MEDIA" title={title} tag={tag} right={right} />
         {children}
       </div>
+      {overlays}
     </div>
   );
 }
@@ -213,7 +220,7 @@ export function MediaLibraryPage() {
         : `${files.length} FILE${files.length === 1 ? "" : "S"} · ${present} PRESENT · ${missing} MISSING`;
 
   return (
-    <MediaPage title="LIBRARY" tag={tag}>
+    <MediaPage title="Library" tag={tag}>
       {!filesQ.isLoading && files.length === 0 ? (
         // Same sentence the hub section shows — ingestion is folder-drop on the media PC,
         // there is no upload path on this page either.
@@ -345,10 +352,10 @@ export function MediaPlaylistsPage() {
     ? "LOADING…"
     : `${playlists.length} PLAYLIST${playlists.length === 1 ? "" : "S"} · ${inCarousel} IN CAROUSEL`;
 
-  const newPlaylist = <button type="button" onClick={() => setEditing("new")} style={{ ...ghost, fontWeight: 700 }}>+ NEW PLAYLIST</button>;
+  const newPlaylist = <button type="button" onClick={() => setEditing("new")} className="st-btn st-body st-t1" style={ghost}>+ New playlist</button>;
 
   return (
-    <MediaPage title="PLAYLISTS" tag={tag} right={newPlaylist}>
+    <MediaPage title="Playlists" tag={tag} right={newPlaylist}>
       {!playlistsQ.isLoading && playlists.length === 0 ? (
         <EmptyState
           eyebrow="NO PLAYLISTS"
@@ -382,9 +389,10 @@ export function MediaScreensPage() {
   const venueQ = useVenue();
   const closeoutQ = useCloseoutHour();
   const takeoversQ = useTakeovers();
-  const liveGameQ = useLiveGame();
   const liveEventsQ = useLiveEvents();
-  const armed = useTriviaArmedEffective().armed;
+  // The same one definition the hub and HOME use (Beat 6 PR 2, code note N8) — this page
+  // needs only `gameOnScreens`, which used to be spelled out here a third time.
+  const { gameOnScreens } = useTriviaArmState();
 
   const slots = useMemo(() => slotsQ.data ?? [], [slotsQ.data]);
   const scheduleBySlot = useMemo(() => schedulesQ.data ?? new Map(), [schedulesQ.data]);
@@ -407,7 +415,7 @@ export function MediaScreensPage() {
   const playlistNameById = useMemo(() => playlistNameMap(playlistsQ.data), [playlistsQ.data]);
   const programLabelFor = makeProgramLabelFor(effFor, playlistNameById);
   const overrideHoldFor = makeOverrideHoldFor(effFor);
-  const modeFor = makeModeFor(takeovers, !!liveGameQ.data && armed, activeMoment(liveEvents));
+  const modeFor = makeModeFor(takeovers, gameOnScreens, activeMoment(liveEvents));
   const transportPlaylistFor = makeTransportPlaylistFor(modeFor, effFor);
   const scheduleCountFor = (slot: AdminSlot) => scheduleBySlot.get(slot.id)?.length ?? 0;
   const panelChoices = useMemo(() => slots.filter((s) => s.orientation === "portrait"), [slots]);
@@ -418,11 +426,30 @@ export function MediaScreensPage() {
 
   return (
     <MediaPage
-      title="SCREENS & PROGRAMS"
+      title="Screens & programs"
       tag={slotsQ.isLoading ? "LOADING…" : `${screens.length} MEDIA SCREEN${screens.length === 1 ? "" : "S"}`}
+      overlays={
+        <>
+          {/* The hub's own slide-overs, opened with the hub's own props (HubOverlays).
+              SHARED with the classic hub ⇒ rendered outside the token scope. */}
+          {panel?.kind === "program" && (
+            <ProgramOverlay
+              slot={panel.slot}
+              scheduleBySlot={scheduleBySlot}
+              overrideHoldFor={overrideHoldFor}
+              panelChoices={panelChoices}
+              qc={qc}
+              onClose={() => setPanel(null)}
+            />
+          )}
+          {panel?.kind === "schedule" && (
+            <ScheduleOverlay slot={panel.slot} timezone={timezone} onClose={() => setPanel(null)} />
+          )}
+        </>
+      }
     >
       {slotsQ.isLoading ? (
-        <div style={{ fontSize: 20 }}>LOADING SCREENS…</div>
+        <div className="st-body st-t2">Loading screens…</div>
       ) : screens.length === 0 ? (
         <EmptyState
           eyebrow="NO MEDIA SCREENS"
@@ -447,20 +474,6 @@ export function MediaScreensPage() {
         </div>
       )}
 
-      {/* The hub's own slide-overs, opened with the hub's own props (HubOverlays). */}
-      {panel?.kind === "program" && (
-        <ProgramOverlay
-          slot={panel.slot}
-          scheduleBySlot={scheduleBySlot}
-          overrideHoldFor={overrideHoldFor}
-          panelChoices={panelChoices}
-          qc={qc}
-          onClose={() => setPanel(null)}
-        />
-      )}
-      {panel?.kind === "schedule" && (
-        <ScheduleOverlay slot={panel.slot} timezone={timezone} onClose={() => setPanel(null)} />
-      )}
     </MediaPage>
   );
 }
@@ -492,7 +505,7 @@ function MediaScreenCard({
   const status = programActive ? (
     <><span className="u-amber" style={{ fontSize: "inherit" }}>Playing {programLabel}.</span> Rotation resumes when the program is set back to ROTATION (a game/takeover still preempts it).</>
   ) : mode === "rotation" ? (
-    <>On the promo rotation — no media program running. SWITCH PROGRAM to put a playlist or the live input on this screen.</>
+    <>On the promo rotation — no media program running. Switch program to put a playlist or the live input on this screen.</>
   ) : mode === "event" ? (
     <><span className="u-amber" style={{ fontSize: "inherit" }}>A scheduled event is holding the screens.</span> Any program resumes when the window ends.</>
   ) : mode === "game" ? (
@@ -529,11 +542,11 @@ function MediaScreenCard({
       status={status}
       actions={
         <div style={{ display: "grid", gridTemplateColumns: stacked ? "1fr" : "1fr 1fr", gap: 7 }}>
-          <button type="button" onClick={onProgram} className={programActive ? "u-amber" : ""} style={{ ...cardBtn, padding: "9px 14px", ...(programActive ? { borderColor: "var(--terminal-amber, #ffb000)" } : null) }}>
-            SWITCH PROGRAM ▸
+          <button type="button" onClick={onProgram} className={programActive ? "u-amber st-btn st-body" : "st-btn st-body"} style={{ ...cardBtn, padding: "9px 14px" }}>
+            Switch program ▸
           </button>
-          <button type="button" onClick={onSchedule} style={{ ...cardBtn, padding: "9px 14px" }}>
-            {scheduleCount > 0 ? `SCHEDULE: ${scheduleCount} ▸` : "SCHEDULE ▸"}
+          <button type="button" onClick={onSchedule} className="st-btn st-body" style={{ ...cardBtn, padding: "9px 14px" }}>
+            {scheduleCount > 0 ? `Schedule: ${scheduleCount} ▸` : "Schedule ▸"}
           </button>
         </div>
       }

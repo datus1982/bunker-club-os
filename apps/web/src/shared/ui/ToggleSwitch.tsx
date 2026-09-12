@@ -1,4 +1,5 @@
 import type { CSSProperties, ReactNode } from "react";
+import { radius, space, staffAccentColors, staffText, TAP } from "./tokens";
 import "@/theme/staff-form.css";
 
 /**
@@ -15,13 +16,19 @@ import "@/theme/staff-form.css";
  * `aria-checked` derived from `checked` — nothing hand-rolled.
  *
  * The visible ON/OFF word is deliberate: a coloured track alone is not a state anyone
- * can read across a bar on a monochrome green theme.
+ * can read across a bar on a monochrome theme.
  *
  * `disabled` renders dim + LOCKED — used for "admin implies every module": the grant
  * is genuinely on, and genuinely not editable.
  *
- * Row is ≥44px (the app's tap floor). Motion is a 120ms transform, matching the shell
- * drawer; nothing here animates forever.
+ * Row is ≥44px (the app's tap floor). Motion is the token hover step, matching the
+ * shell drawer; nothing here animates forever.
+ *
+ * BEAT 6 (PR 1): the ON track/knob become the calmed accent; the row is a surface-1
+ * card with the hairline and 6px radius. The track/knob colours ARE inline here — they
+ * are `background`, not `color`, and the base theme's !important only owns `color` on
+ * a span (it does force `background: transparent` on BUTTONS and INPUTS, neither of
+ * which these spans are).
  */
 export function ToggleSwitch({
   checked,
@@ -45,7 +52,7 @@ export function ToggleSwitch({
 }) {
   return (
     <label
-      className="bui-switch"
+      className="bui-switch st-row"
       style={{
         ...row,
         opacity: disabled ? 0.55 : 1,
@@ -61,24 +68,26 @@ export function ToggleSwitch({
         aria-label={ariaLabel}
         onChange={(e) => onChange(e.target.checked)}
       />
-      {label != null && <span style={labelStyle}>{label}</span>}
-      {/* `u-idle`, not an inline colour: `.terminal-theme * { color: green !important }`
-          beats inline styles; the scoped utility is the theme's own escape hatch. */}
-      <span className={checked ? undefined : "u-idle"} style={state}>
+      {label != null && <span className="st-body st-t1" style={labelStyle}>{label}</span>}
+      {/* Colour by CLASS: `.terminal-theme * { color: green !important }` beats any
+          inline colour, so the ON/OFF word rides the token classes. */}
+      <span className={checked ? "st-label st-accent" : "st-label st-t2"} style={state}>
         {disabled ? lockedHint : checked ? "ON" : "OFF"}
       </span>
       <span
         aria-hidden="true"
-        style={{
-          ...track,
-          borderColor: checked ? "var(--terminal-green)" : "rgba(0,255,65,0.35)",
-          background: checked ? "rgba(0,255,65,0.14)" : "transparent",
-        }}
+        className={"st-pill" + (checked ? " st-on" : "")}
+        // The ON edge is painted by `.st-pill.st-on` in the token sheet, NOT here: the
+        // blanket `[data-st-page] * { border-color: hairline !important }` beats an
+        // inline border-color, so an OFF value written here would never render. The OFF
+        // edge is that hairline, which is what the design asks for anyway.
+        style={{ ...track, background: checked ? "rgba(127,230,168,0.18)" : "transparent" }}
       >
         <span
+          className="st-pill"
           style={{
             ...knob,
-            background: checked ? "var(--terminal-green)" : "#8a8f8a",
+            background: checked ? staffAccentColors.accent : staffText.disabled,
             transform: checked ? "translateX(20px)" : "translateX(0)",
           }}
         />
@@ -91,15 +100,15 @@ const row: CSSProperties = {
   position: "relative",
   display: "flex",
   alignItems: "center",
-  gap: 10,
+  gap: space.s3,
   width: "100%",
-  minHeight: 44,
-  padding: "0 10px",
+  minHeight: TAP,
+  padding: `0 ${space.s3}px`,
   boxSizing: "border-box",
-  border: "1px solid rgba(0,255,65,0.28)",
+  borderRadius: radius.control,
 };
-const labelStyle: CSSProperties = { fontSize: 17, letterSpacing: 0.5, flex: "1 1 auto", minWidth: 0 };
-const state: CSSProperties = { fontSize: 14, letterSpacing: 1.5, minWidth: 44, textAlign: "right" };
+const labelStyle: CSSProperties = { flex: "1 1 auto", minWidth: 0 };
+const state: CSSProperties = { minWidth: 44, textAlign: "right" };
 const track: CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
@@ -109,10 +118,13 @@ const track: CSSProperties = {
   padding: 1,
   boxSizing: "border-box",
   border: "1px solid",
+  borderRadius: 9999,
+  transition: "background 140ms ease-out, border-color 140ms ease-out",
 };
 const knob: CSSProperties = {
   display: "block",
   width: 18,
   height: 18,
-  transition: "transform 120ms ease-out, background 120ms ease-out",
+  borderRadius: 9999,
+  transition: "transform 140ms ease-out, background 140ms ease-out",
 };

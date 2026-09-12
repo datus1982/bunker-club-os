@@ -24,6 +24,14 @@ export interface NavChildV2 {
   comingSoon?: boolean;
   /** Desktop sub-nav grouping label (dim kicker before the first child of the group). */
   group?: string;
+  /**
+   * ONE-LINE TASK DESCRIPTION (audit §C5, Beat 6 PR 1). The module tiles already do this
+   * right ("Live scoring console — run the game", not "Trivia"); this extends the same
+   * one-liner to the nav entries that read as bare nouns. Rendered in the MOBILE DRAWER
+   * only (Body role, sentence case) — the desktop sub-nav row is a chip strip with no
+   * room for a second line, and the `label` itself stays Label-role UPPERCASE.
+   */
+  task?: string;
 }
 
 export interface NavSectionV2 {
@@ -31,29 +39,35 @@ export interface NavSectionV2 {
   children: NavChildV2[];
 }
 
-export const HOME_V2: NavChildV2 = { to: "/dashboard", label: "HOME", minRole: "staff", end: true };
+export const HOME_V2: NavChildV2 = {
+  to: "/dashboard", label: "HOME", minRole: "staff", end: true,
+  task: "Status board and where everything starts",
+};
 
 export const SECTIONS_V2: NavSectionV2[] = [
   {
     // Renamed from TRIVIA (owner decision B) — trivia is one game among future consoles.
     label: "GAMES",
     children: [
-      { to: "/scoring", label: "SCORING", module: "trivia", group: "TRIVIA" },
-      { to: "/game/setup", label: "GAME SETUP", module: "trivia", group: "TRIVIA" },
-      { to: "/teams", label: "TEAMS", module: "trivia", group: "TRIVIA" },
-      { to: "/game/history", label: "HISTORY", module: "trivia", group: "TRIVIA" },
+      { to: "/scoring", label: "SCORING", module: "trivia", group: "TRIVIA", task: "Run tonight's game and drive the screens" },
+      { to: "/game/setup", label: "GAME SETUP", module: "trivia", group: "TRIVIA", task: "Create a game, its rounds and its questions" },
+      { to: "/teams", label: "TEAMS", module: "trivia", group: "TRIVIA", task: "Regular-team roster, PINs and join requests" },
+      { to: "/game/history", label: "HISTORY", module: "trivia", group: "TRIVIA", task: "Past games and their final boards" },
       // The reserved second-console slot. Never navigates (nothing is built yet).
       { to: "", label: "READ THE ROOM", module: "trivia", comingSoon: true },
       // SEASONS ranks trivia seasons but is admin-only, so it sits outside the TRIVIA group.
-      { to: "/admin/seasons", label: "SEASONS", minRole: "admin" },
+      { to: "/admin/seasons", label: "SEASONS", minRole: "admin", task: "Season standings, finals and playoffs" },
     ],
   },
   {
     label: "BAR OPS",
     children: [
-      { to: "/signage", label: "SIGNAGE HUB", module: "signage" },
-      { to: "/signage#events", label: "EVENTS & PROMOS", module: "signage" },
-      { to: "/admin/drinks", label: "TOP SELLERS", module: "drinks" },
+      { to: "/signage", label: "SIGNAGE HUB", module: "signage", task: "See what every screen is showing right now" },
+      // v2-only route (Beat 6 PR 4): on a classic device the page redirects to /signage,
+      // where the slide library still lives inside the hub.
+      { to: "/signage/slides", label: "SLIDES", module: "signage", task: "Build and edit the cards the screens rotate" },
+      { to: "/signage#events", label: "EVENTS & PROMOS", module: "signage", task: "Schedule a promo or put one on the screens now" },
+      { to: "/admin/drinks", label: "TOP SELLERS", module: "drinks", task: "Which drink groups the sellers board rotates" },
     ],
   },
   {
@@ -64,15 +78,15 @@ export const SECTIONS_V2: NavSectionV2[] = [
     // signage tables, so the hub's grant is the honest gate.
     label: "MEDIA",
     children: [
-      { to: "/media/library", label: "LIBRARY", module: "signage" },
-      { to: "/media/playlists", label: "PLAYLISTS", module: "signage" },
-      { to: "/media/screens", label: "SCREENS & PROGRAMS", module: "signage" },
+      { to: "/media/library", label: "LIBRARY", module: "signage", task: "Every film on the bar PC, and whether it is there" },
+      { to: "/media/playlists", label: "PLAYLISTS", module: "signage", task: "Group films into the programs a screen can run" },
+      { to: "/media/screens", label: "SCREENS & PROGRAMS", module: "signage", task: "Point a screen at a program, or set its dayparts" },
     ],
   },
   {
     label: "SYSTEM",
     children: [
-      { to: "/admin/users", label: "USERS", minRole: "admin" },
+      { to: "/admin/users", label: "USERS", minRole: "admin", task: "Invite staff and decide what each one can reach" },
       // /settings is still the Phase 1 Placeholder stub — never link a placeholder as
       // if it were real (addendum ruling 4).
       { to: "", label: "SETTINGS", minRole: "admin", comingSoon: true },

@@ -6,6 +6,7 @@ import { SectionNav } from "@/shared/ui";
 import { HOME_V2, childVisibleV2, resolveActiveV2, visibleSectionsV2 } from "./navV2";
 import { UiVersionToggle } from "./UiVersionToggle";
 import "@/theme/staff-shell-v2.css";
+import "@/theme/staff-tokens-v2.css";
 
 /**
  * The v2 staff shell (UX overhaul Beat 1) — rendered by StaffLayout ONLY when this

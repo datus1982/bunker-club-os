@@ -2,14 +2,14 @@ import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
-  useAdminSlots, useAllItems, useSignageAssets, useTakeovers, useToastCache, useLiveGame,
+  useAdminSlots, useAllItems, useSignageAssets, useTakeovers, useToastCache,
   useSlotsRealtime,
   screenHealth, featuredItems, toastMap,
   type AdminItem, type AdminSlot, type AssetWithPlacements,
 } from "./useSignageAdmin";
 import {
   useLiveEvents, activeMoment, useVenue,
-  useCloseoutHour, useTriviaArmedEffective,
+  useCloseoutHour,
   type SlotMode, type ToastCacheRow, type VenueClock,
 } from "./useSignage";
 import type { ProgramHold } from "./scheduleResolve";
@@ -21,12 +21,14 @@ import {
 // Hub internals shared with the v2 view + the slide-over host (Beat 3 — verbatim moves).
 import {
   AssetCard, TransportRow, cardBtn, miniBtn, rotationSummary, seedFromEvent,
+  groupItemsBySlot, makeNextPosition,
   makeEffFor, makeModeFor, makeOverrideHoldFor, makeProgramLabelFor, makeTakeoverMessageFor,
   makeTransportPlaylistFor, playlistNameMap,
   useEventRowActions, type Overlay, type SignageHubContext,
 } from "./signageHubShared";
 import { HubOverlays } from "./HubOverlays";
 import { SignageHubV2 } from "./SignageHubV2";
+import { useTriviaArmState } from "./triviaArm";
 import { useUiVersion } from "@/shared/useUiVersion";
 import { addToQueue } from "./slotQueue";
 import { MediaSection } from "./MediaSection";
@@ -56,6 +58,11 @@ import "./signage.css";
  * v2 nav pointed at /signage#… instead of new routes). `library` / `playlists` are now
  * BOOKMARK COMPATIBILITY in v2 only — Beat 4 gave them real /media/* pages and the effect
  * below forwards them there; classic still expands the section named here.
+ *
+ * DECISION (Beat 6 PR 4): BAR OPS ▸ SLIDES gets NO entry here. The asset section never had
+ * an anchor — no nav link, no bookmark and no `#assets` key ever existed — so there is
+ * nothing to forward to /signage/slides, and adding the key would give classic a behaviour
+ * (expand-on-#assets) it does not have today.
  */
 const HASH_SECTIONS: Record<string, string | null> = {
   screens: null,
@@ -79,7 +86,6 @@ export function SignageHub({ openQueueSlug }: { openQueueSlug?: string }) {
   const assetsQ = useSignageAssets();
   const takeoversQ = useTakeovers();
   const toastQ = useToastCache();
-  const liveGameQ = useLiveGame();
   const liveEventsQ = useLiveEvents();
   const eventsQ = useEventsList();
   const venueQ = useVenue();
@@ -151,17 +157,11 @@ export function SignageHub({ openQueueSlug }: { openQueueSlug?: string }) {
   // "PUT TRIVIA ON SCREENS" arm (0056/0057): DEFAULT OFF, auto-expires nightly. Trivia only reaches
   // the bar TVs when EFFECTIVELY armed, so the hub must show ROTATION for an un-armed game (hub/TV
   // parity) — but staff still need to SEE the armed state, even with no game loaded, so we surface
-  // banners below. useTriviaArmedEffective applies the nightly expiry the same way the TV does.
-  const armed = useTriviaArmedEffective().armed;
-
-  // Venue-wide mode inputs (a live game + a moment each hold EVERY screen); the takeover is now
-  // per-screen (0045), resolved per card. Same ladder the public SlotDisplay renders.
-  const liveGame = liveGameQ.data ?? null;
-  // The game the TVs ACTUALLY show (respects the arm gate) — parity with SlotDisplay's `gameOn`.
-  // An un-armed game still exists (liveGame != null) but must not drive game mode here.
-  const gameOnScreens = !!liveGame && armed;
-  const gameOffScreens = !!liveGame && !armed;
-  const armedNoGame = armed && !liveGame; // armed but nothing to show yet — must stay visible (WARN-1)
+  // banners below. The three sentences (+ the arm read that applies the nightly expiry, + the live
+  // game resolved the TV's way) now live ONCE, in `triviaArm.ts`, because HOME's alert strip reports
+  // the same fact (Beat 6 PR 2, code note N8) and two copies would be two answers. Byte-for-byte the
+  // same arithmetic on the same inputs as before the hoist.
+  const { liveGame, gameOnScreens, gameOffScreens, alertNotArmed, armedNoGame } = useTriviaArmState();
   const moment = activeMoment(liveEvents);
   const eventLabel = moment ? `${moment.event.name.toUpperCase()} · ${moment.stage.toUpperCase()}` : null;
   const staleGameDate =
@@ -169,21 +169,10 @@ export function SignageHub({ openQueueSlug }: { openQueueSlug?: string }) {
       ? liveGame.game_date
       : null;
 
-  const itemsBySlot = useMemo(() => {
-    const m = new Map<string, AdminItem[]>();
-    for (const it of items) {
-      if (!it.slot_id) continue;
-      if (!m.has(it.slot_id)) m.set(it.slot_id, []);
-      m.get(it.slot_id)!.push(it);
-    }
-    for (const list of m.values()) list.sort((a, b) => a.sort_order - b.sort_order);
-    return m;
-  }, [items]);
-
-  const nextPosition = (slotId: string) => {
-    const list = itemsBySlot.get(slotId) ?? [];
-    return list.length ? Math.max(...list.map((i) => i.sort_order)) + 1 : 0;
-  };
+  // Both bodies moved VERBATIM into signageHubShared (Beat 6 PR 4) so BAR OPS ▸ SLIDES
+  // computes a new slide's queue position from the same definition this page does.
+  const itemsBySlot = useMemo(() => groupItemsBySlot(items), [items]);
+  const nextPosition = makeNextPosition(itemsBySlot);
 
   const invalidateItems = () => {
     qc.invalidateQueries({ queryKey: ["signage-admin", "items"] });
@@ -316,16 +305,16 @@ export function SignageHub({ openQueueSlug }: { openQueueSlug?: string }) {
     const ctx: SignageHubContext = {
       slots, slotsLoading: slotsQ.isLoading,
       assets, assetsLoading: assetsQ.isLoading,
-      itemsBySlot, toastRows, tmap, takeovers,
+      itemsBySlot, tmap, takeovers,
       events, pastEvents, eventsLoading: eventsQ.isLoading,
       featured: featuredItems(toastRows),
       now, venueClock, canEvents,
-      gameOffScreens, armedNoGame, eventLabel, staleGameDate,
+      gameOffScreens, alertNotArmed, armedNoGame, eventLabel, staleGameDate,
       modeFor, programLabelFor, overrideHoldFor, takeoverMessageFor, scheduleCountFor, transportPlaylistFor,
       overlay, setOverlay,
       overflowSlot,
       toggleOverflow: (slotId) => setOverflowSlot((cur) => (cur === slotId ? null : slotId)),
-      openAsset, invalidateEvents,
+      invalidateEvents,
     };
     return <SignageHubV2 ctx={ctx} overlays={overlays} />;
   }

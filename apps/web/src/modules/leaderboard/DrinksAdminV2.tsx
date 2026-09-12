@@ -32,6 +32,31 @@ import type { AvailableGroup, Config, ConfiguredGroup } from "./drinksAdminShare
  * spec'd shape — a StatusChip that reports state plus the same ON/OFF button that
  * classic's `toggleGroup` mutation is wired to.
  *
+ * BEAT 6 (PR 1) — token pass, presentation only:
+ *  • the page root carries `data-st-page`, the opt-in hook the token sheet hangs off;
+ *  • text sizes/colour come from the type-role + tier classes (an inline colour can
+ *    never beat `.terminal-theme * { color: green !important }`);
+ *  • the DOUBLED state readout is gone (audit A3): the row reported ON twice — once as
+ *    a StatusChip and again as the `● ON` button's own label. The chip keeps the state
+ *    (top-right, where every v2 row reports state) and the button becomes a VERB
+ *    ("Turn off" / "Turn on"). Same `onToggle` call, same mutation, nothing else moved.
+ *
+ * BEAT 6 (PR 3) — the danger pattern (§B "Danger language", owner letter D1 as amended):
+ *  • REMOVE leaves the ▲▼/Turn-off cluster entirely. Those three are reversible, routine
+ *    controls; a destructive one must not read as their same-weight peer (the "danger has
+ *    no geography" failure mode). Each group row now ends in its own footer strip under a
+ *    hairline holding ONE red, VERB-named control: "Remove group".
+ *  • Red, not the calmed amber it used to borrow: amber is this system's ambient/pending
+ *    ink (it is what "OFF TODAY" and "sync stale" are painted in), so spending it on the
+ *    one destructive control made the two indistinguishable at a glance.
+ *  • The ratified ConfirmDialog stays (PR #103's DECISION; D1's text-swap/hold variants
+ *    were ruled out for Beat 6). Its buttons are now verb-named too — "Remove group" /
+ *    "Keep group", never a bare REMOVE and never Yes/No — so the confirm answers the
+ *    question it asks. Same `onRemove(id)` call, same single mutation in DrinksAdmin.tsx.
+ *  • The OFF chip moves to the `neutral` tone (Secondary tier). PR 1 put it on the
+ *    Disabled tier via `off`; here the chip is the readable state of a control someone
+ *    came to check, not de-emphasis — see the tone note in StatusChip.
+ *
  * Sizes are inline px: nothing inherits font-size under `.terminal-theme` (PR #89).
  */
 export function DrinksAdminV2({
@@ -71,25 +96,25 @@ export function DrinksAdminV2({
   const enabled = configured.filter((g) => g.enabled).length;
 
   return (
-    <div style={{ padding: "20px clamp(14px, 4vw, 48px) 40px", maxWidth: 900, margin: "0 auto" }}>
+    <div data-st-page="" style={{ padding: "24px clamp(16px, 4vw, 48px) 48px", maxWidth: 900, margin: "0 auto" }}>
       <StaffPageHeader
         eyebrow="BAR OPS ▸ TOP SELLERS"
-        title="TOP SELLERS"
+        title="Top Sellers"
         tag={`${enabled} OF ${configured.length} GROUP${configured.length === 1 ? "" : "S"} ON`}
         right={
           <>
-            <Link to="/drinks" style={linkBtn}>OPEN BOARD</Link>
-            <Link to="/dashboard" style={linkBtn}>DASHBOARD</Link>
+            <Link to="/drinks" className="st-btn st-body st-t2" style={linkBtn}>Open board</Link>
+            <Link to="/dashboard" className="st-btn st-body st-t2" style={linkBtn}>Dashboard</Link>
           </>
         }
       />
-      <p style={intro}>
+      <p className="st-body st-t2" style={intro}>
         Toast credentials are server-side only — nothing sensitive is entered here. Sales refresh
         automatically from the scheduled sync.
       </p>
 
       {/* ── ROTATION GROUPS ─────────────────────────────────────────────── */}
-      <div style={sectionLabel}>ROTATION GROUPS</div>
+      <div className="st-label st-t2" style={sectionLabel}>ROTATION GROUPS</div>
       {configured.length === 0 ? (
         <EmptyState
           eyebrow="NO GROUPS YET"
@@ -102,13 +127,23 @@ export function DrinksAdminV2({
               key={g.id}
               stacked={narrow}
               title={`${g.name}${g.toast_menu_guid === "MAIN_MENU_ALL" ? " ★" : ""}`}
-              meta={<StatusChip tone={g.enabled ? "live" : "off"} dot={g.enabled} label={g.enabled ? "ON" : "OFF"} />}
+              meta={<StatusChip tone={g.enabled ? "info" : "neutral"} dot={g.enabled} label={g.enabled ? "ON" : "OFF"} />}
               actions={
                 <>
-                  <button type="button" style={btn} onClick={() => onMove(g, -1)} disabled={i === 0} aria-label={`Move ${g.name} up`}>▲</button>
-                  <button type="button" style={btn} onClick={() => onMove(g, 1)} disabled={i === arr.length - 1} aria-label={`Move ${g.name} down`}>▼</button>
-                  <button type="button" style={btn} onClick={() => onToggle(g)}>{g.enabled ? "● ON" : "○ OFF"}</button>
-                  <button type="button" className="u-amber" style={btnDanger} onClick={() => setConfirmRemove(g)}>REMOVE</button>
+                  <button type="button" className="st-btn st-body" style={btn} onClick={() => onMove(g, -1)} disabled={i === 0} aria-label={`Move ${g.name} up`}>▲</button>
+                  <button type="button" className="st-btn st-body" style={btn} onClick={() => onMove(g, 1)} disabled={i === arr.length - 1} aria-label={`Move ${g.name} down`}>▼</button>
+                  {/* VERB, not a second state readout — the StatusChip in `meta` owns the state. */}
+                  <button type="button" className="st-btn st-body" style={btn} onClick={() => onToggle(g)}>{g.enabled ? "Turn off" : "Turn on"}</button>
+                </>
+              }
+              footer={
+                // The row's own danger zone: a hairline, a quiet kicker, and one red verb.
+                // Nothing reversible may join it (§B geography).
+                <>
+                  <span className="st-label st-t2">DANGER ZONE</span>
+                  <button type="button" className="st-btn st-btn-danger st-body" style={btnDanger} onClick={() => setConfirmRemove(g)}>
+                    Remove group
+                  </button>
                 </>
               }
             />
@@ -136,24 +171,25 @@ export function DrinksAdminV2({
             ))}
           </select>
         </FormField>
-        <button type="submit" disabled={!pick} className={pick ? "u-fill u-ink" : ""} style={pick ? { ...btn, background: "var(--terminal-green)", color: "#000", fontWeight: 700 } : btn}>+ ADD</button>
+        <button type="submit" disabled={!pick} className={pick ? "st-btn st-btn-primary st-body" : "st-btn st-body"} style={btn}>+ Add</button>
       </form>
 
       {/* ── DISPLAY ─────────────────────────────────────────────────────── */}
       <div className="terminal-separator" style={{ margin: "26px 0 16px" }} />
-      <div style={sectionLabel}>DISPLAY</div>
+      <div className="st-label st-t2" style={sectionLabel}>DISPLAY</div>
       {cfgLoaded
         ? <ConfigFormV2 initial={cfg} onSave={onSave} busy={saving} />
         : cfgFailed
-          ? <p className="u-amber" style={{ fontSize: 17 }}>COULD NOT LOAD SAVED SETTINGS — RELOAD THE PAGE BEFORE EDITING.</p>
-          : <p style={{ opacity: 0.6, fontSize: 17 }}>LOADING SAVED SETTINGS…</p>}
-      {msg && <div style={{ marginTop: 12, fontSize: 17 }}>{msg}</div>}
+          ? <p className="st-body st-amber">Could not load saved settings — reload the page before editing.</p>
+          : <p className="st-body st-t2">Loading saved settings…</p>}
+      {msg && <div className="st-body st-t2" style={{ marginTop: 12 }}>{msg}</div>}
 
       {confirmRemove && (
         <ConfirmDialog
-          title="REMOVE THIS GROUP?"
+          title="Remove this group?"
           body={<>“{confirmRemove.name}” stops rotating on the TOP SELLERS board. Nothing in Toast changes — you can add the group back from the picker.</>}
-          confirmLabel="REMOVE"
+          confirmLabel="Remove group"
+          cancelLabel="Keep group"
           danger
           onConfirm={() => { onRemove(confirmRemove.id); setConfirmRemove(null); }}
           onCancel={() => setConfirmRemove(null)}
@@ -190,20 +226,20 @@ function ConfigFormV2({ initial, onSave, busy }: { initial: Config; onSave: (c: 
       <FormField label="SYNC CADENCE HINT (SECONDS)" hint="How often the board re-reads the sync cache.">
         <input type="number" min={30} value={c.refresh_interval} onChange={(e) => setC({ ...c, refresh_interval: parseInt(e.target.value) || 60 })} />
       </FormField>
-      <button type="submit" disabled={busy} className="u-fill u-ink" style={{ ...btn, background: "var(--terminal-green)", color: "#000", fontWeight: 700, alignSelf: "flex-start" }}>
-        {busy ? "SAVING…" : "SAVE DISPLAY CONFIG"}
+      <button type="submit" disabled={busy} className="st-btn st-btn-primary st-body" style={{ ...btn, alignSelf: "flex-start" }}>
+        {busy ? "Saving…" : "Save display config"}
       </button>
     </form>
   );
 }
 
-const sectionLabel: CSSProperties = { fontSize: 20, letterSpacing: 3, opacity: 0.7, margin: "0 0 10px" };
-const intro: CSSProperties = { fontSize: 16, opacity: 0.6, lineHeight: 1.5, margin: "0 0 22px" };
+/* Geometry only — size/colour ride the token classes (`st-label`, `st-body`, `st-btn`). */
+const sectionLabel: CSSProperties = { margin: "0 0 10px" };
+const intro: CSSProperties = { margin: "0 0 22px" };
 const btn: CSSProperties = {
-  background: "transparent", color: "var(--terminal-green)", border: "1px solid var(--terminal-green)",
-  padding: "0 16px", minHeight: 44, minWidth: 44, cursor: "pointer", letterSpacing: 1,
+  padding: "0 16px", minHeight: 44, minWidth: 44, cursor: "pointer",
 };
-const btnDanger: CSSProperties = { ...btn, borderColor: "var(--terminal-amber, #ffb000)" };
+const btnDanger: CSSProperties = { ...btn };
 const linkBtn: CSSProperties = {
-  ...btn, textDecoration: "none", display: "inline-flex", alignItems: "center", fontSize: 16,
+  ...btn, textDecoration: "none", display: "inline-flex", alignItems: "center",
 };

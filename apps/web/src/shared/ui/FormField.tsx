@@ -18,7 +18,10 @@ import "@/theme/staff-form.css";
  *    inside are already TapTargetCheckbox/ToggleSwitch, which carry their own.
  *
  * Sizes are px because NOTHING inherits font-size under `.terminal-theme` (a class
- * rule sets it on every element; inheritance has zero specificity — PR #89).
+ * rule sets it on every element; inheritance has zero specificity — PR #89). BEAT 6
+ * (PR 1) moves the caption/hint onto the token TYPE ROLE classes, which carry those px
+ * (with the responsive md: step) in theme/staff-tokens-v2.css — still not inherited,
+ * just declared once instead of per-component.
  */
 export function FormField({
   label,
@@ -47,11 +50,11 @@ export function FormField({
   // The stylesheet therefore carries only geometry the theme leaves alone.
   const foot =
     error != null ? (
-      <span className="u-amber" style={{ ...footStyle, opacity: 1 }}>
+      <span className="st-body st-amber" style={footStyle}>
         {error}
       </span>
     ) : hint != null ? (
-      <span style={footStyle}>{hint}</span>
+      <span className="st-body st-t2" style={footStyle}>{hint}</span>
     ) : null;
 
   if (group) {
@@ -62,7 +65,7 @@ export function FormField({
         aria-label={typeof label === "string" ? label : undefined}
         style={style}
       >
-        <span style={labelStyle}>{label}</span>
+        <span className="st-label st-t2" style={labelStyle}>{label}</span>
         {children}
         {foot}
       </div>
@@ -71,12 +74,15 @@ export function FormField({
 
   return (
     <label className="bui-field" htmlFor={htmlFor} style={style}>
-      <span style={labelStyle}>{label}</span>
+      <span className="st-label st-t2" style={labelStyle}>{label}</span>
       {children}
       {foot}
     </label>
   );
 }
 
-const labelStyle: CSSProperties = { fontSize: 15, letterSpacing: 1, opacity: 0.7 };
-const footStyle: CSSProperties = { fontSize: 14, lineHeight: 1.4, opacity: 0.55 };
+// Label/hint sizes ride the token TYPE ROLES (`st-label` / `st-body` in
+// theme/staff-tokens-v2.css), which carry the px + the responsive step. Only the
+// geometry the roles do not own stays here.
+const labelStyle: CSSProperties = {};
+const footStyle: CSSProperties = { marginTop: 2 };

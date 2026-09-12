@@ -51,6 +51,39 @@ export function slotCode(slot: AdminSlot): string {
   return (slot.orientation[0] ?? "?").toUpperCase();
 }
 
+/**
+ * Every queued asset, grouped by the screen it runs on and ordered by its position in that
+ * screen's queue.
+ *
+ * HOISTED VERBATIM out of SignageHub.tsx (UX overhaul Beat 6 PR 4) so the hub and the
+ * BAR OPS ▸ SLIDES page build the same map from the same rows.
+ */
+export function groupItemsBySlot(items: AdminItem[]): Map<string, AdminItem[]> {
+  const m = new Map<string, AdminItem[]>();
+  for (const it of items) {
+    if (!it.slot_id) continue;
+    if (!m.has(it.slot_id)) m.set(it.slot_id, []);
+    m.get(it.slot_id)!.push(it);
+  }
+  for (const list of m.values()) list.sort((a, b) => a.sort_order - b.sort_order);
+  return m;
+}
+
+/**
+ * The next free position in one screen's queue — the number a NEW slide is written into
+ * `slot_queue` with (ItemEditor's queue-on-save path).
+ *
+ * HOISTED VERBATIM with the map above, and for a sharper reason: two copies of this rule
+ * drifting is two different rotation orders for the same action, so the hub and the SLIDES
+ * page must answer "where does a newly created slide land" from ONE definition.
+ */
+export function makeNextPosition(itemsBySlot: Map<string, AdminItem[]>) {
+  return (slotId: string) => {
+    const list = itemsBySlot.get(slotId) ?? [];
+    return list.length ? Math.max(...list.map((i) => i.sort_order)) + 1 : 0;
+  };
+}
+
 /** Slot ids an asset is queued on (for the editor's read-only "ON: …" line). */
 export function placementsFor(assets: AssetWithPlacements[], itemId: string): string[] {
   return assets.find((a) => a.asset.id === itemId)?.placements.map((p) => p.slot_id) ?? [];
@@ -157,9 +190,14 @@ export function AssetCard({
         ) : (
           <span style={{ fontSize: 34, opacity: 0.85 }}>{templateIcon(item.template)}</span>
         )}
+        {/* `u-amber` / `u-green-edge` are CLASSES, not inline values, because under the
+            v2 token scope the blanket `[data-st-page] * { border-color: … !important }`
+            beats an inline border and the SMART TOAST badge stopped reading amber
+            (classic is unaffected: both classes resolve to the same computed colour the
+            inline values already produced). */}
         <span
           className={smart ? "u-amber" : ""}
-          style={{ position: "absolute", top: 6, right: 6, fontSize: 10, letterSpacing: 1, padding: "2px 5px", background: "#020602", border: `1px solid ${smart ? "var(--terminal-amber, #ffb000)" : "var(--terminal-green)"}`, color: smart ? "var(--terminal-amber, #ffb000)" : "var(--terminal-green)" }}
+          style={{ position: "absolute", top: 6, right: 6, fontSize: 10, letterSpacing: 1, padding: "2px 5px", background: "#020602", border: "1px solid currentColor", color: smart ? "var(--terminal-amber, #ffb000)" : "var(--terminal-green)" }}
         >{templateBadge(item.template)}</span>
       </div>
       <div style={{ padding: "9px 10px", display: "flex", flexDirection: "column", gap: 5, minWidth: 0 }}>
@@ -275,7 +313,11 @@ export interface SignageHubContext {
   assets: AssetWithPlacements[];
   assetsLoading: boolean;
   itemsBySlot: Map<string, AdminItem[]>;
-  toastRows: ToastCacheRow[];
+  // DECISION: `toastRows` / `openAsset` left the contract with the asset library (Beat 6
+  // PR 4). Nothing in the hub view reads them once the slides are their own page — it no
+  // longer summarises a slide or opens the editor — and a context field no consumer reads
+  // is how the next reader learns the wrong thing about what this page does. The PAGE
+  // still holds both; `HubOverlays` takes them as explicit props.
   tmap: Map<string, ToastCacheRow>;
   takeovers: AdminTakeover[];
   events: EventRow[];
@@ -288,6 +330,10 @@ export interface SignageHubContext {
 
   /* venue-wide mode inputs (already gated exactly as the TV gates them) */
   gameOffScreens: boolean;
+  /** The ALERT-surface gate (triviaArm, PR 2 review WARN-1): like `gameOffScreens` but
+   *  silent on a FUTURE `setup` deck. The v2 banner reads this; the CLASSIC banner keeps
+   *  `gameOffScreens` untouched (RULE #1 — classic renders byte-identically). */
+  alertNotArmed: boolean;
   armedNoGame: boolean;
   eventLabel: string | null;
   staleGameDate: string | null;
@@ -305,7 +351,6 @@ export interface SignageHubContext {
   setOverlay: (o: Overlay | null) => void;
   overflowSlot: string | null;
   toggleOverflow: (slotId: string) => void;
-  openAsset: (a: AssetWithPlacements) => void;
   invalidateEvents: () => void;
 }
 
