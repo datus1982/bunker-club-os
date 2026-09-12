@@ -499,3 +499,59 @@ Recommended letter listed first in each line.
   fail on an iPhone was not re-verified this pass (no iPhone/Safari test rig available in
   this session) — the verdict in §B rests on the design-notes' own stated caveat, not a fresh
   test.
+
+---
+
+## §A2 addendum — the host grid's type roles (2026-09-12, Marvin ruling, as built)
+
+Added after the PR-3 build, when a measurement of the live branch showed the score grid's
+spans carried **no role class at all**: they were rendering at the theme's own
+`.terminal-theme * { font-size: 1.5rem }` = 24px, exactly as they always had. The only
+things that had actually moved were the TOTAL value (24 → 15px, via `st-mono`'s
+`!important`) and the column headers (24 → 12px, via `st-label`) — i.e. the grid had got
+*smaller*, not larger, which is the opposite of what §A2 intends for a surface read across
+a host's desk mid-show.
+
+**The rule, and it governs every future touch of this grid:**
+
+> **Nothing on the host grid gets smaller than it is today.**
+
+As built:
+
+| Element | Role | Size |
+|---|---|---|
+| Score cells — the points, the wildcard `×2`, the `★` bonus mark, the empty-cell `–` | `st-mono-lg` (**mono-data-large**) | **24px** JetBrains Mono, `tabular-nums` |
+| TOTAL value | `st-mono-lg st-accent` | **24px**, calm-accent ink |
+| Team name, rank, the ★ / ⚡ team badges | *no class, deliberately* | 24px (the theme's own) |
+| Column headers `RANK` / `TEAM` / `R1…R5` / `FINAL` / `TOTAL` | `st-body st-t2` | **15px** |
+
+`st-mono-lg` is a **named exemption**, in the same class as Scoring's UPPERCASE button copy
+(§E1): it does not shrink the data to the 15px Body/Mono floor the rest of v2 uses. The
+decision is x-height arithmetic — 24px JetBrains Mono ≈ 13.2px x-height against 20px ≈ 11px
+— and legibility at the host desk outranks token tidiness. The role earns its keep by
+*naming* the size (so it can never be lost to a future blanket rule) and by adding
+`font-variant-numeric: tabular-nums`, which the grid never had: columns of scores now line
+up digit for digit.
+
+Headers take **Body 15px, not Label 12px**. Label would have bought uppercase the copy
+already has, at the cost of a 6.6px x-height on a label a host scans while entering scores.
+
+Cell geometry is unchanged in structure: the same fixed cells, the same two-line `10×2` over
+`★2` content, measured un-clipped at 390 and 1280.
+
+**Also settled in the same pass:**
+- **Scoring opts out of the motion layer.** Its v2 root emits `data-st-motion="off"` beside
+  `data-st-page`; `staff-tokens-v2.css` §7 cancels `st-mount-fade` inside it. §A2 forbids the
+  room seeing anything settle, and Scoring's control line, round selector, both fixed boxes,
+  the v2 Modal panel and the ScoreDialog card all match the motion layer's selector.
+- **`.st-sheet` roots drop the CRT overlay.** `ConfirmDialog`'s backdrop is its own
+  `.terminal-theme` element, so the `:has([data-st-page])` suppression could never reach it
+  and every v2 dialog since Beat 6 has been painting scanlines over a tokened sheet.
+- **The trivia switch names itself** — `TRIVIA: TRY THE NEW LOOK →` / `← TRIVIA: BACK TO
+  CLASSIC` — because on the phone drawer it stacks directly above the shell's own switch.
+  On desktop it sits at the sub-nav row's 38px, not 44, so the row does not grow and every
+  page in the v2 shell keeps its exact y-position.
+- **QUESTIONS / VIDEOS / IMPORT joined the trivia switch.** They needed no new plumbing — the
+  same `data-st-page` hook, `cx()` and role classes as the five pages — so a host leaving
+  Scoring for the deck tools no longer crosses a look boundary. They render no sub-nav row,
+  so the switch itself is not offered while you are on one.
