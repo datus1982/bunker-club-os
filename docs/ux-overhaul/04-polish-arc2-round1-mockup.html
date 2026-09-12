@@ -1,0 +1,534 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Bunker OS — Polish arc 2, round 1 (Okuda, 2026-09-12)</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --st-ground: #0b0d10;
+    --st-surface-1: #131618;
+    --st-surface-2: #171b1f;
+    --st-surface-3: #1a1c25;
+    --st-surface-4: #22273d;
+    --st-text-1: rgba(255,255,255,0.87);
+    --st-text-2: rgba(255,255,255,0.60);
+    --st-text-3: rgba(255,255,255,0.38);
+    --st-accent: #7fe6a8;
+    --st-accent-live: #00ff41;
+    --st-amber: #e8b04b;
+    --st-danger: #ff5a5a;
+    --st-hairline: rgba(255,255,255,0.08);
+    --st-hairline-strong: rgba(255,255,255,0.16);
+    --st-radius-control: 6px;
+    --st-radius-sheet: 10px;
+    --st-radius-pill: 9999px;
+    --st-motion-hover: 140ms;
+    --st-motion-sheet: 180ms;
+    --st-motion-expand: 160ms;
+    --page-bg: #f4f2ee;
+    --page-ink: #1b1b1b;
+    --page-sub: #6b6b6b;
+    --page-card: #ffffff;
+    --page-line: #ddd8cf;
+    --tag-current-bg: #e8e2d6;
+    --tag-current-ink: #55503f;
+    --tag-new-bg: #d9f2e3;
+    --tag-new-ink: #16663c;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: auto; }
+  body {
+    margin: 0;
+    background: var(--page-bg);
+    color: var(--page-ink);
+    font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+    line-height: 1.5;
+  }
+  header.top {
+    position: relative; z-index: 50;
+    background: #ffffff;
+    border-bottom: 1px solid var(--page-line);
+    padding: 14px clamp(16px, 4vw, 40px);
+    display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap;
+  }
+  header.top h1 { font-size: 15px; margin: 0; letter-spacing: 0.3px; }
+  header.top h1 span { color: var(--page-sub); font-weight: 400; }
+  nav.jump { display: flex; gap: 6px; flex-wrap: wrap; }
+  nav.jump a {
+    font-size: 12px; text-decoration: none; color: var(--page-ink);
+    border: 1px solid var(--page-line); border-radius: 999px; padding: 6px 12px;
+    background: #fff;
+  }
+  nav.jump a:hover { background: var(--tag-new-bg); }
+  main { max-width: 1400px; margin: 0 auto; padding: 0 clamp(16px, 4vw, 40px) 80px; }
+  section.round { padding-top: 48px; scroll-margin-top: 70px; }
+  section.round h2 { font-size: 22px; margin: 0 0 4px; }
+  section.round .dek { color: var(--page-sub); font-size: 14px; margin: 0 0 24px; max-width: 780px; }
+  .compare {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: start;
+  }
+  @media (max-width: 900px) { .compare { grid-template-columns: 1fr; } }
+  .col { background: var(--page-card); border: 1px solid var(--page-line); border-radius: 10px; overflow: hidden; }
+  .col-label {
+    padding: 10px 14px; font-size: 12px; font-family: "JetBrains Mono", monospace;
+    color: var(--page-sub); border-bottom: 1px solid var(--page-line);
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  }
+  .tag { font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; padding: 2px 8px; border-radius: 999px; font-weight: 700; }
+  .tag.current { background: var(--tag-current-bg); color: var(--tag-current-ink); }
+  .tag.new { background: var(--tag-new-bg); color: var(--tag-new-ink); }
+  .frame { max-height: 900px; overflow: auto; background: #05050a; }
+  .frame img { display: block; width: 100%; }
+  .frame.wide { max-height: 700px; }
+
+  /* ============ shared staff-v2 look, ported 1:1 from staff-tokens-v2.css ============ */
+  .stagev2 {
+    background: var(--st-ground);
+    color: var(--st-text-1);
+    font-family: "JetBrains Mono", monospace;
+  }
+  .stagev2 .st-display { font-family: "Share Tech Mono", monospace; font-weight: 700; letter-spacing: 0.5px; }
+  .stagev2 .st-heading { font-family: "Share Tech Mono", monospace; font-weight: 600; letter-spacing: 0.4px; }
+  .stagev2 .st-label { font-size: 12px; line-height: 1.3; font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; color: var(--st-text-2); }
+  .stagev2 .st-t2 { color: var(--st-text-2); }
+  .stagev2 .st-t3 { color: var(--st-text-3); }
+  .stagev2 .st-accent { color: var(--st-accent); }
+  .stagev2 .st-live { color: var(--st-accent-live); text-shadow: 0 0 2px rgba(0,255,65,.3); }
+  .stagev2 .st-amber { color: var(--st-amber); }
+  .stagev2 .st-danger { color: var(--st-danger); }
+  .stagev2 .hairline { border-color: var(--st-hairline) !important; }
+  .stagev2 button {
+    font-family: "JetBrains Mono", monospace; font-size: 13px; letter-spacing: 0.4px;
+    min-height: 40px; padding: 0 14px; cursor: pointer;
+    background: transparent; color: var(--st-text-1);
+    border: 1px solid var(--st-hairline-strong); border-radius: var(--st-radius-control);
+    transition: background var(--st-motion-hover) ease-out, border-color var(--st-motion-hover) ease-out;
+  }
+  .stagev2 button:hover { background: rgba(255,255,255,0.06); border-color: var(--st-hairline-strong); }
+  .stagev2 button:active { background: rgba(255,255,255,0.1); transition-duration: 80ms; }
+  .stagev2 button.primary { background: var(--st-accent); border-color: var(--st-accent); color: var(--st-ground); font-weight: 700; }
+  .stagev2 button.primary:hover { opacity: 0.92; background: var(--st-accent); }
+  .stagev2 button.primary:active { opacity: 0.82; }
+  .stagev2 button.danger { color: var(--st-danger); border-color: rgba(255,90,90,0.4); }
+  .stagev2 button.danger:hover { background: rgba(255,90,90,0.1); border-color: var(--st-danger); }
+  .stagev2 button:disabled { opacity: 0.4; cursor: not-allowed; }
+  .stagev2 :focus-visible { outline: 2px solid var(--st-accent); outline-offset: 1px; }
+  /* A LABEL styled as a button, used for the CSS-checkbox demo triggers below — a <button>
+     nested inside a <label for> does not reliably forward the click to the checkbox (it has
+     its own default activation behavior), so the demo triggers are labels, not buttons. */
+  .stagev2 label.as-btn {
+    display: inline-flex; align-items: center; justify-content: center;
+    font-family: "JetBrains Mono", monospace; font-size: 13px; letter-spacing: 0.4px;
+    min-height: 40px; padding: 0 14px; cursor: pointer;
+    background: transparent; color: var(--st-text-1);
+    border: 1px solid var(--st-hairline-strong); border-radius: var(--st-radius-control);
+    transition: background var(--st-motion-hover) ease-out, border-color var(--st-motion-hover) ease-out;
+  }
+  .stagev2 label.as-btn:hover { background: rgba(255,255,255,0.06); }
+  .stagev2 label.as-btn:active { background: rgba(255,255,255,0.1); transition-duration: 80ms; }
+  .stagev2 label.as-btn.danger { color: var(--st-danger); border-color: rgba(255,90,90,0.4); }
+
+  /* ---------------- Scoring mockup (1280) ---------------- */
+  .scoring-mock { padding: clamp(16px,3vw,28px); }
+  .scoring-mock .shellnav {
+    display: flex; align-items: center; gap: 18px; padding-bottom: 12px; margin-bottom: 14px;
+    border-bottom: 1px solid var(--st-hairline);
+  }
+  .scoring-mock .brand { font-family: "Share Tech Mono", monospace; font-weight: 700; letter-spacing: 1px; font-size: 14px; }
+  .scoring-mock .shellnav .primary-tabs { display: flex; gap: 4px; }
+  .scoring-mock .shellnav .primary-tabs span {
+    font-size: 12px; padding: 6px 12px; border-radius: var(--st-radius-pill); color: var(--st-text-2);
+  }
+  .scoring-mock .shellnav .primary-tabs span.on { background: rgba(127,230,168,0.14); color: var(--st-accent); }
+  .scoring-mock .shellnav .spacer { flex: 1; }
+  .scoring-mock .subnav { display: flex; align-items: center; gap: 6px; padding-bottom: 16px; flex-wrap: wrap; }
+  .scoring-mock .subnav .crumb { font-size: 11px; color: var(--st-text-3); text-transform: uppercase; letter-spacing: 0.06em; margin-right: 8px; }
+  .scoring-mock .subnav span.item {
+    font-size: 12px; letter-spacing: 0.04em; text-transform: uppercase; padding: 6px 10px;
+    border-radius: var(--st-radius-control); color: var(--st-text-2);
+  }
+  .scoring-mock .subnav span.item.on { background: var(--st-surface-2); color: var(--st-text-1); border: 1px solid var(--st-hairline); }
+  .scoring-mock .subnav .trivia-toggle {
+    margin-left: auto; font-size: 11px; letter-spacing: 0.5px; color: var(--st-accent);
+    border: 1px dashed rgba(127,230,168,0.55); border-radius: var(--st-radius-control);
+    padding: 6px 10px; background: transparent;
+  }
+  .scoring-mock h1.title { font-size: 30px; margin: 0; letter-spacing: 1px; }
+  .scoring-mock .meta { color: var(--st-text-2); font-size: 14px; margin-top: 2px; }
+  .scoring-mock .headrow { display: flex; justify-content: space-between; align-items: flex-end; flex-wrap: wrap; gap: 14px; margin-bottom: 16px; }
+  .scoring-mock .headrow nav { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .scoring-mock .clock { font-variant-numeric: tabular-nums; font-size: 26px; font-weight: 700; letter-spacing: 1px; }
+  .scoring-mock .clock-label { font-size: 11px; color: var(--st-text-3); letter-spacing: 1px; margin-right: 6px; }
+
+  .armbar {
+    display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+    padding: 12px 16px; border-radius: var(--st-radius-control);
+    background: rgba(232,176,75,0.08); border: 1px solid rgba(232,176,75,0.35);
+    margin-bottom: 14px;
+  }
+  .armbar .lbl { font-size: 12px; letter-spacing: 1px; color: var(--st-text-2); }
+  .armbar .state { font-size: 15px; font-weight: 700; color: var(--st-amber); letter-spacing: 0.5px; }
+  .armbar .state.live { color: var(--st-accent-live); text-shadow: 0 0 2px rgba(0,255,65,.3); }
+
+  .controlline {
+    display: flex; gap: 24px; flex-wrap: wrap; justify-content: space-between; align-items: center;
+    padding: 14px 16px; background: var(--st-surface-2); border: 1px solid var(--st-hairline);
+    border-radius: var(--st-radius-control); margin-bottom: 16px;
+  }
+  .stagecontrol { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .stagecontrol .lbl { font-size: 11px; letter-spacing: 1px; color: var(--st-text-3); margin-right: 4px; }
+  .stagecontrol button { font-size: 11px; min-height: 32px; padding: 0 10px; }
+  .stagecontrol button.on { background: var(--st-surface-3); border-color: var(--st-accent); color: var(--st-accent); }
+
+  .qpanel { display: grid; grid-template-columns: 1.3fr 1fr; gap: 16px; margin-bottom: 16px; }
+  @media (max-width: 800px) { .qpanel { grid-template-columns: 1fr; } }
+  .qpanel .box { background: var(--st-surface-1); border: 1px solid var(--st-hairline); border-radius: var(--st-radius-control); padding: 16px; min-height: 180px; }
+  .qpanel .box .eyebrow { font-size: 11px; letter-spacing: 1px; color: var(--st-text-3); margin-bottom: 8px; }
+  .qpanel .box img { width: 100%; border-radius: 4px; opacity: 0.92; }
+  .qpanel .box .hint { color: var(--st-text-2); font-size: 13px; }
+
+  table.scoregrid { width: 100%; border-collapse: collapse; font-size: 13px; }
+  table.scoregrid th { text-align: left; font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--st-text-3); padding: 6px 10px; border-bottom: 1px solid var(--st-hairline-strong); }
+  table.scoregrid td { padding: 8px 10px; border-bottom: 1px solid var(--st-hairline); font-variant-numeric: tabular-nums; }
+  table.scoregrid tr:hover td { background: rgba(255,255,255,0.02); }
+  table.scoregrid td.rank { color: var(--st-text-2); }
+  table.scoregrid td.team { color: var(--st-text-1); font-weight: 500; }
+  table.scoregrid td.total { color: var(--st-accent); font-weight: 700; }
+  table.scoregrid td.cell { background: var(--st-surface-1); border-radius: 4px; }
+
+  /* ---------------- Media library mockup (390) ---------------- */
+  .medialib-mock { padding: 16px; width: 390px; margin: 0 auto; }
+  .medialib-mock .topbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+  .medialib-mock .topbar .brand { font-family: "Share Tech Mono", monospace; font-weight: 700; font-size: 13px; letter-spacing: 0.5px; }
+  .medialib-mock .topbar .menu { font-size: 11px; border: 1px solid var(--st-hairline-strong); border-radius: var(--st-radius-control); padding: 6px 10px; color: var(--st-text-2); }
+  .medialib-mock .eyebrow { font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--st-text-3); margin-bottom: 2px; }
+  .medialib-mock h1.title { font-family: "Share Tech Mono", monospace; font-size: 26px; margin: 0 0 10px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .medialib-mock .stat-pill { font-size: 11px; font-family: "JetBrains Mono",monospace; color: var(--st-text-2); border: 1px solid var(--st-hairline-strong); border-radius: var(--st-radius-pill); padding: 3px 10px; }
+  .medialib-mock input.search {
+    width: 100%; background: var(--st-surface-2); border: 1px solid var(--st-hairline-strong);
+    border-radius: var(--st-radius-control); color: var(--st-text-1); padding: 10px 12px; font-size: 14px;
+    font-family: "JetBrains Mono", monospace; margin-bottom: 10px;
+  }
+  .medialib-mock .chiprow { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+  .medialib-mock .chip {
+    font-size: 12px; letter-spacing: 0.02em; padding: 7px 12px; border-radius: var(--st-radius-pill);
+    border: 1px solid var(--st-hairline-strong); color: var(--st-text-2);
+  }
+  .medialib-mock .chip.on { background: rgba(127,230,168,0.16); border-color: var(--st-accent); color: var(--st-accent); font-weight: 700; }
+
+  .poster-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .poster-card { background: var(--st-surface-1); border: 1px solid var(--st-hairline); border-radius: var(--st-radius-control); overflow: hidden; transition: background var(--st-motion-hover) ease-out; }
+  .poster-card .art { position: relative; aspect-ratio: 2 / 3; background: #0a0c14 linear-gradient(160deg,#171b26,#05060a); }
+  .poster-card .art img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .poster-card .art.missing img { opacity: 0.45; }
+  .poster-card .badge {
+    position: absolute; top: 8px; left: 8px; font-size: 10px; font-weight: 700; letter-spacing: 0.06em;
+    text-transform: uppercase; padding: 3px 8px; border-radius: var(--st-radius-pill);
+    background: rgba(2,6,10,0.92); box-shadow: inset 0 0 0 1px currentColor;
+  }
+  .poster-card .badge.present { color: var(--st-accent); }
+  .poster-card .badge.missing { color: var(--st-danger); }
+  .poster-card .runtime {
+    position: absolute; bottom: 8px; right: 8px; font-size: 11px; letter-spacing: 0.4px;
+    padding: 1px 6px; background: rgba(2,6,10,0.8); color: var(--st-text-3); border-radius: 3px;
+  }
+  .poster-card .meta { padding: 9px 10px 10px; }
+  .poster-card .name {
+    font-size: 15px; line-height: 1.35; display: -webkit-box; -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical; overflow: hidden; margin: 0 0 3px; color: var(--st-text-1);
+    display: flex; gap: 5px;
+  }
+  .poster-card .name .pencil { flex: 0 0 auto; opacity: 0.5; font-size: 12px; margin-top: 2px; }
+  .poster-card .path { font-size: 10px; color: var(--st-text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 8px; }
+  .poster-card .play {
+    width: 100%; font-size: 12px; min-height: 34px; padding: 0 8px;
+  }
+
+  .compare-note { margin-top: 14px; font-size: 12.5px; color: var(--page-sub); max-width: 780px; }
+  .compare-note code { background: #ece7db; padding: 1px 5px; border-radius: 4px; font-size: 11.5px; }
+
+  /* ---------------- motion sampler ---------------- */
+  .motion-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+  @media (max-width: 900px) { .motion-grid { grid-template-columns: 1fr; } }
+  .motion-card { background: var(--st-ground); border-radius: 10px; padding: 22px; }
+  .motion-card h3 { font-family: "Share Tech Mono", monospace; font-size: 14px; color: var(--st-text-1); margin: 0 0 6px; }
+  .motion-card p { font-size: 12.5px; color: var(--st-text-2); margin: 0 0 16px; }
+
+  .sheet-demo { position: relative; height: 300px; background: var(--st-surface-1); border-radius: 8px; overflow: hidden; display: flex; align-items: flex-end; justify-content: center; }
+  .sheet-demo .backdrop { position: absolute; inset: 0; background: rgba(0,0,0,0); transition: background 180ms ease-out; pointer-events: none; }
+  .sheet-demo input:checked ~ .backdrop { background: rgba(0,0,0,0.55); }
+  .sheet-demo .panel {
+    position: relative; width: 84%; margin-bottom: -140px; opacity: 0;
+    background: var(--st-surface-4); border: 1px solid var(--st-hairline-strong); border-radius: 10px 10px 0 0;
+    padding: 16px; transform: translateY(8px);
+    transition: opacity 180ms ease-out, transform 180ms ease-out, margin-bottom 180ms ease-out;
+  }
+  .sheet-demo input:checked ~ .panel { margin-bottom: 16px; opacity: 1; transform: translateY(0); transition-duration: 180ms; }
+  .sheet-demo label.trigger {
+    position: absolute; top: 14px; z-index: 2;
+  }
+  .sheet-demo input { position: absolute; opacity: 0; pointer-events: none; }
+  @media (prefers-reduced-motion: reduce) {
+    .sheet-demo .panel, .sheet-demo .backdrop { transition-duration: 0.001ms !important; }
+  }
+
+  .press-demo { display: flex; flex-direction: column; gap: 10px; align-items: flex-start; }
+
+  .alert-demo { background: var(--st-surface-1); border-radius: 8px; padding: 18px; }
+  .alert-demo input { position: absolute; opacity: 0; pointer-events: none; }
+  .alert-strip {
+    display: grid; grid-template-rows: 0fr; opacity: 0; overflow: hidden;
+    transition: grid-template-rows 160ms ease-out, opacity 160ms ease-out;
+    background: rgba(232,176,75,0.08); border: 1px solid rgba(232,176,75,0.35);
+    border-radius: 6px; margin-bottom: 12px;
+  }
+  .alert-strip > div { min-height: 0; overflow: hidden; padding: 0 12px; }
+  #alert-toggle:checked ~ .alert-strip { grid-template-rows: 1fr; opacity: 1; }
+  #alert-toggle:checked ~ .alert-strip > div { padding: 10px 12px; }
+  .alert-strip .msg { font-size: 12.5px; color: var(--st-amber); }
+  @media (prefers-reduced-motion: reduce) {
+    .alert-strip { transition-duration: 0.001ms !important; }
+  }
+
+  footer.end { text-align: center; color: var(--page-sub); font-size: 12px; padding: 40px 0 10px; }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <h1>BUNKER OS <span>— Polish arc 2, round 1 (Okuda, 2026-09-12)</span></h1>
+  <nav class="jump">
+    <a href="#scoring">Host desk</a>
+    <a href="#media">Media Library</a>
+    <a href="#motion">Motion sampler</a>
+  </nav>
+</header>
+
+<main>
+
+  <!-- ============================================================ -->
+  <section class="round" id="scoring">
+    <h2>1 · Host desk (Scoring) at 1280 — today vs. v2 tokens</h2>
+    <p class="dek">Real game/team/score data from <code>pr1-scoring-freeze-v2-1280.png</code>. Layout, stage
+      controls (DISPLAY / BOARD), the arm bar, and RoundGrid structure are held pixel-for-pixel identical —
+      only fill, border, and text color change. Button copy stays UPPERCASE/verb-first (§A2, E1) — a deliberate
+      exemption from the general case rule.</p>
+    <div class="compare">
+      <div class="col">
+        <div class="col-label"><span class="tag current">CURRENT — shipped, classic-in-v2-shell</span> pr1-scoring-freeze-v2-1280.png</div>
+        <div class="frame"><img src="assets/arc2-scoring-current-1280.png" alt="Current Scoring console, 1280px, classic green-on-black inside the v2 shell chrome"></div>
+      </div>
+      <div class="col">
+        <div class="col-label"><span class="tag new">PROPOSED — v2 tokens, trivia toggle ON</span> §A2 token spec applied to the same real game</div>
+        <div class="frame">
+          <div class="stagev2 scoring-mock">
+            <div class="shellnav">
+              <div class="brand">🧨 BUNKER OS</div>
+              <div class="primary-tabs">
+                <span>HOME</span><span class="on">GAMES</span><span>BAR OPS</span><span>MEDIA</span><span>SYSTEM</span>
+              </div>
+              <div class="spacer"></div>
+              <button style="font-size:11px;min-height:32px;">← BACK TO CLASSIC</button>
+            </div>
+            <div class="subnav">
+              <span class="crumb">GAMES ▸ TRIVIA</span>
+              <span class="item on">SCORING</span><span class="item">GAME SETUP</span><span class="item">TEAMS</span>
+              <span class="item">HISTORY</span><span class="item">SEASONS</span>
+              <button class="trivia-toggle">← BACK TO CLASSIC TRIVIA</button>
+            </div>
+
+            <div class="headrow">
+              <div>
+                <h1 class="title">SCORING</h1>
+                <div class="meta">2026-09-09 · [ACTIVE]</div>
+              </div>
+              <nav>
+                <span class="clock-label">CLOCK</span><span class="clock">45:55:49</span>
+                <button disabled>▶ START</button>
+                <button>QUESTIONS</button><button>VIDEOS</button><button>IMPORT</button>
+                <button>TEAMS</button><button>HISTORY</button>
+                <button>⧉ PREVIEW</button>
+              </nav>
+            </div>
+
+            <div class="armbar">
+              <span class="lbl">BAR SCREENS:</span>
+              <span class="state">○ OFF — NOT ON SCREENS</span>
+              <button style="margin-left:auto;">PUT TRIVIA ON SCREENS</button>
+              <button class="danger">END GAME</button>
+            </div>
+
+            <div class="controlline">
+              <div class="stagecontrol">
+                <span class="lbl">DISPLAY:</span>
+                <button class="on">JOIN QR</button><button>Q&amp;A</button><button>VIDEO</button><button>UP NEXT</button><button>THANKS</button>
+              </div>
+              <div class="stagecontrol">
+                <span class="lbl">BOARD:</span>
+                <button class="on">JOIN QR</button><button>TABULATE</button><button>STANDINGS</button><button>FINAL</button>
+              </div>
+            </div>
+
+            <div class="qpanel">
+              <div class="box">
+                <div class="eyebrow">ANSWER KEY · FINAL ROUND — FAMOUS ROBINS</div>
+                <div class="hint">Press SCORE ROUND to reveal this round's answers for grading.</div>
+              </div>
+              <div class="box" style="display:flex;align-items:center;justify-content:center;">
+                <div style="text-align:center;color:var(--st-text-3);font-size:12px;">[ round image ]</div>
+              </div>
+            </div>
+
+            <table class="scoregrid">
+              <thead><tr><th>RANK</th><th>TEAM</th><th>R1</th><th>R2</th><th>R3</th><th>R4</th><th>R5</th><th>FINAL</th><th>TOTAL</th></tr></thead>
+              <tbody>
+                <tr><td class="rank">1st</td><td class="team">Return of the Gayble ⚡</td><td class="cell">10</td><td class="cell">10×2</td><td class="cell">9</td><td class="cell">10</td><td class="cell">8×3</td><td class="cell">10</td><td class="total">73</td></tr>
+                <tr><td class="rank">2nd</td><td class="team">Drug Dealers ⚡</td><td class="cell">8×3</td><td class="cell">10×2</td><td class="cell">7</td><td class="cell">9</td><td class="cell">9×3</td><td class="cell">10</td><td class="total">69</td></tr>
+                <tr><td class="rank">3rd</td><td class="team">Shouting &amp; Cheating ⚡</td><td class="cell">10×2</td><td class="cell">9×2</td><td class="cell">9</td><td class="cell">9</td><td class="cell">7×3</td><td class="cell">9</td><td class="total">68</td></tr>
+                <tr><td class="rank">4th</td><td class="team">Prague bound (ish) ⚡</td><td class="cell">8×2</td><td class="cell">10</td><td class="cell">10</td><td class="cell">10</td><td class="cell">9×3</td><td class="cell">6</td><td class="total">66</td></tr>
+                <tr><td class="rank">5th</td><td class="team">Kirkmas Eve ⚡</td><td class="cell">8×2</td><td class="cell">10</td><td class="cell">8</td><td class="cell">8</td><td class="cell">10×3</td><td class="cell">8</td><td class="total">65</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+    <p class="compare-note">Reserved full-saturation <code>#00FF41</code> (<code>.st-live</code>) is not shown active here
+      because this game is captured with screens OFF — the same class lights the moment BAR SCREENS reads
+      "● LIVE ON SCREENS," which is the ONE place trivia spends full green under the new system (§A2).</p>
+  </section>
+
+  <!-- ============================================================ -->
+  <section class="round" id="media">
+    <h2>2 · Media Library at 390 — thumbnails vs. posters</h2>
+    <p class="dek">Real titles read from <code>pr1-medialibrary-v2-390.png</code> / <code>-1280.png</code>
+      (Dr. Strangelove, Oppenheimer, Repo Man, Spaced Invaders, Stay Tuned, The Book of Eli, The Truman Show,
+      WarGames) plus one MISSING example read from <code>beat5-shots/media-library-v2-filtered-390.png</code>.
+      Poster art below is representative placeholder color-fields standing in for real TMDB one-sheets (this
+      round has no dev-server access to the live poster URLs) — the aspect ratio, badge placement, and
+      2-line title clamp are the load-bearing parts of this mock, not the specific art.</p>
+    <div class="compare">
+      <div class="col">
+        <div class="col-label"><span class="tag current">CURRENT — shipped, thumbnails</span> pr1-medialibrary-v2-390.png</div>
+        <div class="frame wide"><img src="assets/arc2-medialibrary-current-390.png" alt="Current Media Library, 390px, landscape thumbnails with 1-line truncated titles"></div>
+      </div>
+      <div class="col">
+        <div class="col-label"><span class="tag new">PROPOSED — poster_path → thumb_path fallback, 2:3, 2-line title</span> §C spec, same real titles</div>
+        <div class="frame wide">
+          <div class="stagev2 medialib-mock">
+            <div class="topbar">
+              <div class="brand">🧨 BUNKER OS</div>
+              <div class="menu">▸ MENU</div>
+            </div>
+            <div class="eyebrow">MEDIA</div>
+            <h1 class="title">Library <span class="stat-pill">504 FILES · 152 MISSING</span></h1>
+            <input class="search" placeholder="Title or file name" disabled>
+            <div class="chiprow">
+              <span class="chip on">ALL (504)</span><span class="chip">PRESENT (352)</span>
+              <span class="chip">MISSING (152)</span><span class="chip">UNSUPPORTED (0)</span>
+            </div>
+            <div class="poster-grid" id="poster-grid"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <p class="compare-note">Card image resolves <code>poster_path → thumb_path → ▶ placeholder</code> — the
+      exact fallback already built and shipped for the TV NOW PLAYING card
+      (<code>useSignage.ts:351</code>), wired into the Library query for the first time (§C1). PRESENT/MISSING
+      badge treatment is unchanged from the shipped Beat 6 v2 ink (§C1) — only the frame it sits on gets taller.</p>
+  </section>
+
+  <!-- ============================================================ -->
+  <section class="round" id="motion">
+    <h2>3 · Motion sampler — CSS only, honors reduced motion</h2>
+    <p class="dek">Every effect below is the exact §B spec: opacity/background press feedback (no scale),
+      single-axis sheet enter+exit, height+opacity alert-strip expand. Turn on "Reduce motion" in your OS
+      accessibility settings and reload — all three collapse to instant, per the required
+      <code>prefers-reduced-motion</code> CSS already shipped in <code>staff-tokens-v2.css</code>.</p>
+    <div class="motion-grid">
+      <div class="motion-card">
+        <h3>PRESS / HOVER</h3>
+        <p>Hover = background +6% white, 140ms. Press (<code>:active</code>, fires on pointer-down) = +10%
+          white, 80ms — faster than hover, no <code>scale()</code>.</p>
+        <div class="stagev2 press-demo">
+          <button>HOVER OR PRESS ME</button>
+          <button class="primary">PRIMARY ACTION</button>
+          <button class="danger">DELETE PLAYLIST</button>
+        </div>
+      </div>
+
+      <div class="motion-card">
+        <h3>SHEET ENTER + EXIT</h3>
+        <p>Backdrop + panel fade together; panel rises 8px on a single axis, 180ms in / 140ms out.</p>
+        <div class="stagev2 sheet-demo">
+          <input type="checkbox" id="sheet-toggle">
+          <div class="backdrop"></div>
+          <div class="panel">
+            <div class="st-label" style="margin-bottom:8px;">DELETE PLAYLIST</div>
+            <div class="st-t2" style="font-size:13px;margin-bottom:14px;">Clips stay in the library; any screen
+              pointed at it falls back to an empty program until re-pointed.</div>
+            <div style="display:flex;gap:8px;justify-content:flex-end;">
+              <label for="sheet-toggle" class="as-btn">Keep playlist</label>
+              <button class="danger">Delete playlist</button>
+            </div>
+          </div>
+          <label class="trigger as-btn" for="sheet-toggle">OPEN CONFIRM SHEET</label>
+        </div>
+      </div>
+
+      <div class="motion-card">
+        <h3>ALERT STRIP EXPAND</h3>
+        <p>Height 0→auto + opacity, 160ms (<code>--st-motion-expand</code>) — HOME's shipped "trivia not armed"
+          strip pattern, reused for any future expand/collapse event.</p>
+        <div class="stagev2 alert-demo">
+          <input type="checkbox" id="alert-toggle">
+          <div class="alert-strip"><div class="msg">⚠ TRIVIA IS NOT ON THE SCREENS — a game exists but hasn't been armed.</div></div>
+          <label for="alert-toggle" class="as-btn">TOGGLE ALERT STRIP</label>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <footer class="end">Okuda — polish arc 2, round 1 — 2026-09-12</footer>
+</main>
+
+<script>
+  // Poster grid — built from real titles read off the beat6 shots this pass (see §C0 of the audit doc).
+  var files = [
+    { t: "Dr. Strangelove or How I Learned to Stop Worrying and Love the Bomb", rt: "94:46", status: "present", hue: 210 },
+    { t: "Oppenheimer (2023)", rt: "180:22", status: "present", hue: 25 },
+    { t: "Repo Man (1984)", rt: "92:07", status: "present", hue: 150 },
+    { t: "Spaced Invaders (1990)", rt: "100:20", status: "present", hue: 280 },
+    { t: "Stay Tuned (1992)", rt: "88:04", status: "present", hue: 45 },
+    { t: "The Book of Eli (2010)", rt: "117:36", status: "present", hue: 15 },
+    { t: "The Truman Show (1998)", rt: "102:57", status: "present", hue: 200 },
+    { t: "WarGames (1983)", rt: "112:43", status: "present", hue: 120 },
+    { t: "Extreme Ghostbusters - The Man Who Would Be Bug", rt: "21:00", status: "missing", hue: 0 },
+    { t: "David Bowie & The Story of Ziggy Stardust", rt: "3:18", status: "missing", hue: 0 }
+  ];
+  var grid = document.getElementById("poster-grid");
+  files.forEach(function (f) {
+    var art = f.status === "present"
+      ? "linear-gradient(160deg, hsl(" + f.hue + ",38%,26%), hsl(" + f.hue + ",50%,10%))"
+      : "repeating-linear-gradient(135deg, #1a0e0e, #1a0e0e 8px, #220f0f 8px, #220f0f 16px)";
+    var card = document.createElement("div");
+    card.className = "poster-card";
+    card.innerHTML =
+      '<div class="art' + (f.status === "missing" ? " missing" : "") + '" style="background:' + art + ';">' +
+        '<span class="badge ' + f.status + '">' + f.status + '</span>' +
+        '<span class="runtime">' + f.rt + '</span>' +
+      '</div>' +
+      '<div class="meta">' +
+        '<div class="name"><span class="pencil">✎</span><span>' + f.t + '</span></div>' +
+        '<div class="path">01_Atomic_Age/' + f.t.slice(0, 24) + '&hellip;</div>' +
+        (f.status === "present" ? '<button class="play">▶ PLAY ON&hellip;</button>' : '') +
+      '</div>';
+    grid.appendChild(card);
+  });
+</script>
+</body>
+</html>

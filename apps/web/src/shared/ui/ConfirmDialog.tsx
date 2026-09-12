@@ -1,5 +1,10 @@
-import { useEffect, useRef, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { radius, space, TAP } from "./tokens";
+// ONE definition of both, shared with SectionNav (arc 2 review NOTE-2). The timeout built
+// from these is only a FALLBACK for the case where `animationend` never arrives (the
+// animation was suppressed, the tab was backgrounded mid-exit); the event, when it fires,
+// wins the race.
+import { prefersReducedMotion, EXIT_MS, EXIT_SLACK_MS } from "./motion";
 
 /**
  * The ratified pinned-footer confirm (audit §5 #8) — the shared replacement for the raw
@@ -50,21 +55,100 @@ export function ConfirmDialog({
   onCancel: () => void;
 }) {
   const cancelRef = useRef<HTMLButtonElement | null>(null);
+  const panelRef = useRef<HTMLDivElement | null>(null);
   // Latest onCancel via a ref: callers pass inline arrows, and the hub re-renders every 60s,
   // so keying the effect on onCancel would re-run it (and yank focus back to CANCEL) while open.
   const onCancelRef = useRef(onCancel);
   onCancelRef.current = onCancel;
 
+  // ARC 2 §B — the dialog plays its own exit before the caller unmounts it.
+  //  entering → exiting → closed. `closed` renders NOTHING: a caller that (wrongly) keeps
+  //  the dialog mounted after its dismiss callback therefore cannot strand a transparent
+  //  click-blocker over the page, which is the failure mode a fill-mode'd exit invites.
+  const [phase, setPhase] = useState<"entering" | "exiting" | "closed">("entering");
+  // The dismiss callback to run once the exit has played.
+  const pendingRef = useRef<(() => void) | null>(null);
+
+  /** Dismiss: play the exit, then hand control back to the caller.
+   *  Re-entrant presses (Escape, then the backdrop, then CANCEL, inside 140ms) are no-ops,
+   *  so a rapid open→close→open can never double-fire `onCancel` or strand a dialog. */
+  const beginExit = (after: () => void) => {
+    if (phase !== "entering") return;
+    if (prefersReducedMotion()) { setPhase("closed"); after(); return; }
+    pendingRef.current = after;
+    setPhase("exiting");
+  };
+  // Escape is registered mount-once (re-keying it would yank focus back to CANCEL on every
+  // parent re-render), so it reaches the CURRENT beginExit through a ref, like onCancel.
+  const beginExitRef = useRef(beginExit);
+  beginExitRef.current = beginExit;
+
+  // NOTE-1 (arc 2 review) — RE-OPEN INSIDE THE EXIT WINDOW. Every caller mounts this as
+  // `{target && <ConfirmDialog …/>}` with no `key`, so React REUSES this instance when the
+  // parent opens a dialog for a different target. Land that inside the 140ms exit and the
+  // component is still `exiting`/`closed` and renders nothing — the second dialog never
+  // appears. Fixed HERE rather than by adding `key={id}` at UsersV2 / DrinksAdminV2 /
+  // SignageHubV2, because a shared primitive that only behaves when three callers remember
+  // a prop is the bug, not the fix. `title` is the identity signal (it always names the
+  // target: an email, a group, a screen). The stale dismiss callback is DROPPED — it
+  // belonged to the dialog the viewer just left.
+  const lastTitle = useRef(title);
+  if (title !== lastTitle.current) {
+    lastTitle.current = title;
+    if (phase !== "entering") {
+      pendingRef.current = null;
+      setPhase("entering");
+    }
+  }
+
   useEffect(() => {
     cancelRef.current?.focus(); // once, on mount
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onCancelRef.current(); };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") beginExitRef.current(() => onCancelRef.current());
+    };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
+  // A RETARGETED dialog (see NOTE-1 above) is a new dialog to the viewer, so focus returns
+  // to CANCEL exactly as it does on a fresh mount — the destructive button is never the one
+  // a stray Return press finds. Skips the first run: the mount effect above already did it.
+  const firstTitle = useRef(true);
+  useEffect(() => {
+    if (firstTitle.current) { firstTitle.current = false; return; }
+    cancelRef.current?.focus();
+  }, [title]);
+
+  useEffect(() => {
+    if (phase !== "exiting") return;
+    const el = panelRef.current;
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      setPhase("closed");
+      const cb = pendingRef.current;
+      pendingRef.current = null;
+      cb?.();
+    };
+    // `animationend` BUBBLES, so a body that animates something of its own would otherwise
+    // end the exit early — only the panel's own animation counts.
+    const onEnd = (e: AnimationEvent) => { if (e.target === el) finish(); };
+    el?.addEventListener("animationend", onEnd);
+    const timer = window.setTimeout(finish, EXIT_MS + EXIT_SLACK_MS);
+    return () => {
+      el?.removeEventListener("animationend", onEnd);
+      window.clearTimeout(timer);
+    };
+  }, [phase]);
+
+  if (phase === "closed") return null;
+
   return (
-    <div onClick={onCancel} className="terminal-theme staff-ui st-sheet" style={backdrop}>
+    <div onClick={() => beginExit(onCancel)} className="terminal-theme staff-ui st-sheet" style={backdrop}>
       <div
+        ref={panelRef}
+        data-state={phase}
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
@@ -79,9 +163,15 @@ export function ConfirmDialog({
         </div>
         {body != null && <div className="st-body st-t2" style={bodyStyle}>{body}</div>}
         <div style={foot}>
-          <button type="button" ref={cancelRef} onClick={onCancel} disabled={busy} className="st-btn st-body st-t2" style={btn}>
+          <button type="button" ref={cancelRef} onClick={() => beginExit(onCancel)} disabled={busy} className="st-btn st-body st-t2" style={btn}>
             {cancelLabel}
           </button>
+          {/* DECISION: CONFIRM does NOT play the exit. It hands off to a mutation the
+              caller may keep this dialog open for (`busy`), so delaying it by 140ms would
+              delay the write, and animating the panel away while `busy` is still true
+              would fade out a dialog that is deliberately still on screen. Dismissal —
+              CANCEL, the backdrop, Escape — is the path that animates out; a confirmed
+              action leaves exactly as abruptly as it did before this beat. */}
           <button
             type="button"
             onClick={onConfirm}
@@ -109,11 +199,32 @@ const head: CSSProperties = { padding: `${space.s6}px ${space.s6}px ${space.s3}p
 const bodyStyle: CSSProperties = {
   flex: "1 1 auto", overflowY: "auto", padding: `0 ${space.s6}px ${space.s4}px`,
 };
+/* `flexWrap` is load-bearing, not tidiness (arc 2 review, raised from the PR 2 lane).
+ * The buttons carry `whiteSpace: nowrap` (a two-word verb must stay one line) and
+ * `minWidth: TAP`, and a min-width overrides flex's default `min-width: auto` — so a flex
+ * row could NOT shrink them and could not break them either. A long pair therefore spilled
+ * its text past its own borders: "Keep playlist" (159.5px) + "Delete playlist" (178.5px) +
+ * 12px gap = 350px natural against 308px of sheet interior at 390 (+4.5px over at 390,
+ * +12.5px at 375). Wrapping lets an over-long pair stack, still right-aligned, instead of
+ * overflowing; the Beat 6 pairs are well inside one row and are untouched. */
 const foot: CSSProperties = {
-  display: "flex", gap: space.s3, justifyContent: "flex-end",
+  display: "flex", flexWrap: "wrap", gap: space.s3, justifyContent: "flex-end",
   padding: `${space.s4}px ${space.s6}px`, borderTop: "1px solid",
 };
+/* DECISION (arc 2 review fold) — the horizontal padding drops 18px → 14px, and it is the
+ * `flexWrap` above that makes it necessary. MEASURED at 390: the Beat 6 pair "Keep access"
+ * (140.5px) + "Remove access" (159.5px) + a 12px gap is 312px NATURAL against 308px of
+ * sheet interior. It never fit. `minWidth: TAP` let flex shrink both by ~2px and
+ * `whiteSpace: nowrap` pushed the text out past the borders instead — the same silent
+ * spill the PR 2 lane measured on the longer DELETE PLAYLIST pair, just small enough that
+ * nobody caught it. Once wrapping is on, "doesn't fit" stops being a spill and becomes a
+ * STACK, which would have changed the shipped look of the app's most common dialog. 14px
+ * gives the short pair 296px — back on one row at 390, as shipped — while the long pair
+ * still measures 334px and correctly stacks. Both 44px floors are untouched.
+ * Below 390 (checked at 375: 293px interior) the short pair stacks; that is the honest
+ * outcome for a screen narrower than the design target, and it stacks cleanly now rather
+ * than spilling. */
 const btn: CSSProperties = {
-  minHeight: TAP, minWidth: TAP, padding: `0 ${space.s4 + 2}px`, cursor: "pointer",
+  minHeight: TAP, minWidth: TAP, padding: `0 ${space.s3 + 2}px`, cursor: "pointer",
   letterSpacing: 0.5, fontSize: 15, whiteSpace: "nowrap",
 };

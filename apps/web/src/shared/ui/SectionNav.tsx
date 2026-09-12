@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
+// ONE definition, shared with ConfirmDialog (arc 2 review NOTE-2).
+import { prefersReducedMotion, EXIT_MS, EXIT_SLACK_MS } from "./motion";
 
 /**
  * The v2 two-tier staff navigation (audit §5 #2, mockup views 1–3).
@@ -104,6 +106,35 @@ export function SectionNav({
   const toggleRef = useRef<HTMLButtonElement | null>(null);
   const itemRefs = useRef<HTMLElement[]>([]);
 
+  // ARC 2 §B — the drawer plays its shipped enter's mirror on the way out (keyframes +
+  // the DECISION live beside them in theme/staff-shell-v2.css). `open` still flips to
+  // false the instant it is asked to close, so `aria-expanded` and the MENU/CLOSE label
+  // stay honest; `closing` only keeps the element MOUNTED for the 140ms it takes to leave.
+  // Every existing close path (link tap, backdrop, Escape, route change, crossing to
+  // desktop) funnels through `open`, so none of them needed touching.
+  const [closing, setClosing] = useState(false);
+  const wasOpen = useRef(false);
+  useEffect(() => {
+    const justClosed = wasOpen.current && !open;
+    wasOpen.current = open;
+    if (!justClosed) {
+      if (open) setClosing(false); // re-opened mid-exit: drop the exit, the enter re-runs
+      return;
+    }
+    // NOTE-2 (arc 2 review): under reduced motion the drawer's animation is `none`, so
+    // holding it mounted for the exit window is not a shorter animation — it is a dead
+    // 200ms pause on an inert drawer. Unmount immediately instead, the way ConfirmDialog
+    // already dismisses.
+    if (prefersReducedMotion()) { setClosing(false); return; }
+    setClosing(true);
+    // A timer, not `animationend`: a suppressed or interrupted animation would never fire
+    // the event, and the drawer would never unmount. The CSS holds the final keyframe
+    // (`animation-fill-mode: both`) across the slack, so the drawer cannot snap back to
+    // open while it waits — that was WARN-2.
+    const t = window.setTimeout(() => setClosing(false), EXIT_MS + EXIT_SLACK_MS);
+    return () => window.clearTimeout(t);
+  }, [open]);
+
   // Drop the drawer when we cross up to the desktop bar.
   useEffect(() => { if (!isMobile) setOpen(false); }, [isMobile]);
   // Close on every navigation (covers hardware/browser back, not just our own links).
@@ -174,10 +205,10 @@ export function SectionNav({
             {open ? "▟ CLOSE" : "▚ MENU"}
           </button>
         </div>
-        {open && (
+        {(open || closing) && (
           <>
-            <div className="sv2-backdrop" onClick={close} aria-hidden="true" />
-            <div className="sv2-drawer" role="menu" aria-label="Staff navigation" onKeyDown={onMenuKeyDown}>
+            <div className="sv2-backdrop" data-state={open ? "entering" : "exiting"} onClick={close} aria-hidden="true" />
+            <div className="sv2-drawer" data-state={open ? "entering" : "exiting"} role="menu" aria-label="Staff navigation" onKeyDown={onMenuKeyDown}>
               <div className="sv2-drawer-top">
                 {home && (
                   <Link
