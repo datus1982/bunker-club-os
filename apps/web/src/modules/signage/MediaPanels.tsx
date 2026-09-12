@@ -161,13 +161,24 @@ function MediaFileCard({ file, screens, hasSchedule, variant }: {
     onSuccess: () => setPicking(false),
   });
   const canPlay = file.status === "present" && screens.length > 0;
+  const isV2 = variant === "v2";
+  // The PLAY-ON row's buttons carry `playBtn`, whose inline `fontSize: 13` is DEAD on a staff page:
+  // `.staff-ui button { font-size: 1.25rem !important }` beats it, so they actually render at 20px
+  // and "▶ PLAY ON…" measured 150/150 against a 150px box — flush to the edge, which is what read
+  // as a truncated word. `st-body` is the v2 way to win that cascade (the ConfirmDialog lesson), so
+  // in v2 these render at the token Body size like every other v2 control. Not a new size: the
+  // rest of the v2 page is already 15px. Classic keeps its 20px buttons untouched.
+  //
+  // The idle label's trailing "…" also goes, in v2 only: an ellipsis flush against the button edge
+  // reads as a TRUNCATED word, which is how "▶ PLAY ON…" got reported as a clipped label. "▾" says
+  // "this opens a picker" and cannot be misread that way. Classic keeps "▶ PLAY ON…".
+  const playBtnCls = isV2 ? "st-body" : undefined;
 
   // §C1 — the card image, v2 only. Source order is the TV's own waterfall, imported:
   // poster_path → thumb_path → the ▶ placeholder. The fit rule follows the house's imagery law:
   // a real one-sheet is pre-cropped to 2:3 by TMDB so cover-fit is safe; a thumb_path fallback is
   // a raw 16:9 frame grab nobody cropped to 2:3, so it letterboxes (contain) rather than losing
   // its edges. Classic stays on `file.thumb` in a 110px landscape box, byte-identical.
-  const isV2 = variant === "v2";
   const cardImg = isV2 ? posterOrThumbUrl(file.poster_path ?? null, file.thumb_path) : file.thumb;
   const isPoster = isV2 && !!file.poster_path;
   // §C2 fold: the YEAR is the datum that distinguishes Casino Royale 1954 / 1967 / 2006, and it
@@ -304,19 +315,20 @@ function MediaFileCard({ file, screens, hasSchedule, variant }: {
                 type="button"
                 onClick={() => setPicking(true)}
                 title="Play this film now on a screen, then continue through the rest of the library"
+                className={playBtnCls}
                 style={playBtn}
-              >▶ PLAY ON…</button>
+              >{isV2 ? "▶ PLAY ON ▾" : "▶ PLAY ON…"}</button>
             ) : (
               <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                 <div style={{ fontSize: 11, letterSpacing: 1, opacity: 0.6, lineHeight: 1.4 }}>
                   STARTS THIS FILM, THEN THE REST OF THE LIBRARY
                 </div>
                 {screens.map((s) => (
-                  <button key={s.id} type="button" disabled={play.isPending} onClick={() => play.mutate(s)} style={playBtn}>
+                  <button key={s.id} type="button" disabled={play.isPending} onClick={() => play.mutate(s)} className={playBtnCls} style={playBtn}>
                     ▶ {s.name.toUpperCase()}
                   </button>
                 ))}
-                <button type="button" onClick={() => setPicking(false)} style={{ ...playBtn, opacity: 0.6 }}>CANCEL</button>
+                <button type="button" onClick={() => setPicking(false)} className={playBtnCls} style={{ ...playBtn, opacity: 0.6 }}>CANCEL</button>
                 {play.isError && <div className="u-amber" style={{ fontSize: 11 }}>COULD NOT SET PROGRAM</div>}
               </div>
             )}
