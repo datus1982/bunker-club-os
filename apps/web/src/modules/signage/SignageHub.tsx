@@ -464,7 +464,7 @@ export function SignageHub({ openQueueSlug }: { openQueueSlug?: string }) {
                   key={ev.id}
                   row={ev}
                   canEvents={canEvents}
-                  onReRun={() => setOverlay({ kind: "event", editing: null, seed: seedFromEvent(ev) })}
+                  onReRun={() => setOverlay({ kind: "event", editing: null, seed: seedFromEvent(ev), seedId: ev.id })}
                 />
               ))}
             </div>
