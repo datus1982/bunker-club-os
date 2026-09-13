@@ -168,10 +168,14 @@ export function Modal({ title, onClose, children, footer, v2: v2Override }: {
             v2 the panel itself is surface-4 and the footer sits OUTSIDE the scroll region,
             so transparent is both opaque enough and honest — a black strip under a
             surface-4 sheet would read as a seam.
-            v2 (Beat 8 PR 5): `flexWrap` lets a three-button footer (DELETE · CANCEL · SAVE in the
-            slide editor) fold onto two rows on a narrow phone instead of squeezing a verb out
-            of its box; a footer that fits — every trivia dialog's pair — never wraps, so
-            nothing moves for them. Whole-object ternary: the classic literal is untouched. */}
+            v2 (Beat 8 PR 5): `flexWrap` lets a footer that does not fit fold onto two rows on a
+            narrow phone instead of squeezing a verb out of its box — ConfirmDialog's ratified
+            reasoning. A footer that fits never wraps. TWO shipped v2 TRIVIA footers do NOT fit at
+            390 and therefore MOVE with this (PR 5 review WARN-1, disclosed): TeamEditorDialog's
+            SIMILAR TEAM EXISTS pair (RENAME / EDIT · USE EXISTING) rendered as two 82px-tall
+            buttons with the labels broken inside them and now stacks with the labels intact, and
+            RoundGrid's score dialog (CLEAR · CANCEL · SAVE) is the other non-pair. Classic is
+            untouched — whole-object ternary, the classic literal key for key. */}
         {footer && (
           <div style={v2 ? { display: "flex", flexWrap: "wrap", gap: 12, justifyContent: "flex-end", padding: "14px 24px", borderTop: "1px solid var(--terminal-green)", background: "transparent" } : { display: "flex", gap: 12, justifyContent: "flex-end", padding: "14px 24px", borderTop: "1px solid var(--terminal-green)", background: "#000" }}>
             {footer}

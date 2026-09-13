@@ -360,7 +360,7 @@ function ItemForm({
             // rule — the manager's intent silently dropped. Blocked here rather than coerced,
             // because either coercion (drop the rule / hide the asset) guesses at what he meant.
             disabled={busy || del.isPending || !momentLoaded || noDaysPicked}
-            title={noDaysPicked ? "Pick at least one day under DAYS IT RUNS, or switch back to EVERY DAY." : undefined}
+            title={noDaysPicked ? (v2 ? "Pick at least one day under Days it runs, or switch back to Every day." : "Pick at least one day under DAYS IT RUNS, or switch back to EVERY DAY.") : undefined}
             className={v2 ? "st-btn st-btn-primary u-ink st-body" : "u-fill u-ink"}
             style={v2 ? { ...primaryV2, opacity: busy || !momentLoaded || noDaysPicked ? 0.5 : 1 } : { ...btnPrimary, opacity: busy || !momentLoaded || noDaysPicked ? 0.5 : 1 }}
           >
@@ -500,11 +500,12 @@ function ItemForm({
     </Modal>
     {/* v2 only. A SIBLING of the Modal, not a child: the dialog's own backdrop must not
         bubble a click into the Modal's `onClick={onClose}`, and its z-index (1100) already
-        stacks above the Modal (1000). Body = the classic confirm's sentence, verbatim. */}
+        stacks above the Modal (1000). Body = the classic confirm's sentence with its noun matched to
+        the title/buttons ("slide"); the classic `confirm()` string itself is untouched. */}
     {v2 && confirmDelete && (
       <ConfirmDialog
         title="Delete slide?"
-        body="Delete this asset? It will be removed from EVERY screen it runs on. This can't be undone."
+        body="Delete this slide? It will be removed from EVERY screen it runs on. This can't be undone."
         confirmLabel="Delete slide"
         cancelLabel="Keep slide"
         danger
@@ -1311,7 +1312,7 @@ function RecurrenceField({ v2, value, onChange }: { v2: boolean; value: Recurren
       {/* Plain-phrase echo of the rule, so the manager reads back what he just set. The
           nothing-picked case is a blocker, not a note — it wears the amber and says so. */}
       {noDays ? (
-        <div className={v2 ? "st-card st-callout-warn st-body st-amber" : "u-amber"} style={v2 ? { padding: "10px 12px" } : { fontSize: 15 }}>⚠ {recurrenceSentence(value)} SAVE stays disabled until you do, or switch back to EVERY DAY.</div>
+        <div className={v2 ? "st-card st-callout-warn st-body st-amber" : "u-amber"} style={v2 ? { padding: "10px 12px" } : { fontSize: 15 }}>⚠ {recurrenceSentence(value)}{v2 ? " Save stays disabled until you do, or switch back to Every day." : " SAVE stays disabled until you do, or switch back to EVERY DAY."}</div>
       ) : (
         <div className={v2 ? "st-body" : undefined} style={v2 ? undefined : { fontSize: 15 }}>{recurrenceSentence(value)}</div>
       )}
@@ -1477,9 +1478,11 @@ const pickRow: CSSProperties = { display: "flex", gap: 10, background: "transpar
  * blanket paints the hairline (the ConfirmDialog idiom). `minWidth: TAP` joins `minHeight`
  * because the 44px floor is measured on BOTH axes (#103 NOTE-6). `optV2` is the one exception:
  * a <select>'s <option> popup is painted by the UA, not the sheet, so its surface is set inline
- * from the same token the sheet gives the <select> itself. */
+ * from the same token the sheet gives the <select> itself — and its size is set inline for the
+ * same reason (Windows/Android Chrome render the popup's <option>s as real leaves, and nothing
+ * inherits font-size here, so without it they would be the theme's 24px). */
 const selV2: CSSProperties = { fontSize: 15, padding: "9px 11px", minHeight: TAP, border: "1px solid", width: "100%" };
-const optV2: CSSProperties = { background: staffSurface.surface2 };
+const optV2: CSSProperties = { background: staffSurface.surface2, fontSize: 15 };
 const chipV2: CSSProperties = { display: "inline-flex", alignItems: "center", padding: "8px 12px", minWidth: TAP, minHeight: TAP, border: "1px solid", cursor: "pointer" };
 const ghostV2: CSSProperties = { padding: "10px 18px", minWidth: TAP, minHeight: TAP, border: "1px solid", cursor: "pointer", whiteSpace: "nowrap" };
 const primaryV2: CSSProperties = { padding: "10px 20px", minWidth: TAP, minHeight: TAP, border: "1px solid", fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" };
