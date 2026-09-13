@@ -62,9 +62,10 @@ export interface HubOverlayProps {
   // never re-derived inside a panel with `useUiVersion()`.
   /** Which presentation opened these panels (Beat 8 PR 2). `SignageHub` builds ONE
    *  `overlays` node and hands it to whichever view renders, so the version it already
-   *  knows is passed down here rather than re-read from the switch. Only PROGRAM and
-   *  SCHEDULE consume it in this PR — the other slide-overs are PRs 3–6, and until then
-   *  they render classic in BOTH views exactly as they do today. */
+   *  knows is passed down here rather than re-read from the switch. Every overlay wrapper
+   *  below threads it to its SlideOver + panel as its Beat 8 PR lands (PR 2: PROGRAM /
+   *  SCHEDULE; PR 3: + ADD / QUEUE; PR 4: TAKEOVER / EVENT; PR 5: the slide editor); a
+   *  wrapper that does not yet pass it renders classic in BOTH views exactly as today. */
   variant?: "classic" | "v2";
 }
 
@@ -114,7 +115,8 @@ export function HubOverlays({
           `key` so a fast retarget across two DIFFERENT targets remounts fresh instead of
           carrying one target's draft into the other (PR 2 addendum WARN). Takeover keys by
           slot; the event editor by the row being edited, "new" for a blank one, and the
-          seed's name for a RE-RUN (a seed carries no id). */}
+          SOURCE row's id for a RE-RUN (`seedId` — a seed carries no id of its own, and two
+          finished rows can share a name; the name is only the fallback). */}
       {overlay?.kind === "takeover" && (
         <SlideOver key={overlay.slot.id} eyebrow={`${overlay.slot.name} ▸ TAKEOVER`} title={variant === "v2" ? "Send a takeover" : "SEND A TAKEOVER"} onClose={() => setOverlay(null)} variant={variant} openKey={overlay}>
           <TakeoverPanel slot={overlay.slot} takeovers={takeovers} onChanged={invalidateTakeovers} variant={variant} />
@@ -122,7 +124,7 @@ export function HubOverlays({
       )}
 
       {overlay?.kind === "event" && (
-        <SlideOver key={overlay.editing?.id ?? (overlay.seed ? `rerun:${overlay.seed.name}` : "new")} eyebrow="RUNNING & UPCOMING" title={variant === "v2" ? (overlay.editing ? "Edit event" : overlay.seed ? "Re-run event" : "New event") : (overlay.editing ? "EDIT EVENT" : overlay.seed ? "RE-RUN EVENT" : "NEW EVENT")} onClose={() => setOverlay(null)} variant={variant} openKey={overlay}>
+        <SlideOver key={overlay.editing?.id ?? (overlay.seed ? `rerun:${overlay.seedId ?? overlay.seed.name}` : "new")} eyebrow="RUNNING & UPCOMING" title={variant === "v2" ? (overlay.editing ? "Edit event" : overlay.seed ? "Re-run event" : "New event") : (overlay.editing ? "EDIT EVENT" : overlay.seed ? "RE-RUN EVENT" : "NEW EVENT")} onClose={() => setOverlay(null)} variant={variant} openKey={overlay}>
           <EventEditor
             editing={overlay.editing}
             seed={overlay.seed ?? null}

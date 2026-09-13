@@ -583,7 +583,7 @@ export function ToastSourcePicker({
                   ? <img src={r.image} alt="" style={v2 ? { width: 36, height: 36, objectFit: "cover", border: "1px solid", flexShrink: 0 } : { width: 36, height: 36, objectFit: "cover", border: "1px solid var(--terminal-green)", flexShrink: 0 }} />
                   : <span style={v2 ? { width: 36, height: 36, border: "1px solid", flexShrink: 0, display: "inline-block" } : { width: 36, height: 36, border: "1px solid var(--terminal-green)", flexShrink: 0, display: "inline-block" }} />}
                 <span className={v2 ? "st-body" : undefined} style={v2 ? { flex: 1, minWidth: 0, textAlign: "left", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" } : { flex: 1, minWidth: 0, textAlign: "left", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", fontSize: 17 }}>{r.name}</span>
-                <span className={v2 ? "st-body st-t3" : undefined} style={v2 ? { whiteSpace: "nowrap" } : { fontSize: 13, opacity: 0.6, whiteSpace: "nowrap" }}>{r.menu_group}</span>
+                <span className={v2 ? "st-label st-t3" : undefined} style={v2 ? { whiteSpace: "nowrap" } : { fontSize: 13, opacity: 0.6, whiteSpace: "nowrap" }}>{r.menu_group}</span>
                 {!r.pos_visible && <span className={v2 ? "st-label st-amber" : "u-amber"} style={v2 ? { whiteSpace: "nowrap" } : { fontSize: 11, whiteSpace: "nowrap" }}>POS-HIDDEN</span>}
                 {r.out_of_stock && <span className={v2 ? "st-label st-amber" : "u-amber"} style={v2 ? undefined : { fontSize: 12 }}>86</span>}
               </button>

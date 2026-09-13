@@ -556,8 +556,8 @@ export function EventEditor({
         <ConfirmDialog
           title={kind === "moment" ? "Fire this moment now?" : "Put this on the screens now?"}
           body={kind === "moment" ? "It skips the tease and lands in ALERT." : `“${editing.name}” goes onto the bar screens immediately.`}
-          confirmLabel="▶ Fire now"
-          cancelLabel="Keep it scheduled"
+          confirmLabel="Fire now"
+          cancelLabel="Keep scheduled"
           busy={fire.isPending}
           onConfirm={() => { setConfirming(null); fire.mutate(); }}
           onCancel={() => setConfirming(null)}
