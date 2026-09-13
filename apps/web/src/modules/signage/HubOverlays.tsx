@@ -153,8 +153,14 @@ export function HubOverlays({
         <ScheduleOverlay key={overlay.slot.id} slot={overlay.slot} timezone={timezone} variant={variant} openKey={overlay} onClose={() => setOverlay(null)} />
       )}
 
+      {/* `key` = the asset (or "new"): the editor seeds its `useState` drafts from `editing`,
+          so a retarget to a different asset must remount rather than reuse the instance (the
+          PR 2 addendum WARN, applied here pre-emptively — the Modal unmounts synchronously, so
+          no `openKey` phase path exists for it). React-only: classic renders no different DOM. */}
       {overlay?.kind === "asset" && (
         <AssetOverlay
+          key={overlay.editing?.id ?? "new"}
+          variant={variant}
           slots={slots}
           toastRows={toastRows}
           assets={assets}
@@ -233,10 +239,13 @@ export function ScheduleOverlay({ slot, timezone, onClose, variant = "classic", 
  *
  * The one thing the caller owns is `onClose`: the hub returns to the QUEUE / + ADD
  * slide-over it came from (`returnTo`), the Slides page simply closes back to its list.
+ *
+ * BEAT 8 (PR 5): `variant` is threaded through to the editor. The editor is a trivia `Modal`,
+ * not a `SlideOver`, so there is no `openKey`/phase path here — it unmounts synchronously.
  */
 export function AssetOverlay({
   slots, toastRows, assets, editing, presetTemplate, venueName, queueOnSlotId, nextPosition,
-  onClose, onSaved, onDeleted,
+  onClose, onSaved, onDeleted, variant = "classic",
 }: {
   slots: AdminSlot[];
   toastRows: ToastCacheRow[];
@@ -249,9 +258,14 @@ export function AssetOverlay({
   onClose: () => void;
   onSaved: () => void;
   onDeleted: () => void;
+  // DECISION: (Beat 8 PR 5) threaded from the page/HubOverlays that already knows the
+  // presentation — never derived here with `useUiVersion()`.
+  /** "v2" renders the tokened editor (Beat 8 PR 5); default classic = the shipped modal. */
+  variant?: "classic" | "v2";
 }) {
   return (
     <ItemEditor
+      variant={variant}
       slots={slots}
       toastRows={toastRows}
       editing={editing}

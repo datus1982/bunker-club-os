@@ -199,6 +199,8 @@ export function SlidesPage() {
           `+ NEW ASSET` overlay (the D5/D6 model). */}
       {editing && (
         <AssetOverlay
+          key={editing.item?.id ?? "new"}
+          variant="v2"
           slots={slots}
           toastRows={toastRows}
           assets={assets}
