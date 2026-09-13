@@ -555,3 +555,54 @@ Cell geometry is unchanged in structure: the same fixed cells, the same two-line
   same `data-st-page` hook, `cx()` and role classes as the five pages — so a host leaving
   Scoring for the deck tools no longer crosses a look boundary. They render no sub-nav row,
   so the switch itself is not offered while you are on one.
+
+---
+
+## §B addendum (2026-09-12, Marvin ruling — Beat 8)
+
+**Contents of a surface-4 sheet do not stack elevation; they separate by hairline.**
+
+Beat 8 PR 1 moves the signage slide-overs onto the `.st-sheet` scope, which meant giving
+that scope the surface rules a FORM needs and a two-button dialog never did. The first
+build copied its `[data-st-page]` twins verbatim — including the fills — and the harness
+showed the consequence immediately: a `.st-card` (`--st-surface-1`, #131618) or a
+`.st-menu` (`--st-surface-3`, #1A1C25) inside a #22273D drawer renders **darker** than its
+container. On a page those tiers sit on ground (#0B0D10) and read as raised; on a sheet
+they read as holes.
+
+The ruling closes it without a new value: **"higher = lighter", and `--st-surface-4` is the
+top of the ladder on purpose.** A fifth, lighter tier for sheet contents is exactly the
+drift the token sheet exists to prevent — one exception becomes a parallel scale, and the
+two dialects §B was written to stop are back. So inside a sheet, `.st-card`, `.st-row`,
+`.st-box`, `.st-menu` and `.terminal-border` carry **no fill at all**: `background:
+transparent`, a 1px `--st-hairline` edge, the 6px control radius. Hover and selected states
+on an interactive row spend the existing white-alpha wash (`rgba(255,255,255,0.06)` — the
+same one section 1 already spends on a control hover), never a fill tier.
+
+The `[data-st-page]` leg is untouched: a card on a PAGE keeps `--st-surface-1`, and its
+elevation still reads correctly against the ground. `.st-panel` is untouched too — the
+sheet's own panel is the surface-4 object, and a nested `.st-panel` inherits that rather
+than acquiring a second meaning by nesting depth. `.terminal-separator` is left exactly as
+its page twin: it is already a bare 1px hairline bar rather than a fill tier, and giving it
+a transparent background plus a border would render a 3px double rule with nothing between
+the lines.
+
+**Floating surfaces (menus/popovers) keep a fill even inside sheets; only in-flow contents
+separate by hairline.** (Marvin, 2026-09-12, ruling on the open flag the addendum above
+raised.) The rule is about ELEVATION, and a popover is not elevated *relative to* the sheet
+— it sits **over** it, with the sheet's own content showing through wherever it does not
+paint. A transparent floating menu is not calm, it is unreadable. So `.st-menu` is the one
+class taken back out of the sheet-contents set: inside a sheet it keeps its `[data-st-page]`
+twin verbatim — `--st-surface-3`, a 1px hairline, the 10px sheet radius. Inert today
+(nothing emits `.st-menu` yet; the hub's ⋯ OverflowMenu lives on the page, not in a
+drawer), correct the day a popover opens inside a drawer.
+
+**Slide-overs animate ENTER only for now.** `SlideOver`'s v2 leg carries
+`data-state="entering"`, so the ratified backdrop fade applies and a `.st-drawer` rule
+swaps the centred dialog's 8px Y-rise for the 10px X-slide §B asks of an edge-anchored
+surface. There is no exit: an exit means a deferred unmount, which today means a second
+copy of `ConfirmDialog`'s phase machine (entering → exiting → closed, the
+`animationend`-versus-fallback-timer race, the re-open-inside-the-exit retarget). **The
+exit/deferred-unmount phase machine is backlog for a SHARED hook across `ConfirmDialog` and
+`SlideOver`** — one implementation, two consumers, the way `shared/ui/motion.ts` already
+holds the one definition of `prefersReducedMotion` / `EXIT_MS`.
