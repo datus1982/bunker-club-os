@@ -9,6 +9,7 @@ import type { AdminSlot } from "./useSignageAdmin";
 import { MONO } from "./signageAdminShared";
 import { SlideOver } from "./SlideOver";
 import { TAP } from "@/shared/ui/tokens";
+import { TapTargetCheckbox } from "@/shared/ui";
 
 /**
  * SWITCH PROGRAM control (docs/15 M1–M3) — the media-capable (landscape) screen card's program
@@ -139,12 +140,23 @@ export function ProgramPanel({
             <div className={v2 ? "st-body st-t2" : undefined} style={v2 ? { lineHeight: 1.5 } : { fontSize: 13, opacity: 0.7, lineHeight: 1.5 }}>
               This screen has a <span className={v2 ? "st-body st-amber" : "u-amber"}>daypart schedule</span>. A program you set here is an OVERRIDE — {specialEvent ? "a SPECIAL EVENT hold (survives dayparts, ends at 4 AM)." : "it yields at the next daypart."}
             </div>
-            <label className={v2 ? "st-body" : undefined} style={v2 ? { display: "flex", alignItems: "center", gap: 10, minHeight: TAP, cursor: "pointer" } : { display: "flex", alignItems: "center", gap: 10, fontSize: 14, cursor: "pointer" }}>
-              {/* v2: `st-btn-primary` paints the ticked box (accent fill + ground ink); the
-                  border colour comes from the blanket, so no literal is needed here. */}
-              <span onClick={() => setSpecialEvent((v) => !v)} className={v2 ? (specialEvent ? "st-btn-primary u-ink" : "") : (specialEvent ? "u-fill u-ink" : "")} style={v2 ? { width: 22, height: 22, fontSize: 14, border: "1px solid", display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 } : { width: 22, height: 22, border: "1px solid var(--terminal-green)", display: "inline-flex", alignItems: "center", justifyContent: "center", background: specialEvent ? "var(--terminal-green)" : "transparent", color: specialEvent ? "#000" : "var(--terminal-green)", flexShrink: 0 }}>{specialEvent ? "✓" : ""}</span>
-              <span className={v2 ? "st-body" : undefined} onClick={() => setSpecialEvent((v) => !v)}>{v2 ? "Special event — hold through dayparts (e.g. a game running long)" : "SPECIAL EVENT — hold through dayparts (e.g. a game running long)"}</span>
-            </label>
+            {/* NOTE-1 (review): v2 uses the real primitive. The hand-rolled version was a
+                22×22 NON-FOCUSABLE <span> whose only affordance on v2 was an 8%-alpha
+                hairline — unreachable by keyboard and barely visible. `TapTargetCheckbox`
+                is a native <input> in a 44px label row, which is the whole reason it
+                exists. The CLASSIC arm below is the shipped markup, untouched. */}
+            {v2 ? (
+              <TapTargetCheckbox
+                checked={specialEvent}
+                onChange={setSpecialEvent}
+                label="Special event — hold through dayparts (e.g. a game running long)"
+              />
+            ) : (
+              <label style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 14, cursor: "pointer" }}>
+                <span onClick={() => setSpecialEvent((v) => !v)} className={specialEvent ? "u-fill u-ink" : ""} style={{ width: 22, height: 22, border: "1px solid var(--terminal-green)", display: "inline-flex", alignItems: "center", justifyContent: "center", background: specialEvent ? "var(--terminal-green)" : "transparent", color: specialEvent ? "#000" : "var(--terminal-green)", flexShrink: 0 }}>{specialEvent ? "✓" : ""}</span>
+                <span onClick={() => setSpecialEvent((v) => !v)}>SPECIAL EVENT — hold through dayparts (e.g. a game running long)</span>
+              </label>
+            )}
             {!rotationSelected && (
               <button type="button" disabled={busy} onClick={() => resume.mutate()} className={v2 ? "st-btn st-amber st-body" : "u-amber"} style={v2 ? { ...optV2, justifyContent: "center" } : { ...opt, color: "var(--terminal-amber, #ffb000)", borderColor: "var(--terminal-amber, #ffb000)", justifyContent: "center" }}>{v2 ? "↺ Resume schedule" : "↺ RESUME SCHEDULE"}</button>
             )}
@@ -248,7 +260,11 @@ export function ProgramPanel({
               </select>
             )}
 
-            <div className={v2 ? "st-label st-t2" : undefined} style={v2 ? { marginTop: 4 } : { ...fl, marginTop: 4 }}>PANEL (portrait slides)</div>
+            {/* NOTE-2 (review): same split as DEVICE MATCH — `.st-label` is the all-caps
+                role, so the lowercase hint becomes its own Body line instead of being
+                shouted as "PANEL (PORTRAIT SLIDES)". */}
+            <div className={v2 ? "st-label st-t2" : undefined} style={v2 ? { marginTop: 4 } : { ...fl, marginTop: 4 }}>{v2 ? "PANEL" : "PANEL (portrait slides)"}</div>
+            {v2 && <div className="st-body st-t3">Portrait slides</div>}
             <div style={{ display: "flex", gap: 8 }}>
               {(["new", "mirror"] as const).map((k) => {
                 const on = mvPanelMode === k;

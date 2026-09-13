@@ -681,10 +681,17 @@
  * panel rising over an already-solid black rectangle reads as a pop, not as a sheet.
  * `:has()` keeps the whole state on ONE attribute (the panel's) and is already a
  * dependency of this file (section 7) and of theme/staff-form.css. */
-.terminal-theme.staff-v2 .st-sheet:has(.st-panel[data-state="entering"]) {
+/* WARN-2 (Beat 8 PR 2 review) — the CHILD combinator is load-bearing. In the descendant
+ * form these matched ANY `.st-panel` in the subtree, and a v2 slide-over can CONTAIN a
+ * ConfirmDialog (the remove-daypart guard, PlaylistEditor's delete): dismissing the inner
+ * dialog set ITS panel to `exiting`, the outer drawer's backdrop matched, and the whole
+ * drawer faded out and then replayed its enter from zero while the manager was still in
+ * it. Every sheet renders its panel as a DIRECT child of its own backdrop — SlideOver's v2
+ * leg and ConfirmDialog both — so `> ` says "my own panel" and nothing else. */
+.terminal-theme.staff-v2 .st-sheet:has(> .st-panel[data-state="entering"]) {
   animation: st-backdrop-enter var(--st-motion-sheet) var(--st-ease);
 }
-.terminal-theme.staff-v2 .st-sheet:has(.st-panel[data-state="exiting"]) {
+.terminal-theme.staff-v2 .st-sheet:has(> .st-panel[data-state="exiting"]) {
   animation: st-backdrop-exit 140ms ease-in both;
   pointer-events: none; /* a dismissing sheet must not eat the click that lands behind it */
 }
@@ -1104,6 +1111,32 @@
 .terminal-theme.staff-v2 .st-sheet .st-row {
   transition: background var(--st-motion-hover) var(--st-ease),
               border-color var(--st-motion-hover) var(--st-ease);
+}
+
+/* ── §3 twins, part 2: EMPHASIS INSIDE A DIM PARAGRAPH ─────────────────────
+ * WARN-3 (Beat 8 PR 2 review). The descendant legs above (`.st-sheet .st-t2 *`) are
+ * declared HERE, in section 10, while the role colours (`.st-sheet .st-amber` &c.) are
+ * declared back in section 3 — and both are (0,4,0). Source order therefore inverts the
+ * PAGE leg's outcome: on a page `[data-st-page] .st-amber` comes after `.st-t2 *` and
+ * wins, but in a sheet the dim tier won, so `<div class="st-body st-t2">… <span
+ * class="st-amber">daypart schedule</span> …</div>` rendered the amber span at
+ * rgba(255,255,255,.6). Every emphasis span in the M3 schedule/program panels is exactly
+ * that shape.
+ * FIX BY ORDER, at (0,5,0) so it also clears any later descendant leg: one rule per role,
+ * each keeping its OWN value read from its section-3 declaration — a single shared rule
+ * would flatten four roles into one colour. `:is()` contributes the specificity of its
+ * most specific argument (all class selectors here), so these stay (0,5,0). */
+.terminal-theme.staff-v2 .st-sheet :is(.st-t2, .st-t3) :is(.st-amber, .u-amber) {
+  color: var(--st-amber) !important;
+}
+.terminal-theme.staff-v2 .st-sheet :is(.st-t2, .st-t3) .st-accent {
+  color: var(--st-accent) !important;
+}
+.terminal-theme.staff-v2 .st-sheet :is(.st-t2, .st-t3) .st-live {
+  color: var(--st-accent-live) !important;
+}
+.terminal-theme.staff-v2 .st-sheet :is(.st-t2, .st-t3) :is(.st-danger, .u-red) {
+  color: var(--st-danger) !important;
 }
 
 /* DELIBERATELY NOT TWINNED — recorded so the omissions read as choices:

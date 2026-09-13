@@ -75,11 +75,22 @@ export function ConfirmDialog({
 
   useEffect(() => {
     cancelRef.current?.focus(); // once, on mount
+    // WARN-1 (Beat 8 PR 2 review) — CAPTURE phase, and Escape is CONSUMED.
+    // This dialog is often NESTED inside another v2 sheet that has its own `window`
+    // Escape listener (the signage slide-overs; PlaylistEditor's DELETE PLAYLIST is the
+    // same shape). Both listeners sat on `window` in the bubble phase, so one Escape key
+    // ran both handlers and dismissing the confirm ALSO closed the drawer underneath it,
+    // losing the form the manager was filling in. Capture runs outermost-first, which is
+    // this dialog — it is the topmost surface, so it is the one Escape belongs to — and
+    // `stopPropagation` stops the key before any bubble-phase listener sees it. The guard
+    // is on the Escape branch only, so every other key still reaches the page.
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") beginExitRef.current(() => onCancelRef.current());
+      if (e.key !== "Escape") return;
+      e.stopPropagation();
+      beginExitRef.current(() => onCancelRef.current());
     };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
   }, []);
 
   // A RETARGETED dialog (see NOTE-1 above) is a new dialog to the viewer, so focus returns

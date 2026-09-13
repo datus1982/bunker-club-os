@@ -58,7 +58,9 @@ export interface HubOverlayProps {
   invalidateTakeovers: () => void;
   invalidateEvents: () => void;
   qc: QueryClient;
-  /** Which presentation opened these panels (Beat 8 PR 2). `SignageHub` builds ONE
+  /** DECISION (Beat 8 PR 2): the variant is THREADED from the page that already knows it,
+   *  never re-derived inside a panel with `useUiVersion()`.
+   *  Which presentation opened these panels (Beat 8 PR 2). `SignageHub` builds ONE
    *  `overlays` node and hands it to whichever view renders, so the version it already
    *  knows is passed down here rather than re-read from the switch. Only PROGRAM and
    *  SCHEDULE consume it in this PR — the other slide-overs are PRs 3–6, and until then
