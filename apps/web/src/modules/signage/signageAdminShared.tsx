@@ -9,6 +9,7 @@ import {
 import { recurrenceChipLabel } from "./itemSchedule";
 import type { EventKind, ToastCacheRow } from "./useSignage";
 import type { Align } from "./richText";
+import { TAP } from "@/shared/ui/tokens";
 
 /**
  * Shared staff-signage UI, lifted verbatim out of the old single-page templater so the
@@ -410,13 +411,16 @@ export function EventKindBadge({ kind, style }: { kind: EventKind; style?: CSSPr
 // Shows a square thumbnail + REPLACE / REMOVE. Writes to the module-gated uploads/ prefix
 // (RLS 0037). `url` is the current fields.image_url (undefined when none).
 export function ImageUploadField({
-  url, onChange, label = "IMAGE (optional)", note,
+  url, onChange, label = "IMAGE (optional)", note, variant = "classic",
 }: {
   url: string | undefined;
   onChange: (url: string) => void;
   label?: string;
   note?: string;
+  /** Beat 8 PR 4 — "v2" renders the tokened leaves inside a v2 sheet; classic is byte-identical. */
+  variant?: "classic" | "v2";
 }) {
+  const v2 = variant === "v2";
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const ref = useRef<HTMLInputElement>(null);
@@ -437,18 +441,20 @@ export function ImageUploadField({
   };
 
   return (
-    <div className="terminal-border" style={{ padding: "10px 12px", display: "flex", flexDirection: "column", gap: 8 }}>
-      <span style={caption}>{label}</span>
+    <div className={v2 ? "st-card" : "terminal-border"} style={{ padding: "10px 12px", display: "flex", flexDirection: "column", gap: 8 }}>
+      {/* v2 splits the Label role (uppercase by definition) from a lowercase parenthetical. */}
+      <span className={v2 ? "st-label st-t2" : undefined} style={v2 ? undefined : caption}>{v2 ? label.replace(/\s*\(optional\)\s*$/i, "") : label}</span>
+      {v2 && /\(optional\)\s*$/i.test(label) && <span className="st-body st-t3">Optional</span>}
       <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-        {url && <img src={url} alt="" style={{ width: 72, height: 72, objectFit: "cover", border: "1px solid var(--terminal-green)", flexShrink: 0 }} />}
+        {url && <img src={url} alt="" style={v2 ? { width: 72, height: 72, objectFit: "cover", border: "1px solid", flexShrink: 0 } : { width: 72, height: 72, objectFit: "cover", border: "1px solid var(--terminal-green)", flexShrink: 0 }} />}
         <input ref={ref} type="file" accept="image/*" onChange={onPick} style={{ display: "none" }} />
-        <button type="button" onClick={() => ref.current?.click()} disabled={busy} style={ghost}>
-          {busy ? "UPLOADING…" : url ? "REPLACE" : "UPLOAD IMAGE"}
+        <button type="button" onClick={() => ref.current?.click()} disabled={busy} className={v2 ? "st-btn st-body" : undefined} style={v2 ? ghostV2 : ghost}>
+          {v2 ? (busy ? "Uploading…" : url ? "Replace" : "Upload image") : (busy ? "UPLOADING…" : url ? "REPLACE" : "UPLOAD IMAGE")}
         </button>
-        {url && <button type="button" onClick={() => onChange("")} style={ghost}>REMOVE</button>}
+        {url && <button type="button" onClick={() => onChange("")} className={v2 ? "st-btn st-body" : undefined} style={v2 ? ghostV2 : ghost}>{v2 ? "Remove" : "REMOVE"}</button>}
       </div>
-      {note && <div style={{ fontSize: 14, opacity: 0.55 }}>{note}</div>}
-      {err && <div className="u-red" style={{ fontSize: 15 }}>⚠ {err}</div>}
+      {note && <div className={v2 ? "st-body st-t3" : undefined} style={v2 ? undefined : { fontSize: 14, opacity: 0.55 }}>{note}</div>}
+      {err && <div className={v2 ? "st-body st-danger" : "u-red"} style={v2 ? undefined : { fontSize: 15 }}>⚠ {err}</div>}
     </div>
   );
 }
@@ -457,26 +463,30 @@ export function ImageUploadField({
 // Writes fields.align ("left" | "center"); inline **bold** is authored inline in the text
 // fields and rendered by the display templates (richText.ts). One shared control so the
 // EventEditor and ItemEditor never drift on label/behaviour.
-export function FormatControls({ align, onAlign }: { align: Align; onAlign: (a: Align) => void }) {
-  const opt = (a: Align, label: string) => (
+export function FormatControls({ align, onAlign, variant = "classic" }: { align: Align; onAlign: (a: Align) => void; variant?: "classic" | "v2" }) {
+  const v2 = variant === "v2";
+  // v2: `aria-pressed` on the segmented pair; `u-ink` rides with `st-btn-primary` (the class
+  // paints the BUTTON — a child would stay white-on-accent under the `.st-sheet *` tier).
+  const opt = (a: Align, label: string, v2Label: string) => (
     <button
       type="button"
       onClick={() => onAlign(a)}
-      className={align === a ? "u-fill u-ink" : ""}
-      style={{ ...chip, ...(align === a ? { fontWeight: 700 } : null) }}
+      {...(v2 ? { "aria-pressed": align === a } : null)}
+      className={v2 ? (align === a ? "st-btn st-btn-primary u-ink st-body" : "st-btn st-body") : (align === a ? "u-fill u-ink" : "")}
+      style={v2 ? { ...chipV2, ...(align === a ? { fontWeight: 700 } : null) } : { ...chip, ...(align === a ? { fontWeight: 700 } : null) }}
     >
-      {label}
+      {v2 ? v2Label : label}
     </button>
   );
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
       <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-        <span style={caption}>ALIGN</span>
-        {opt("left", "◧ LEFT")}
-        {opt("center", "▣ CENTER")}
+        <span className={v2 ? "st-label st-t2" : undefined} style={v2 ? undefined : caption}>ALIGN</span>
+        {opt("left", "◧ LEFT", "◧ Left")}
+        {opt("center", "▣ CENTER", "▣ Center")}
       </div>
-      <div style={{ fontSize: 14, opacity: 0.55 }}>
-        <code>**bold**</code> · alignment applies to this card.
+      <div className={v2 ? "st-body st-t3" : undefined} style={v2 ? undefined : { fontSize: 14, opacity: 0.55 }}>
+        <code className={v2 ? "st-mono" : undefined}>**bold**</code> · alignment applies to this card.
       </div>
     </div>
   );
@@ -487,13 +497,16 @@ export function FormatControls({ align, onAlign }: { align: Align; onAlign: (a: 
 // item, its name/price render LIVE green, and an 86'd / off-POS item shows a warning so a
 // manager sees why a linked promo would auto-hide on screen (docs/13 POS-visibility rule).
 export function ToastSourcePicker({
-  rows, selected, onSelect, label = "LINK A DRINK (optional)",
+  rows, selected, onSelect, label = "LINK A DRINK (optional)", variant = "classic",
 }: {
   rows: ToastCacheRow[];
   selected: string | null;
   onSelect: (guid: string | null) => void;
   label?: string;
+  /** Beat 8 PR 4 — "v2" renders the tokened leaves inside a v2 sheet; classic is byte-identical. */
+  variant?: "classic" | "v2";
 }) {
+  const v2 = variant === "v2";
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
   const sel = selected ? rows.find((r) => r.guid === selected) : undefined;
@@ -521,49 +534,58 @@ export function ToastSourcePicker({
     : sel && !sel.pos_visible ? "OFF POS VIEW — this card auto-hides on screen"
     : null;
 
+  // DECISION: (Beat 8 PR 4) a POS-synced value (the linked item's name/price) is "live
+  // data", not a true LIVE on-air state, so the v2 leg spends the CALMED accent
+  // (`st-accent`) on it — not the reserved `st-live` #00FF41, which §B keeps for "a true
+  // LIVE dot/label only" (● NOW / ● ACTIVE NOW / ■ ON AIR NOW). Classic keeps `sig-live`.
   return (
-    <div className="terminal-border" style={{ padding: "10px 12px", display: "flex", flexDirection: "column", gap: 8 }}>
+    <div className={v2 ? "st-card" : "terminal-border"} style={{ padding: "10px 12px", display: "flex", flexDirection: "column", gap: 8 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
-        <span style={caption}>{label}</span>
-        {sel && <button type="button" onClick={() => onSelect(null)} style={{ ...ghost, fontSize: 15, padding: "4px 10px" }}>CLEAR</button>}
+        {/* v2 splits the Label role (uppercase by definition) from a lowercase parenthetical. */}
+        <span className={v2 ? "st-label st-t2" : undefined} style={v2 ? undefined : caption}>{v2 ? label.replace(/\s*\(optional\)\s*$/i, "") : label}</span>
+        {sel && <button type="button" onClick={() => onSelect(null)} className={v2 ? "st-btn st-body" : undefined} style={v2 ? { ...ghostV2, padding: "4px 10px" } : { ...ghost, fontSize: 15, padding: "4px 10px" }}>{v2 ? "Clear" : "CLEAR"}</button>}
       </div>
+      {v2 && /\(optional\)\s*$/i.test(label) && <span className="st-body st-t3" style={{ marginTop: -4 }}>Optional</span>}
       {sel ? (
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            {sel.image && <img src={sel.image} alt="" style={{ width: 44, height: 44, objectFit: "cover", border: "1px solid var(--terminal-green)" }} />}
+            {sel.image && <img src={sel.image} alt="" style={v2 ? { width: 44, height: 44, objectFit: "cover", border: "1px solid" } : { width: 44, height: 44, objectFit: "cover", border: "1px solid var(--terminal-green)" }} />}
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div className="sig-live" style={{ fontSize: 20, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{sel.name}</div>
-              <div style={{ fontSize: 14, opacity: 0.6 }}>
-                {sel.menu_group}{sel.price != null ? <> · <span className="sig-live">${sel.price}</span></> : null}
+              {/* calmed accent on v2 — see the DECISION above `return`. */}
+              <div className={v2 ? "st-accent st-heading" : "sig-live"} style={v2 ? { whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" } : { fontSize: 20, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{sel.name}</div>
+              <div className={v2 ? "st-body st-t2" : undefined} style={v2 ? undefined : { fontSize: 14, opacity: 0.6 }}>
+                {sel.menu_group}{sel.price != null ? <> · <span className={v2 ? "st-body st-accent" : "sig-live"}>${sel.price}</span></> : null}
               </div>
             </div>
-            <button type="button" onClick={() => setOpen((o) => !o)} style={{ ...ghost, fontSize: 15 }}>CHANGE</button>
+            <button type="button" onClick={() => setOpen((o) => !o)} className={v2 ? "st-btn st-body" : undefined} style={v2 ? ghostV2 : { ...ghost, fontSize: 15 }}>{v2 ? "Change" : "CHANGE"}</button>
           </div>
-          {warn && <div className="u-amber" style={{ fontSize: 14 }}>⚠ {warn}</div>}
+          {warn && <div className={v2 ? "st-body st-amber" : "u-amber"} style={v2 ? undefined : { fontSize: 14 }}>⚠ {warn}</div>}
         </div>
       ) : (
-        <button type="button" onClick={() => setOpen((o) => !o)} style={ghost}>{open ? "CLOSE PICKER" : "PICK A TOAST ITEM"}</button>
+        <button type="button" onClick={() => setOpen((o) => !o)} className={v2 ? "st-btn st-body" : undefined} style={v2 ? ghostV2 : ghost}>{v2 ? (open ? "Close picker" : "Pick a Toast item") : (open ? "CLOSE PICKER" : "PICK A TOAST ITEM")}</button>
       )}
       {open && (
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           <input autoFocus placeholder="search name or group…" value={q} onChange={(e) => setQ(e.target.value)}
-            style={{ background: "#000", color: "var(--terminal-green)", border: "1px solid var(--terminal-green)", padding: "10px 12px", fontSize: 18, fontFamily: MONO, minHeight: 44 }} />
+            className={v2 ? "st-body" : undefined}
+            style={v2 ? { border: "1px solid", padding: "10px 12px", minHeight: TAP } : { background: "#000", color: "var(--terminal-green)", border: "1px solid var(--terminal-green)", padding: "10px 12px", fontSize: 18, fontFamily: MONO, minHeight: 44 }} />
           <div style={{ maxHeight: 220, overflowY: "auto", display: "flex", flexDirection: "column", gap: 4 }}>
-            {filtered.length === 0 && <div style={{ opacity: 0.6, fontSize: 16 }}>No matches (has the menu synced yet?).</div>}
+            {filtered.length === 0 && <div className={v2 ? "st-body st-t2" : undefined} style={v2 ? undefined : { opacity: 0.6, fontSize: 16 }}>No matches (has the menu synced yet?).</div>}
             {filtered.map((r) => (
               <button
                 key={r.guid}
                 type="button"
                 onClick={() => { onSelect(r.guid); setOpen(false); }}
-                style={{ display: "flex", gap: 10, alignItems: "center", background: "transparent", color: "var(--terminal-green)", border: "1px solid rgba(0,255,65,0.25)", padding: "6px 8px", cursor: "pointer", fontFamily: MONO, minHeight: 48, opacity: r.pos_visible ? 1 : 0.5 }}
+                className={v2 ? "st-row st-body" : undefined}
+                style={v2 ? { display: "flex", gap: 10, alignItems: "center", padding: "6px 8px", cursor: "pointer", minHeight: 48, textAlign: "left", opacity: r.pos_visible ? 1 : 0.5 } : { display: "flex", gap: 10, alignItems: "center", background: "transparent", color: "var(--terminal-green)", border: "1px solid rgba(0,255,65,0.25)", padding: "6px 8px", cursor: "pointer", fontFamily: MONO, minHeight: 48, opacity: r.pos_visible ? 1 : 0.5 }}
               >
                 {r.image
-                  ? <img src={r.image} alt="" style={{ width: 36, height: 36, objectFit: "cover", border: "1px solid var(--terminal-green)", flexShrink: 0 }} />
-                  : <span style={{ width: 36, height: 36, border: "1px solid var(--terminal-green)", flexShrink: 0, display: "inline-block" }} />}
-                <span style={{ flex: 1, minWidth: 0, textAlign: "left", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", fontSize: 17 }}>{r.name}</span>
-                <span style={{ fontSize: 13, opacity: 0.6, whiteSpace: "nowrap" }}>{r.menu_group}</span>
-                {!r.pos_visible && <span className="u-amber" style={{ fontSize: 11, whiteSpace: "nowrap" }}>POS-HIDDEN</span>}
-                {r.out_of_stock && <span className="u-amber" style={{ fontSize: 12 }}>86</span>}
+                  ? <img src={r.image} alt="" style={v2 ? { width: 36, height: 36, objectFit: "cover", border: "1px solid", flexShrink: 0 } : { width: 36, height: 36, objectFit: "cover", border: "1px solid var(--terminal-green)", flexShrink: 0 }} />
+                  : <span style={v2 ? { width: 36, height: 36, border: "1px solid", flexShrink: 0, display: "inline-block" } : { width: 36, height: 36, border: "1px solid var(--terminal-green)", flexShrink: 0, display: "inline-block" }} />}
+                <span className={v2 ? "st-body" : undefined} style={v2 ? { flex: 1, minWidth: 0, textAlign: "left", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" } : { flex: 1, minWidth: 0, textAlign: "left", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", fontSize: 17 }}>{r.name}</span>
+                <span className={v2 ? "st-body st-t3" : undefined} style={v2 ? { whiteSpace: "nowrap" } : { fontSize: 13, opacity: 0.6, whiteSpace: "nowrap" }}>{r.menu_group}</span>
+                {!r.pos_visible && <span className={v2 ? "st-label st-amber" : "u-amber"} style={v2 ? { whiteSpace: "nowrap" } : { fontSize: 11, whiteSpace: "nowrap" }}>POS-HIDDEN</span>}
+                {r.out_of_stock && <span className={v2 ? "st-label st-amber" : "u-amber"} style={v2 ? undefined : { fontSize: 12 }}>86</span>}
               </button>
             ))}
           </div>
@@ -572,3 +594,11 @@ export function ToastSourcePicker({
     </div>
   );
 }
+
+/* ── v2 twins for the three shared editor sub-controls (Beat 8 PR 4) ─────────────
+ * Geometry only, the PR 2 idiom: no `fontFamily` (the role classes own the face), no
+ * `background`/`color` (an inline colour cannot beat the theme's !important green — the
+ * classes paint), `border: "1px solid"` with no colour so the token blanket paints the
+ * hairline. `minWidth: TAP` joins `minHeight` (the 44px floor is measured on both axes). */
+const ghostV2: CSSProperties = { padding: "8px 12px", minWidth: TAP, minHeight: TAP, border: "1px solid", cursor: "pointer" };
+const chipV2: CSSProperties = { padding: "8px 12px", minWidth: TAP, minHeight: TAP, border: "1px solid", cursor: "pointer" };

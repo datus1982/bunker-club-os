@@ -115,8 +115,22 @@ export const checkRow: CSSProperties = {
  * without a single new rule. Geometry, structure, the pinned header/footer and the
  * scroll region are identical in both looks; only fill, edge and ink move.
  */
-export function Modal({ title, onClose, children, footer }: { title: string; onClose: () => void; children: React.ReactNode; footer?: React.ReactNode }) {
-  const v2 = useTriviaV2();
+export function Modal({ title, onClose, children, footer, v2: v2Override }: {
+  title: string;
+  onClose: () => void;
+  children: React.ReactNode;
+  footer?: React.ReactNode;
+  /** BEAT 8 (PR 5) — an explicit override of the trivia context. `TriviaV2Context` defaults
+   *  to `false` with no provider BY DESIGN (triviaV2.ts), which is exactly right for every
+   *  trivia caller and exactly wrong for `modules/signage/ItemEditor.tsx`: it mounts this
+   *  Modal from a v2 signage page that sits outside any trivia provider, so it rendered the
+   *  classic frame on a tokened page (overlay inventory §D finding 2). A caller that KNOWS its
+   *  presentation passes it here; a caller that passes nothing reads the context, so every
+   *  existing call site — classic and v2 trivia alike — is byte-identical. */
+  v2?: boolean;
+}) {
+  const ctx = useTriviaV2();
+  const v2 = v2Override ?? ctx;
   return (
     <div
       onClick={onClose}
@@ -153,9 +167,13 @@ export function Modal({ title, onClose, children, footer }: { title: string; onC
             body scrolls (Phase 4c). The black fill is what makes it opaque in classic; in
             v2 the panel itself is surface-4 and the footer sits OUTSIDE the scroll region,
             so transparent is both opaque enough and honest — a black strip under a
-            surface-4 sheet would read as a seam. */}
+            surface-4 sheet would read as a seam.
+            v2 (Beat 8 PR 5): `flexWrap` lets a three-button footer (DELETE · CANCEL · SAVE in the
+            slide editor) fold onto two rows on a narrow phone instead of squeezing a verb out
+            of its box; a footer that fits — every trivia dialog's pair — never wraps, so
+            nothing moves for them. Whole-object ternary: the classic literal is untouched. */}
         {footer && (
-          <div style={{ display: "flex", gap: 12, justifyContent: "flex-end", padding: "14px 24px", borderTop: "1px solid var(--terminal-green)", background: v2 ? "transparent" : "#000" }}>
+          <div style={v2 ? { display: "flex", flexWrap: "wrap", gap: 12, justifyContent: "flex-end", padding: "14px 24px", borderTop: "1px solid var(--terminal-green)", background: "transparent" } : { display: "flex", gap: 12, justifyContent: "flex-end", padding: "14px 24px", borderTop: "1px solid var(--terminal-green)", background: "#000" }}>
             {footer}
           </div>
         )}
@@ -164,8 +182,14 @@ export function Modal({ title, onClose, children, footer }: { title: string; onC
   );
 }
 
-export function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  const v2 = useTriviaV2();
+export function Field({ label, children, v2: v2Override }: {
+  label: string;
+  children: React.ReactNode;
+  /** Same override as `Modal` (Beat 8 PR 5): undefined = read the trivia context. */
+  v2?: boolean;
+}) {
+  const ctx = useTriviaV2();
+  const v2 = v2Override ?? ctx;
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
       {/* Label role in v2: 12px uppercase at the Secondary tier, instead of a 20px green
