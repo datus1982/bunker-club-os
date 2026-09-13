@@ -824,7 +824,7 @@ function MenuGroupFields({ v2, fields, setField, toastRows }: FieldProps & { toa
       {picked && (
         <div className={v2 ? (picked.showable === 0 ? "st-card st-callout-warn st-body" : "st-body st-t2") : undefined} style={v2 ? (picked.showable === 0 ? { padding: "10px 12px", lineHeight: 1.5 } : { lineHeight: 1.5 }) : { fontSize: 14, opacity: 0.7, lineHeight: 1.5 }}>
           {picked.showable === 0 ? (
-            <span className={v2 ? "st-amber" : "u-amber"}>
+            <span className={v2 ? "st-body st-amber" : "u-amber"}>
               ⚠ NOTHING SHOWABLE — all {picked.total} item{picked.total === 1 ? "" : "s"} in this section
               {picked.eightySixed > 0 && picked.offPos > 0
                 ? ` are out (${picked.eightySixed} 86'd, ${picked.offPos} off the POS view)`
