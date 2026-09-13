@@ -395,6 +395,15 @@ function PlaylistRow({ p, onEdit }: { p: PlaylistWithStats; onEdit: () => void }
  */
 export function PlaylistEditor({ initial, files, onClose, variant = "classic", openKey }: { initial: PlaylistWithStats | null; files: MediaFile[]; onClose: () => void; variant?: MediaPanelVariant; openKey?: unknown }) {
   const v2 = variant === "v2";
+  // Read only on the v2 leg below (the CLIPS-row thumb), but a hook cannot sit behind a branch.
+  const narrow = useIsMobile();
+  // DECISION: (Beat 8 PR 6, Marvin ruling on review NOTE-2) at PHONE width the v2 CLIPS rows drop
+  // the 44×30 frame-grab thumb. With the thumb, three 44px icons and the gaps, the title column
+  // at 390 was ~98px (≈10 chars) and `overflowWrap: anywhere` broke 12-letter words mid-word
+  // ("Ghostbuster / s") — the acceptance bar is ZERO mid-word breaks across the real library.
+  // Without it the column is ≥160px (≈17 chars) and every real title wraps at spaces. The
+  // picker rows keep their thumb (they stay nowrap), desktop keeps it, classic keeps it.
+  const clipThumb = !(v2 && narrow);
   const isFolder = initial?.playlist.source === "folder";
   const readOnly = isFolder; // folder name + membership are sync-owned
   const [name, setName] = useState(initial?.playlist.name ?? "");
@@ -501,9 +510,9 @@ export function PlaylistEditor({ initial, files, onClose, variant = "classic", o
                     // v2: the row is TOP-aligned so a two-line title (below) grows the row while the
                     // thumb and the three 44px icons keep their own height instead of stretching.
                     <div key={it.file.id} className={v2 ? "st-row" : "terminal-border"} style={v2 ? { padding: "7px 9px", display: "flex", alignItems: "flex-start", gap: 10 } : { padding: "7px 9px", display: "flex", alignItems: "center", gap: 10 }}>
-                      {it.file.thumb
+                      {clipThumb && (it.file.thumb
                         ? <img src={it.file.thumb} alt="" style={{ ...thumbImgS, opacity: it.file.status === "present" ? 1 : 0.45 }} />
-                        : <span style={v2 ? { width: 44, height: 30, border: "1px solid", flexShrink: 0, display: "inline-block" } : { width: 44, height: 30, border: "1px solid var(--terminal-green)", flexShrink: 0, display: "inline-block" }} />}
+                        : <span style={v2 ? { width: 44, height: 30, border: "1px solid", flexShrink: 0, display: "inline-block" } : { width: 44, height: 30, border: "1px solid var(--terminal-green)", flexShrink: 0, display: "inline-block" }} />)}
                       <div style={{ flex: 1, minWidth: 0 }}>
                         {/* Every leaf carries its own role class: nothing inherits font-size
                             under `.terminal-theme *` (the PR #89 gotcha). */}
