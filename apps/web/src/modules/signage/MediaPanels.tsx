@@ -13,6 +13,7 @@ import { useIsMobile } from "@/shared/useIsMobile";
 import { ConfirmDialog } from "@/shared/ui";
 import { MONO, ghost } from "./signageAdminShared";
 import { SlideOver } from "./SlideOver";
+import { TAP } from "@/shared/ui/tokens";
 
 /**
  * The two halves of the MEDIA surface, as mountable panels (UX overhaul Beat 4).
@@ -379,7 +380,21 @@ function PlaylistRow({ p, onEdit }: { p: PlaylistWithStats; onEdit: () => void }
 }
 
 /* ── create / edit slide-over (hosted by the hub section or the /media/playlists page) ────────────────────────────────────────────── */
-export function PlaylistEditor({ initial, files, onClose, variant = "classic" }: { initial: PlaylistWithStats | null; files: MediaFile[]; onClose: () => void; variant?: MediaPanelVariant }) {
+/**
+ * BEAT 8 (PR 6) — the `variant` that Beat 5 / Beat 7 already thread here now reaches the
+ * FRAME and the leaves. Until this PR the editor branched only its icon floor and its delete
+ * confirm, so a v2 page opened a tokened ConfirmDialog inside a classic-green drawer
+ * (inventory §A row 10). Same shape as PR 2's ProgramPanel: ONE component, a `v2` fork at
+ * each leaf, every branched `style` a WHOLE-OBJECT ternary whose classic arm is the shipped
+ * literal key for key (so the serialised attribute order — and the innerHTML hash — of the
+ * classic hub cannot move). NOTHING about behaviour moves: same `create`/`rename`/`del`/
+ * `add`/`remove`/`swap` mutations with the same args, same `readOnly` derivation, same
+ * `nextPos`, same ConfirmDialog. `openKey` is the caller's open-request identity (see
+ * SlideOver) — the v2 page passes a fresh object per press so a ✕-then-re-press inside the
+ * exit lands open; classic passes nothing and closes synchronously as it always has.
+ */
+export function PlaylistEditor({ initial, files, onClose, variant = "classic", openKey }: { initial: PlaylistWithStats | null; files: MediaFile[]; onClose: () => void; variant?: MediaPanelVariant; openKey?: unknown }) {
+  const v2 = variant === "v2";
   const isFolder = initial?.playlist.source === "folder";
   const readOnly = isFolder; // folder name + membership are sync-owned
   const [name, setName] = useState(initial?.playlist.name ?? "");
@@ -408,62 +423,93 @@ export function PlaylistEditor({ initial, files, onClose, variant = "classic" }:
   const inPlaylist = useMemo(() => new Set(items.map((i) => i.file.id)), [items]);
 
   const title = isFolder ? "VIEW FOLDER PLAYLIST" : initial ? "EDIT PLAYLIST" : "NEW PLAYLIST";
+  // Heading role = sentence case on v2 (the copy rule PR 2 set); classic keeps its caps.
+  const titleV2 = isFolder ? "View folder playlist" : initial ? "Edit playlist" : "New playlist";
 
   // The reorder/remove icons sat at 40px — under the 44px floor (#104 NOTE-3). v2 lifts them;
-  // classic keeps 40 so the hub's editor is unchanged.
-  const icon = variant === "v2" ? { ...miniIcon, minWidth: 44, minHeight: 44 } : miniIcon;
+  // classic keeps 40 so the hub's editor is unchanged. PR 6: the v2 twin is now geometry-only
+  // (`iconV2`, bottom of file) — the `st-btn st-body` classes own its ink, face and size.
+  const icon = v2 ? iconV2 : miniIcon;
+  /** v2 leaf kit (PR 2's idiom): classes paint, twins carry geometry. An inline colour
+   *  loses to the theme's !important green, so none is spent on the v2 arm. */
+  const labelCls = v2 ? "st-label st-t2" : undefined;
+  const noteCls = v2 ? "st-body st-t2" : undefined;
+  const noteS = v2 ? undefined : { opacity: 0.6, fontSize: 15 };
+  // DECISION: (Beat 8 PR 6) the per-clip ✕ is NEUTRAL on v2 — not danger, not amber. Danger
+  // red is reserved for data loss (owner ruling): taking a clip out of a custom playlist is
+  // reversible membership (the file stays in the library, the picker below re-adds it) and
+  // classic never asked a confirm for it. Amber is §B's ambient/pending tone, not an action
+  // tone — classic's `u-amber` here was a colour pick, not a state. Classic keeps `u-amber`.
+  const removeCls = v2 ? "st-btn st-body" : "u-amber";
+  // DECISION: (Beat 8 PR 6) the editor gains NO FRAMED/SHUFFLE/SUBS/CAROUSEL toggles. Those four
+  // live on `PlaylistRow` (the list) and never on this sheet — adding them here would be a new
+  // write surface (four more mutations reachable from a second place), not a token swap.
+  /** Thumb frames: `border: "1px solid"` with no colour — the sheet blanket paints the hairline. */
+  const thumbImgS = v2
+    ? { width: 44, height: 30, objectFit: "cover" as const, border: "1px solid", flexShrink: 0 }
+    : { width: 44, height: 30, objectFit: "cover" as const, border: "1px solid var(--terminal-green)", flexShrink: 0 };
 
   return (
-    <SlideOver eyebrow="MEDIA ▸ PLAYLIST" title={title} onClose={onClose}>
+    <SlideOver eyebrow="MEDIA ▸ PLAYLIST" title={v2 ? titleV2 : title} onClose={onClose} variant={variant} openKey={openKey}>
       <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
         {/* name */}
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-          <span style={{ fontSize: 14, letterSpacing: 2, opacity: 0.55 }}>NAME{isFolder ? " (folder — read-only)" : ""}</span>
+          {/* v2 splits the Label role (all-caps by definition) from its lowercase hint, so
+              `text-transform: uppercase` never shouts "(FOLDER — READ-ONLY)". */}
+          <span className={labelCls} style={v2 ? undefined : { fontSize: 14, letterSpacing: 2, opacity: 0.55 }}>{v2 ? "NAME" : `NAME${isFolder ? " (folder — read-only)" : ""}`}</span>
+          {v2 && isFolder && <span className="st-body st-t3">Folder playlist — the name and its clips come from the media PC's folder, so they are read-only here.</span>}
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             <input
               value={name}
               disabled={readOnly}
               onChange={(e) => setName(e.target.value)}
               placeholder="playlist name"
-              style={{ flex: "1 1 200px", minWidth: 0, background: "#000", color: "var(--terminal-green)", border: "1px solid var(--terminal-green)", padding: "10px 12px", fontSize: 18, fontFamily: MONO, opacity: readOnly ? 0.6 : 1 }}
+              className={v2 ? "st-body" : undefined}
+              style={v2
+                ? { flex: "1 1 200px", minWidth: 0, border: "1px solid", padding: "10px 12px", minHeight: TAP, opacity: readOnly ? 0.6 : 1 }
+                : { flex: "1 1 200px", minWidth: 0, background: "#000", color: "var(--terminal-green)", border: "1px solid var(--terminal-green)", padding: "10px 12px", fontSize: 18, fontFamily: MONO, opacity: readOnly ? 0.6 : 1 }}
             />
+            {/* `u-ink` rides with `st-btn-primary` (PR 2's pairing): `.st-sheet .st-btn-primary`
+                paints the BUTTON's own colour, and the utility is what reaches any child. */}
             {!isFolder && !playlistId && (
-              <button type="button" onClick={() => create.mutate()} disabled={create.isPending || !name.trim()} style={{ ...ghost, fontWeight: 700 }}>CREATE</button>
+              <button type="button" onClick={() => create.mutate()} disabled={create.isPending || !name.trim()} className={v2 ? "st-btn st-btn-primary u-ink st-body" : undefined} style={v2 ? ghostV2 : { ...ghost, fontWeight: 700 }}>{v2 ? "Create" : "CREATE"}</button>
             )}
             {!isFolder && playlistId && (
-              <button type="button" onClick={() => rename.mutate()} disabled={rename.isPending} style={ghost}>SAVE NAME</button>
+              <button type="button" onClick={() => rename.mutate()} disabled={rename.isPending} className={v2 ? "st-btn st-btn-primary u-ink st-body" : undefined} style={v2 ? ghostV2 : ghost}>{v2 ? "Save name" : "SAVE NAME"}</button>
             )}
           </div>
         </div>
 
         {!playlistId ? (
-          <div style={{ opacity: 0.6, fontSize: 15 }}>Name the playlist and CREATE it, then add clips.</div>
+          <div className={noteCls} style={noteS}>{v2 ? "Name the playlist and create it, then add clips." : "Name the playlist and CREATE it, then add clips."}</div>
         ) : (
           <>
             {/* current items */}
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              <span style={{ fontSize: 14, letterSpacing: 2, opacity: 0.55 }}>CLIPS ({items.length})</span>
+              <span className={labelCls} style={v2 ? undefined : { fontSize: 14, letterSpacing: 2, opacity: 0.55 }}>CLIPS ({items.length})</span>
               {detailQ.isLoading ? (
-                <div style={{ opacity: 0.6, fontSize: 15 }}>LOADING…</div>
+                <div className={noteCls} style={noteS}>{v2 ? "Loading…" : "LOADING…"}</div>
               ) : items.length === 0 ? (
-                <div style={{ opacity: 0.6, fontSize: 15 }}>Empty. Add clips from the library below.</div>
+                <div className={noteCls} style={noteS}>Empty. Add clips from the library below.</div>
               ) : (
                 items.map((it, i) => {
                   const chip = statusChip(it.file.status);
                   return (
-                    <div key={it.file.id} className="terminal-border" style={{ padding: "7px 9px", display: "flex", alignItems: "center", gap: 10 }}>
+                    <div key={it.file.id} className={v2 ? "st-row" : "terminal-border"} style={{ padding: "7px 9px", display: "flex", alignItems: "center", gap: 10 }}>
                       {it.file.thumb
-                        ? <img src={it.file.thumb} alt="" style={{ width: 44, height: 30, objectFit: "cover", border: "1px solid var(--terminal-green)", flexShrink: 0, opacity: it.file.status === "present" ? 1 : 0.45 }} />
-                        : <span style={{ width: 44, height: 30, border: "1px solid var(--terminal-green)", flexShrink: 0, display: "inline-block" }} />}
+                        ? <img src={it.file.thumb} alt="" style={{ ...thumbImgS, opacity: it.file.status === "present" ? 1 : 0.45 }} />
+                        : <span style={v2 ? { width: 44, height: 30, border: "1px solid", flexShrink: 0, display: "inline-block" } : { width: 44, height: 30, border: "1px solid var(--terminal-green)", flexShrink: 0, display: "inline-block" }} />}
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 16, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{(it.file.title ?? "").trim() || it.file.filename}</div>
-                        <div style={{ fontSize: 12, opacity: 0.55 }}>{formatDuration(it.file.duration_seconds)}{it.file.status !== "present" ? ` · ${chip.label}` : ""}</div>
+                        {/* Every leaf carries its own role class: nothing inherits font-size
+                            under `.terminal-theme *` (the PR #89 gotcha). */}
+                        <div className={v2 ? "st-body" : undefined} style={v2 ? { whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" } : { fontSize: 16, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{(it.file.title ?? "").trim() || it.file.filename}</div>
+                        <div className={v2 ? "st-body st-t3" : undefined} style={v2 ? undefined : { fontSize: 12, opacity: 0.55 }}>{formatDuration(it.file.duration_seconds)}{it.file.status !== "present" ? ` · ${chip.label}` : ""}</div>
                       </div>
                       {!readOnly && (
                         <>
-                          <button type="button" disabled={i === 0 || swap.isPending} onClick={() => swap.mutate({ a: it, b: items[i - 1] })} aria-label="Move up" style={icon}>▲</button>
-                          <button type="button" disabled={i === items.length - 1 || swap.isPending} onClick={() => swap.mutate({ a: it, b: items[i + 1] })} aria-label="Move down" style={icon}>▼</button>
-                          <button type="button" onClick={() => remove.mutate(it.file.id)} className="u-amber" aria-label="Remove" style={icon}>✕</button>
+                          <button type="button" disabled={i === 0 || swap.isPending} onClick={() => swap.mutate({ a: it, b: items[i - 1] })} aria-label="Move up" className={v2 ? "st-btn st-body" : undefined} style={icon}>▲</button>
+                          <button type="button" disabled={i === items.length - 1 || swap.isPending} onClick={() => swap.mutate({ a: it, b: items[i + 1] })} aria-label="Move down" className={v2 ? "st-btn st-body" : undefined} style={icon}>▼</button>
+                          <button type="button" onClick={() => remove.mutate(it.file.id)} className={removeCls} aria-label="Remove" style={icon}>✕</button>
                         </>
                       )}
                     </div>
@@ -475,9 +521,9 @@ export function PlaylistEditor({ initial, files, onClose, variant = "classic" }:
             {/* add-from-library (custom only) */}
             {!readOnly && (
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                <span style={{ fontSize: 14, letterSpacing: 2, opacity: 0.55 }}>ADD FROM LIBRARY</span>
+                <span className={labelCls} style={v2 ? undefined : { fontSize: 14, letterSpacing: 2, opacity: 0.55 }}>ADD FROM LIBRARY</span>
                 <div style={{ maxHeight: 260, overflowY: "auto", display: "flex", flexDirection: "column", gap: 4 }}>
-                  {files.length === 0 && <div style={{ opacity: 0.6, fontSize: 15 }}>No media synced yet.</div>}
+                  {files.length === 0 && <div className={noteCls} style={noteS}>No media synced yet.</div>}
                   {files.map((f) => {
                     const already = inPlaylist.has(f.id);
                     return (
@@ -486,13 +532,18 @@ export function PlaylistEditor({ initial, files, onClose, variant = "classic" }:
                         type="button"
                         disabled={already || add.isPending}
                         onClick={() => add.mutate(f.id)}
-                        style={{ display: "flex", gap: 10, alignItems: "center", background: "transparent", color: "var(--terminal-green)", border: "1px solid rgba(0,255,65,0.25)", padding: "6px 8px", cursor: already ? "default" : "pointer", fontFamily: MONO, minHeight: 44, opacity: already ? 0.4 : 1 }}
+                        /* v2: a picker row is an interactive `st-row` (the sheet twin already
+                           washes `button.st-row` on hover/press); `st-body` sizes the button itself. */
+                        className={v2 ? "st-row st-body" : undefined}
+                        style={v2
+                          ? { display: "flex", gap: 10, alignItems: "center", border: "1px solid", padding: "6px 8px", cursor: already ? "default" : "pointer", minHeight: TAP, minWidth: TAP, opacity: already ? 0.4 : 1 }
+                          : { display: "flex", gap: 10, alignItems: "center", background: "transparent", color: "var(--terminal-green)", border: "1px solid rgba(0,255,65,0.25)", padding: "6px 8px", cursor: already ? "default" : "pointer", fontFamily: MONO, minHeight: 44, opacity: already ? 0.4 : 1 }}
                       >
                         {f.thumb
-                          ? <img src={f.thumb} alt="" style={{ width: 40, height: 28, objectFit: "cover", border: "1px solid var(--terminal-green)", flexShrink: 0 }} />
-                          : <span style={{ width: 40, height: 28, border: "1px solid var(--terminal-green)", flexShrink: 0, display: "inline-block" }} />}
-                        <span style={{ flex: 1, minWidth: 0, textAlign: "left", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", fontSize: 16 }}>{(f.title ?? "").trim() || f.filename}</span>
-                        <span style={{ fontSize: 12, opacity: 0.55 }}>{already ? "ADDED" : "+ ADD"}</span>
+                          ? <img src={f.thumb} alt="" style={v2 ? { width: 40, height: 28, objectFit: "cover", border: "1px solid", flexShrink: 0 } : { width: 40, height: 28, objectFit: "cover", border: "1px solid var(--terminal-green)", flexShrink: 0 }} />
+                          : <span style={v2 ? { width: 40, height: 28, border: "1px solid", flexShrink: 0, display: "inline-block" } : { width: 40, height: 28, border: "1px solid var(--terminal-green)", flexShrink: 0, display: "inline-block" }} />}
+                        <span className={v2 ? "st-body" : undefined} style={v2 ? { flex: 1, minWidth: 0, textAlign: "left", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" } : { flex: 1, minWidth: 0, textAlign: "left", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", fontSize: 16 }}>{(f.title ?? "").trim() || f.filename}</span>
+                        <span className={v2 ? "st-label st-t3" : undefined} style={v2 ? undefined : { fontSize: 12, opacity: 0.55 }}>{already ? "ADDED" : "+ ADD"}</span>
                       </button>
                     );
                   })}
@@ -516,9 +567,11 @@ export function PlaylistEditor({ initial, files, onClose, variant = "classic" }:
                     if (variant === "v2") { setConfirmDelete(true); return; }
                     if (confirm("Delete this playlist? Clips stay in the library; any screen pointed at it falls back to an empty program until re-pointed.")) del.mutate();
                   }}
-                  className="u-red"
-                  style={{ ...ghost, color: "var(--terminal-red,#ff5555)", borderColor: "var(--terminal-red,#ff5555)" }}
-                >DELETE PLAYLIST</button>
+                  /* Deleting the playlist IS data loss (the custom membership is gone), so v2
+                     wears the danger ink the token sheet reserves for it; classic keeps its red literal. */
+                  className={v2 ? "st-btn st-btn-danger st-body" : "u-red"}
+                  style={v2 ? ghostV2 : { ...ghost, color: "var(--terminal-red,#ff5555)", borderColor: "var(--terminal-red,#ff5555)" }}
+                >{v2 ? "Delete playlist" : "DELETE PLAYLIST"}</button>
               </div>
             )}
           </>
@@ -570,3 +623,12 @@ const miniIcon: CSSProperties = {
   border: "1px solid var(--terminal-green)", background: "transparent",
   minWidth: 40, minHeight: 40, cursor: "pointer", flexShrink: 0,
 };
+/* v2 twins (Beat 8 PR 6) — geometry only, PR 2's idiom: no `fontFamily`/`fontSize` (the
+ * `st-body` role owns the face and the 15px), no `background`/`color` (an inline colour cannot
+ * beat the theme's !important green — the `st-btn*` classes are what paint), and
+ * `border: "1px solid"` with no colour so the sheet blanket paints the hairline (the
+ * ConfirmDialog idiom). `minWidth: TAP` joins `minHeight`: the 44px floor is measured on
+ * BOTH axes (#103 NOTE-6). `iconV2` is the 40px `miniIcon` lifted to the floor — the same
+ * lift Beat 5 shipped as `{ ...miniIcon, minWidth: 44, minHeight: 44 }`, minus the literals. */
+const ghostV2: CSSProperties = { padding: "8px 12px", minWidth: TAP, minHeight: TAP, border: "1px solid", cursor: "pointer" };
+const iconV2: CSSProperties = { minWidth: TAP, minHeight: TAP, border: "1px solid", cursor: "pointer", flexShrink: 0 };
