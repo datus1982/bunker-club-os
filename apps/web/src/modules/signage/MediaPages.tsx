@@ -434,8 +434,12 @@ export function MediaScreensPage() {
         <>
           {/* The hub's own slide-overs, opened with the hub's own props (HubOverlays).
               SHARED with the classic hub ⇒ rendered outside the token scope. */}
+          {/* `key` = the slot: a different card's press inside the exit window remounts
+              fresh instead of retargeting an instance whose drafts belong to the old slot
+              (addendum WARN — see the same note in HubOverlays). */}
           {panel?.kind === "program" && (
             <ProgramOverlay
+              key={panel.slot.id}
               slot={panel.slot}
               scheduleBySlot={scheduleBySlot}
               overrideHoldFor={overrideHoldFor}
@@ -447,7 +451,7 @@ export function MediaScreensPage() {
             />
           )}
           {panel?.kind === "schedule" && (
-            <ScheduleOverlay slot={panel.slot} timezone={timezone} variant="v2" openKey={panel} onClose={() => setPanel(null)} />
+            <ScheduleOverlay key={panel.slot.id} slot={panel.slot} timezone={timezone} variant="v2" openKey={panel} onClose={() => setPanel(null)} />
           )}
         </>
       }

@@ -134,7 +134,12 @@ export function ConfirmDialog({
               action leaves exactly as abruptly as it did before this beat. */}
           <button
             type="button"
-            onClick={onConfirm}
+            // Phase-gated (addendum NOTE, pre-existing since Beat 7): the exiting backdrop
+            // blocks the POINTER (`pointer-events: none`), but Tab → Escape → Enter inside
+            // the 140ms exit still reaches this button by keyboard and fired the confirm
+            // — a write from a dialog the viewer had already dismissed. Only `entering`
+            // may confirm.
+            onClick={() => { if (phase === "entering") onConfirm(); }}
             disabled={busy}
             className={danger ? "st-btn st-body st-btn-danger" : "st-btn st-body st-btn-primary"}
             style={btn}

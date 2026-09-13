@@ -32,7 +32,6 @@ import { TAP } from "@/shared/ui/tokens";
  * literal, key for key — merging a v2 key in would reorder the serialised `style` attribute
  * and break the innerHTML hash the harness compares, without changing a pixel.
  *
- * DECISION: the remove-daypart confirm is v2-ONLY.
  * The one BEHAVIOURAL addition, and only on the v2 leg: REMOVING a daypart is data loss
  * (the row and its position are gone), so v2 routes it through the ratified `ConfirmDialog`
  * in the danger ink. Classic keeps its immediate delete — the PR #103 precedent for a
@@ -77,6 +76,8 @@ export function ScheduleEditor({ slot, timezone, onClose, variant = "classic", o
   const [progKind, setProgKind] = useState<ProgKind>("playlist");
   const [playlistId, setPlaylistId] = useState<string>("");
   const [carouselOrder, setCarouselOrder] = useState<CarouselOrder>("ordered");
+  // DECISION: the remove-daypart confirm is v2-ONLY — a write-PREVENTING addition on the
+  // tokened leg (PR #103 precedent); classic keeps its immediate delete, byte-identical.
   // v2 only — the daypart the ConfirmDialog is asking about (null = no dialog).
   const [confirmRemove, setConfirmRemove] = useState<ScheduleRowRaw | null>(null);
 
