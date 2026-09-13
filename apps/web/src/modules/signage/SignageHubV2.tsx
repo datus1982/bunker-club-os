@@ -344,7 +344,7 @@ function ScreenCardV2({ slot, ctx, stacked }: { slot: AdminSlot; ctx: SignageHub
             </button>
           )}
           {ctx.transportPlaylistFor(slot) && (
-            <div style={{ flex: "1 1 300px", minWidth: 0 }}><TransportRow slug={slot.slug} /></div>
+            <div style={{ flex: "1 1 300px", minWidth: 0 }}><TransportRow slug={slot.slug} variant="v2" stacked={stacked} /></div>
           )}
         </>
       ) : undefined}
