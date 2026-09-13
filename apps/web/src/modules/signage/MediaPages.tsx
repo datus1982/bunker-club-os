@@ -352,14 +352,21 @@ export function MediaPlaylistsPage() {
   const filesQ = useMediaFiles();
   const playlists = useMemo(() => playlistsQ.data ?? [], [playlistsQ.data]);
   const files = useMemo(() => filesQ.data ?? [], [filesQ.data]);
-  const [editing, setEditing] = useState<PlaylistWithStats | "new" | null>(null);
+  // DECISION: (Beat 8 PR 6) the state holds the OPEN REQUEST, not the target: a fresh
+  // `{ target }` object per press. SlideOver's phase machine keys its re-entry on `openKey`,
+  // and the row's `PlaylistWithStats` is the SAME object the list rendered (and "new" is the
+  // same string), so passing the target itself would make a ✕-then-re-press inside the 140ms
+  // exit a no-op (React bails out of an identical state; the stale dismiss then closes the
+  // drawer the manager re-opened). The PR 2 addendum's lesson applied to this editor.
+  const [editing, setEditing] = useState<{ target: PlaylistWithStats | "new" } | null>(null);
+  const openEditor = (target: PlaylistWithStats | "new") => setEditing({ target });
 
   const inCarousel = playlists.filter((p) => p.playlist.in_carousel).length;
   const tag = playlistsQ.isLoading
     ? "LOADING…"
     : `${playlists.length} PLAYLIST${playlists.length === 1 ? "" : "S"} · ${inCarousel} IN CAROUSEL`;
 
-  const newPlaylist = <button type="button" onClick={() => setEditing("new")} className="st-btn st-body st-t1" style={ghost}>+ New playlist</button>;
+  const newPlaylist = <button type="button" onClick={() => openEditor("new")} className="st-btn st-body st-t1" style={ghost}>+ New playlist</button>;
 
   return (
     <MediaPage title="Playlists" tag={tag} right={newPlaylist}>
@@ -368,18 +375,24 @@ export function MediaPlaylistsPage() {
           eyebrow="NO PLAYLISTS"
           message="A subfolder of the media folder becomes an auto-playlist. Or build a custom one from files already in the library."
           actionLabel="+ NEW PLAYLIST"
-          onAction={() => setEditing("new")}
+          onAction={() => openEditor("new")}
         />
       ) : (
-        <MediaPlaylistsPanel playlists={playlists} loading={playlistsQ.isLoading} onEdit={setEditing} />
+        <MediaPlaylistsPanel playlists={playlists} loading={playlistsQ.isLoading} onEdit={openEditor} />
       )}
 
+      {/* `key` = the playlist (or "new"): a same-target re-press keeps the instance and takes
+          the `openKey` re-entry path; a DIFFERENT playlist remounts fresh, so a name draft or
+          a `createdId` can never cross from one playlist's editor into another's (the PR 2
+          addendum WARN, same shape). `openKey` = the open request itself. */}
       {editing && (
         <PlaylistEditor
-          initial={editing === "new" ? null : editing}
+          key={editing.target === "new" ? "new" : editing.target.playlist.id}
+          initial={editing.target === "new" ? null : editing.target}
           files={files}
           onClose={() => setEditing(null)}
           variant="v2"
+          openKey={editing}
         />
       )}
     </MediaPage>
