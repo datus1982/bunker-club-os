@@ -191,7 +191,7 @@ export function SignageHubV2({ ctx, overlays }: { ctx: SignageHubContext; overla
                   sub={`ran ${schedulePhrase(ev)}${ev.show_on_website ? " · 🌐" : ""}`}
                   meta={<><EventKindBadge kind={ev.kind} /><StatusChip tone="off" label="DONE" /></>}
                   actions={ctx.canEvents
-                    ? <button type="button" className="st-btn st-body" style={rowBtnV2} onClick={() => ctx.setOverlay({ kind: "event", editing: null, seed: seedFromEvent(ev) })}>↻ Re-run</button>
+                    ? <button type="button" className="st-btn st-body" style={rowBtnV2} onClick={() => ctx.setOverlay({ kind: "event", editing: null, seed: seedFromEvent(ev), seedId: ev.id })}>↻ Re-run</button>
                     : undefined}
                 />
               ))}
@@ -425,8 +425,11 @@ function EventListRow({
           title={row.kind === "moment" ? "Fire this moment now?" : "Put this on the screens now?"}
           // The classic window.confirm wording, kept — it is the sentence the owner reads.
           body={row.kind === "moment" ? "It skips the tease and lands in ALERT." : `“${row.name}” goes onto the bar screens immediately.`}
-          confirmLabel="▶ Fire now"
-          danger
+          // WARN-1 (Beat 8 PR 4 review, Marvin ruling): FIRE NOW is the PLAIN tier — it
+          // changes the bar TVs but destroys nothing — and the row and the editor speak
+          // ONE pair for the same action: "Fire now" / "Keep scheduled".
+          confirmLabel="Fire now"
+          cancelLabel="Keep scheduled"
           busy={fire.isPending}
           onConfirm={() => { fire.mutate(); setConfirmFire(false); }}
           onCancel={() => setConfirmFire(false)}

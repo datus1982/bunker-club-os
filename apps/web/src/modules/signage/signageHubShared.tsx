@@ -35,7 +35,10 @@ export type Overlay =
   | { kind: "add"; slot: AdminSlot }
   | { kind: "queue"; slot: AdminSlot }
   | { kind: "takeover"; slot: AdminSlot }
-  | { kind: "event"; editing: EventRow | null; seed?: EventSeed | null }
+  // seedId (Beat 8 PR 4 review NOTE-1): the SOURCE row of a RE-RUN. A seed carries no id
+  // and two finished rows can share a name, so the drawer keys on this to remount between
+  // two different re-runs inside the exit window. State only — nothing renders it.
+  | { kind: "event"; editing: EventRow | null; seed?: EventSeed | null; seedId?: string }
   // returnTo: the overlay to reopen when the editor closes (save/delete/cancel all fire onClose).
   // Set when the editor is opened FROM a slide-over (QUEUE / ADD picker) so the manager lands back
   // where he was working; left null at the top-level entry points (library card, + NEW ASSET) so

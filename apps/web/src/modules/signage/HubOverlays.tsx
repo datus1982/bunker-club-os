@@ -117,14 +117,21 @@ export function HubOverlays({
         </SlideOver>
       )}
 
+      {/* Beat 8 PR 4 — TAKEOVER + EVENT thread `variant` (v2 tokens on a v2 page; classic
+          gets the default) + `openKey` (the PR 2 re-press-inside-the-exit contract) + a
+          `key` so a fast retarget across two DIFFERENT targets remounts fresh instead of
+          carrying one target's draft into the other (PR 2 addendum WARN). Takeover keys by
+          slot; the event editor by the row being edited, "new" for a blank one, and the
+          SOURCE row's id for a RE-RUN (`seedId` — a seed carries no id of its own, and two
+          finished rows can share a name; the name is only the fallback). */}
       {overlay?.kind === "takeover" && (
-        <SlideOver eyebrow={`${overlay.slot.name} ▸ TAKEOVER`} title="SEND A TAKEOVER" onClose={() => setOverlay(null)}>
-          <TakeoverPanel slot={overlay.slot} takeovers={takeovers} onChanged={invalidateTakeovers} />
+        <SlideOver key={overlay.slot.id} eyebrow={`${overlay.slot.name} ▸ TAKEOVER`} title={variant === "v2" ? "Send a takeover" : "SEND A TAKEOVER"} onClose={() => setOverlay(null)} variant={variant} openKey={overlay}>
+          <TakeoverPanel slot={overlay.slot} takeovers={takeovers} onChanged={invalidateTakeovers} variant={variant} />
         </SlideOver>
       )}
 
       {overlay?.kind === "event" && (
-        <SlideOver eyebrow="RUNNING & UPCOMING" title={overlay.editing ? "EDIT EVENT" : overlay.seed ? "RE-RUN EVENT" : "NEW EVENT"} onClose={() => setOverlay(null)}>
+        <SlideOver key={overlay.editing?.id ?? (overlay.seed ? `rerun:${overlay.seedId ?? overlay.seed.name}` : "new")} eyebrow="RUNNING & UPCOMING" title={variant === "v2" ? (overlay.editing ? "Edit event" : overlay.seed ? "Re-run event" : "New event") : (overlay.editing ? "EDIT EVENT" : overlay.seed ? "RE-RUN EVENT" : "NEW EVENT")} onClose={() => setOverlay(null)} variant={variant} openKey={overlay}>
           <EventEditor
             editing={overlay.editing}
             seed={overlay.seed ?? null}
@@ -132,6 +139,7 @@ export function HubOverlays({
             onSaved={() => { invalidateEvents(); setOverlay(null); }}
             onCancel={() => setOverlay(null)}
             onDeleted={() => { invalidateEvents(); setOverlay(null); }}
+            variant={variant}
           />
         </SlideOver>
       )}
