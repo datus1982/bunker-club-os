@@ -1206,3 +1206,15 @@
 .terminal-theme.staff-v2 .st-sheet .st-panel.st-drawer[data-state="exiting"] {
   animation: st-drawer-exit 140ms ease-in both;
 }
+
+/* §10.pr3 — AddAssetPicker smart-tile twins (Beat 8 PR 3 review NOTE-3).
+ * A SMART template tile is a <button class="st-btn st-body st-callout-warn">: the callout
+ * role paints its amber wash + edge at (0,4,0), but `.st-sheet button:hover` (0,4,1) is more
+ * specific and repainted BOTH on hover — the amber cue vanished the moment the pointer
+ * arrived. Restated here at (0,6,0) so hover keeps the callout's own values, copied
+ * verbatim from the page leg's `.st-callout-warn` (section 6). Sheet-only by construction:
+ * the page leg has no button-shaped callout today. */
+.terminal-theme.staff-v2 .st-sheet .st-btn.st-callout-warn:hover {
+  background: var(--st-amber-soft) !important;
+  border-color: var(--st-amber-edge) !important;
+}

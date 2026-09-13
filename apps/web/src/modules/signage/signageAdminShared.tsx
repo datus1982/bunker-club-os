@@ -9,6 +9,8 @@ import {
 import { recurrenceChipLabel } from "./itemSchedule";
 import type { EventKind, ToastCacheRow } from "./useSignage";
 import type { Align } from "./richText";
+import { ConfirmDialog } from "@/shared/ui";
+import { TAP, staffSurface } from "@/shared/ui/tokens";
 
 /**
  * Shared staff-signage UI, lifted verbatim out of the old single-page templater so the
@@ -179,9 +181,24 @@ export function CopyKioskButton({ slug, style }: { slug: string; style?: CSSProp
 }
 
 /* ── per-slot item row (QUEUE / EDIT ROTATION) ──────────────────────────────── */
+/**
+ * BEAT 8 (PR 3) — `variant`. The QUEUE slide-over is SHARED with the classic hub and mounts
+ * outside the `[data-st-page]` token scope, so a v2 page opened it green. `variant="v2"`
+ * (threaded from QueuePanel, which gets it from HubOverlays) tokens the row at its LEAVES —
+ * the PR 2 pattern: one component, one tree, a `v2` branch per leaf, every branched `style`
+ * a WHOLE-OBJECT ternary whose classic arm is the shipped literal key for key, so classic's
+ * serialised attributes do not even reorder.
+ *
+ * BEHAVIOUR IS BYTE-IDENTICAL: same four mutations (`setItemActive`, `reorderItem` ×2,
+ * `setItemDuration`), same args, same `onRemove` from the parent. The ONE addition is
+ * v2-only and write-PREVENTING: ✕ asks through the ratified `ConfirmDialog` instead of
+ * `window.confirm`. It is NOT the danger pattern — removing from THIS screen is a queue
+ * edit, not data loss (the asset stays in the library and on every other screen), so the
+ * dialog is plain (`danger={false}`) and its verbs name what happens / what stays.
+ */
 export function ItemRow({
   item, first, last, hideReason, prev, next, onEdit, onRemove, onChanged, toastRows,
-  live, windowReason, offToday,
+  live, windowReason, offToday, variant = "classic",
 }: {
   item: AdminItem; first: boolean; last: boolean; hideReason: string | null;
   prev?: AdminItem; next?: AdminItem;
@@ -199,38 +216,64 @@ export function ItemRow({
   // it just doesn't run today. Rendered as its own chip beside the day label so a dimmed row
   // always says why (parity with the 86'd / POS-HIDDEN chips).
   offToday?: boolean;
+  /** "v2" renders the row in the staff tokens (Beat 8 PR 3). Defaults to the shipped classic row. */
+  variant?: "classic" | "v2";
 }) {
+  const v2 = variant === "v2";
   const toggle = useMutation({ mutationFn: () => setItemActive(item.id, !item.active), onSuccess: onChanged });
   const up = useMutation({ mutationFn: () => reorderItem(item, prev!), onSuccess: onChanged });
   const down = useMutation({ mutationFn: () => reorderItem(item, next!), onSuccess: onChanged });
   const dur = useMutation({ mutationFn: (secs: number) => setItemDuration(item, secs), onSuccess: onChanged });
+  // v2 only — the ✕ ConfirmDialog is open. Classic never sets it (its ✕ keeps `window.confirm`).
+  const [confirmRemove, setConfirmRemove] = useState(false);
 
   // Dim any row the TV is NOT showing this minute: turned OFF, out of its time window, or
   // hidden by a 86'd / off-POS Toast source. When `live` isn't passed (no live-queue context)
   // fall back to the original active-only dimming so behaviour is unchanged.
   const onScreen = live === undefined ? item.active : item.active && live;
 
+  // v2 leaf kit — geometry only; ink, face and size come from the role classes (an inline
+  // colour loses to `.terminal-theme * { color: green !important }`, the PR #89 lesson).
+  // `border: "1px solid"` carries no colour so the sheet blanket paints the hairline.
+  // Every warn chip is `st-chip st-callout-warn st-amber`: pill + amber-soft wash + amber
+  // edge + amber ink (the callout rule out-orders the chip rule, both (0,4,0)).
+  const warnChip = "st-chip st-callout-warn st-amber st-label";
+  const warnChipS = { padding: "2px 8px", whiteSpace: "nowrap" } as const;
+  // Body-role copy is sentence case on v2: the schedule word is a status token the classic
+  // leg shouts; v2 keeps the same words and lowers the tail ("Evergreen", "From 9/12 4:00 PM").
+  const sched = v2 ? scheduleLabel(item).replace(/^(EVERGREEN|FROM|UNTIL)/, (m) => m[0] + m.slice(1).toLowerCase()) : scheduleLabel(item);
+
   return (
-    <div className="terminal-border" style={{ padding: "10px 12px", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", opacity: onScreen ? 1 : 0.5 }}>
+    <>
+    {/* WARN-1 (PR 3 review): the ConfirmDialog is a SIBLING of the row, not a child. The row
+        carries `opacity: 0.5` when it is not on screen, and CSS opacity < 1 makes it a
+        compositing group + stacking context — a position:fixed dialog INSIDE it drew at
+        50% and UNDER the later rows (measured), on exactly the rows a manager removes. A
+        Fragment emits no DOM node, and classic never mounts the dialog, so its tree is
+        unchanged. */}
+    <div className={v2 ? "st-row" : "terminal-border"} style={{ padding: "10px 12px", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", opacity: onScreen ? 1 : 0.5 }}>
       <div style={{ display: "flex", flexDirection: "column", gap: 2, flex: "1 1 200px", minWidth: 0 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-          <span style={badge}>{item.template.replace(/_/g, " ").toUpperCase()}</span>
-          {live && <span className="sig-live" style={{ fontSize: 13, letterSpacing: 1, whiteSpace: "nowrap" }} title="On the TV rotation right now">● NOW</span>}
+          <span className={v2 ? "st-chip st-label st-t2" : undefined} style={v2 ? { padding: "2px 8px", whiteSpace: "nowrap" } : badge}>{item.template.replace(/_/g, " ").toUpperCase()}</span>
+          {live && <span className={v2 ? "st-live st-label" : "sig-live"} style={v2 ? { whiteSpace: "nowrap" } : { fontSize: 13, letterSpacing: 1, whiteSpace: "nowrap" }} title="On the TV rotation right now">● NOW</span>}
           {/* The day rule, in words the owner set it in: "↻ TUESDAYS" / "↻ MON·WED·FRI" /
               "↻ JAN 1". (Was a bare "↻ RECURS" back when nothing consumed the value.) A weekly
               rule with every day / no days picked reads as no restriction, so it shows nothing. */}
           {recurrenceChipLabel(item.recurrence) && (
-            <span className="u-amber" style={{ fontSize: 13, letterSpacing: 1 }} title="This asset only runs on these days">↻ {recurrenceChipLabel(item.recurrence)}</span>
+            <span className={v2 ? "st-amber st-label" : "u-amber"} style={v2 ? { whiteSpace: "nowrap" } : { fontSize: 13, letterSpacing: 1 }} title="This asset only runs on these days">↻ {recurrenceChipLabel(item.recurrence)}</span>
           )}
           {offToday && (
-            <span className="u-amber" style={{ fontSize: 13, letterSpacing: 1 }} title="Queued, but its day rule excludes today — it returns on its next day">OFF TODAY</span>
+            <span className={v2 ? warnChip : "u-amber"} style={v2 ? warnChipS : { fontSize: 13, letterSpacing: 1 }} title="Queued, but its day rule excludes today — it returns on its next day">OFF TODAY</span>
           )}
-          {item.show_on_website && <span style={{ fontSize: 13, letterSpacing: 1 }} title="Published to the public website">🌐 WEB</span>}
-          {windowReason && <span style={{ fontSize: 13, letterSpacing: 1, opacity: 0.7 }}>{windowReason}</span>}
-          {hideReason && <span className="u-amber" style={{ fontSize: 13 }}>{hideReason}</span>}
+          {item.show_on_website && <span className={v2 ? "st-label st-t2" : undefined} style={v2 ? { whiteSpace: "nowrap" } : { fontSize: 13, letterSpacing: 1 }} title="Published to the public website">🌐 WEB</span>}
+          {windowReason && <span className={v2 ? "st-label st-t3" : undefined} style={v2 ? { whiteSpace: "nowrap" } : { fontSize: 13, letterSpacing: 1, opacity: 0.7 }}>{windowReason}</span>}
+          {hideReason && <span className={v2 ? warnChip : "u-amber"} style={v2 ? warnChipS : { fontSize: 13 }}>{hideReason}</span>}
         </div>
-        <div style={{ fontSize: 20, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{summarize(item, toastRows)}</div>
-        <div style={{ fontSize: 14, opacity: 0.6 }}>{scheduleLabel(item)} · {item.duration_seconds}s ON SCREEN</div>
+        <div className={v2 ? "st-heading st-t1" : undefined} style={v2 ? { whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" } : { fontSize: 20, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{summarize(item, toastRows)}</div>
+        {/* Text-NODE boundaries are part of classic's byte identity: `{n}s {x}` would split the
+            shipped "s ON SCREEN" node into two and shift the glyph run ~2px (measured). The
+            ternary therefore carries the "s" so classic keeps its exact four text nodes. */}
+        <div className={v2 ? "st-body st-t2" : undefined} style={v2 ? undefined : { fontSize: 14, opacity: 0.6 }}>{sched} · {item.duration_seconds}{v2 ? "s on screen" : "s ON SCREEN"}</div>
       </div>
       {/* minWidth:0 + shrinkable so that when this control cluster wraps to its own line
           at ≤390px it is constrained to the row width and its own flexWrap engages (the
@@ -238,38 +281,74 @@ export function ItemRow({
       <div style={{ display: "flex", gap: 6, alignItems: "center", flex: "1 1 auto", minWidth: 0, flexWrap: "wrap", justifyContent: "flex-end" }}>
         {/* Per-item on-screen SECONDS — the timing control (writes duration_seconds; the
             public rotation advance already honors it per-item, no fixed interval). */}
-        <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 13, opacity: 0.85 }}>
-          <span style={{ letterSpacing: 1 }} title="How long this slide stays on screen">SECS</span>
+        {/* NOTE-5 (PR 3 review): the dim tier sits on the SECS word only — `.st-sheet .st-t2 *`
+            reaches every descendant, and on the <label> it inked the <select>'s VALUE at 0.6α. */}
+        <label className={v2 ? "st-label" : undefined} style={v2 ? { display: "flex", alignItems: "center", gap: 4 } : { display: "flex", alignItems: "center", gap: 4, fontSize: 13, opacity: 0.85 }}>
+          {/* Its own role class: nothing inherits font-size (the label's `st-label` sizes the
+              LABEL element, not this span — `.terminal-theme *` would put it at 24px). */}
+          <span className={v2 ? "st-label st-t2" : undefined} style={v2 ? undefined : { letterSpacing: 1 }} title="How long this slide stays on screen">SECS</span>
           <select
             value={DURATION_CHOICES.includes(item.duration_seconds as (typeof DURATION_CHOICES)[number]) ? item.duration_seconds : "custom"}
             onChange={(e) => { const n = parseInt(e.target.value); if (Number.isFinite(n)) dur.mutate(n); }}
             aria-label="Seconds on screen"
-            style={{ background: "#000", color: "var(--terminal-green)", border: "1px solid var(--terminal-green)", fontFamily: MONO, fontSize: 15, minHeight: 44, padding: "0 6px", cursor: "pointer" }}
+            className={v2 ? "st-mono" : undefined}
+            style={v2 ? selectV2 : { background: "#000", color: "var(--terminal-green)", border: "1px solid var(--terminal-green)", fontFamily: MONO, fontSize: 15, minHeight: 44, padding: "0 6px", cursor: "pointer" }}
           >
             {!DURATION_CHOICES.includes(item.duration_seconds as (typeof DURATION_CHOICES)[number]) && (
-              <option value="custom" style={{ background: "#000" }}>{item.duration_seconds}s</option>
+              <option value="custom" className={v2 ? "st-mono" : undefined} style={v2 ? optionV2 : { background: "#000" }}>{item.duration_seconds}s</option>
             )}
             {DURATION_CHOICES.map((sc) => (
-              <option key={sc} value={sc} style={{ background: "#000" }}>{sc}s</option>
+              <option key={sc} value={sc} className={v2 ? "st-mono" : undefined} style={v2 ? optionV2 : { background: "#000" }}>{sc}s</option>
             ))}
           </select>
         </label>
-        <button type="button" onClick={() => up.mutate()} disabled={first} style={iconBtn} aria-label="Move up">▲</button>
-        <button type="button" onClick={() => down.mutate()} disabled={last} style={iconBtn} aria-label="Move down">▼</button>
-        <button type="button" onClick={() => toggle.mutate()} className={item.active ? "u-fill u-ink" : ""} title="Pause/resume this asset on EVERY screen it runs on" style={{ ...iconBtn, minWidth: 62 }}>{item.active ? "● ON" : "○ OFF"}</button>
-        <button type="button" onClick={onEdit} style={iconBtn}>EDIT</button>
+        <button type="button" onClick={() => up.mutate()} disabled={first} className={v2 ? "st-btn st-body" : undefined} style={v2 ? iconBtnV2 : iconBtn} aria-label="Move up">▲</button>
+        <button type="button" onClick={() => down.mutate()} disabled={last} className={v2 ? "st-btn st-body" : undefined} style={v2 ? iconBtnV2 : iconBtn} aria-label="Move down">▼</button>
+        {/* v2: a pressed-state toggle — `aria-pressed` says ON to a screen reader (the glyph
+            said it to sighted users only); `u-ink` rides with `st-btn-primary` so the label
+            text takes the ground ink instead of the blanket's white-alpha. */}
+        <button type="button" onClick={() => toggle.mutate()} {...(v2 ? { "aria-pressed": item.active } : null)} className={v2 ? (item.active ? "st-btn st-btn-primary u-ink st-body" : "st-btn st-body") : (item.active ? "u-fill u-ink" : "")} title="Pause/resume this asset on EVERY screen it runs on" style={v2 ? { ...iconBtnV2, minWidth: 62 } : { ...iconBtn, minWidth: 62 }}>{v2 ? (item.active ? "● On" : "○ Off") : (item.active ? "● ON" : "○ OFF")}</button>
+        <button type="button" onClick={onEdit} className={v2 ? "st-btn st-body" : undefined} style={v2 ? iconBtnV2 : iconBtn}>{v2 ? "Edit" : "EDIT"}</button>
+        {/* ✕ is a queue edit, not data loss (D4: the asset survives in the library and on
+            every other screen), so v2 asks through a PLAIN ConfirmDialog — no danger ink,
+            no amber. Classic keeps its `window.confirm` (write-preventing addition only). */}
         <button
           type="button"
-          onClick={() => { if (confirm("Remove from THIS screen? The asset stays in the library and on any other screen.")) onRemove(); }}
-          className="u-amber"
+          onClick={() => { if (v2) { setConfirmRemove(true); return; } if (confirm("Remove from THIS screen? The asset stays in the library and on any other screen.")) onRemove(); }}
+          className={v2 ? "st-btn st-body" : "u-amber"}
           title="Remove from THIS screen only (the asset stays in the library)"
           aria-label="Remove from this screen"
-          style={iconBtn}
+          style={v2 ? iconBtnV2 : iconBtn}
         >✕</button>
       </div>
     </div>
+    {v2 && confirmRemove && (
+      <ConfirmDialog
+        // `title` is the dialog's retarget key and names the target (the ConfirmDialog
+        // convention); the body is the classic `window.confirm` sentence, verbatim.
+        title={summarize(item, toastRows)}
+        body="Remove from THIS screen? The asset stays in the library and on any other screen."
+        confirmLabel="Remove from this screen"
+        cancelLabel="Keep on this screen"
+        danger={false}
+        onConfirm={() => { setConfirmRemove(false); onRemove(); }}
+        onCancel={() => setConfirmRemove(false)}
+      />
+    )}
+    </>
   );
 }
+
+/* v2 twins of `iconBtn` / the SECS `<select>`: the same boxes, geometry only. No
+ * `fontFamily` (the role classes own the face), no `background`/`color` (an inline colour
+ * cannot beat the theme's !important green — the classes paint), `border: "1px solid"`
+ * with no colour so the sheet blanket paints the hairline. `minWidth: TAP` joins
+ * `minHeight` because the 44px floor is measured on BOTH axes (#103 NOTE-6). `optionV2`
+ * gives the native popup the control surface instead of classic's #000 (the blanket
+ * inks option text white-alpha, and a white OS default behind it would be unreadable). */
+const iconBtnV2 = { padding: "0 10px", fontSize: 15, cursor: "pointer", minHeight: TAP, minWidth: TAP, border: "1px solid" } as const;
+const selectV2 = { fontSize: 15, minHeight: TAP, minWidth: TAP, padding: "0 6px", border: "1px solid", cursor: "pointer" } as const;
+const optionV2 = { background: staffSurface.surface2 } as const;
 
 export function Countdown({ endsAt }: { endsAt: string | null }) {
   if (!endsAt) return <>Until dismissed.</>;
