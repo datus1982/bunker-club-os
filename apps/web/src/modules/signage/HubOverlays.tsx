@@ -77,13 +77,19 @@ export function HubOverlays({
   return (
     <>
       {/* ── slide-overs ─────────────────────────────────────────────────── */}
+      {/* Beat 8 PR 3: + ADD and QUEUE take `variant` (frame + leaves) and, like PROGRAM /
+          SCHEDULE below, `openKey={overlay}` (a same-slot re-press inside the 140ms exit
+          re-enters) with `key={overlay.slot.id}` (a DIFFERENT slot remounts fresh — the
+          addendum WARN: AddAssetPicker's tab and every ItemRow's confirm state are
+          `useState` seeds that must not cross screens). Classic: a `key` is React-only. */}
       {overlay?.kind === "add" && (
-        <SlideOver eyebrow={`${overlay.slot.name} ▸ + ADD`} title={`ADD TO ${overlay.slot.name}`} onClose={() => setOverlay(null)}>
+        <SlideOver key={overlay.slot.id} eyebrow={`${overlay.slot.name} ▸ + ADD`} title={variant === "v2" ? `Add to ${overlay.slot.name}` : `ADD TO ${overlay.slot.name}`} onClose={() => setOverlay(null)} variant={variant} openKey={overlay}>
           <AddAssetPicker
             slot={overlay.slot}
             assets={assets}
             toastRows={toastRows}
             busyItemId={busyQueueId}
+            variant={variant}
             onPickTemplate={(t) => setOverlay({ kind: "asset", editing: null, preset: t, queueOnSlotId: overlay.slot.id, returnTo: { kind: "add", slot: overlay.slot } })}
             onQueueExisting={(a) => queueExisting.mutate({ slot: overlay.slot, a })}
           />
@@ -91,8 +97,9 @@ export function HubOverlays({
       )}
 
       {overlay?.kind === "queue" && (
-        <SlideOver eyebrow={`${overlay.slot.name} ▸ QUEUE`} title={`${overlay.slot.name} QUEUE`} onClose={() => setOverlay(null)}>
+        <SlideOver key={overlay.slot.id} eyebrow={`${overlay.slot.name} ▸ QUEUE`} title={variant === "v2" ? `${overlay.slot.name} — queue` : `${overlay.slot.name} QUEUE`} onClose={() => setOverlay(null)} variant={variant} openKey={overlay}>
           <QueuePanel
+            variant={variant}
             slot={overlay.slot}
             slotItems={itemsBySlot.get(overlay.slot.id) ?? []}
             toastRows={toastRows}

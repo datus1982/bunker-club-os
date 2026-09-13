@@ -14,6 +14,7 @@ import {
   SectionLabel, ItemRow, EventKindBadge, sourceHideReason,
   MONO, primary, iconBtn, badge, caption,
 } from "./signageAdminShared";
+import { TAP, staffSurface } from "@/shared/ui/tokens";
 
 /**
  * QUEUE slide-over (docs/signage-hub-consolidation-mockup.html view 4) — the PR #29 live-queue
@@ -27,10 +28,30 @@ import {
  *     scheduled_events.fields.rotation_sort → moves it on every screen, as today), and
  *   • read-only ★ SCREENS Toast trailers (managed at the POS).
  * A MOMENT / takeover / live game that pre-empts the screen surfaces as a read-only banner.
- */
+ *
+ * ────────────────────────────────────────────────────────────────────────────────────
+ * BEAT 8 (PR 3) — `variant`.
+ *
+ * This panel is SHARED with the classic hub, so every v2 page mounts it OUTSIDE the
+ * `[data-st-page]` token scope on purpose — and it arrived green. `variant="v2"` is how a
+ * v2 caller says "token this one": the frame is PR 1's `.st-sheet` drawer (threaded by
+ * HubOverlays into `SlideOver`) and the leaves below swap their green literals for the
+ * token roles. ONE component, one tree, a `v2` branch at each LEAF — not a v2 twin. Two
+ * copies of the list the TV resolves is how the hub and the TV would start disagreeing
+ * (the hub/TV parity invariant).
+ *
+ * CLASSIC IS BYTE-IDENTICAL: every branched `style` is a WHOLE-OBJECT ternary whose
+ * classic arm is the shipped literal, key for key, so the serialised attribute does not
+ * even reorder. NOTHING ABOUT BEHAVIOUR MOVES: same `resolveRotation` inputs, same
+ * `moveEvent` / `setEventSecs` / `remove` mutations with the same args, same `ItemRow`
+ * (which gets `variant` too — its ✕ becomes a plain ConfirmDialog on v2 only).
+ * Rows are `st-row` (hairline, no fill — the §B addendum: sheet contents separate by
+ * hairline, never a fill tier); the pre-empt banners are `st-callout-warn` /
+ * `st-callout-danger`; `● NOW` is `st-live`, the app's true-LIVE ink.
+ * ──────────────────────────────────────────────────────────────────────────────────── */
 export function QueuePanel({
   slot, slotItems, toastRows, liveEvents, gameOn, takeovers, canEvents,
-  onAdd, onEditAsset, onChanged, onEventsChanged, onTakeover,
+  onAdd, onEditAsset, onChanged, onEventsChanged, onTakeover, variant = "classic",
 }: {
   slot: AdminSlot;
   /** THIS slot's authored items (active AND paused), sorted by sort_order (= position). */
@@ -45,7 +66,10 @@ export function QueuePanel({
   onChanged: () => void;
   onEventsChanged: () => void;
   onTakeover: () => void;
+  /** "v2" renders the tokened leaves (Beat 8 PR 3). Defaults to the shipped classic panel. */
+  variant?: "classic" | "v2";
 }) {
+  const v2 = variant === "v2";
   // 30s tick so time-windows + event stages re-evaluate without a manual refresh.
   const [nowTick, setNowTick] = useState(() => Date.now());
   useEffect(() => {
@@ -140,28 +164,32 @@ export function QueuePanel({
 
   return (
     <div style={{ display: "flex", flexDirection: "column" }}>
-      <div style={{ fontSize: 14, opacity: 0.6, lineHeight: 1.5 }}>
+      {/* v2: the slot identity line is a Label (all-caps by role definition — the words are
+          already the classic ones, so nothing is newly shouted). */}
+      <div className={v2 ? "st-label st-t2" : undefined} style={v2 ? { lineHeight: 1.5 } : { fontSize: 14, opacity: 0.6, lineHeight: 1.5 }}>
         {slot.orientation.toUpperCase()} · TERMINAL {String(slot.terminal_number ?? 0).padStart(2, "0")}{slot.location_label ? ` — ${slot.location_label}` : ""}
       </div>
 
       {/* read-only state banners (game / takeover / moment all pre-empt the queue) */}
-      {gameOn && <Banner tone="amber" head="🎮 LIVE GAME" body="this screen is in game mode — the rotation resumes when the game ends" />}
-      {takeover && <Banner tone="red" head="■ TAKEOVER HOLDS THIS SCREEN" body={takeover.message} cta="manage from TAKEOVER →" onClick={onTakeover} />}
+      {gameOn && <Banner v2={v2} tone="amber" head="🎮 LIVE GAME" body="this screen is in game mode — the rotation resumes when the game ends" />}
+      {takeover && <Banner v2={v2} tone="red" head="■ TAKEOVER HOLDS THIS SCREEN" body={takeover.message} cta={v2 ? "Manage from Takeover →" : "manage from TAKEOVER →"} onClick={onTakeover} />}
       {momentBanners.map(({ ev, stage }) => (
-        <Banner key={ev.id} tone="amber" head="⚡ MOMENT" body={momentBannerBody(ev, stage, now)} />
+        <Banner key={ev.id} v2={v2} tone="amber" head="⚡ MOMENT" body={momentBannerBody(ev, stage, now)} />
       ))}
 
       {/* the live queue */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8, marginTop: 20 }}>
-        <SectionLabel style={{ margin: 0 }}>LIVE QUEUE</SectionLabel>
-        <button type="button" onClick={onAdd} className="u-fill u-ink" style={primary}>+ ADD</button>
+        {v2 ? <div className="st-label st-t2" style={{ margin: 0 }}>LIVE QUEUE</div> : <SectionLabel style={{ margin: 0 }}>LIVE QUEUE</SectionLabel>}
+        {/* `u-ink` rides with `st-btn-primary` (the PR 2 note: the class paints the BUTTON,
+            a child text node is caught by the blanket and would stay white-on-accent). */}
+        <button type="button" onClick={onAdd} className={v2 ? "st-btn st-btn-primary u-ink st-body" : "u-fill u-ink"} style={v2 ? primaryV2 : primary}>{v2 ? "+ Add" : "+ ADD"}</button>
       </div>
-      <div style={{ fontSize: 14, opacity: 0.6, margin: "2px 0 10px" }}>
-        The exact order the TV resolves right now. <span className="sig-live">● NOW</span> = on screen this minute; dimmed = off, out of its window, or 86’d. Per-screen <b>SECS</b> is this screen’s dwell.
+      <div className={v2 ? "st-body st-t2" : undefined} style={v2 ? { margin: "2px 0 10px" } : { fontSize: 14, opacity: 0.6, margin: "2px 0 10px" }}>
+        The exact order the TV resolves right now. <span className={v2 ? "st-live" : "sig-live"}>● NOW</span> = on screen this minute; dimmed = off, out of its window, or 86’d. Per-screen <b>SECS</b> is this screen’s dwell.
       </div>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        {rows.length === 0 && <div style={{ opacity: 0.6, fontSize: 18 }}>Nothing queued — + ADD to build this screen’s rotation.</div>}
+        {rows.length === 0 && <div className={v2 ? "st-body st-t2" : undefined} style={v2 ? undefined : { opacity: 0.6, fontSize: 18 }}>{v2 ? "Nothing queued — + Add to build this screen’s rotation." : "Nothing queued — + ADD to build this screen’s rotation."}</div>}
         {rows.map((row, idx) => {
           if (row.kind === "authored") {
             const nb = authoredNeighbour(row.item);
@@ -184,6 +212,7 @@ export function QueuePanel({
                 onRemove={() => remove.mutate(row.item.id)}
                 onChanged={onChanged}
                 toastRows={toastRows}
+                variant={variant}
               />
             );
           }
@@ -191,6 +220,7 @@ export function QueuePanel({
             return (
               <EventQueueRow
                 key={row.card.id}
+                v2={v2}
                 ev={row.ev}
                 card={row.card}
                 now={now}
@@ -204,11 +234,11 @@ export function QueuePanel({
               />
             );
           }
-          return <ScreensQueueRow key={row.card.id} card={row.card} tmap={tmap} />;
+          return <ScreensQueueRow key={row.card.id} v2={v2} card={row.card} tmap={tmap} />;
         })}
       </div>
 
-      <div style={{ fontSize: 13, opacity: 0.55, marginTop: 14, display: "flex", flexDirection: "column", gap: 4 }}>
+      <div className={v2 ? "st-body st-t3" : undefined} style={v2 ? { marginTop: 14, display: "flex", flexDirection: "column", gap: 4 } : { fontSize: 13, opacity: 0.55, marginTop: 14, display: "flex", flexDirection: "column", gap: 4 }}>
         <div>✕ removes an asset from THIS screen only — it stays in the library and on any other screen. To delete an asset everywhere, open it and use DELETE.</div>
         <div>★ SCREENS items flipped In-Stock at the POS rotate here automatically — manage those at the register.</div>
         <div>Event cards (WINDOW / MESSAGE) show on <b>every</b> screen; reordering one moves it everywhere.</div>
@@ -219,85 +249,104 @@ export function QueuePanel({
 
 /* ── active WINDOW/MESSAGE event row (venue-wide, reorderable like an authored item) ── */
 function EventQueueRow({
-  ev, card, now, canEvents, first, last, busy, onUp, onDown, onSecs,
+  ev, card, now, canEvents, first, last, busy, onUp, onDown, onSecs, v2 = false,
 }: {
   ev: LiveEvent; card: SignageItem; now: Date; canEvents: boolean;
   first: boolean; last: boolean; busy: boolean;
   onUp: () => void; onDown: () => void; onSecs: (secs: number) => void;
+  v2?: boolean;
 }) {
   const title = eventTitle(ev);
   const secs = card.duration_seconds;
   const inChoices = (DURATION_CHOICES as readonly number[]).includes(secs);
   const lockNote = canEvents ? undefined : "needs the EVENTS module";
   return (
-    <div className="terminal-border" style={{ padding: "10px 12px", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", background: "rgba(0,255,65,0.04)" }}>
+    <div className={v2 ? "st-row" : "terminal-border"} style={v2 ? { padding: "10px 12px", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" } : { padding: "10px 12px", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", background: "rgba(0,255,65,0.04)" }}>
       <div style={{ display: "flex", flexDirection: "column", gap: 2, flex: "1 1 200px", minWidth: 0 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           <EventKindBadge kind={ev.kind} />
-          <span className="sig-live" style={{ fontSize: 13, letterSpacing: 1, whiteSpace: "nowrap" }} title="On the TV rotation right now">● NOW</span>
-          <span style={{ ...badge, opacity: 0.7 }} title="Events show on every screen — reordering affects all of them">ALL SCREENS</span>
+          <span className={v2 ? "st-live st-label" : "sig-live"} style={v2 ? { whiteSpace: "nowrap" } : { fontSize: 13, letterSpacing: 1, whiteSpace: "nowrap" }} title="On the TV rotation right now">● NOW</span>
+          <span className={v2 ? "st-chip st-label st-t2" : undefined} style={v2 ? { padding: "2px 8px", whiteSpace: "nowrap" } : { ...badge, opacity: 0.7 }} title="Events show on every screen — reordering affects all of them">ALL SCREENS</span>
         </div>
-        <div style={{ fontSize: 20, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{title}</div>
-        <div style={{ fontSize: 14, opacity: 0.6 }}>{endsLabel(ev, now)} · {secs}s ON SCREEN · venue-wide event</div>
+        <div className={v2 ? "st-heading st-t1" : undefined} style={v2 ? { whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" } : { fontSize: 20, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{title}</div>
+        <div className={v2 ? "st-body st-t2" : undefined} style={v2 ? undefined : { fontSize: 14, opacity: 0.6 }}>{endsLabel(ev, now, v2)} · {secs}s {v2 ? "on screen" : "ON SCREEN"} · venue-wide event</div>
       </div>
       <div style={{ display: "flex", gap: 6, alignItems: "center", flex: "1 1 auto", minWidth: 0, flexWrap: "wrap", justifyContent: "flex-end" }}>
-        <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 13, opacity: 0.85 }}>
-          <span style={{ letterSpacing: 1 }} title="How long this card stays on screen">SECS</span>
+        <label className={v2 ? "st-label st-t2" : undefined} style={v2 ? { display: "flex", alignItems: "center", gap: 4 } : { display: "flex", alignItems: "center", gap: 4, fontSize: 13, opacity: 0.85 }}>
+          <span style={v2 ? undefined : { letterSpacing: 1 }} title="How long this card stays on screen">SECS</span>
           <select
             value={inChoices ? secs : "custom"}
             disabled={!canEvents}
             title={lockNote}
             onChange={(e) => { const n = parseInt(e.target.value); if (Number.isFinite(n)) onSecs(n); }}
             aria-label="Seconds on screen"
-            style={{ background: "#000", color: "var(--terminal-green)", border: "1px solid var(--terminal-green)", fontFamily: MONO, fontSize: 15, minHeight: 44, padding: "0 6px", cursor: canEvents ? "pointer" : "not-allowed", opacity: canEvents ? 1 : 0.5 }}
+            className={v2 ? "st-mono" : undefined}
+            style={v2 ? { ...selectV2, cursor: canEvents ? "pointer" : "not-allowed", opacity: canEvents ? 1 : 0.5 } : { background: "#000", color: "var(--terminal-green)", border: "1px solid var(--terminal-green)", fontFamily: MONO, fontSize: 15, minHeight: 44, padding: "0 6px", cursor: canEvents ? "pointer" : "not-allowed", opacity: canEvents ? 1 : 0.5 }}
           >
-            {!inChoices && <option value="custom" style={{ background: "#000" }}>{secs}s</option>}
+            {!inChoices && <option value="custom" style={v2 ? optionV2 : { background: "#000" }}>{secs}s</option>}
             {DURATION_CHOICES.map((sc) => (
-              <option key={sc} value={sc} style={{ background: "#000" }}>{sc}s</option>
+              <option key={sc} value={sc} style={v2 ? optionV2 : { background: "#000" }}>{sc}s</option>
             ))}
           </select>
         </label>
-        <button type="button" onClick={onUp} disabled={first || busy || !canEvents} title={lockNote} style={{ ...iconBtn, opacity: canEvents ? undefined : 0.5 }} aria-label="Move up">▲</button>
-        <button type="button" onClick={onDown} disabled={last || busy || !canEvents} title={lockNote} style={{ ...iconBtn, opacity: canEvents ? undefined : 0.5 }} aria-label="Move down">▼</button>
+        <button type="button" onClick={onUp} disabled={first || busy || !canEvents} title={lockNote} className={v2 ? "st-btn st-body" : undefined} style={v2 ? { ...iconBtnV2, opacity: canEvents ? undefined : 0.5 } : { ...iconBtn, opacity: canEvents ? undefined : 0.5 }} aria-label="Move up">▲</button>
+        <button type="button" onClick={onDown} disabled={last || busy || !canEvents} title={lockNote} className={v2 ? "st-btn st-body" : undefined} style={v2 ? { ...iconBtnV2, opacity: canEvents ? undefined : 0.5 } : { ...iconBtn, opacity: canEvents ? undefined : 0.5 }} aria-label="Move down">▼</button>
       </div>
     </div>
   );
 }
 
 /* ── read-only ★ SCREENS trailer (managed at the POS, not here) ── */
-function ScreensQueueRow({ card, tmap }: { card: SignageItem; tmap: Map<string, ToastCacheRow> }) {
+function ScreensQueueRow({ card, tmap, v2 = false }: { card: SignageItem; tmap: Map<string, ToastCacheRow>; v2?: boolean }) {
   const guid = typeof card.fields?.source_toast_guid === "string" ? (card.fields.source_toast_guid as string) : "";
   const row = guid ? tmap.get(guid) : undefined;
   return (
-    <div className="terminal-border" style={{ padding: "10px 12px", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", opacity: 0.85 }}>
+    <div className={v2 ? "st-row" : "terminal-border"} style={{ padding: "10px 12px", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", opacity: 0.85 }}>
       <div style={{ display: "flex", flexDirection: "column", gap: 2, flex: "1 1 200px", minWidth: 0 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-          <span style={badge}>★ SCREENS</span>
-          <span className="sig-live" style={{ fontSize: 13, letterSpacing: 1, whiteSpace: "nowrap" }} title="On the TV rotation right now">● NOW</span>
+          <span className={v2 ? "st-chip st-label st-t2" : undefined} style={v2 ? { padding: "2px 8px", whiteSpace: "nowrap" } : badge}>★ SCREENS</span>
+          <span className={v2 ? "st-live st-label" : "sig-live"} style={v2 ? { whiteSpace: "nowrap" } : { fontSize: 13, letterSpacing: 1, whiteSpace: "nowrap" }} title="On the TV rotation right now">● NOW</span>
         </div>
-        <div style={{ fontSize: 20, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{row?.name ?? "Featured drink"}</div>
-        <div style={{ fontSize: 14, opacity: 0.6 }}>Auto — flipped in at the POS · {card.duration_seconds}s ON SCREEN</div>
+        <div className={v2 ? "st-heading st-t1" : undefined} style={v2 ? { whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" } : { fontSize: 20, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{row?.name ?? "Featured drink"}</div>
+        <div className={v2 ? "st-body st-t2" : undefined} style={v2 ? undefined : { fontSize: 14, opacity: 0.6 }}>Auto — flipped in at the POS · {card.duration_seconds}s {v2 ? "on screen" : "ON SCREEN"}</div>
       </div>
-      <span style={{ ...caption, fontSize: 13, whiteSpace: "nowrap" }}>MANAGE AT POS</span>
+      <span className={v2 ? "st-label st-t3" : undefined} style={v2 ? { whiteSpace: "nowrap" } : { ...caption, fontSize: 13, whiteSpace: "nowrap" }}>MANAGE AT POS</span>
     </div>
   );
 }
 
 /* ── read-only state banner (game / takeover / moment) ── */
-function Banner({ tone, head, body, cta, onClick }: { tone: "red" | "amber"; head: string; body: string; cta?: string; onClick?: () => void }) {
-  const cls = `terminal-border ${tone === "red" ? "u-red" : "u-amber"}`;
-  const style = { display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", padding: "10px 14px", marginTop: 10, background: "rgba(0,255,65,0.03)", color: "var(--terminal-green)", width: "100%", textAlign: "left" } as const;
+// v2: the box is the callout role for the tone (`st-callout-warn` amber / `st-callout-danger`
+// red — the same pair PR 2 spent on "being edited" and on the remove confirm), the head is a
+// Label in the tone ink, the body is Body. The TAKEOVER case is a button (opens the takeover
+// panel as today) and clears the 44px floor on both axes.
+function Banner({ tone, head, body, cta, onClick, v2 = false }: { tone: "red" | "amber"; head: string; body: string; cta?: string; onClick?: () => void; v2?: boolean }) {
+  const cls = v2
+    ? `st-card ${tone === "red" ? "st-callout-danger" : "st-callout-warn"}`
+    : `terminal-border ${tone === "red" ? "u-red" : "u-amber"}`;
+  const style = v2
+    ? { display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", padding: "10px 14px", marginTop: 10, width: "100%", textAlign: "left" } as const
+    : { display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", padding: "10px 14px", marginTop: 10, background: "rgba(0,255,65,0.03)", color: "var(--terminal-green)", width: "100%", textAlign: "left" } as const;
   const inner = (
     <>
-      <span style={{ fontSize: 14, letterSpacing: 2, whiteSpace: "nowrap" }}>{head}</span>
-      <span style={{ flex: "1 1 200px", minWidth: 0, fontSize: 18 }}>{body}</span>
-      {cta && <span style={{ fontSize: 13, opacity: 0.8, textDecoration: "underline", whiteSpace: "nowrap" }}>{cta}</span>}
+      <span className={v2 ? `st-label ${tone === "red" ? "st-danger" : "st-amber"}` : undefined} style={v2 ? { whiteSpace: "nowrap" } : { fontSize: 14, letterSpacing: 2, whiteSpace: "nowrap" }}>{head}</span>
+      <span className={v2 ? "st-body" : undefined} style={v2 ? { flex: "1 1 200px", minWidth: 0 } : { flex: "1 1 200px", minWidth: 0, fontSize: 18 }}>{body}</span>
+      {cta && <span className={v2 ? "st-body st-t2" : undefined} style={v2 ? { textDecoration: "underline", whiteSpace: "nowrap" } : { fontSize: 13, opacity: 0.8, textDecoration: "underline", whiteSpace: "nowrap" }}>{cta}</span>}
     </>
   );
   return onClick
-    ? <button type="button" onClick={onClick} className={cls} style={{ ...style, cursor: "pointer", fontFamily: MONO }}>{inner}</button>
+    ? <button type="button" onClick={onClick} className={cls} style={v2 ? { ...style, cursor: "pointer", minHeight: TAP, minWidth: TAP, border: "1px solid" } : { ...style, cursor: "pointer", fontFamily: MONO }}>{inner}</button>
     : <div className={cls} style={style}>{inner}</div>;
 }
+
+/* v2 twins (geometry only — see ItemRow's note in signageAdminShared.tsx): the classic
+ * `primary` / `iconBtn` / SECS `<select>` boxes without their colour, face or the theme's
+ * green literals. `border: "1px solid"` carries no colour so the sheet blanket paints the
+ * hairline; `minWidth: TAP` joins `minHeight` because the 44px floor is both axes. */
+const primaryV2 = { padding: "10px 18px", fontSize: 15, fontWeight: 700, cursor: "pointer", minHeight: TAP, minWidth: TAP, border: "1px solid" } as const;
+const iconBtnV2 = { padding: "0 10px", fontSize: 15, cursor: "pointer", minHeight: TAP, minWidth: TAP, border: "1px solid" } as const;
+const selectV2 = { fontSize: 15, minHeight: TAP, minWidth: TAP, padding: "0 6px", border: "1px solid" } as const;
+const optionV2 = { background: staffSurface.surface2 } as const;
 
 /* ── helpers (venue-TZ formatting) ── */
 const WHEN = new Intl.DateTimeFormat("en-US", { timeZone: VENUE_TZ, month: "numeric", day: "numeric", hour: "numeric", minute: "2-digit" });
@@ -307,10 +356,11 @@ const DAY = new Intl.DateTimeFormat("en-CA", { timeZone: VENUE_TZ, year: "numeri
 function sameDay(a: number, b: number): boolean {
   return DAY.format(new Date(a)) === DAY.format(new Date(b));
 }
-function endsLabel(ev: LiveEvent, now: Date): string {
+function endsLabel(ev: LiveEvent, now: Date, v2 = false): string {
   if (!ev.fire_at) return "one-shot";
   const end = new Date(ev.fire_at).getTime() + ev.window_minutes * 60_000;
-  return `ENDS ${sameDay(end, now.getTime()) ? TIME.format(new Date(end)) : WHEN.format(new Date(end))}`;
+  // v2 is Body-role copy (sentence case); classic keeps the shouted token byte for byte.
+  return `${v2 ? "Ends" : "ENDS"} ${sameDay(end, now.getTime()) ? TIME.format(new Date(end)) : WHEN.format(new Date(end))}`;
 }
 function windowReason(item: AdminItem, now: Date): string | null {
   if (!item.active) return null;
