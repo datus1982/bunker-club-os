@@ -456,8 +456,11 @@ export function PlaylistEditor({ initial, files, onClose, variant = "classic", o
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           {/* v2 splits the Label role (all-caps by definition) from its lowercase hint, so
               `text-transform: uppercase` never shouts "(FOLDER — READ-ONLY)". */}
-          <span className={labelCls} style={v2 ? undefined : { fontSize: 14, letterSpacing: 2, opacity: 0.55 }}>{v2 ? "NAME" : `NAME${isFolder ? " (folder — read-only)" : ""}`}</span>
-          {v2 && isFolder && <span className="st-body st-t3">Folder playlist — the name and its clips come from the media PC's folder, so they are read-only here.</span>}
+          {/* Classic keeps its TWO JSX children (`NAME` + the conditional hint) so a folder renders
+              the same two text nodes it always did — a template literal would collapse them into
+              one node (PR 6 review WARN-1; React drops the `""` child, so the structure is exact). */}
+          <span className={labelCls} style={v2 ? undefined : { fontSize: 14, letterSpacing: 2, opacity: 0.55 }}>{v2 ? "NAME" : <>NAME{isFolder ? " (folder — read-only)" : ""}</>}</span>
+          {v2 && isFolder && <span className="st-body st-t2">Folder playlist — the name and its clips come from the media PC's folder, so they are read-only here.</span>}
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             <input
               value={name}
@@ -495,14 +498,19 @@ export function PlaylistEditor({ initial, files, onClose, variant = "classic", o
                 items.map((it, i) => {
                   const chip = statusChip(it.file.status);
                   return (
-                    <div key={it.file.id} className={v2 ? "st-row" : "terminal-border"} style={{ padding: "7px 9px", display: "flex", alignItems: "center", gap: 10 }}>
+                    // v2: the row is TOP-aligned so a two-line title (below) grows the row while the
+                    // thumb and the three 44px icons keep their own height instead of stretching.
+                    <div key={it.file.id} className={v2 ? "st-row" : "terminal-border"} style={v2 ? { padding: "7px 9px", display: "flex", alignItems: "flex-start", gap: 10 } : { padding: "7px 9px", display: "flex", alignItems: "center", gap: 10 }}>
                       {it.file.thumb
                         ? <img src={it.file.thumb} alt="" style={{ ...thumbImgS, opacity: it.file.status === "present" ? 1 : 0.45 }} />
                         : <span style={v2 ? { width: 44, height: 30, border: "1px solid", flexShrink: 0, display: "inline-block" } : { width: 44, height: 30, border: "1px solid var(--terminal-green)", flexShrink: 0, display: "inline-block" }} />}
                       <div style={{ flex: 1, minWidth: 0 }}>
                         {/* Every leaf carries its own role class: nothing inherits font-size
                             under `.terminal-theme *` (the PR #89 gotcha). */}
-                        <div className={v2 ? "st-body" : undefined} style={v2 ? { whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" } : { fontSize: 16, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{(it.file.title ?? "").trim() || it.file.filename}</div>
+                        {/* v2: the Library card's TWO-LINE clamp instead of nowrap+ellipsis (Marvin
+                            ruling on PR 6 NOTE-2 — a ten-character title beside three 44px icons is
+                            Stephen's "cut-off titles" complaint). `title` carries the full string. */}
+                        <div className={v2 ? "st-body" : undefined} title={v2 ? ((it.file.title ?? "").trim() || it.file.filename) : undefined} style={v2 ? { display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden", overflowWrap: "anywhere" } : { fontSize: 16, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{(it.file.title ?? "").trim() || it.file.filename}</div>
                         <div className={v2 ? "st-body st-t3" : undefined} style={v2 ? undefined : { fontSize: 12, opacity: 0.55 }}>{formatDuration(it.file.duration_seconds)}{it.file.status !== "present" ? ` · ${chip.label}` : ""}</div>
                       </div>
                       {!readOnly && (
@@ -564,7 +572,7 @@ export function PlaylistEditor({ initial, files, onClose, variant = "classic", o
                   // gain — and Beat 6 set the precedent when Users kept classic on `confirm()`
                   // and gave only v2 the sheet.
                   onClick={() => {
-                    if (variant === "v2") { setConfirmDelete(true); return; }
+                    if (v2) { setConfirmDelete(true); return; }
                     if (confirm("Delete this playlist? Clips stay in the library; any screen pointed at it falls back to an empty program until re-pointed.")) del.mutate();
                   }}
                   /* Deleting the playlist IS data loss (the custom membership is gone), so v2

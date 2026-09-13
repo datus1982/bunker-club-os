@@ -353,12 +353,11 @@ export function MediaPlaylistsPage() {
   const playlists = useMemo(() => playlistsQ.data ?? [], [playlistsQ.data]);
   const files = useMemo(() => filesQ.data ?? [], [filesQ.data]);
   // DECISION: (Beat 8 PR 6) the state holds the OPEN REQUEST, not the target: a fresh
-  // `{ target }` object per press. SlideOver's
-  // phase machine keys its re-entry on `openKey`, and the row's `PlaylistWithStats` is the
-  // SAME object the list rendered (and "new" is the same string), so passing the target
-  // itself would make a ✕-then-re-press inside the 140ms exit a no-op (React bails out of
-  // an identical state; the stale dismiss then closes the drawer the manager re-opened).
-  // Beat 8 PR 6 — the PR 2 addendum's lesson applied to this editor.
+  // `{ target }` object per press. SlideOver's phase machine keys its re-entry on `openKey`,
+  // and the row's `PlaylistWithStats` is the SAME object the list rendered (and "new" is the
+  // same string), so passing the target itself would make a ✕-then-re-press inside the 140ms
+  // exit a no-op (React bails out of an identical state; the stale dismiss then closes the
+  // drawer the manager re-opened). The PR 2 addendum's lesson applied to this editor.
   const [editing, setEditing] = useState<{ target: PlaylistWithStats | "new" } | null>(null);
   const openEditor = (target: PlaylistWithStats | "new") => setEditing({ target });
 
