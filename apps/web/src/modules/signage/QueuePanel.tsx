@@ -275,8 +275,10 @@ function EventQueueRow({
         <div className={v2 ? "st-body st-t2" : undefined} style={v2 ? undefined : { fontSize: 14, opacity: 0.6 }}>{endsLabel(ev, now, v2)} · {secs}{v2 ? "s on screen · venue-wide event" : "s ON SCREEN · venue-wide event"}</div>
       </div>
       <div style={{ display: "flex", gap: 6, alignItems: "center", flex: "1 1 auto", minWidth: 0, flexWrap: "wrap", justifyContent: "flex-end" }}>
-        <label className={v2 ? "st-label st-t2" : undefined} style={v2 ? { display: "flex", alignItems: "center", gap: 4 } : { display: "flex", alignItems: "center", gap: 4, fontSize: 13, opacity: 0.85 }}>
-          <span className={v2 ? "st-label" : undefined} style={v2 ? undefined : { letterSpacing: 1 }} title="How long this card stays on screen">SECS</span>
+        {/* NOTE-5 (PR 3 review): dim tier on the SECS word only, never on the <label> — the
+            `.st-t2 *` descendant leg would ink the <select>'s value at 0.6α. */}
+        <label className={v2 ? "st-label" : undefined} style={v2 ? { display: "flex", alignItems: "center", gap: 4 } : { display: "flex", alignItems: "center", gap: 4, fontSize: 13, opacity: 0.85 }}>
+          <span className={v2 ? "st-label st-t2" : undefined} style={v2 ? undefined : { letterSpacing: 1 }} title="How long this card stays on screen">SECS</span>
           <select
             value={inChoices ? secs : "custom"}
             disabled={!canEvents}

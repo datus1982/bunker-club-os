@@ -62,9 +62,10 @@ export interface HubOverlayProps {
   // never re-derived inside a panel with `useUiVersion()`.
   /** Which presentation opened these panels (Beat 8 PR 2). `SignageHub` builds ONE
    *  `overlays` node and hands it to whichever view renders, so the version it already
-   *  knows is passed down here rather than re-read from the switch. Only PROGRAM and
-   *  SCHEDULE consume it in this PR — the other slide-overs are PRs 3–6, and until then
-   *  they render classic in BOTH views exactly as they do today. */
+   *  knows is passed down here rather than re-read from the switch. Every overlay wrapper
+   *  below threads it to its SlideOver + panel as its Beat 8 PR lands (PR 2: PROGRAM /
+   *  SCHEDULE; PR 3: + ADD / QUEUE; PR 4: TAKEOVER / EVENT; PR 5: the slide editor); a
+   *  wrapper that does not yet pass it renders classic in BOTH views exactly as today. */
   variant?: "classic" | "v2";
 }
 

@@ -244,6 +244,13 @@ export function ItemRow({
   const sched = v2 ? scheduleLabel(item).replace(/^(EVERGREEN|FROM|UNTIL)/, (m) => m[0] + m.slice(1).toLowerCase()) : scheduleLabel(item);
 
   return (
+    <>
+    {/* WARN-1 (PR 3 review): the ConfirmDialog is a SIBLING of the row, not a child. The row
+        carries `opacity: 0.5` when it is not on screen, and CSS opacity < 1 makes it a
+        compositing group + stacking context — a position:fixed dialog INSIDE it drew at
+        50% and UNDER the later rows (measured), on exactly the rows a manager removes. A
+        Fragment emits no DOM node, and classic never mounts the dialog, so its tree is
+        unchanged. */}
     <div className={v2 ? "st-row" : "terminal-border"} style={{ padding: "10px 12px", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", opacity: onScreen ? 1 : 0.5 }}>
       <div style={{ display: "flex", flexDirection: "column", gap: 2, flex: "1 1 200px", minWidth: 0 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
@@ -274,10 +281,12 @@ export function ItemRow({
       <div style={{ display: "flex", gap: 6, alignItems: "center", flex: "1 1 auto", minWidth: 0, flexWrap: "wrap", justifyContent: "flex-end" }}>
         {/* Per-item on-screen SECONDS — the timing control (writes duration_seconds; the
             public rotation advance already honors it per-item, no fixed interval). */}
-        <label className={v2 ? "st-label st-t2" : undefined} style={v2 ? { display: "flex", alignItems: "center", gap: 4 } : { display: "flex", alignItems: "center", gap: 4, fontSize: 13, opacity: 0.85 }}>
+        {/* NOTE-5 (PR 3 review): the dim tier sits on the SECS word only — `.st-sheet .st-t2 *`
+            reaches every descendant, and on the <label> it inked the <select>'s VALUE at 0.6α. */}
+        <label className={v2 ? "st-label" : undefined} style={v2 ? { display: "flex", alignItems: "center", gap: 4 } : { display: "flex", alignItems: "center", gap: 4, fontSize: 13, opacity: 0.85 }}>
           {/* Its own role class: nothing inherits font-size (the label's `st-label` sizes the
               LABEL element, not this span — `.terminal-theme *` would put it at 24px). */}
-          <span className={v2 ? "st-label" : undefined} style={v2 ? undefined : { letterSpacing: 1 }} title="How long this slide stays on screen">SECS</span>
+          <span className={v2 ? "st-label st-t2" : undefined} style={v2 ? undefined : { letterSpacing: 1 }} title="How long this slide stays on screen">SECS</span>
           <select
             value={DURATION_CHOICES.includes(item.duration_seconds as (typeof DURATION_CHOICES)[number]) ? item.duration_seconds : "custom"}
             onChange={(e) => { const n = parseInt(e.target.value); if (Number.isFinite(n)) dur.mutate(n); }}
@@ -312,20 +321,21 @@ export function ItemRow({
           style={v2 ? iconBtnV2 : iconBtn}
         >✕</button>
       </div>
-      {v2 && confirmRemove && (
-        <ConfirmDialog
-          // `title` is the dialog's retarget key and names the target (the ConfirmDialog
-          // convention); the body is the classic `window.confirm` sentence, verbatim.
-          title={summarize(item, toastRows)}
-          body="Remove from THIS screen? The asset stays in the library and on any other screen."
-          confirmLabel="Remove from this screen"
-          cancelLabel="Keep on this screen"
-          danger={false}
-          onConfirm={() => { setConfirmRemove(false); onRemove(); }}
-          onCancel={() => setConfirmRemove(false)}
-        />
-      )}
     </div>
+    {v2 && confirmRemove && (
+      <ConfirmDialog
+        // `title` is the dialog's retarget key and names the target (the ConfirmDialog
+        // convention); the body is the classic `window.confirm` sentence, verbatim.
+        title={summarize(item, toastRows)}
+        body="Remove from THIS screen? The asset stays in the library and on any other screen."
+        confirmLabel="Remove from this screen"
+        cancelLabel="Keep on this screen"
+        danger={false}
+        onConfirm={() => { setConfirmRemove(false); onRemove(); }}
+        onCancel={() => setConfirmRemove(false)}
+      />
+    )}
+    </>
   );
 }
 

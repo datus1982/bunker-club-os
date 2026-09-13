@@ -132,8 +132,10 @@ function LibraryRow({
         <div className={v2 ? "st-heading st-t1" : undefined} style={v2 ? { whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" } : { fontSize: 19, letterSpacing: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{name}</div>
         <div className={v2 ? "st-body st-t2" : undefined} style={v2 ? undefined : { fontSize: 12, opacity: 0.6 }}>{templateBadge(item.template).toLowerCase()} · {here ? "already queued here" : where}</div>
       </div>
+      {/* NOTE-4 (PR 3 review): the chip is `st-t2`, not `st-t3` — the row already sits at
+          opacity 0.5, so a 0.38α tier inside it read at ≈0.19α (double-dimmed). */}
       {here ? (
-        <span className={v2 ? "st-chip st-label st-t3" : undefined} style={v2 ? { whiteSpace: "nowrap", padding: "6px 10px" } : { fontSize: 13, letterSpacing: 1, opacity: 0.6, whiteSpace: "nowrap", border: "1px solid var(--terminal-green)", padding: "6px 10px" }}>ON THIS SCREEN</span>
+        <span className={v2 ? "st-chip st-label st-t2" : undefined} style={v2 ? { whiteSpace: "nowrap", padding: "6px 10px" } : { fontSize: 13, letterSpacing: 1, opacity: 0.6, whiteSpace: "nowrap", border: "1px solid var(--terminal-green)", padding: "6px 10px" }}>ON THIS SCREEN</span>
       ) : (
         <button
           type="button"
