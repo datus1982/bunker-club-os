@@ -185,7 +185,7 @@ export function QueuePanel({
         <button type="button" onClick={onAdd} className={v2 ? "st-btn st-btn-primary u-ink st-body" : "u-fill u-ink"} style={v2 ? primaryV2 : primary}>{v2 ? "+ Add" : "+ ADD"}</button>
       </div>
       <div className={v2 ? "st-body st-t2" : undefined} style={v2 ? { margin: "2px 0 10px" } : { fontSize: 14, opacity: 0.6, margin: "2px 0 10px" }}>
-        The exact order the TV resolves right now. <span className={v2 ? "st-live" : "sig-live"}>● NOW</span> = on screen this minute; dimmed = off, out of its window, or 86’d. Per-screen <b>SECS</b> is this screen’s dwell.
+        The exact order the TV resolves right now. <span className={v2 ? "st-live st-body" : "sig-live"}>● NOW</span> = on screen this minute; dimmed = off, out of its window, or 86’d. Per-screen <b className={v2 ? "st-body" : undefined}>SECS</b> is this screen’s dwell.
       </div>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -238,10 +238,13 @@ export function QueuePanel({
         })}
       </div>
 
+      {/* v2: EVERY text-bearing element carries its own role class — nothing inherits
+          font-size in this app (`.terminal-theme *` sets 24px on every element; PR #89), so
+          the inner lines and the <b> would render at the theme default without one. */}
       <div className={v2 ? "st-body st-t3" : undefined} style={v2 ? { marginTop: 14, display: "flex", flexDirection: "column", gap: 4 } : { fontSize: 13, opacity: 0.55, marginTop: 14, display: "flex", flexDirection: "column", gap: 4 }}>
-        <div>✕ removes an asset from THIS screen only — it stays in the library and on any other screen. To delete an asset everywhere, open it and use DELETE.</div>
-        <div>★ SCREENS items flipped In-Stock at the POS rotate here automatically — manage those at the register.</div>
-        <div>Event cards (WINDOW / MESSAGE) show on <b>every</b> screen; reordering one moves it everywhere.</div>
+        <div className={v2 ? "st-body" : undefined}>✕ removes an asset from THIS screen only — it stays in the library and on any other screen. To delete an asset everywhere, open it and use DELETE.</div>
+        <div className={v2 ? "st-body" : undefined}>★ SCREENS items flipped In-Stock at the POS rotate here automatically — manage those at the register.</div>
+        <div className={v2 ? "st-body" : undefined}>Event cards (WINDOW / MESSAGE) show on <b className={v2 ? "st-body" : undefined}>every</b> screen; reordering one moves it everywhere.</div>
       </div>
     </div>
   );
@@ -269,11 +272,11 @@ function EventQueueRow({
           <span className={v2 ? "st-chip st-label st-t2" : undefined} style={v2 ? { padding: "2px 8px", whiteSpace: "nowrap" } : { ...badge, opacity: 0.7 }} title="Events show on every screen — reordering affects all of them">ALL SCREENS</span>
         </div>
         <div className={v2 ? "st-heading st-t1" : undefined} style={v2 ? { whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" } : { fontSize: 20, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{title}</div>
-        <div className={v2 ? "st-body st-t2" : undefined} style={v2 ? undefined : { fontSize: 14, opacity: 0.6 }}>{endsLabel(ev, now, v2)} · {secs}s {v2 ? "on screen" : "ON SCREEN"} · venue-wide event</div>
+        <div className={v2 ? "st-body st-t2" : undefined} style={v2 ? undefined : { fontSize: 14, opacity: 0.6 }}>{endsLabel(ev, now, v2)} · {secs}{v2 ? "s on screen · venue-wide event" : "s ON SCREEN · venue-wide event"}</div>
       </div>
       <div style={{ display: "flex", gap: 6, alignItems: "center", flex: "1 1 auto", minWidth: 0, flexWrap: "wrap", justifyContent: "flex-end" }}>
         <label className={v2 ? "st-label st-t2" : undefined} style={v2 ? { display: "flex", alignItems: "center", gap: 4 } : { display: "flex", alignItems: "center", gap: 4, fontSize: 13, opacity: 0.85 }}>
-          <span style={v2 ? undefined : { letterSpacing: 1 }} title="How long this card stays on screen">SECS</span>
+          <span className={v2 ? "st-label" : undefined} style={v2 ? undefined : { letterSpacing: 1 }} title="How long this card stays on screen">SECS</span>
           <select
             value={inChoices ? secs : "custom"}
             disabled={!canEvents}
@@ -283,9 +286,9 @@ function EventQueueRow({
             className={v2 ? "st-mono" : undefined}
             style={v2 ? { ...selectV2, cursor: canEvents ? "pointer" : "not-allowed", opacity: canEvents ? 1 : 0.5 } : { background: "#000", color: "var(--terminal-green)", border: "1px solid var(--terminal-green)", fontFamily: MONO, fontSize: 15, minHeight: 44, padding: "0 6px", cursor: canEvents ? "pointer" : "not-allowed", opacity: canEvents ? 1 : 0.5 }}
           >
-            {!inChoices && <option value="custom" style={v2 ? optionV2 : { background: "#000" }}>{secs}s</option>}
+            {!inChoices && <option value="custom" className={v2 ? "st-mono" : undefined} style={v2 ? optionV2 : { background: "#000" }}>{secs}s</option>}
             {DURATION_CHOICES.map((sc) => (
-              <option key={sc} value={sc} style={v2 ? optionV2 : { background: "#000" }}>{sc}s</option>
+              <option key={sc} value={sc} className={v2 ? "st-mono" : undefined} style={v2 ? optionV2 : { background: "#000" }}>{sc}s</option>
             ))}
           </select>
         </label>
@@ -308,7 +311,7 @@ function ScreensQueueRow({ card, tmap, v2 = false }: { card: SignageItem; tmap: 
           <span className={v2 ? "st-live st-label" : "sig-live"} style={v2 ? { whiteSpace: "nowrap" } : { fontSize: 13, letterSpacing: 1, whiteSpace: "nowrap" }} title="On the TV rotation right now">● NOW</span>
         </div>
         <div className={v2 ? "st-heading st-t1" : undefined} style={v2 ? { whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" } : { fontSize: 20, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{row?.name ?? "Featured drink"}</div>
-        <div className={v2 ? "st-body st-t2" : undefined} style={v2 ? undefined : { fontSize: 14, opacity: 0.6 }}>Auto — flipped in at the POS · {card.duration_seconds}s {v2 ? "on screen" : "ON SCREEN"}</div>
+        <div className={v2 ? "st-body st-t2" : undefined} style={v2 ? undefined : { fontSize: 14, opacity: 0.6 }}>Auto — flipped in at the POS · {card.duration_seconds}{v2 ? "s on screen" : "s ON SCREEN"}</div>
       </div>
       <span className={v2 ? "st-label st-t3" : undefined} style={v2 ? { whiteSpace: "nowrap" } : { ...caption, fontSize: 13, whiteSpace: "nowrap" }}>MANAGE AT POS</span>
     </div>

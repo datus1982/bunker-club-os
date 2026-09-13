@@ -263,7 +263,10 @@ export function ItemRow({
           {hideReason && <span className={v2 ? warnChip : "u-amber"} style={v2 ? warnChipS : { fontSize: 13 }}>{hideReason}</span>}
         </div>
         <div className={v2 ? "st-heading st-t1" : undefined} style={v2 ? { whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" } : { fontSize: 20, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{summarize(item, toastRows)}</div>
-        <div className={v2 ? "st-body st-t2" : undefined} style={v2 ? undefined : { fontSize: 14, opacity: 0.6 }}>{sched} · {item.duration_seconds}s {v2 ? "on screen" : "ON SCREEN"}</div>
+        {/* Text-NODE boundaries are part of classic's byte identity: `{n}s {x}` would split the
+            shipped "s ON SCREEN" node into two and shift the glyph run ~2px (measured). The
+            ternary therefore carries the "s" so classic keeps its exact four text nodes. */}
+        <div className={v2 ? "st-body st-t2" : undefined} style={v2 ? undefined : { fontSize: 14, opacity: 0.6 }}>{sched} · {item.duration_seconds}{v2 ? "s on screen" : "s ON SCREEN"}</div>
       </div>
       {/* minWidth:0 + shrinkable so that when this control cluster wraps to its own line
           at ≤390px it is constrained to the row width and its own flexWrap engages (the
@@ -272,7 +275,9 @@ export function ItemRow({
         {/* Per-item on-screen SECONDS — the timing control (writes duration_seconds; the
             public rotation advance already honors it per-item, no fixed interval). */}
         <label className={v2 ? "st-label st-t2" : undefined} style={v2 ? { display: "flex", alignItems: "center", gap: 4 } : { display: "flex", alignItems: "center", gap: 4, fontSize: 13, opacity: 0.85 }}>
-          <span style={v2 ? undefined : { letterSpacing: 1 }} title="How long this slide stays on screen">SECS</span>
+          {/* Its own role class: nothing inherits font-size (the label's `st-label` sizes the
+              LABEL element, not this span — `.terminal-theme *` would put it at 24px). */}
+          <span className={v2 ? "st-label" : undefined} style={v2 ? undefined : { letterSpacing: 1 }} title="How long this slide stays on screen">SECS</span>
           <select
             value={DURATION_CHOICES.includes(item.duration_seconds as (typeof DURATION_CHOICES)[number]) ? item.duration_seconds : "custom"}
             onChange={(e) => { const n = parseInt(e.target.value); if (Number.isFinite(n)) dur.mutate(n); }}
@@ -281,10 +286,10 @@ export function ItemRow({
             style={v2 ? selectV2 : { background: "#000", color: "var(--terminal-green)", border: "1px solid var(--terminal-green)", fontFamily: MONO, fontSize: 15, minHeight: 44, padding: "0 6px", cursor: "pointer" }}
           >
             {!DURATION_CHOICES.includes(item.duration_seconds as (typeof DURATION_CHOICES)[number]) && (
-              <option value="custom" style={v2 ? optionV2 : { background: "#000" }}>{item.duration_seconds}s</option>
+              <option value="custom" className={v2 ? "st-mono" : undefined} style={v2 ? optionV2 : { background: "#000" }}>{item.duration_seconds}s</option>
             )}
             {DURATION_CHOICES.map((sc) => (
-              <option key={sc} value={sc} style={v2 ? optionV2 : { background: "#000" }}>{sc}s</option>
+              <option key={sc} value={sc} className={v2 ? "st-mono" : undefined} style={v2 ? optionV2 : { background: "#000" }}>{sc}s</option>
             ))}
           </select>
         </label>
