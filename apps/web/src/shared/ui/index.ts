@@ -10,6 +10,7 @@ export { ListRow } from "./ListRow";
 export { StatusChip, type StatusTone } from "./StatusChip";
 export { ScreenCard } from "./ScreenCard";
 export { ConfirmDialog } from "./ConfirmDialog";
+export { useSheetPhase, type SheetPhase } from "./useSheetPhase";
 export { EmptyState } from "./EmptyState";
 export { InlineNotice } from "./InlineNotice";
 export { FormField } from "./FormField";

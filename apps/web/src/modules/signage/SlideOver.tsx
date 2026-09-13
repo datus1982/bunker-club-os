@@ -1,6 +1,7 @@
 import { useEffect, type CSSProperties, type ReactNode } from "react";
 import { useIsMobile } from "@/shared/useIsMobile";
 import { space, TAP } from "@/shared/ui/tokens";
+import { useSheetPhase } from "@/shared/ui/useSheetPhase";
 
 /**
  * SlideOver — the hub's overlay surface (docs/signage-hub-consolidation-mockup.html).
@@ -51,6 +52,18 @@ import { space, TAP } from "@/shared/ui/tokens";
  *    The mobile full-screen case is a JS class, not a media query, so it cannot drift from
  *    the `useIsMobile(640)` breakpoint that decides the geometry two lines above it.
  *
+ * MOTION — enter AND exit, on the shared `useSheetPhase` (Beat 8 PR 2 scope-add). The
+ * paragraph below is PR 1's reasoning for shipping enter-only, kept because it is still
+ * why there is no second copy of the phase machine: the exit arrived by EXTRACTING
+ * ConfirmDialog's, not by re-implementing it. `st-drawer-exit` mirrors the enter on the
+ * same single axis (10px back toward the anchored edge, 140ms ease-in, fill-mode both);
+ * the backdrop fades via the shipped `:has(.st-panel[data-state="exiting"])` rule, which
+ * carries the drawer's opacity with it exactly as the enter does. The v2 leg renders
+ * NOTHING once the phase reaches `closed`, so a caller mounted as `{open && <SlideOver/>}`
+ * — which is every caller — cannot strand an invisible click-blocker over the hub. The
+ * CLASSIC leg takes none of this: it closes synchronously, as it always has.
+ *
+ * PR 1's original note, for the record:
  * MOTION — ENTER ONLY, and that is a DECISION, not an omission.
  *  The panel carries `data-state="entering"`, which is the attribute the ratified sheet
  *  motion already keys on: the backdrop's `st-backdrop-enter` fade (bound via
@@ -70,7 +83,7 @@ import { space, TAP } from "@/shared/ui/tokens";
 const MONO = "'VT323','Share Tech Mono',monospace";
 
 export function SlideOver({
-  title, eyebrow, onClose, children, footer, width = 720, variant = "classic",
+  title, eyebrow, onClose, children, footer, width = 720, variant = "classic", openKey,
 }: {
   title: string;
   eyebrow?: string;
@@ -80,23 +93,41 @@ export function SlideOver({
   width?: number;
   /** "v2" renders the tokened sheet. Defaults to the shipped classic drawer. */
   variant?: "classic" | "v2";
+  /** Identity of the OPEN REQUEST — the caller's overlay-state object, which is a new
+   *  object every time the manager presses an opener. It is the reset key the phase
+   *  machine needs; `title` alone is not enough, because pressing ✕ and then the SAME
+   *  opener 40ms later produces an identical title while the exit is still in flight.
+   *  Without it that second press is swallowed: the stale dismiss callback fires at the
+   *  end of the exit and closes the drawer the manager just re-opened. Falls back to
+   *  `title`, which is what the other v2 sheet (ConfirmDialog) keys on. */
+  openKey?: unknown;
 }) {
   const isMobile = useIsMobile();
+  // Called on BOTH legs so hook order is stable when the per-device switch flips. Classic
+  // never calls `beginExit`, so its phase stays `entering` for ever and nothing it renders
+  // reads the phase — its markup is unchanged.
+  const { phase, panelRef, beginExitRef } = useSheetPhase(openKey ?? title);
+  const v2 = variant === "v2";
+  /** v2 dismisses through the exit; classic closes synchronously, as it always has. */
+  const dismiss = () => { if (v2) beginExitRef.current(onClose); else onClose(); };
 
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") dismiss(); };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `dismiss` reaches the current
+    // beginExit through a ref; re-keying on it would re-register the listener every render.
+  }, [onClose, variant]);
 
   const panel: CSSProperties = isMobile
     ? { width: "100vw", height: "100dvh", maxWidth: "100vw" }
     : { width: `min(${width}px, 96vw)`, height: "100dvh", marginLeft: "auto" };
 
-  if (variant === "v2") {
+  if (v2) {
+    if (phase === "closed") return null;
     return (
       <div
-        onClick={onClose}
+        onClick={dismiss}
         className="terminal-theme staff-ui st-sheet"
         style={{
           position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", zIndex: 1000,
@@ -104,8 +135,9 @@ export function SlideOver({
         }}
       >
         <div
+          ref={panelRef}
           onClick={(e) => e.stopPropagation()}
-          data-state="entering"
+          data-state={phase}
           role="dialog"
           aria-modal="true"
           aria-label={title}
@@ -130,7 +162,7 @@ export function SlideOver({
             </div>
             <button
               type="button"
-              onClick={onClose}
+              onClick={dismiss}
               aria-label="Close"
               className="st-btn st-body st-t2"
               /* NOTE-7/8 (review): `border: "1px solid"` — WIDTH and STYLE only; the colour

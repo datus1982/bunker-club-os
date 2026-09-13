@@ -58,12 +58,21 @@ export interface HubOverlayProps {
   invalidateTakeovers: () => void;
   invalidateEvents: () => void;
   qc: QueryClient;
+  // DECISION: (Beat 8 PR 2) the variant is THREADED from the page that already knows it,
+  // never re-derived inside a panel with `useUiVersion()`.
+  /** Which presentation opened these panels (Beat 8 PR 2). `SignageHub` builds ONE
+   *  `overlays` node and hands it to whichever view renders, so the version it already
+   *  knows is passed down here rather than re-read from the switch. Only PROGRAM and
+   *  SCHEDULE consume it in this PR — the other slide-overs are PRs 3–6, and until then
+   *  they render classic in BOTH views exactly as they do today. */
+  variant?: "classic" | "v2";
 }
 
 export function HubOverlays({
   overlay, setOverlay, slots, assets, toastRows, itemsBySlot, liveEvents, liveGame, takeovers,
   canEvents, busyQueueId, queueExisting, scheduleBySlot, overrideHoldFor, panelChoices,
   timezone, venueName, nextPosition, invalidateItems, invalidateTakeovers, invalidateEvents, qc,
+  variant = "classic",
 }: HubOverlayProps) {
   return (
     <>
@@ -119,19 +128,29 @@ export function HubOverlays({
         </SlideOver>
       )}
 
+      {/* `key` = the SLOT (addendum WARN). `openKey` lets the SAME panel instance re-enter
+          when the manager re-presses the same opener inside the 140ms exit — which is
+          exactly what must NOT happen for a DIFFERENT slot: without a key, React reused
+          the instance and its `useState` seeds (a DEVICE MATCH draft, a daypart loaded
+          into EDIT) carried from the old slot into the new one — measured as a cross-slot
+          PATCH. Keyed on the slot id, same-slot keeps the openKey path and a different
+          slot remounts fresh. Classic is unaffected: a `key` is React-only, no DOM. */}
       {overlay?.kind === "program" && (
         <ProgramOverlay
+          key={overlay.slot.id}
           slot={overlay.slot}
           scheduleBySlot={scheduleBySlot}
           overrideHoldFor={overrideHoldFor}
           panelChoices={panelChoices}
           qc={qc}
+          variant={variant}
+          openKey={overlay}
           onClose={() => setOverlay(null)}
         />
       )}
 
       {overlay?.kind === "schedule" && (
-        <ScheduleOverlay slot={overlay.slot} timezone={timezone} onClose={() => setOverlay(null)} />
+        <ScheduleOverlay key={overlay.slot.id} slot={overlay.slot} timezone={timezone} variant={variant} openKey={overlay} onClose={() => setOverlay(null)} />
       )}
 
       {overlay?.kind === "asset" && (
@@ -167,7 +186,7 @@ export function HubOverlays({
  * would start disagreeing about a live screen.
  */
 export function ProgramOverlay({
-  slot, scheduleBySlot, overrideHoldFor, panelChoices, qc, onClose,
+  slot, scheduleBySlot, overrideHoldFor, panelChoices, qc, onClose, variant = "classic", openKey,
 }: {
   slot: AdminSlot;
   scheduleBySlot: Map<string, unknown[]>;
@@ -175,6 +194,14 @@ export function ProgramOverlay({
   panelChoices: AdminSlot[];
   qc: QueryClient;
   onClose: () => void;
+  /** Beat 8 PR 2 — a v2 page passes "v2" so the panel renders in the staff tokens.
+   *  Threaded, never derived here: this wrapper exists so ONE definition says what
+   *  `hasSchedule`/`overrideActive` mean, and reading the switch here would let the hub
+   *  and the media page disagree about presentation on the same live screen. */
+  variant?: "classic" | "v2";
+  /** The caller's overlay-state object — a NEW object per press, which is what lets the
+   *  v2 drawer survive a press-✕-then-press-the-same-opener inside its 140ms exit. */
+  openKey?: unknown;
 }) {
   return (
     <ProgramPanel
@@ -182,14 +209,16 @@ export function ProgramOverlay({
       hasSchedule={(scheduleBySlot.get(slot.id)?.length ?? 0) > 0}
       overrideActive={overrideHoldFor(slot) !== null}
       panelChoices={panelChoices}
+      variant={variant}
+      openKey={openKey}
       onClose={onClose}
       onChanged={() => qc.invalidateQueries({ queryKey: ["signage-admin", "slots"] })}
     />
   );
 }
 
-export function ScheduleOverlay({ slot, timezone, onClose }: { slot: AdminSlot; timezone: string; onClose: () => void }) {
-  return <ScheduleEditor slot={slot} timezone={timezone} onClose={onClose} />;
+export function ScheduleOverlay({ slot, timezone, onClose, variant = "classic", openKey }: { slot: AdminSlot; timezone: string; onClose: () => void; variant?: "classic" | "v2"; openKey?: unknown }) {
+  return <ScheduleEditor slot={slot} timezone={timezone} variant={variant} openKey={openKey} onClose={onClose} />;
 }
 
 /**

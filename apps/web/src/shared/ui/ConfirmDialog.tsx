@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useRef, type CSSProperties, type ReactNode } from "react";
 import { radius, space, TAP } from "./tokens";
-// ONE definition of both, shared with SectionNav (arc 2 review NOTE-2). The timeout built
-// from these is only a FALLBACK for the case where `animationend` never arrives (the
-// animation was suppressed, the tab was backgrounded mid-exit); the event, when it fires,
-// wins the race.
-import { prefersReducedMotion, EXIT_MS, EXIT_SLACK_MS } from "./motion";
+// BEAT 8 (PR 2 scope-add): the phase machine that used to live in this file is now
+// `useSheetPhase` — ONE definition, shared with SlideOver's v2 drawer. Identical
+// behaviour: same three phases, the same `animationend`-vs-fallback-timer race, the same
+// reduced-motion short-circuit, the same retarget-on-`title`, and the same "render
+// nothing when closed" guarantee. Nothing about this dialog's timings or attributes moved.
+import { useSheetPhase } from "./useSheetPhase";
 
 /**
  * The ratified pinned-footer confirm (audit §5 #8) — the shared replacement for the raw
@@ -55,7 +56,6 @@ export function ConfirmDialog({
   onCancel: () => void;
 }) {
   const cancelRef = useRef<HTMLButtonElement | null>(null);
-  const panelRef = useRef<HTMLDivElement | null>(null);
   // Latest onCancel via a ref: callers pass inline arrows, and the hub re-renders every 60s,
   // so keying the effect on onCancel would re-run it (and yank focus back to CANCEL) while open.
   const onCancelRef = useRef(onCancel);
@@ -65,49 +65,32 @@ export function ConfirmDialog({
   //  entering → exiting → closed. `closed` renders NOTHING: a caller that (wrongly) keeps
   //  the dialog mounted after its dismiss callback therefore cannot strand a transparent
   //  click-blocker over the page, which is the failure mode a fill-mode'd exit invites.
-  const [phase, setPhase] = useState<"entering" | "exiting" | "closed">("entering");
-  // The dismiss callback to run once the exit has played.
-  const pendingRef = useRef<(() => void) | null>(null);
-
-  /** Dismiss: play the exit, then hand control back to the caller.
-   *  Re-entrant presses (Escape, then the backdrop, then CANCEL, inside 140ms) are no-ops,
-   *  so a rapid open→close→open can never double-fire `onCancel` or strand a dialog. */
-  const beginExit = (after: () => void) => {
-    if (phase !== "entering") return;
-    if (prefersReducedMotion()) { setPhase("closed"); after(); return; }
-    pendingRef.current = after;
-    setPhase("exiting");
-  };
-  // Escape is registered mount-once (re-keying it would yank focus back to CANCEL on every
-  // parent re-render), so it reaches the CURRENT beginExit through a ref, like onCancel.
-  const beginExitRef = useRef(beginExit);
-  beginExitRef.current = beginExit;
-
-  // NOTE-1 (arc 2 review) — RE-OPEN INSIDE THE EXIT WINDOW. Every caller mounts this as
-  // `{target && <ConfirmDialog …/>}` with no `key`, so React REUSES this instance when the
-  // parent opens a dialog for a different target. Land that inside the 140ms exit and the
-  // component is still `exiting`/`closed` and renders nothing — the second dialog never
-  // appears. Fixed HERE rather than by adding `key={id}` at UsersV2 / DrinksAdminV2 /
-  // SignageHubV2, because a shared primitive that only behaves when three callers remember
-  // a prop is the bug, not the fix. `title` is the identity signal (it always names the
-  // target: an email, a group, a screen). The stale dismiss callback is DROPPED — it
-  // belonged to the dialog the viewer just left.
-  const lastTitle = useRef(title);
-  if (title !== lastTitle.current) {
-    lastTitle.current = title;
-    if (phase !== "entering") {
-      pendingRef.current = null;
-      setPhase("entering");
-    }
-  }
+  //
+  //  `title` is the RETARGET key (arc 2 review NOTE-1): every caller mounts this as
+  //  `{target && <ConfirmDialog …/>}` with no `key`, so React REUSES this instance when the
+  //  parent opens a dialog for a different target — and landing that inside the 140ms exit
+  //  would leave the second dialog invisible. `title` always names the target (an email, a
+  //  group, a screen), so a change to it re-enters and drops the stale dismiss callback.
+  const { phase, panelRef, beginExit, beginExitRef } = useSheetPhase(title);
 
   useEffect(() => {
     cancelRef.current?.focus(); // once, on mount
+    // WARN-1 (Beat 8 PR 2 review) — CAPTURE phase, and Escape is CONSUMED.
+    // This dialog is often NESTED inside another v2 sheet that has its own `window`
+    // Escape listener (the signage slide-overs; PlaylistEditor's DELETE PLAYLIST is the
+    // same shape). Both listeners sat on `window` in the bubble phase, so one Escape key
+    // ran both handlers and dismissing the confirm ALSO closed the drawer underneath it,
+    // losing the form the manager was filling in. Capture runs outermost-first, which is
+    // this dialog — it is the topmost surface, so it is the one Escape belongs to — and
+    // `stopPropagation` stops the key before any bubble-phase listener sees it. The guard
+    // is on the Escape branch only, so every other key still reaches the page.
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") beginExitRef.current(() => onCancelRef.current());
+      if (e.key !== "Escape") return;
+      e.stopPropagation();
+      beginExitRef.current(() => onCancelRef.current());
     };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
   }, []);
 
   // A RETARGETED dialog (see NOTE-1 above) is a new dialog to the viewer, so focus returns
@@ -118,29 +101,6 @@ export function ConfirmDialog({
     if (firstTitle.current) { firstTitle.current = false; return; }
     cancelRef.current?.focus();
   }, [title]);
-
-  useEffect(() => {
-    if (phase !== "exiting") return;
-    const el = panelRef.current;
-    let done = false;
-    const finish = () => {
-      if (done) return;
-      done = true;
-      setPhase("closed");
-      const cb = pendingRef.current;
-      pendingRef.current = null;
-      cb?.();
-    };
-    // `animationend` BUBBLES, so a body that animates something of its own would otherwise
-    // end the exit early — only the panel's own animation counts.
-    const onEnd = (e: AnimationEvent) => { if (e.target === el) finish(); };
-    el?.addEventListener("animationend", onEnd);
-    const timer = window.setTimeout(finish, EXIT_MS + EXIT_SLACK_MS);
-    return () => {
-      el?.removeEventListener("animationend", onEnd);
-      window.clearTimeout(timer);
-    };
-  }, [phase]);
 
   if (phase === "closed") return null;
 
@@ -174,7 +134,12 @@ export function ConfirmDialog({
               action leaves exactly as abruptly as it did before this beat. */}
           <button
             type="button"
-            onClick={onConfirm}
+            // Phase-gated (addendum NOTE, pre-existing since Beat 7): the exiting backdrop
+            // blocks the POINTER (`pointer-events: none`), but Tab → Escape → Enter inside
+            // the 140ms exit still reaches this button by keyboard and fired the confirm
+            // — a write from a dialog the viewer had already dismissed. Only `entering`
+            // may confirm.
+            onClick={() => { if (phase === "entering") onConfirm(); }}
             disabled={busy}
             className={danger ? "st-btn st-body st-btn-danger" : "st-btn st-body st-btn-primary"}
             style={btn}
