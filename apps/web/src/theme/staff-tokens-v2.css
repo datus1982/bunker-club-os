@@ -1206,3 +1206,14 @@
 .terminal-theme.staff-v2 .st-sheet .st-panel.st-drawer[data-state="exiting"] {
   animation: st-drawer-exit 140ms ease-in both;
 }
+
+/* §10.pr6 — PlaylistEditor twins (Beat 8 PR 6 review NOTE-3) ─────────────────────────
+ * A DISABLED interactive row must not acknowledge the pointer. The ADD FROM LIBRARY picker
+ * renders every clip already in the playlist as `button.st-row:disabled` (opacity .4), and
+ * the §10 `button.st-row:hover` wash (0,5,1) still painted it on mouse-over — the same gap
+ * section 1 closes for plain buttons with `.st-sheet button:disabled:hover`. (0,6,1) beats
+ * the hover rule on specificity and is declared after it as well. Sheet-only by
+ * construction: `.st-row` has no hover rule on the page leg. */
+.terminal-theme.staff-v2 .st-sheet button.st-row:disabled:hover {
+  background: transparent !important; /* beats the §10 `button.st-row:hover` wash */
+}
