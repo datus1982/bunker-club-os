@@ -1,5 +1,5 @@
 {
- "purpose": "Restore record for the 143 TV-episode media_files rows deleted on Stephen's word (2026-09-14 18:20 CT via Marvin: 'the media entries should go too... if i want tv back we can re-add later'). The files themselves were deleted from the bar PC on 2026-08-23; the rows sat status='missing' since. Re-adding = re-ship the folders via the courier and let media-catalog-sync re-create rows; this file preserves ids, paths, hub-edited titles, poster/thumb paths and playlist membership so that is a restore, not a re-discovery. The 9 missing MOVIE/doc rows (the real re-acquire list) were deliberately kept.",
+ "purpose": "Restore record for the 143 TV-episode media_files rows scheduled for deletion in the after-close window of 2026-09-15 (02:00-04:00 CT) on Stephen's word (2026-09-14 18:20 CT via Marvin: 'the media entries should go too... if i want tv back we can re-add later'). The files themselves were deleted from the bar PC on 2026-08-23; the rows sat status='missing' since. Re-adding = re-ship the folders via the courier and let media-catalog-sync re-create rows; this file preserves ids, paths, hub-edited titles, poster/thumb paths and playlist membership so that is a restore, not a re-discovery. The 9 missing MOVIE/doc rows (the real re-acquire list) were deliberately kept.",
  "shows": [
   "Extreme Ghostbusters",
   "Freaks and Geeks",
