@@ -115,8 +115,16 @@ const PAGE_SIZE = 48;
 
 type StatusFilter = "all" | "present" | "missing" | "unsupported";
 const STATUS_FILTERS: StatusFilter[] = ["all", "present", "missing", "unsupported"];
+/**
+ * MEDIA LIST CLEANUP (owner ruling 2026-09-14, "the media list is showing the tv shows we
+ * removed, it's clogging the list"): the default view is what is ON THE MEDIA HOST. A bare
+ * `/media/library` (no `?status=`) now means PRESENT; `?status=all` is the explicit full
+ * catalog and `?status=missing` is still the honest "needs re-acquiring" deep link. The chips
+ * and their DB-exact counts are unchanged — only which one is lit with no param.
+ */
+const DEFAULT_STATUS: StatusFilter = "present";
 function readStatus(raw: string | null): StatusFilter {
-  return (STATUS_FILTERS as string[]).includes(raw ?? "") ? (raw as StatusFilter) : "all";
+  return (STATUS_FILTERS as string[]).includes(raw ?? "") ? (raw as StatusFilter) : DEFAULT_STATUS;
 }
 
 export function MediaLibraryPage() {
@@ -206,7 +214,9 @@ export function MediaLibraryPage() {
   const visible = useMemo(() => filtered.slice(0, shown), [filtered, shown]);
   const remaining = filtered.length - visible.length;
 
-  const filterActive = needle !== "" || status !== "all" || noSubsOnly;
+  // "Filter active" = anything a manager typed or tapped beyond the two whole-library views
+  // (the PRESENT default and the explicit ALL). CLEAR FILTERS returns to the default view.
+  const filterActive = needle !== "" || (status !== DEFAULT_STATUS && status !== "all") || noSubsOnly;
   const clearAll = () => {
     setText("");
     setParams(new URLSearchParams(), { replace: true });
@@ -217,14 +227,21 @@ export function MediaLibraryPage() {
   // The header tag never wraps (StaffPageHeader pins `nowrap` so a count can't split mid-phrase),
   // so the full three-part line pushes a 390px phone into horizontal scroll. Phones get the two
   // numbers that are not derivable from each other; PRESENT returns at tablet width and up.
+  // The tag reads against the VISIBLE set: the default (PRESENT) view leads with the on-host
+  // count and never says "504 FILES" over a 352-card grid; the explicit ALL view keeps the
+  // three-part catalog line; any narrower filter reads "N OF 504 FILES" exactly as before.
   const narrow = useIsMobile();
   const tag = filesQ.isLoading
     ? "LOADING…"
     : filterActive
       ? `${filtered.length} OF ${files.length} FILE${files.length === 1 ? "" : "S"}`
-      : narrow
-        ? `${files.length} FILE${files.length === 1 ? "" : "S"} · ${missing} MISSING`
-        : `${files.length} FILE${files.length === 1 ? "" : "S"} · ${present} PRESENT · ${missing} MISSING`;
+      : status === "all"
+        ? narrow
+          ? `${files.length} FILE${files.length === 1 ? "" : "S"} · ${missing} MISSING`
+          : `${files.length} FILE${files.length === 1 ? "" : "S"} · ${present} PRESENT · ${missing} MISSING`
+        : narrow
+          ? `${present} PRESENT · ${missing} MISSING`
+          : `${present} ON THE MEDIA HOST · ${missing} MISSING`;
 
   return (
     <MediaPage title="Library" tag={tag}>
@@ -241,7 +258,7 @@ export function MediaLibraryPage() {
             text={text}
             onText={setText}
             status={status}
-            onStatus={(next) => setParam("status", next === "all" ? null : next)}
+            onStatus={(next) => setParam("status", next === DEFAULT_STATUS ? null : next)}
             counts={counts}
             noSubsOnly={noSubsOnly}
             onNoSubs={() => setParam("subs", noSubsOnly ? null : "0")}
@@ -378,7 +395,7 @@ export function MediaPlaylistsPage() {
           onAction={() => openEditor("new")}
         />
       ) : (
-        <MediaPlaylistsPanel playlists={playlists} loading={playlistsQ.isLoading} onEdit={openEditor} />
+        <MediaPlaylistsPanel playlists={playlists} loading={playlistsQ.isLoading} onEdit={openEditor} variant="v2" />
       )}
 
       {/* `key` = the playlist (or "new"): a same-target re-press keeps the instance and takes

@@ -75,12 +75,33 @@ export function MediaLibraryPanel({ files, loading, screens, hasSchedule, varian
   );
 }
 
-/** Playlist rows — folder auto-playlists + custom ones, with their four toggles. */
-export function MediaPlaylistsPanel({ playlists, loading, onEdit }: {
+/**
+ * Playlist rows — folder auto-playlists + custom ones, with their four toggles.
+ *
+ * MEDIA LIST CLEANUP (owner ruling 2026-09-14, "the media list is showing the tv shows we
+ * removed, it's clogging the list"): a playlist with NOTHING the TV can play
+ * (`presentCount === 0` — the two TV-show folders whose 51 episodes were deleted from the bar
+ * PC on 08-23, plus any custom playlist that is simply empty) folds behind a one-line toggle
+ * at the foot of the list. Collapsed = the stocked playlists only; SHOW = the full list in its
+ * original order, every row rendered exactly as before (MISSING counts and all). ALL-MEDIA is
+ * never in this list, so it is never affected. The toggle is component-local and resets on
+ * navigation — deliberately no localStorage / URL param (this is a glance, not a mode).
+ * `variant` picks the toggle row's skin only: classic = uppercase inline-px, v2 = Body role.
+ */
+export function MediaPlaylistsPanel({ playlists, loading, onEdit, variant = "classic" }: {
   playlists: PlaylistWithStats[];
   loading: boolean;
   onEdit: (p: PlaylistWithStats) => void;
+  /** Skin of the "N empty playlists — Show/Hide" toggle row; the rows themselves are shared. */
+  variant?: MediaPanelVariant;
 }) {
+  const v2 = variant === "v2";
+  const [showEmpty, setShowEmpty] = useState(false);
+  // DECISION: the rule is `presentCount === 0`, NOT `source === "folder" && …` — a custom
+  // playlist with zero items (or whose every clip has gone missing) is exactly as unplayable
+  // as an emptied folder playlist, and one rule is what a manager can predict.
+  const emptyCount = playlists.filter((p) => p.presentCount === 0).length;
+  const rows = showEmpty ? playlists : playlists.filter((p) => p.presentCount > 0);
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
       {loading ? (
@@ -90,9 +111,43 @@ export function MediaPlaylistsPanel({ playlists, loading, onEdit }: {
           No playlists yet. A subfolder of the media folder becomes an auto-playlist, or + NEW PLAYLIST to build a custom one.
         </div>
       ) : (
-        playlists.map((p) => <PlaylistRow key={p.playlist.id} p={p} onEdit={() => onEdit(p)} />)
+        <>
+          {rows.map((p) => <PlaylistRow key={p.playlist.id} p={p} onEdit={() => onEdit(p)} />)}
+          {emptyCount > 0 && (
+            <EmptyPlaylistsToggle count={emptyCount} shown={showEmpty} onToggle={() => setShowEmpty((s) => !s)} v2={v2} />
+          )}
+        </>
       )}
     </div>
+  );
+}
+
+/**
+ * The fold row for playlists with nothing playable. ONE button (the whole row is the tap
+ * target, 44px floor) so there is nothing to miss on a phone. Classic: uppercase + inline px
+ * (the `.terminal-theme * { font-size: 1.5rem }` rule beats any stylesheet size, so sizes on
+ * classic MUST be inline). v2: `st-btn st-body` own ink/face/size, sentence case per the
+ * Body-role copy rule; the twin style is geometry only.
+ */
+export function EmptyPlaylistsToggle({ count, shown, onToggle, v2 }: { count: number; shown: boolean; onToggle: () => void; v2: boolean }) {
+  const noun = `${count} empty playlist${count === 1 ? "" : "s"} —`;
+  // Every text node sits in a span that carries its OWN size: `.terminal-theme *` sets 1.5rem
+  // on every element (nothing inherits font-size in this app — PR #89), so a bare span inside a
+  // 13px button still renders at 24px. v2: the `st-body` role class; classic: inline px.
+  const textS = v2 ? undefined : { fontSize: 13 };
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-expanded={shown}
+      className={v2 ? "st-btn st-body st-t2" : undefined}
+      style={v2
+        ? { display: "flex", alignItems: "center", gap: 8, minHeight: TAP, padding: "0 12px", border: "1px dashed", textAlign: "left", cursor: "pointer" }
+        : { display: "flex", alignItems: "center", gap: 8, minHeight: 44, padding: "0 12px", border: "1px dashed rgba(0,255,65,0.35)", background: "transparent", color: "var(--terminal-green)", fontFamily: MONO, fontSize: 13, letterSpacing: 1, opacity: 0.7, textAlign: "left", cursor: "pointer" }}
+    >
+      <span className={v2 ? "st-body" : undefined} style={textS}>{v2 ? noun : noun.toUpperCase()}</span>
+      <span className={v2 ? "st-body" : undefined} style={v2 ? { fontWeight: 700 } : { ...textS, fontWeight: 700, whiteSpace: "nowrap" }}>{v2 ? (shown ? "Hide" : "Show") : (shown ? "HIDE" : "SHOW")}</span>
+    </button>
   );
 }
 
@@ -430,6 +485,11 @@ export function PlaylistEditor({ initial, files, onClose, variant = "classic", o
   });
 
   const inPlaylist = useMemo(() => new Set(items.map((i) => i.file.id)), [items]);
+  // MEDIA LIST CLEANUP (owner ruling 2026-09-14): the picker only OFFERS clips the TV can play.
+  // A clip already in this playlist but now missing still shows in the CLIPS list above (with
+  // its MISSING chip) — that is the playlist's truth; the picker just never hands a manager a
+  // file that was deleted from the media host. Same filter on both variants.
+  const offerable = useMemo(() => files.filter((f) => f.status === "present"), [files]);
 
   const title = isFolder ? "VIEW FOLDER PLAYLIST" : initial ? "EDIT PLAYLIST" : "NEW PLAYLIST";
   // Heading role = sentence case on v2 (the copy rule PR 2 set); classic keeps its caps.
@@ -541,7 +601,8 @@ export function PlaylistEditor({ initial, files, onClose, variant = "classic", o
                 <span className={labelCls} style={v2 ? undefined : { fontSize: 14, letterSpacing: 2, opacity: 0.55 }}>ADD FROM LIBRARY</span>
                 <div style={{ maxHeight: 260, overflowY: "auto", display: "flex", flexDirection: "column", gap: 4 }}>
                   {files.length === 0 && <div className={noteCls} style={noteS}>No media synced yet.</div>}
-                  {files.map((f) => {
+                  {files.length > 0 && offerable.length === 0 && <div className={noteCls} style={noteS}>{v2 ? "Nothing on the media host to add." : "NOTHING ON THE MEDIA HOST TO ADD."}</div>}
+                  {offerable.map((f) => {
                     const already = inPlaylist.has(f.id);
                     return (
                       <button

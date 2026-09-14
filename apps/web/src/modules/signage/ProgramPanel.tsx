@@ -8,6 +8,7 @@ import type { ProgramHold } from "./scheduleResolve";
 import type { AdminSlot } from "./useSignageAdmin";
 import { MONO } from "./signageAdminShared";
 import { SlideOver } from "./SlideOver";
+import { EmptyPlaylistsToggle } from "./MediaPanels";
 import { TAP } from "@/shared/ui/tokens";
 import { TapTargetCheckbox } from "@/shared/ui";
 
@@ -69,6 +70,17 @@ export function ProgramPanel({
   const v2 = variant === "v2";
   const playlistsQ = useMediaPlaylists();
   const playlists = playlistsQ.data ?? [];
+  // MEDIA LIST CLEANUP (owner ruling 2026-09-14): the PLAYLIST quick-pick folds playlists with
+  // nothing playable (`presentCount === 0` — the emptied TV-show folders) behind the same
+  // "N empty playlists — Show/Hide" row the playlists page uses. Component-local, resets on
+  // close. A hidden row is still a valid program (a schedule or Q-SYS can name it) — this only
+  // stops the list offering a manager a playlist the TV would render as an empty card.
+  // DECISION: the MULTIVIEW main-region <select> below keeps the full list. A native <select>
+  // has no room for a fold row, and its two empty entries are a closed dropdown's problem, not
+  // the open list Stephen called clogged.
+  const [showEmptyPlaylists, setShowEmptyPlaylists] = useState(false);
+  const emptyPlaylistCount = playlists.filter((p) => p.presentCount === 0).length;
+  const pickablePlaylists = showEmptyPlaylists ? playlists : playlists.filter((p) => p.presentCount > 0);
   // Selection reflects the LIVE override only (parity — an expired override is not "selected"; the
   // slot is following its schedule/rotation, so FOLLOW SCHEDULE / ROTATION is the highlighted state).
   const ovProgram = overrideActive ? slot.program : null;
@@ -184,7 +196,7 @@ export function ProgramPanel({
             <div className={v2 ? "st-body st-t2" : undefined} style={v2 ? { marginTop: 6 } : { opacity: 0.6, fontSize: 15, marginTop: 6 }}>No custom/folder playlists yet — build one in the MEDIA LIBRARY section.</div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 6 }}>
-              {playlists.map((p) => {
+              {pickablePlaylists.map((p) => {
                 const selected = currentPlaylistId === p.playlist.id;
                 return (
                   <ProgramOption key={p.playlist.id} v2={v2} selected={selected}
@@ -194,6 +206,9 @@ export function ProgramPanel({
                     onSelect={() => { if (!selected) write.mutate({ kind: "playlist", playlist_id: p.playlist.id }); }} />
                 );
               })}
+              {emptyPlaylistCount > 0 && (
+                <EmptyPlaylistsToggle count={emptyPlaylistCount} shown={showEmptyPlaylists} onToggle={() => setShowEmptyPlaylists((s) => !s)} v2={v2} />
+              )}
             </div>
           )}
         </div>
