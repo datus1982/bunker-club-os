@@ -1,7 +1,7 @@
 import { useState, type CSSProperties } from "react";
 import { useMutation } from "@tanstack/react-query";
 import {
-  useMediaPlaylists, setSlotProgram, resumeSchedule, createPanelSlot, type WritableProgram,
+  useMediaPlaylists, setSlotProgram, resumeSchedule, createPanelSlot, type WritableProgram, type PlaylistWithStats,
 } from "./useMediaAdmin";
 import { formatDuration, ALL_MEDIA_PLAYLIST_ID, ALL_MEDIA_NAME, type CarouselOrder } from "./mediaProgram";
 import type { ProgramHold } from "./scheduleResolve";
@@ -78,13 +78,17 @@ export function ProgramPanel({
   // DECISION: the MULTIVIEW main-region <select> below keeps the full list. A native <select>
   // has no room for a fold row, and its two empty entries are a closed dropdown's problem, not
   // the open list Stephen called clogged.
-  const [showEmptyPlaylists, setShowEmptyPlaylists] = useState(false);
-  const emptyPlaylistCount = playlists.filter((p) => p.presentCount === 0).length;
-  const pickablePlaylists = showEmptyPlaylists ? playlists : playlists.filter((p) => p.presentCount > 0);
   // Selection reflects the LIVE override only (parity — an expired override is not "selected"; the
   // slot is following its schedule/rotation, so FOLLOW SCHEDULE / ROTATION is the highlighted state).
   const ovProgram = overrideActive ? slot.program : null;
   const currentPlaylistId = ovProgram?.kind === "playlist" ? ovProgram.playlist_id : null;
+  const [showEmptyPlaylists, setShowEmptyPlaylists] = useState(false);
+  // The fold never hides the playlist the slot is CURRENTLY on (review WARN-1): a daypart or a
+  // Q-SYS press can put a screen on an empty playlist, and the panel's own ● must then agree
+  // with the card's PROGRAM label instead of vanishing behind "N empty playlists".
+  const isFoldable = (p: PlaylistWithStats) => p.presentCount === 0 && p.playlist.id !== currentPlaylistId;
+  const emptyPlaylistCount = playlists.filter(isFoldable).length;
+  const pickablePlaylists = showEmptyPlaylists ? playlists : playlists.filter((p) => !isFoldable(p));
   const allMediaSelected = currentPlaylistId === ALL_MEDIA_PLAYLIST_ID;
   const captureSelected = ovProgram?.kind === "capture";
   const multiviewSelected = ovProgram?.kind === "multiview";
