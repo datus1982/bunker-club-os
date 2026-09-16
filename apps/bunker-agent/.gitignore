@@ -1,0 +1,6 @@
+# the real config carries the device token — NEVER commit it (config.example.json is the template)
+config.json
+node_modules/
+dist/
+logs/
+*.log
