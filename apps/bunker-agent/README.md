@@ -88,7 +88,7 @@ Prereqs: Node.js **20+** (LTS installer, "Add to PATH"), and `nssm.exe`
 
    ```
    INFO  mirror: core NV-32-H (Core Mode) design=BunkerClub_v03.20260329 (…) status=OK - 16 OK
-   INFO  mirror: bootstrapped — 90 controls subscribed, 0 error(s)
+   INFO  mirror: bootstrapped — 92 controls subscribed, 0 error(s)
    ```
 
    and `audio_live.updated_at` advancing every second in Supabase. A Designer rename shows as
