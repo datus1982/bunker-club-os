@@ -133,7 +133,21 @@ export class ControlStore {
 
 // ── derivation (pure) ───────────────────────────────────────────────────────────
 const num = (st?: ControlState): number | null => (st && typeof st.v === "number" && Number.isFinite(st.v) ? st.v : null);
-const bool = (st?: ControlState): boolean | null => (st && typeof st.v === "boolean" ? st.v : null);
+/**
+ * Boolean read-backs are NOT always JSON booleans on the wire (found live on the NUC, PR B
+ * review #2): a ChangeGroup.Poll change can carry Value 0/1 (number) or only the String form
+ * ("muted"/"unmuted", "true"/"false", "on"/"off", "yes"/"no"). Accept every one of those; anything
+ * else stays null so the UI never invents a state.
+ */
+const bool = (st?: ControlState): boolean | null => {
+  if (!st) return null;
+  if (typeof st.v === "boolean") return st.v;
+  if (typeof st.v === "number" && (st.v === 0 || st.v === 1)) return st.v === 1;
+  const s = (typeof st.v === "string" ? st.v : st.s ?? "").trim().toLowerCase();
+  if (["true", "1", "on", "yes", "muted", "bypassed", "active", "clip"].includes(s)) return true;
+  if (["false", "0", "off", "no", "unmuted", "not bypassed", "inactive", "normal"].includes(s)) return false;
+  return null;
+};
 const str = (st?: ControlState): string | null => (st && typeof st.s === "string" ? st.s : st && typeof st.v === "string" ? st.v : null);
 
 export function derive(c: ControlsMap): Derived {

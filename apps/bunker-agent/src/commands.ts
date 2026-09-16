@@ -23,6 +23,7 @@
  */
 import { captureScene, type CaptureRunOptions } from "./capture-run.js";
 import type { AgentConfig } from "./config.js";
+import { SCENE_LEVERS } from "./controls.js";
 import type { Logger } from "./log.js";
 import type { CommandApi, QueuedCommand } from "./report.js";
 
@@ -55,6 +56,16 @@ export interface ExecContext {
   /** injectable live read of the HDMI switcher (NOTE-8 name→selector); production = Component.Get */
   readVideo?: () => Promise<VideoRead | null>;
 }
+
+/**
+ * WARN-1 (review): the ONLY controls a recall may ever write = SCENE_LEVERS (controls.ts), the
+ * contract the capture reads. audio_scenes.payload is a staff-editable jsonb row; without this
+ * intersection a tampered payload could smuggle an amp gain / Sonos `Volume` / ducker param
+ * onto the wire once the gates open. Anything outside the set is DROPPED and reported in
+ * result.ignored — never written, never a whole-recall failure.
+ */
+export const LEVER_KEYS: ReadonlySet<string> = new Set(SCENE_LEVERS.flatMap((c) => c.controls.map((k) => `${c.component}\0${k}`)));
+export const isLever = (component: string, control: string): boolean => LEVER_KEYS.has(`${component}\0${control}`);
 
 const ZONE_MIXER: Record<string, string> = { inside: "Inside Mixer", patio: "Patio Mixer" };
 const VIDEO_SOURCES = new Set(["hdmi.1", "hdmi.2", "hdmi.3", "avh.1"]);
@@ -117,8 +128,9 @@ export function armMatches(cmd: Pick<QueuedCommand, "payload" | "writes_armed_by
   return cmd.writes_arm_valid === true && typeof cmd.writes_armed_by === "string" && cmd.writes_armed_by !== "" && by === cmd.writes_armed_by;
 }
 
-/** Turn a captured scene payload into the ordered write plan (pure; tested on a fixture). */
-export function planRecall(payload: Record<string, unknown>, rampSeconds: number): WriteStep[] {
+/** Turn a captured scene payload into the ordered write plan (pure; tested on a fixture).
+ *  `ignored` = every (component, control) in the payload that is NOT a scene lever (WARN-1). */
+export function planRecall(payload: Record<string, unknown>, rampSeconds: number, ignored?: string[]): WriteStep[] {
   const controls = Array.isArray(payload.controls) ? (payload.controls as Array<{ component: string; control: string; value: unknown }>) : [];
   const gains = new Map<string, Array<{ name: string; value: unknown; ramp?: number }>>();
   const switches = new Map<string, Array<{ name: string; value: unknown }>>();
@@ -130,6 +142,10 @@ export function planRecall(payload: Record<string, unknown>, rampSeconds: number
   };
   for (const c of controls) {
     if (!c || typeof c.component !== "string" || typeof c.control !== "string") continue;
+    if (!isLever(c.component, c.control)) {
+      ignored?.push(`${c.component} → ${c.control}`);
+      continue; // NOT a scene lever — never written (WARN-1)
+    }
     if (c.value === null || c.value === undefined) continue; // never write a value we never read
     if (/^output\.\d+\.mute$/.test(c.control)) add(outputMutes, c.component, { name: c.control, value: c.value === true });
     else if (/\.gain$/.test(c.control) || c.control === "WetLevel") add(gains, c.component, { name: c.control, value: Number(c.value), ramp: rampSeconds });
@@ -238,8 +254,10 @@ export async function executeCommand(cmd: TakenCommand, ctx: ExecContext): Promi
     const payload = cmd.scene_payload ?? null;
     if (!cmd.scene_name || !payload) return { status: "error", result: { reason: "unknown_scene" } };
     rampSeconds = clampRamp(cmd.scene_ramp ?? 3);
-    steps = planRecall(payload, rampSeconds);
-    if (steps.length === 0) return { status: "error", result: { reason: "scene_not_captured", scene: cmd.scene_name } };
+    const ignored: string[] = [];
+    steps = planRecall(payload, rampSeconds, ignored);
+    if (ignored.length) notes.ignored = ignored;
+    if (steps.length === 0) return { status: "error", result: { reason: "scene_not_captured", scene: cmd.scene_name, ...(ignored.length ? { ignored } : {}) } };
     // NOTE-8: the captured video NAMES → live-resolved selector booleans (never hard-coded)
     const video = payload.video as { out1?: string | null; out2?: string | null } | undefined;
     if (video && (video.out1 || video.out2)) {

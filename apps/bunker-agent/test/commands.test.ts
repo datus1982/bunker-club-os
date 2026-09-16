@@ -10,7 +10,7 @@
  */
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { armMatches, executeCommand, parseVideoRead, planRecall, planSimple, startCommandLoop, videoStepsForNames, type TakenCommand } from "../src/commands.js";
+import { LEVER_KEYS, armMatches, executeCommand, isLever, parseVideoRead, planRecall, planSimple, startCommandLoop, videoStepsForNames, type TakenCommand } from "../src/commands.js";
 import { QrcClient, READ_ONLY_METHODS, WRITE_METHODS } from "../src/qrc.js";
 import type { CommandApi, QueuedCommand, ReportResult } from "../src/report.js";
 import { FakeCore, testLogger } from "./fakeCore.js";
@@ -343,6 +343,67 @@ describe("NOTE-8: video names → selectors are LEARNED from the live switcher, 
       assert.equal(r2.status, "error");
       assert.equal(r2.result.reason, "video_unresolved");
       assert.equal(core.writes.length, 1);
+    });
+  });
+});
+
+describe("WARN-1: a recall writes ONLY scene levers — a tampered payload cannot reach the amp / Sonos Volume / ducker", () => {
+  const TAMPERED = {
+    ...TRIVIA_PAYLOAD,
+    controls: [
+      ...TRIVIA_PAYLOAD.controls,
+      // smuggled: none of these are in SCENE_LEVERS
+      { component: "Amp_Output_bunker-amp-1_CX-Q_2K4", control: "channel.1.gain", value: 0, string: "0dB", position: 1 },
+      { component: "Amp_Output_bunker-amp-1_CX-Q_2K4", control: "channel.1.mute", value: false, string: "unmuted", position: 0 },
+      { component: "SonosSonosControl", control: "Volume", value: 100, string: "100", position: 1 },
+      { component: "Priority_Ducker", control: "bypass", value: false, string: "active", position: 0 },
+      { component: "Priority_Ducker", control: "threshold", value: -60, string: "-60dB", position: 0 },
+      { component: "Inside Mixer", control: "output.7.gain", value: 0, string: "0dB", position: 1 }, // a real component, a NON-lever control
+    ],
+  };
+
+  it("planRecall drops every non-lever (component, control) and reports it; lever writes are unchanged", () => {
+    const ignored: string[] = [];
+    const steps = planRecall(TAMPERED, 3, ignored);
+    assert.deepEqual(ignored, [
+      "Amp_Output_bunker-amp-1_CX-Q_2K4 → channel.1.gain",
+      "Amp_Output_bunker-amp-1_CX-Q_2K4 → channel.1.mute",
+      "SonosSonosControl → Volume",
+      "Priority_Ducker → bypass",
+      "Priority_Ducker → threshold",
+      "Inside Mixer → output.7.gain",
+    ]);
+    assert.deepEqual(steps, planRecall(TRIVIA_PAYLOAD, 3), "the lever plan is byte-identical to the untampered scene");
+    for (const s of steps) {
+      assert.ok(!/Amp_Output|SonosSonosControl|Priority_Ducker/.test(s.component), `smuggled component planned: ${s.component}`);
+      for (const c of s.controls) assert.ok(isLever(s.component, c.name), `${s.component}/${c.name} is not a lever`);
+    }
+    assert.equal(LEVER_KEYS.size, 18, "SCENE_LEVERS = 18 writable controls (controls.ts)");
+  });
+
+  it("on the wire: the tampered recall lands the same 10 lever writes and ZERO writes to the smuggled targets", async () => {
+    await withCore({}, true, async (core, client) => {
+      const r = await executeCommand(cmd({ scene_payload: TAMPERED }), { writer: client, writesEnabled: true, sleep: noSleep });
+      assert.equal(r.status, "done", JSON.stringify(r.result));
+      assert.equal((r.result.ignored as string[]).length, 6);
+      assert.equal(core.writes.length, 10);
+      const touched = new Set(core.writes.map((w) => w.component));
+      assert.ok(!touched.has("Amp_Output_bunker-amp-1_CX-Q_2K4"), "amp never written");
+      assert.ok(!touched.has("SonosSonosControl"), "Sonos never written (Volume)");
+      assert.ok(!touched.has("Priority_Ducker"), "ducker never written");
+      assert.ok(!core.writes.some((w) => w.controls.some((c) => c.Name === "output.7.gain")), "non-lever control on a lever component never written");
+      for (const w of core.writes) for (const c of w.controls) assert.ok(isLever(w.component, c.Name), `${w.component}/${c.Name}`);
+    });
+  });
+
+  it("a payload made ONLY of smuggled controls plans nothing and is refused as scene_not_captured (with the ignored list)", async () => {
+    await withCore({}, true, async (core, client) => {
+      const onlyBad = { controls: TAMPERED.controls.filter((c) => !isLever(c.component, c.control)) };
+      const r = await executeCommand(cmd({ scene_payload: onlyBad }), { writer: client, writesEnabled: true, sleep: noSleep });
+      assert.equal(r.status, "error");
+      assert.equal(r.result.reason, "scene_not_captured");
+      assert.equal((r.result.ignored as string[]).length, 6);
+      assert.equal(core.writes.length, 0);
     });
   });
 });

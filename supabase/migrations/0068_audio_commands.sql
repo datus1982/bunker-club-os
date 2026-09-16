@@ -52,6 +52,18 @@ create table if not exists public.audio_commands (
 create index if not exists audio_commands_queue
   on public.audio_commands (venue_id, requested_at) where status in ('queued', 'running');
 
+-- ── WARN-1 belt-and-braces: staff may never edit a scene's PAYLOAD directly ──────
+-- The payload is what the agent recalls onto the room. It is written ONLY by the definer RPC
+-- audio_agent_capture (0067, from the Core's own read-back); the editor's useUpdateScene sends
+-- name / ramp_seconds / requires_confirm / position, never payload. The executor ALSO drops any
+-- non-lever control at recall (commands.ts planRecall), so this revoke is the second lock.
+-- Postgres semantics: a column-level REVOKE cannot subtract from a table-level GRANT, so the
+-- table-level UPDATE from 0067 is replaced by an explicit column list that omits `payload`
+-- (and the id/venue/timestamp columns nobody should edit). The updated_at trigger is
+-- unaffected (column privileges are checked on the columns the statement names).
+revoke update on public.audio_scenes from authenticated;
+grant update (name, position, ramp_seconds, requires_confirm, is_default) on public.audio_scenes to authenticated;
+
 -- ── audio_state gains the ARM WRITES stamp (additive; PR A's table) ──────────────
 alter table public.audio_state add column if not exists writes_armed_by text;
 alter table public.audio_state add column if not exists writes_armed_at timestamptz;

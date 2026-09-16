@@ -16,15 +16,17 @@ $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 Set-Location $root
 
-if (-not (Test-Path "$root\dist\index.js")) { throw "dist\index.js not found — run `npm ci` and `npm run build` in $root first." }
+if (-not (Test-Path "$root\dist\index.js")) { throw "dist\index.js not found - run 'npm ci' and 'npm run build' in $root first." }
 if (-not (Test-Path "$root\config.json")) { throw "config.json not found in $root — copy config.example.json and fill it in (see README)." }
 
 $node = (Get-Command node -ErrorAction SilentlyContinue).Source
 if (-not $node) { throw "node.exe not on PATH — install Node.js 20+ (LTS) first." }
 
 if ($NssmPath -eq "") {
-  $cand = @("$root\nssm.exe", "$root\scripts\nssm.exe", (Get-Command nssm -ErrorAction SilentlyContinue).Source) | Where-Object { $_ -and (Test-Path $_) }
-  if ($cand.Count -eq 0) { throw "nssm.exe not found. Put nssm.exe beside this script (or on PATH), or pass -NssmPath. Get it from https://nssm.cc/ (2.24+)." }
+  # The winget shim is where nssm lives on the NUC (winget install NSSM.NSSM); checked first.
+  $wingetShim = Join-Path $env:LOCALAPPDATA "Microsoft\WinGet\Links\nssm.exe"
+  $cand = @($wingetShim, "$root\nssm.exe", "$root\scripts\nssm.exe", (Get-Command nssm -ErrorAction SilentlyContinue).Source) | Where-Object { $_ -and (Test-Path $_) }
+  if (@($cand).Count -eq 0) { throw ("nssm.exe not found. Put nssm.exe beside this script (or on PATH), or pass -NssmPath. Get it from https://nssm.cc/ version 2.24 or newer.") }
   $NssmPath = $cand[0]
 }
 
