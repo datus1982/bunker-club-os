@@ -6,8 +6,8 @@ import { ConfirmDialog, InlineNotice, StaffPageHeader, StatusChip, ToggleSwitch 
 import { useIsMobile } from "@/shared/useIsMobile";
 import {
   SOURCE_KEYS, SOURCE_LABEL, capturedCount, deriveAgentHealth, describeRefusal, fmtAge, isRoutedSource, liveSourceGain, nudgeOffset,
-  routedSourceOf, sceneDisagrees, useAudioLive, useAudioRealtime, useAudioScenes, useAudioState, useNowTick, useRecentCommands,
-  useSceneMap, useSendCommand, useSourcePresets, useSourceRanges, useWritesArmed, useZonePresets,
+  routedSourceOf, sceneDisagrees, useAudioLive, useAudioRealtime, useAudioScenes, useAudioState, useLatestSourceCommands, useNowTick,
+  useRecentCommands, useSceneMap, useSendCommand, useSourcePresets, useSourceRanges, useWritesArmed, useZonePresets,
   type AudioCommand, type AudioScene, type AudioState, type Level, type LiveSnapshot, type SourceKey, type SourcePreset, type SourceRange, type Zone,
 } from "./useAudio";
 import { MONO } from "@/modules/signage/signageAdminShared";
@@ -71,6 +71,8 @@ function AudioPageV2() {
   const cmdsQ = useRecentCommands();
   const rangesQ = useSourceRanges();
   const sourcePresetsQ = useSourcePresets();
+  // review WARN-2: the latest press PER SOURCE (own query each) — never lost behind the recent-20 list
+  const latestBySource = useLatestSourceCommands();
   const { role } = useRole();
   const narrow = useIsMobile();
   const now = useNowTick(5_000);
@@ -223,7 +225,7 @@ function AudioPageV2() {
                 busy={send.isPending}
                 range={rangesQ.data?.find((r) => r.source === source)}
                 presets={(sourcePresetsQ.data ?? []).filter((p) => p.source === source)}
-                lastCmd={cmdsQ.data?.find((c) => (c.kind === "source_preset" || c.kind === "source_nudge") && c.payload?.source === source)}
+                lastCmd={latestBySource[source]}
                 now={now}
                 onPreset={(level) => send.mutate({ kind: "source_preset", payload: { source, level } })}
                 onNudge={(direction) => send.mutate({ kind: "source_nudge", payload: { source, direction } })}
@@ -384,9 +386,11 @@ function SourceRow({ source, snap, state, online, busy, range, presets, lastCmd,
       ? `${lastCmd.kind === "source_nudge" ? `Nudged ${lastCmd.payload?.direction === "up" ? "up" : "down"}` : `${LEVEL_LABEL[lastCmd.payload?.level as Level] ?? "Preset"}`}${typeof lastCmd.result?.target === "number" ? ` to ${(lastCmd.result.target as number).toFixed(1)} dB` : ""} · ${fmtAge(Math.max(0, now - new Date(lastCmd.requested_at).getTime()))} ago`
       : lastCmd.status === "error" ? refusal : `${lastCmd.status}…`
     : null;
-  // next-step preview so the − / + labels say what they will do
+  // NOTE-4 (review): the page knows live / step / range, so a press that the agent would refuse as
+  // out_of_range is DISABLED here instead of queueing a doomed command; the inline refusal path
+  // above still covers the race (the level moved between render and execution).
   const step = range?.step_db ?? null;
-  const wouldLeave = (dir: "up" | "down") => range && live !== null && step !== null && (dir === "up" ? live + step > range.max_db + 1e-9 : live - step < range.min_db - 1e-9);
+  const wouldLeave = (dir: "up" | "down") => !!range && live !== null && step !== null && (dir === "up" ? live + step > range.max_db + 1e-9 : live - step < range.min_db - 1e-9);
   return (
     <div className="st-card" style={{ padding: 12, display: "flex", flexDirection: "column", gap: 8 }} data-source={source}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
@@ -427,7 +431,7 @@ function SourceRow({ source, snap, state, online, busy, range, presets, lastCmd,
           className="st-btn st-body"
           style={{ ...btn, padding: 0, minWidth: 44, minHeight: 44, fontSize: 22 }}
           aria-label={`${SOURCE_LABEL[source]} down ${step ?? ""} dB`}
-          disabled={!canNudge}
+          disabled={!canNudge || wouldLeave("down")}
           title={!range ? "Range not set" : wouldLeave("down") ? `Would drop below ${range.min_db} dB — refused` : `−${step} dB`}
           onClick={() => onNudge("down")}
         >
@@ -438,7 +442,7 @@ function SourceRow({ source, snap, state, online, busy, range, presets, lastCmd,
           className="st-btn st-body"
           style={{ ...btn, padding: 0, minWidth: 44, minHeight: 44, fontSize: 22 }}
           aria-label={`${SOURCE_LABEL[source]} up ${step ?? ""} dB`}
-          disabled={!canNudge}
+          disabled={!canNudge || wouldLeave("up")}
           title={!range ? "Range not set" : wouldLeave("up") ? `Would rise above ${range.max_db} dB — refused` : `+${step} dB`}
           onClick={() => onNudge("up")}
         >

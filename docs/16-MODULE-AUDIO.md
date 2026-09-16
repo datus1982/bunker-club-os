@@ -82,6 +82,18 @@ unseeded; an existing row is never overwritten. Same never-list as before: never
 never the amp, never the ducker — every source control is inside `SCENE_LEVERS`, so the WARN-1
 intersection bounds source writes exactly like recalls.
 
+**Rollout facts (PR C, on the record):**
+- Scenes captured BEFORE PR C carry no `input.5.gain` / `input.8.gain` (the two joined
+  `SCENE_LEVERS` here) — a recall of such a scene leaves the source levels untouched; re-capture
+  to pick them up. Moot on the day of shipping: 0 scenes were captured.
+- `audio_source_ranges` is EMPTY after 0069 applies. Every source press is refused
+  `range_not_set` until either NORMAL is captured by the new agent build (seeds ± 6 dB) or the
+  owner types ranges on `/audio/scenes`.
+- The running NUC agent must be RESTARTED on this build: the old build neither mirrors input
+  5/8 (the page shows "? dB" for Sonos/Booth/HDMI/Verb) nor knows the two command kinds (the
+  old executor finishes a source press as `writes_disabled` with its gates closed, or
+  `bad_command` with them open — never a write). Restart first, then arm, then press.
+
 ## 2 · Data model (migration 0067, new module key `audio`)
 
 - **Module key `audio`** in the grant system (`venue_staff.modules`, `has_module()`, the TS

@@ -15,7 +15,7 @@
  * recall / preset last set) so the page can show "nudged +1.5 dB" = live − baseline.
  */
 import { useEffect, useMemo, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase, VENUE_ID } from "@/shared/supabaseClient";
 import { useCloseoutHour, useVenue } from "@/modules/signage/useSignage";
 import { nextRollover } from "@/modules/signage/scheduleResolve";
@@ -141,8 +141,14 @@ export function describeRefusal(result: Record<string, unknown> | null | undefin
   const reason = String(result.reason ?? "");
   const range = result.range as { min_db?: number; max_db?: number } | undefined;
   switch (reason) {
-    case "out_of_range":
-      return `Refused — ${typeof result.target === "number" ? `${result.target.toFixed(1)} dB` : "that"} is outside ${range?.min_db ?? "?"}…${range?.max_db ?? "?"} dB`;
+    case "out_of_range": {
+      const cur = typeof result.current === "number" ? result.current : null;
+      const min = typeof range?.min_db === "number" ? range.min_db : null;
+      const max = typeof range?.max_db === "number" ? range.max_db : null;
+      // NOTE-1 (review): when the level is ALREADY outside the range a nudge can never fix it — say what will
+      const alreadyOutside = cur !== null && min !== null && max !== null && (cur < min || cur > max);
+      return `Refused — ${typeof result.target === "number" ? `${result.target.toFixed(1)} dB` : "that"} is outside ${min ?? "?"}…${max ?? "?"} dB${alreadyOutside ? ` (the level is already outside the range at ${cur.toFixed(1)} dB — press a preset or a scene to bring it back)` : ""}`;
+    }
     case "not_routed":
       return `Not routed — the router is on ${SOURCE_LABEL[result.routed as SourceKey] ?? "another input"}`;
     case "range_not_set":
@@ -314,6 +320,41 @@ export function useRecentCommands() {
       return (data ?? []) as AudioCommand[];
     },
   });
+}
+
+/**
+ * PR C (review WARN-2): the LATEST command per SOURCE, one small query each, so a source row's
+ * last outcome / refusal is always found no matter how many other presses came after it (the
+ * recent-20 list above would let it vanish). Keyed under ["audio","commands",…] so the realtime
+ * invalidation + sendAudioCommand's onSuccess (prefix match) refresh them too.
+ */
+export function useLatestSourceCommands(): Partial<Record<SourceKey, AudioCommand | undefined>> {
+  const results = useQueries({
+    queries: SOURCE_KEYS.map((source) => ({
+      queryKey: ["audio", "commands", "source", source],
+      queryFn: async (): Promise<AudioCommand | null> => {
+        const { data, error } = await supabase
+          .from("audio_commands")
+          .select("id,venue_id,kind,payload,requested_by,requested_at,status,result,done_at")
+          .eq("venue_id", VENUE_ID)
+          .in("kind", ["source_preset", "source_nudge"])
+          .eq("payload->>source", source)
+          .order("requested_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (error) throw error;
+        return (data as AudioCommand | null) ?? null;
+      },
+    })),
+  });
+  return useMemo(() => {
+    const out: Partial<Record<SourceKey, AudioCommand | undefined>> = {};
+    SOURCE_KEYS.forEach((source, i) => {
+      out[source] = results[i]?.data ?? undefined;
+    });
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, results.map((r) => r.data));
 }
 
 /** One channel for the five audio tables; every change invalidates the matching query. */

@@ -202,9 +202,13 @@ async function main() {
       const n = await nomod.from(t).select("*").eq("venue_id", VENUE);
       assert(`host{} SELECT ${t} → 200 with 0 rows`, !n.error && n.data?.length === 0, n.error ?? n.data?.length);
     }
-    // the column-listed grants: gain_db is editable, nothing else on presets; no DELETE anywhere
-    const okUpd = await host.from("audio_source_presets").update({ gain_db: null }).eq("venue_id", VENUE).eq("source", "verb").eq("level", "low").select("gain_db");
-    assert("host{audio} UPDATE audio_source_presets.gain_db (no-op NULL) → 200", !okUpd.error, okUpd.error);
+    // the column-listed grants: gain_db is editable, nothing else on presets; no DELETE anywhere.
+    // WARN-1 (review): test scripts are READ-ONLY on real data — the UPDATE writes back the value it
+    // just read (an authored preset is never erased), and proves the grant by returning the row.
+    const cur = await host.from("audio_source_presets").select("gain_db").eq("venue_id", VENUE).eq("source", "verb").eq("level", "low").single();
+    assert("host{audio} SELECT verb/low preset → 200", !cur.error, cur.error);
+    const okUpd = await host.from("audio_source_presets").update({ gain_db: cur.data?.gain_db ?? null }).eq("venue_id", VENUE).eq("source", "verb").eq("level", "low").select("gain_db");
+    assert("host{audio} UPDATE audio_source_presets.gain_db (writes back the SAME value) → 200, value unchanged", !okUpd.error && okUpd.data?.[0]?.gain_db === (cur.data?.gain_db ?? null), okUpd.error ?? okUpd.data);
     const badUpd = await host.from("audio_source_presets").update({ level: "low" }).eq("venue_id", VENUE).eq("source", "verb").eq("level", "low");
     assert("host{audio} UPDATE audio_source_presets.level → rejected (column not granted)", !!badUpd.error, badUpd.error);
     const del = await host.from("audio_source_presets").delete().eq("venue_id", VENUE).eq("source", "verb").eq("level", "low");
