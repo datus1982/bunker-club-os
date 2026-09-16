@@ -9,6 +9,10 @@
  * of what was last recalled. Every control on the page derives from the snapshot, and when
  * the snapshot is absent or older than AGENT_STALE_MS every command control disables — the
  * page never pretends the room is reachable.
+ *
+ * PR C (0069) adds the SOURCE model: six staff-facing sources on four Inside Mixer input gains,
+ * the owner's nudge RANGES + per-source LOW/MED/HIGH, and `audio_state.baseline` (what a
+ * recall / preset last set) so the page can show "nudged +1.5 dB" = live − baseline.
  */
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -66,6 +70,94 @@ export interface AudioState {
   last_error: string | null;
   writes_armed_by: string | null;
   writes_armed_at: string | null;
+  /** PR C (0069): the flat "<Component>|<control>" → value map of the levers the agent LAST SET
+   *  by a recall / zone preset / source preset. A nudge never touches it — "nudged +1.5 dB" is
+   *  derived here as live − baseline. Written only through audio_agent_set_baseline. */
+  baseline: Record<string, unknown> | null;
+  baseline_at: string | null;
+}
+
+// ── PR C: the SOURCE model (mirror of apps/bunker-agent/src/sources.ts — keep in step) ──
+export type SourceKey = "mic1" | "mic2" | "sonos" | "booth" | "hdmi" | "verb";
+export const SOURCE_KEYS: readonly SourceKey[] = ["mic1", "mic2", "sonos", "booth", "hdmi", "verb"];
+export const SOURCE_LABEL: Readonly<Record<SourceKey, string>> = { mic1: "MIC 1", mic2: "MIC 2", sonos: "SONOS", booth: "BOOTH", hdmi: "HDMI", verb: "VERB" };
+/** Inside Mixer control per source; sonos/booth/hdmi SHARE input 5 (the router decides whose it is). */
+export const SOURCE_MIXER = "Inside Mixer";
+export const SOURCE_CONTROL: Readonly<Record<SourceKey, string>> = {
+  mic1: "input.1.gain", mic2: "input.2.gain", sonos: "input.5.gain", booth: "input.5.gain", hdmi: "input.5.gain", verb: "input.8.gain",
+};
+export const ROUTED_BY_SELECT: Readonly<Record<number, SourceKey>> = { 1: "sonos", 2: "booth", 3: "hdmi" };
+export const isRoutedSource = (s: SourceKey): boolean => s === "sonos" || s === "booth" || s === "hdmi";
+
+export interface SourceRange {
+  venue_id: string;
+  source: SourceKey;
+  min_db: number;
+  max_db: number;
+  step_db: number;
+  updated_at: string;
+}
+
+export interface SourcePreset {
+  venue_id: string;
+  source: SourceKey;
+  level: Level;
+  gain_db: number | null;
+  updated_at: string;
+}
+
+/** The baseline key the agent stores per lever (0069). */
+export const baselineKey = (component: string, control: string): string => `${component}|${control}`;
+
+/** Which of sonos/booth/hdmi the Inside router is on right now (derived block first, raw control second). */
+export function routedSourceOf(snap: LiveSnapshot | null): SourceKey | null {
+  const d = snap?.derived?.sources?.routed;
+  if (d === "sonos" || d === "booth" || d === "hdmi") return d;
+  const raw = snap?.controls?.["Inside Router_8x8"]?.["select.1"]?.v;
+  const n = typeof raw === "number" ? raw : typeof raw === "string" ? Number(raw) : NaN;
+  return Number.isInteger(n) ? (ROUTED_BY_SELECT[n] ?? null) : null;
+}
+
+/** The live gain on a source's lever (for sonos/booth/hdmi that is input 5 — whoever is routed). */
+export function liveSourceGain(snap: LiveSnapshot | null, source: SourceKey): number | null {
+  const d = snap?.derived?.sources?.levels?.[source]?.gain_db;
+  if (typeof d === "number" && Number.isFinite(d)) return d;
+  const raw = snap?.controls?.[SOURCE_MIXER]?.[SOURCE_CONTROL[source]]?.v;
+  return typeof raw === "number" && Number.isFinite(raw) ? raw : null;
+}
+
+/** live − baseline for a source's lever, or null when either side is unknown / equal (<0.05 dB). */
+export function nudgeOffset(state: AudioState | null | undefined, snap: LiveSnapshot | null, source: SourceKey): number | null {
+  const live = liveSourceGain(snap, source);
+  const base = state?.baseline?.[baselineKey(SOURCE_MIXER, SOURCE_CONTROL[source])];
+  if (live === null || typeof base !== "number" || !Number.isFinite(base)) return null;
+  const diff = Math.round((live - base) * 10) / 10;
+  return Math.abs(diff) < 0.05 ? null : diff;
+}
+
+/** Plain-words refusal reasons the agent returns for a source press (commands.ts SourceDecision). */
+export function describeRefusal(result: Record<string, unknown> | null | undefined): string | null {
+  if (!result) return null;
+  const reason = String(result.reason ?? "");
+  const range = result.range as { min_db?: number; max_db?: number } | undefined;
+  switch (reason) {
+    case "out_of_range":
+      return `Refused — ${typeof result.target === "number" ? `${result.target.toFixed(1)} dB` : "that"} is outside ${range?.min_db ?? "?"}…${range?.max_db ?? "?"} dB`;
+    case "not_routed":
+      return `Not routed — the router is on ${SOURCE_LABEL[result.routed as SourceKey] ?? "another input"}`;
+    case "range_not_set":
+      return "Range not set — an admin sets it in the scene editor";
+    case "preset_not_set":
+      return "Preset not set";
+    case "read_failed":
+      return "Could not read the current level";
+    case "writes_disabled":
+      return "Refused — writes are not armed";
+    case "":
+      return null;
+    default:
+      return `Error: ${reason}`;
+  }
 }
 
 /** The subset of the agent's snapshot (apps/bunker-agent/src/snapshot.ts) the page reads. */
@@ -81,6 +173,8 @@ export interface LiveSnapshot {
   derived?: {
     zones?: Record<"inside" | "patio" | "listen", { source: number | null; source_name: string | null; gain_db: number | null; mute: boolean | null }>;
     mics?: Record<"1" | "2", { mute: boolean | null; gain_db: number | null }>;
+    /** PR C: per-source lever + live gain + whether the router is on it (agent snapshot.ts) */
+    sources?: { routed: SourceKey | null; levels: Record<SourceKey, { control: string; gain_db: number | null; routed: boolean }> };
     sonos?: { transport: string | null; track: string | null; artist: string | null; favorites: Array<{ n: number; name: string }> };
     video?: { outputs: Record<"1" | "2", { active_source: string | null }>; sources: Record<string, { signal: boolean | null; plugged: boolean | null }> };
     effects?: { reverb_bypass: boolean | null; ducker_bypass: boolean | null };
@@ -95,7 +189,7 @@ export interface AudioLive {
   updated_at: string;
 }
 
-export type CommandKind = "recall_scene" | "zone_preset" | "mic_mute" | "reverb_bypass" | "capture_scene" | "sonos_favorite" | "video_source";
+export type CommandKind = "recall_scene" | "zone_preset" | "mic_mute" | "reverb_bypass" | "capture_scene" | "sonos_favorite" | "video_source" | "source_preset" | "source_nudge";
 
 export interface AudioCommand {
   id: string;
@@ -149,11 +243,41 @@ export function useAudioState() {
     queryFn: async (): Promise<AudioState | null> => {
       const { data, error } = await supabase
         .from("audio_state")
-        .select("venue_id,active_scene_id,recalled_at,recalled_by,last_error,writes_armed_by,writes_armed_at")
+        .select("venue_id,active_scene_id,recalled_at,recalled_by,last_error,writes_armed_by,writes_armed_at,baseline,baseline_at")
         .eq("venue_id", VENUE_ID)
         .maybeSingle();
       if (error) throw error;
       return (data as AudioState | null) ?? null;
+    },
+  });
+}
+
+/** PR C: the owner's nudge ranges (a source with no row = "range not set"; nudges refused). */
+export function useSourceRanges() {
+  return useQuery({
+    queryKey: ["audio", "sourceRanges"],
+    queryFn: async (): Promise<SourceRange[]> => {
+      const { data, error } = await supabase
+        .from("audio_source_ranges")
+        .select("venue_id,source,min_db,max_db,step_db,updated_at")
+        .eq("venue_id", VENUE_ID);
+      if (error) throw error;
+      return (data ?? []).map((r) => ({ ...r, min_db: Number(r.min_db), max_db: Number(r.max_db), step_db: Number(r.step_db) })) as SourceRange[];
+    },
+  });
+}
+
+/** PR C: LOW / MED / HIGH per source (18 seeded rows, gain_db null until authored). */
+export function useSourcePresets() {
+  return useQuery({
+    queryKey: ["audio", "sourcePresets"],
+    queryFn: async (): Promise<SourcePreset[]> => {
+      const { data, error } = await supabase
+        .from("audio_source_presets")
+        .select("venue_id,source,level,gain_db,updated_at")
+        .eq("venue_id", VENUE_ID);
+      if (error) throw error;
+      return (data ?? []).map((r) => ({ ...r, gain_db: r.gain_db === null ? null : Number(r.gain_db) })) as SourcePreset[];
     },
   });
 }
@@ -202,6 +326,8 @@ export function useAudioRealtime() {
       audio_scenes: "scenes",
       audio_zone_presets: "presets",
       audio_commands: "commands",
+      audio_source_ranges: "sourceRanges",
+      audio_source_presets: "sourcePresets",
     };
     let ch = supabase.channel("audio-module");
     for (const table of Object.keys(keys)) {
@@ -359,6 +485,43 @@ export function useUpdatePreset() {
       if (error) throw error;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["audio", "presets"] }),
+  });
+}
+
+/** PR C: LOW/MED/HIGH per source — UPDATE gain_db only (the 18 rows are seeded; no INSERT grant). */
+export function useUpdateSourcePreset() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (patch: { source: SourceKey; level: Level; gain_db: number | null }) => {
+      const { error } = await supabase
+        .from("audio_source_presets")
+        .update({ gain_db: patch.gain_db })
+        .eq("venue_id", VENUE_ID)
+        .eq("source", patch.source)
+        .eq("level", patch.level);
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["audio", "sourcePresets"] }),
+  });
+}
+
+/**
+ * PR C: the owner's [min, max] + step per source. DECISION: UPDATE-then-INSERT rather than a
+ * PostgREST upsert — 0069 grants UPDATE on (min_db, max_db, step_db) only, and an upsert's
+ * ON CONFLICT DO UPDATE would also SET venue_id/source (not granted ⇒ 42501 on the conflict path).
+ */
+export function useSaveSourceRange() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (patch: { source: SourceKey; min_db: number; max_db: number; step_db: number }) => {
+      const fields = { min_db: patch.min_db, max_db: patch.max_db, step_db: patch.step_db };
+      const upd = await supabase.from("audio_source_ranges").update(fields).eq("venue_id", VENUE_ID).eq("source", patch.source).select("source");
+      if (upd.error) throw upd.error;
+      if ((upd.data?.length ?? 0) > 0) return;
+      const ins = await supabase.from("audio_source_ranges").insert({ venue_id: VENUE_ID, source: patch.source, ...fields });
+      if (ins.error) throw ins.error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["audio", "sourceRanges"] }),
   });
 }
 
