@@ -155,7 +155,9 @@ function AudioPageV2() {
 
         {/* SCENES */}
         <Section title="Scenes" sub={activeScene ? `Active: ${activeScene.name}${activeDisagrees ? " — UNVERIFIED" : ""}${state?.recalled_at ? ` · recalled ${fmtAge(Math.max(0, now - new Date(state.recalled_at).getTime()))} ago` : ""}` : "No scene recalled yet"}>
-          {loading ? (
+          {scenesQ.isError ? (
+            <div className="st-body st-danger" style={{ fontSize: 15 }}>Could not load scenes: {(scenesQ.error as Error).message}</div>
+          ) : loading ? (
             <div className="st-body st-t2" style={{ fontSize: 15 }}>Loading…</div>
           ) : scenes.length === 0 ? (
             <div className="st-body st-t2" style={{ fontSize: 15 }}>No scenes — the migration seeds four; an admin names them in the scene editor.</div>
