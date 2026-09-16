@@ -52,10 +52,64 @@ export interface ExecContext {
   sleep?: (ms: number) => Promise<void>;
   /** injectable capture (tests pass a stub); production = capture-run.captureScene */
   capture?: (sceneName: string) => Promise<{ stored: boolean; summary: string; controls: number; error?: string }>;
+  /** injectable live read of the HDMI switcher (NOTE-8 name→selector); production = Component.Get */
+  readVideo?: () => Promise<VideoRead | null>;
 }
 
 const ZONE_MIXER: Record<string, string> = { inside: "Inside Mixer", patio: "Patio Mixer" };
 const VIDEO_SOURCES = new Set(["hdmi.1", "hdmi.2", "hdmi.3", "avh.1"]);
+export const HDMI_COMPONENT = "HDMI_I/O_Bunker-Core";
+const HDMI_OUTS = [1, 2] as const;
+/** The controls a video resolve reads: every selector boolean + the active source NAME per out. */
+export const HDMI_READ_CONTROLS: readonly string[] = HDMI_OUTS.flatMap((o) => [...VIDEO_SOURCES].map((k) => `hdmi.out.${o}.select.${k}`).concat(`hdmi.out.${o}.select.active.source.name`));
+
+/** What one Component.Get of the HDMI switcher tells us right now. */
+export interface VideoRead {
+  outputs: Record<1 | 2, { activeName: string | null; selected: string | null }>;
+}
+
+/**
+ * NOTE-8 (reviewer): a capture stores the ACTIVE SOURCE NAME per output ("Bunker Feed"), while
+ * the Core switches on selector BOOLEANS (hdmi.out.N.select.hdmi.{1,2,3} / avh.1). The name→selector
+ * mapping is NEVER hard-coded: it is learned from the live read — any output currently showing
+ * name X with selector Y true teaches X ↔ Y. A name nobody is showing right now cannot be
+ * resolved and is reported (not guessed, not failed-whole). Pure; tested on fixtures.
+ */
+export function videoStepsForNames(desired: { out1?: string | null; out2?: string | null } | undefined, read: VideoRead | null): { steps: WriteStep[]; unresolved: string[] } {
+  const steps: WriteStep[] = [];
+  const unresolved: string[] = [];
+  if (!desired || !read) return { steps, unresolved };
+  const learned = new Map<string, string>();
+  for (const o of HDMI_OUTS) {
+    const r = read.outputs[o];
+    if (r?.activeName && r.selected) learned.set(r.activeName, r.selected);
+  }
+  for (const o of HDMI_OUTS) {
+    const want = o === 1 ? desired.out1 : desired.out2;
+    if (!want) continue;
+    if (read.outputs[o]?.activeName === want) continue; // already showing it — no write
+    const sel = learned.get(want);
+    if (!sel) {
+      unresolved.push(`out ${o}: ${want}`);
+      continue;
+    }
+    steps.push({ step: "video", component: HDMI_COMPONENT, controls: [{ name: `hdmi.out.${o}.select.${sel}`, value: true }] });
+  }
+  return { steps, unresolved };
+}
+
+/** Shape a Component.Get result of HDMI_READ_CONTROLS into a VideoRead (pure). */
+export function parseVideoRead(controls: ReadonlyArray<{ Name: string; Value?: unknown; String?: string }>): VideoRead {
+  const out: VideoRead = { outputs: { 1: { activeName: null, selected: null }, 2: { activeName: null, selected: null } } };
+  for (const c of controls) {
+    const m = /^hdmi\.out\.([12])\.select\.(.+)$/.exec(c.Name);
+    if (!m) continue;
+    const o = Number(m[1]) as 1 | 2;
+    if (m[2] === "active.source.name") out.outputs[o].activeName = typeof c.String === "string" && c.String !== "" ? c.String : typeof c.Value === "string" ? c.Value : null;
+    else if (VIDEO_SOURCES.has(m[2]) && c.Value === true) out.outputs[o].selected = m[2];
+  }
+  return out;
+}
 
 /** Gate (b) as a pure predicate — unit-tested on its own. */
 export function armMatches(cmd: Pick<QueuedCommand, "payload" | "writes_armed_by" | "writes_arm_valid">): boolean {
@@ -126,10 +180,11 @@ export function planSimple(cmd: Pick<QueuedCommand, "kind" | "payload">, presetG
       return { steps: [{ step: "sonos", component: "SonosSonosControl", controls: [{ name: `FavPlay ${n}`, value: true }] }] };
     }
     case "video_source": {
+      // Only a raw selector key is planned here; a source NAME is resolved live in executeCommand.
       const out = Number(p.out);
       const src = String(p.source);
       if ((out !== 1 && out !== 2) || !VIDEO_SOURCES.has(src)) return { error: `bad video selection out=${String(p.out)} source=${src}` };
-      return { steps: [{ step: "video", component: "HDMI_I/O_Bunker-Core", controls: [{ name: `hdmi.out.${out}.select.${src}`, value: true }] }] };
+      return { steps: [{ step: "video", component: HDMI_COMPONENT, controls: [{ name: `hdmi.out.${out}.select.${src}`, value: true }] }] };
     }
     default:
       return { error: `unknown command kind ${cmd.kind}` };
@@ -178,12 +233,35 @@ export async function executeCommand(cmd: TakenCommand, ctx: ExecContext): Promi
 
   let steps: WriteStep[];
   let rampSeconds = 0;
+  const notes: Record<string, unknown> = {};
   if (cmd.kind === "recall_scene") {
     const payload = cmd.scene_payload ?? null;
     if (!cmd.scene_name || !payload) return { status: "error", result: { reason: "unknown_scene" } };
     rampSeconds = clampRamp(cmd.scene_ramp ?? 3);
     steps = planRecall(payload, rampSeconds);
     if (steps.length === 0) return { status: "error", result: { reason: "scene_not_captured", scene: cmd.scene_name } };
+    // NOTE-8: the captured video NAMES → live-resolved selector booleans (never hard-coded)
+    const video = payload.video as { out1?: string | null; out2?: string | null } | undefined;
+    if (video && (video.out1 || video.out2)) {
+      const read = ctx.readVideo ? await ctx.readVideo().catch(() => null) : null;
+      const v = videoStepsForNames(video, read);
+      // video switches ride with the other instant switches (before the ramp wait / unmute)
+      const firstUnmute = steps.findIndex((s) => s.step === "unmute");
+      steps.splice(firstUnmute < 0 ? steps.length : firstUnmute, 0, ...v.steps);
+      if (v.unresolved.length) notes.video_unresolved = v.unresolved;
+      if (!read && ctx.readVideo) notes.video_unresolved = [...(v.unresolved.length ? v.unresolved : []), "hdmi read failed"];
+    }
+  } else if (cmd.kind === "video_source" && typeof cmd.payload?.source === "string" && !VIDEO_SOURCES.has(cmd.payload.source)) {
+    // a source NAME ("Roku") — resolve it from the live switcher the same way a recall does
+    const out = Number(cmd.payload.out);
+    if (out !== 1 && out !== 2) return { status: "error", result: { reason: "bad_command", detail: `bad out ${String(cmd.payload.out)}` } };
+    const read = ctx.readVideo ? await ctx.readVideo().catch(() => null) : null;
+    const v = videoStepsForNames(out === 1 ? { out1: cmd.payload.source } : { out2: cmd.payload.source }, read);
+    if (v.unresolved.length || v.steps.length === 0) {
+      if (read && read.outputs[out].activeName === cmd.payload.source) return { status: "done", result: { writes: [], note: "already showing" } };
+      return { status: "error", result: { reason: "video_unresolved", detail: `no output is currently showing "${cmd.payload.source}", so its selector is unknown` } };
+    }
+    steps = v.steps;
   } else {
     const plan = planSimple(cmd, cmd.preset_gain ?? null, cmd.preset_ramp ?? null);
     if ("error" in plan) return { status: "error", result: { reason: "bad_command", detail: plan.error } };
@@ -203,7 +281,7 @@ export async function executeCommand(cmd: TakenCommand, ctx: ExecContext): Promi
   }
   return {
     status: "done",
-    result: { writes: completed, ramp_seconds: rampSeconds },
+    result: { writes: completed, ramp_seconds: rampSeconds, ...notes },
     activeSceneId: cmd.kind === "recall_scene" ? String(cmd.payload?.scene_id ?? "") || null : undefined,
   };
 }
@@ -239,6 +317,13 @@ export function startCommandLoop(o: CommandLoopOptions): CommandLoop {
       }
     : undefined;
 
+  const readVideo = o.captureOptions?.client
+    ? async (): Promise<VideoRead | null> => {
+        const res = await o.captureOptions!.client!.componentGet(HDMI_COMPONENT, HDMI_READ_CONTROLS);
+        return parseVideoRead(res.Controls ?? []);
+      }
+    : undefined;
+
   const tick = async (): Promise<number> => {
     if (busy || stopped) return 0;
     busy = true;
@@ -250,7 +335,7 @@ export function startCommandLoop(o: CommandLoopOptions): CommandLoop {
       }
       for (const cmd of taken.commands as TakenCommand[]) {
         o.log.info(`commands: ${cmd.kind} ${cmd.id} by ${cmd.requested_by ?? "?"} (arm valid=${cmd.writes_arm_valid})`);
-        const r = await executeCommand(cmd, { writer: o.writer, writesEnabled: o.config.writesEnabled, sleep: o.sleep, capture });
+        const r = await executeCommand(cmd, { writer: o.writer, writesEnabled: o.config.writesEnabled, sleep: o.sleep, capture, readVideo });
         const fin = await o.api.finish(cmd.id, r.status, { ...r.result, agent_id: o.config.agentId });
         if (!fin.ok) o.log.warn(`commands: finish ${cmd.id} failed (${fin.status}) ${fin.error ?? ""}`);
         if (r.status === "done" && r.activeSceneId) {

@@ -10,7 +10,7 @@
  */
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { armMatches, executeCommand, planRecall, planSimple, startCommandLoop, type TakenCommand } from "../src/commands.js";
+import { armMatches, executeCommand, parseVideoRead, planRecall, planSimple, startCommandLoop, videoStepsForNames, type TakenCommand } from "../src/commands.js";
 import { QrcClient, READ_ONLY_METHODS, WRITE_METHODS } from "../src/qrc.js";
 import type { CommandApi, QueuedCommand, ReportResult } from "../src/report.js";
 import { FakeCore, testLogger } from "./fakeCore.js";
@@ -283,6 +283,66 @@ describe("the loop: take → execute → finish → setState", () => {
         { sceneId: null, by: null, error: "writes_disabled" },
       ]);
       assert.equal(core.writes.length, 10, "the armed recall wrote its 10 steps; the unarmed one wrote nothing");
+    });
+  });
+});
+
+describe("NOTE-8: video names → selectors are LEARNED from the live switcher, never hard-coded", () => {
+  const read = (o1: [string | null, string | null], o2: [string | null, string | null]) => ({
+    outputs: { 1: { activeName: o1[0], selected: o1[1] }, 2: { activeName: o2[0], selected: o2[1] } },
+  });
+
+  it("parseVideoRead shapes a Component.Get into active names + the one true selector per out", () => {
+    const v = parseVideoRead([
+      { Name: "hdmi.out.1.select.hdmi.1", Value: false }, { Name: "hdmi.out.1.select.hdmi.2", Value: true },
+      { Name: "hdmi.out.1.select.active.source.name", Value: "Bunker Feed", String: "Bunker Feed" },
+      { Name: "hdmi.out.2.select.avh.1", Value: true }, { Name: "hdmi.out.2.select.active.source.name", String: "Roku" },
+    ]);
+    assert.deepEqual(v, { outputs: { 1: { activeName: "Bunker Feed", selected: "hdmi.2" }, 2: { activeName: "Roku", selected: "avh.1" } } });
+  });
+
+  it("a captured name that some output is showing resolves to THAT selector; one nobody shows is reported, not guessed", () => {
+    const r = videoStepsForNames({ out1: "Roku", out2: "Bunker Feed" }, read(["Bunker Feed", "hdmi.2"], ["Roku", "avh.1"]));
+    assert.deepEqual(r.unresolved, []);
+    assert.deepEqual(r.steps, [
+      { step: "video", component: "HDMI_I/O_Bunker-Core", controls: [{ name: "hdmi.out.1.select.avh.1", value: true }] },
+      { step: "video", component: "HDMI_I/O_Bunker-Core", controls: [{ name: "hdmi.out.2.select.hdmi.2", value: true }] },
+    ]);
+    const r2 = videoStepsForNames({ out1: "Booth HDMI" }, read(["Bunker Feed", "hdmi.2"], ["Bunker Feed", "hdmi.2"]));
+    assert.deepEqual(r2.steps, []);
+    assert.deepEqual(r2.unresolved, ["out 1: Booth HDMI"]);
+    // already showing the captured name → no write at all
+    assert.deepEqual(videoStepsForNames({ out1: "Bunker Feed" }, read(["Bunker Feed", "hdmi.2"], [null, null])).steps, []);
+    // no read → nothing planned, nothing claimed
+    assert.deepEqual(videoStepsForNames({ out1: "Roku" }, null), { steps: [], unresolved: [] });
+  });
+
+  it("a recall carries the resolved video switch before the unmute, and reports unresolved names in the result", async () => {
+    await withCore({}, true, async (core, client) => {
+      const r = await executeCommand(cmd({ scene_payload: { ...TRIVIA_PAYLOAD, video: { out1: "Roku", out2: "Nobody Shows This" } } }), {
+        writer: client, writesEnabled: true, sleep: noSleep,
+        readVideo: async () => read(["Bunker Feed", "hdmi.2"], ["Roku", "avh.1"]),
+      });
+      assert.equal(r.status, "done", JSON.stringify(r.result));
+      assert.deepEqual(r.result.video_unresolved, ["out 2: Nobody Shows This"]);
+      const names = core.writes.map((w) => `${w.component}:${w.controls.map((c) => c.Name).join(",")}`);
+      const vi = names.indexOf("HDMI_I/O_Bunker-Core:hdmi.out.1.select.avh.1");
+      assert.ok(vi >= 0, "the video switch was written");
+      assert.ok(vi < names.lastIndexOf("Inside Mixer:output.1.mute"), "video switch lands before the unmute");
+    });
+  });
+
+  it("a video_source press by NAME resolves live too; unknown name ⇒ video_unresolved, zero writes", async () => {
+    await withCore({}, true, async (core, client) => {
+      const byName = cmd({ kind: "video_source", payload: { out: 1, source: "Roku", armed_by: "owner@x#abc123" } });
+      const live = async () => read(["Bunker Feed", "hdmi.2"], ["Roku", "avh.1"]);
+      const r = await executeCommand(byName, { writer: client, writesEnabled: true, sleep: noSleep, readVideo: live });
+      assert.equal(r.status, "done");
+      assert.deepEqual(core.writes.map((w) => w.controls[0].Name), ["hdmi.out.1.select.avh.1"]);
+      const r2 = await executeCommand({ ...byName, payload: { ...byName.payload, source: "Booth HDMI" } }, { writer: client, writesEnabled: true, sleep: noSleep, readVideo: live });
+      assert.equal(r2.status, "error");
+      assert.equal(r2.result.reason, "video_unresolved");
+      assert.equal(core.writes.length, 1);
     });
   });
 });
