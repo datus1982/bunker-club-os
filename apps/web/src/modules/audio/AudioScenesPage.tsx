@@ -175,11 +175,15 @@ function ScenesV2() {
           </div>
           {rangesQ.isError ? (
             <InlineNotice kind="danger" role="alert" message={`Could not load ranges: ${(rangesQ.error as Error).message}`} />
+          ) : !rangesQ.isSuccess ? (
+            <div className="st-body st-t2" style={{ fontSize: 15 }}>Loading ranges…</div>
           ) : (
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 8 }}>
               {SOURCE_KEYS.map((source) => (
                 <RangeCell
-                  key={source}
+                  // drafts seed from the row ONCE: mount only after the query and re-key on the row's
+                  // updated_at so a realtime edit from another device re-seeds (the PR B NOTE-6 class)
+                  key={`${source}:${rangesQ.data.find((r) => r.source === source)?.updated_at ?? "unset"}`}
                   source={source}
                   range={rangesQ.data?.find((r) => r.source === source)}
                   live={isRoutedSource(source) && routed !== source ? null : liveSourceGain(health.snap, source)}
@@ -201,6 +205,8 @@ function ScenesV2() {
           </div>
           {sourcePresetsQ.isError ? (
             <InlineNotice kind="danger" role="alert" message={`Could not load source presets: ${(sourcePresetsQ.error as Error).message}`} />
+          ) : !sourcePresetsQ.isSuccess ? (
+            <div className="st-body st-t2" style={{ fontSize: 15 }}>Loading source presets…</div>
           ) : (
             SOURCE_KEYS.map((source) => {
               const notRouted = isRoutedSource(source) && routed !== source;
@@ -217,7 +223,7 @@ function ScenesV2() {
                       const p = sourcePresetsQ.data?.find((x) => x.source === source && x.level === level);
                       return (
                         <SourcePresetCell
-                          key={level}
+                          key={`${level}:${p?.updated_at ?? "unset"}`}
                           source={source}
                           level={level}
                           gain={p?.gain_db ?? null}
