@@ -5,9 +5,10 @@ import { useRole } from "@/shared/useRole";
 import { ConfirmDialog, InlineNotice, StaffPageHeader, StatusChip, ToggleSwitch } from "@/shared/ui";
 import { useIsMobile } from "@/shared/useIsMobile";
 import {
-  capturedCount, deriveAgentHealth, fmtAge, sceneDisagrees, useAudioLive, useAudioRealtime, useAudioScenes, useAudioState,
-  useNowTick, useRecentCommands, useSceneMap, useSendCommand, useWritesArmed, useZonePresets,
-  type AudioScene, type Level, type Zone,
+  SOURCE_KEYS, SOURCE_LABEL, capturedCount, deriveAgentHealth, describeRefusal, fmtAge, isRoutedSource, liveSourceGain, nudgeOffset,
+  routedSourceOf, sceneDisagrees, useAudioLive, useAudioRealtime, useAudioScenes, useAudioState, useLatestSourceCommands, useNowTick,
+  useRecentCommands, useSceneMap, useSendCommand, useSourcePresets, useSourceRanges, useWritesArmed, useZonePresets,
+  type AudioCommand, type AudioScene, type AudioState, type Level, type LiveSnapshot, type SourceKey, type SourcePreset, type SourceRange, type Zone,
 } from "./useAudio";
 import { MONO } from "@/modules/signage/signageAdminShared";
 
@@ -22,6 +23,14 @@ import { MONO } from "@/modules/signage/signageAdminShared";
  * PRIORITY set (owner in the room this afternoon): SCENES row + active chip, INSIDE / PATIO
  * LOW·MED·HIGH with live meter, MICS mute toggles, REVERB, status line. MUSIC (favorites
  * picker) and VIDEO (per-out source) are OPTIONAL — see the TODO at the bottom of this file.
+ *
+ * PR C (Stephen 2026-09-16: "low/med/high for mics, sonos, and the other audio inputs …
+ * moving away from faders and towards 'nudges' but also restricted to certain ranges"):
+ * a SOURCES section ABOVE the zones — one row per source with the live level drawn as a
+ * POSITION inside the owner's [min, max] range, LOW · MED · HIGH, and − / + NUDGE buttons.
+ * There is NO fader, slider or number input on this page: a nudge moves one step, the agent
+ * refuses anything that would leave the range, and the refusal is shown inline. A "nudged
+ * +1.5 dB" readout = live − the baseline the last recall/preset set (audio_state.baseline).
  *
  * Sizes are inline px: nothing inherits font-size under `.terminal-theme` (PR #89).
  */
@@ -60,6 +69,10 @@ function AudioPageV2() {
   const stateQ = useAudioState();
   const liveQ = useAudioLive();
   const cmdsQ = useRecentCommands();
+  const rangesQ = useSourceRanges();
+  const sourcePresetsQ = useSourcePresets();
+  // review WARN-2: the latest press PER SOURCE (own query each) — never lost behind the recent-20 list
+  const latestBySource = useLatestSourceCommands();
   const { role } = useRole();
   const narrow = useIsMobile();
   const now = useNowTick(5_000);
@@ -104,7 +117,8 @@ function AudioPageV2() {
     if (lastCmd.status === "done") return { tone: "live" as const, text: `${label} — done ${when} ago` };
     if (lastCmd.status === "error") {
       const reason = String((lastCmd.result as { reason?: unknown } | null)?.reason ?? (lastCmd.result as { message?: unknown } | null)?.message ?? "error");
-      return { tone: "alert" as const, text: `${label} — ${reason === "writes_disabled" ? "refused: writes are not armed" : `error: ${reason}`} (${when} ago)` };
+      const plain = describeRefusal(lastCmd.result);
+      return { tone: "alert" as const, text: `${label} — ${reason === "writes_disabled" ? "refused: writes are not armed" : plain ?? `error: ${reason}`} (${when} ago)` };
     }
     return { tone: "warn" as const, text: `${label} — ${lastCmd.status} (${when} ago)` };
   }, [lastCmd, now, sceneMap]);
@@ -191,6 +205,33 @@ function AudioPageV2() {
               })}
             </div>
           )}
+        </Section>
+
+        {/* SOURCES (PR C) — the primary surface: per-source LOW·MED·HIGH + range-bounded nudges */}
+        <Section
+          title="Sources"
+          sub={rangesQ.isError || sourcePresetsQ.isError
+            ? <span className="st-danger">Could not load source presets / ranges: {((rangesQ.error ?? sourcePresetsQ.error) as Error).message}</span>
+            : `Router on ${SOURCE_LABEL[routedSourceOf(snap) as SourceKey] ?? "?"} · nudge = one step, never past the range`}
+        >
+          <div style={{ display: "grid", gridTemplateColumns: narrow ? "1fr" : "repeat(2, minmax(0, 1fr))", gap: 10 }}>
+            {SOURCE_KEYS.map((source) => (
+              <SourceRow
+                key={source}
+                source={source}
+                snap={snap}
+                state={state}
+                online={health.online}
+                busy={send.isPending}
+                range={rangesQ.data?.find((r) => r.source === source)}
+                presets={(sourcePresetsQ.data ?? []).filter((p) => p.source === source)}
+                lastCmd={latestBySource[source]}
+                now={now}
+                onPreset={(level) => send.mutate({ kind: "source_preset", payload: { source, level } })}
+                onNudge={(direction) => send.mutate({ kind: "source_nudge", payload: { source, direction } })}
+              />
+            ))}
+          </div>
         </Section>
 
         {/* INSIDE / PATIO */}
@@ -312,8 +353,137 @@ function Meter({ db, compact = false }: { db: number | null; compact?: boolean }
   );
 }
 
+/**
+ * One SOURCE row (PR C): name · live level · "nudged" readout · the level drawn as a position
+ * inside [min, max] · LOW/MED/HIGH · − / +. Every reason a press would be refused is shown
+ * BEFORE the press (not routed / range not set / preset not set) and the agent's actual
+ * refusal (out_of_range …) lands inline from the command row after it. Nothing here is a fader.
+ */
+function SourceRow({ source, snap, state, online, busy, range, presets, lastCmd, now, onPreset, onNudge }: {
+  source: SourceKey;
+  snap: LiveSnapshot | null;
+  state: AudioState | null;
+  online: boolean;
+  busy: boolean;
+  range: SourceRange | undefined;
+  presets: SourcePreset[];
+  lastCmd: AudioCommand | undefined;
+  now: number;
+  onPreset: (level: Level) => void;
+  onNudge: (direction: "up" | "down") => void;
+}) {
+  const routed = routedSourceOf(snap);
+  const notRouted = isRoutedSource(source) && routed !== source;
+  const live = notRouted ? null : liveSourceGain(snap, source);
+  const offset = notRouted ? null : nudgeOffset(state, snap, source);
+  const canAct = online && !busy && !notRouted;
+  const canNudge = canAct && !!range && live !== null;
+  const presetFor = (level: Level) => presets.find((p) => p.level === level);
+  // the last press on THIS source: an error stays visible until the next press replaces it
+  const refusal = lastCmd?.status === "error" ? describeRefusal(lastCmd.result) : null;
+  const lastLine = lastCmd
+    ? lastCmd.status === "done"
+      ? `${lastCmd.kind === "source_nudge" ? `Nudged ${lastCmd.payload?.direction === "up" ? "up" : "down"}` : `${LEVEL_LABEL[lastCmd.payload?.level as Level] ?? "Preset"}`}${typeof lastCmd.result?.target === "number" ? ` to ${(lastCmd.result.target as number).toFixed(1)} dB` : ""} · ${fmtAge(Math.max(0, now - new Date(lastCmd.requested_at).getTime()))} ago`
+      : lastCmd.status === "error" ? refusal : `${lastCmd.status}…`
+    : null;
+  // NOTE-4 (review): the page knows live / step / range, so a press that the agent would refuse as
+  // out_of_range is DISABLED here instead of queueing a doomed command; the inline refusal path
+  // above still covers the race (the level moved between render and execution).
+  const step = range?.step_db ?? null;
+  const wouldLeave = (dir: "up" | "down") => !!range && live !== null && step !== null && (dir === "up" ? live + step > range.max_db + 1e-9 : live - step < range.min_db - 1e-9);
+  return (
+    <div className="st-card" style={{ padding: 12, display: "flex", flexDirection: "column", gap: 8 }} data-source={source}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
+        <span className="st-label st-t1" style={{ fontSize: 14, letterSpacing: "0.08em" }}>{SOURCE_LABEL[source]}</span>
+        <span style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+          {notRouted ? (
+            <StatusChip tone="idle" label="NOT ROUTED" title={`The router is on ${routed ? SOURCE_LABEL[routed] : "another input"}`} />
+          ) : (
+            <StatusChip tone={live === null ? "neutral" : "live"} label={live === null ? "? dB" : `${live.toFixed(1)} dB`} />
+          )}
+          {offset !== null && <StatusChip tone="warn" label={`NUDGED ${offset > 0 ? "+" : "−"}${Math.abs(offset).toFixed(1)} dB`} title="Live level differs from the last recall / preset" />}
+          {!range && !notRouted && <StatusChip tone="warn" label="RANGE NOT SET" title="An admin sets the range in the scene editor (or the next NORMAL capture seeds ±6 dB)" />}
+        </span>
+      </div>
+      <RangeBar range={range} live={live} dim={notRouted} />
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr)) 44px 44px", gap: 6 }}>
+        {LEVELS.map((level) => {
+          const p = presetFor(level);
+          const set = p?.gain_db !== null && p?.gain_db !== undefined;
+          const outside = set && range ? p!.gain_db! < range.min_db || p!.gain_db! > range.max_db : false;
+          return (
+            <button
+              key={level}
+              type="button"
+              className="st-btn st-body"
+              style={{ ...btn, padding: "0 6px", minHeight: 44, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}
+              disabled={!canAct || !set || !range}
+              title={!set ? "Not set — an admin sets it from the current level" : !range ? "Range not set" : outside ? `${p!.gain_db} dB is outside the range — the agent will refuse it` : `${p!.gain_db} dB over 2s`}
+              onClick={() => onPreset(level)}
+            >
+              <span style={{ fontSize: 14, fontWeight: 700 }}>{LEVEL_LABEL[level]}</span>
+              <span className={outside ? "st-amber" : "st-t3"} style={{ fontSize: 11 }}>{set ? `${p!.gain_db} dB` : "not set"}</span>
+            </button>
+          );
+        })}
+        <button
+          type="button"
+          className="st-btn st-body"
+          style={{ ...btn, padding: 0, minWidth: 44, minHeight: 44, fontSize: 22 }}
+          aria-label={`${SOURCE_LABEL[source]} down ${step ?? ""} dB`}
+          disabled={!canNudge || wouldLeave("down")}
+          title={!range ? "Range not set" : wouldLeave("down") ? `Would drop below ${range.min_db} dB — refused` : `−${step} dB`}
+          onClick={() => onNudge("down")}
+        >
+          −
+        </button>
+        <button
+          type="button"
+          className="st-btn st-body"
+          style={{ ...btn, padding: 0, minWidth: 44, minHeight: 44, fontSize: 22 }}
+          aria-label={`${SOURCE_LABEL[source]} up ${step ?? ""} dB`}
+          disabled={!canNudge || wouldLeave("up")}
+          title={!range ? "Range not set" : wouldLeave("up") ? `Would rise above ${range.max_db} dB — refused` : `+${step} dB`}
+          onClick={() => onNudge("up")}
+        >
+          +
+        </button>
+      </div>
+      {(notRouted || lastLine) && (
+        <div className={`st-body ${lastCmd?.status === "error" ? "st-danger" : "st-t3"}`} style={{ fontSize: 13 }} role={lastCmd?.status === "error" ? "status" : undefined}>
+          {notRouted ? `${SOURCE_LABEL[source]} not routed — presets are stored, nothing is written until the router is on it.` : lastLine}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * The level as a POSITION inside the owner's range — a marker on a track, not a control.
+ * min/max are printed at the ends; no range = an empty track (nothing invented).
+ */
+function RangeBar({ range, live, dim }: { range: SourceRange | undefined; live: number | null; dim: boolean }) {
+  const pct = range && live !== null ? Math.max(0, Math.min(100, ((live - range.min_db) / (range.max_db - range.min_db)) * 100)) : null;
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 8, opacity: dim ? 0.45 : 1 }} aria-hidden="true">
+      <span className="st-body st-t3" style={{ fontSize: 11, minWidth: 34, textAlign: "right" }}>{range ? `${range.min_db}` : "—"}</span>
+      <div style={{ position: "relative", flex: 1, height: 8, background: "rgba(255,255,255,0.08)", borderRadius: 4, overflow: "visible" }}>
+        {pct !== null && (
+          <>
+            <div className="st-live" style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: `${pct}%`, background: "currentColor", opacity: 0.35, borderRadius: 4 }} />
+            <div className="st-live" style={{ position: "absolute", left: `calc(${pct}% - 2px)`, top: -3, width: 4, height: 14, background: "currentColor", borderRadius: 2 }} />
+          </>
+        )}
+      </div>
+      <span className="st-body st-t3" style={{ fontSize: 11, minWidth: 34 }}>{range ? `${range.max_db}` : "—"}</span>
+    </div>
+  );
+}
+
 function describeCommand(kind: string, payload: Record<string, unknown>, scenes: Map<string, AudioScene>): string {
   switch (kind) {
+    case "source_preset": return `${SOURCE_LABEL[payload.source as SourceKey] ?? String(payload.source)} ${LEVEL_LABEL[payload.level as Level] ?? String(payload.level)}`;
+    case "source_nudge": return `${SOURCE_LABEL[payload.source as SourceKey] ?? String(payload.source)} nudge ${payload.direction === "up" ? "+" : "−"}`;
     case "recall_scene": return `Scene ${scenes.get(String(payload.scene_id))?.name ?? "?"}`;
     case "zone_preset": return `${ZONE_LABEL[payload.zone as Zone] ?? String(payload.zone)} ${LEVEL_LABEL[payload.level as Level] ?? String(payload.level)}`;
     case "mic_mute": return `Mic ${String(payload.mic)} ${payload.mute ? "mute" : "open"}`;

@@ -88,7 +88,7 @@ Prereqs: Node.js **20+** (LTS installer, "Add to PATH"), and `nssm.exe`
 
    ```
    INFO  mirror: core NV-32-H (Core Mode) design=BunkerClub_v03.20260329 (…) status=OK - 16 OK
-   INFO  mirror: bootstrapped — 90 controls subscribed, 0 error(s)
+   INFO  mirror: bootstrapped — 92 controls subscribed, 0 error(s)
    ```
 
    and `audio_live.updated_at` advancing every second in Supabase. A Designer rename shows as
@@ -111,11 +111,11 @@ npm run capture -- --scene DJ --dry-run  # print only, store nothing
 It connects, **reads** (Component.Get — no control is changed) the current value of every scene
 lever in `src/controls.ts` (`SCENE_LEVERS`: the three router selects, Inside level/mute + both
 mic mutes/gains, the three inside trims, Patio + Listen Tech level/mute, reverb bypass +
-WetLevel — 18 controls today), the Sonos favorite in play, and the two HDMI active source
+WetLevel, plus the input 5 (Selected Source) and input 8 (Verb) source gains since PR C — 20 controls today), the Sonos favorite in play, and the two HDMI active source
 names, prints the payload as JSON plus one summary line:
 
 ```
-captured NORMAL: 18 controls, sonos fav 31 'Y2K Hits', hdmi out1=BunkerFeed out2=BunkerFeed — stored as scene a0d10000-…
+captured NORMAL: 20 controls, sonos fav 31 'Y2K Hits', hdmi out1=BunkerFeed out2=BunkerFeed — stored as scene a0d10000-…
 ```
 
 and stores it into `audio_scenes.payload` for that scene through the `audio_agent_capture` RPC
@@ -144,12 +144,12 @@ nothing, like `--dry-run`.
 ## What it reads (the contract — `src/controls.ts`)
 
 Exact names from the pinned inventory `qrc-inventory-2026-09-16-final.json` (design
-`BunkerClub_v03.20260329`). 18 components / 90 controls:
+`BunkerClub_v03.20260329`). 18 components / 92 controls:
 
 | Lever | Component → controls |
 |---|---|
 | Source per zone (1 Sonos · 2 Booth · 3 HDMI) | `Inside Router_8x8` / `Patio Router_8x8` / `Listen Tech Router_8x8` → `select.1` |
-| Inside level + mics | `Inside Mixer` → `output.1.gain/mute`, `input.1/2.mute`, `input.1/2.gain` |
+| Inside level + mics + the SOURCE gains (PR C) | `Inside Mixer` → `output.1.gain/mute`, `input.1/2.mute`, `input.1/2.gain` (mics), `input.5.gain` (Selected Source = whatever `select.1` routes), `input.8.gain` (Verb return) |
 | Inside trims (surface / sub / ceiling) | `Mixer_8x8` → `output.1/2/3.gain` |
 | Patio, Listen Tech | `Patio Mixer`, `Listen Tech Mixer` → `output.1.gain/mute` |
 | Music | `SonosSonosControl` → `TransportState`, `TrackName`, `TrackArtist`, `AlbumArtURL`, `Status`, `FavName 1..31` |
@@ -159,9 +159,32 @@ Exact names from the pinned inventory `qrc-inventory-2026-09-16-final.json` (des
 | Amp (status only, forever) | `Amp_Output_bunker-amp-1_CX-Q_2K4` → `status`, `channel.1..4.temperature`, `channel.1..4.input.clip.led` |
 
 The snapshot shape (`src/snapshot.ts`) carries the raw `controls` map plus a `derived` block
-(zones / inside_trims / mics / sonos / video / effects / meters / amp) so UIs never
+(zones / inside_trims / mics / sources / sonos / video / effects / meters / amp) so UIs never
 re-implement the mapping. Re-run the read-only inventory script before any PR that changes the
 contract — the names are the contract with the room.
+
+### Sources, presets, nudges (PR C — `src/sources.ts`, migration 0069)
+
+Six staff-facing SOURCE keys: `mic1` → `input.1.gain`, `mic2` → `input.2.gain`, `verb` →
+`input.8.gain`, and `sonos` / `booth` / `hdmi` → `input.5.gain` — but ONLY for the one of the
+three `Inside Router_8x8 select.1` is on right now (read live before every source write; the
+other two are refused `not_routed`). Two command kinds ride the 0068 queue behind the SAME double
+gate + `SCENE_LEVERS` intersection:
+
+- `source_preset {source, level}` — one `Component.Set` with `Ramp 2` to the authored gain; refused
+  `preset_not_set` / `range_not_set` / `not_routed` / `out_of_range` (an authored value outside
+  the owner's range is refused, never capped). Stamps the lever into `audio_state.baseline`.
+- `source_nudge {source, direction: up|down, delta_db?}` — reads the CURRENT gain, moves it one
+  `step_db` (default 1.5; a caller `delta_db` is bounded to the step), one `Component.Set` with
+  `Ramp 0.5`. A target outside `[min_db, max_db]` is REFUSED `out_of_range` with current / target /
+  range in the result and ZERO frames on the wire. Never touches the baseline — the page shows
+  "nudged +1.5 dB" as live − baseline.
+
+Ranges live in `audio_source_ranges` (owner-edited on `/audio/scenes`). They are seeded ONCE by
+the agent after a **NORMAL** capture — captured ± 6 dB per source it could read, clamped to
+[-100, 10] — through `audio_agent_seed_ranges`, which never overwrites an existing row. A recall
+clamps every source gain it writes into the owner's range and reports each clamp in
+`result.clamped` (the range wins over a stale capture).
 
 ---
 

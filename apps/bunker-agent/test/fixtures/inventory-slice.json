@@ -210,6 +210,20 @@
     "Value": false,
     "String": "unmuted",
     "Position": 0
+   },
+   {
+    "Name": "input.5.gain",
+    "Type": "Float",
+    "Value": 0.0,
+    "String": "0dB",
+    "Position": 0.9090909
+   },
+   {
+    "Name": "input.8.gain",
+    "Type": "Float",
+    "Value": 10.0,
+    "String": "10.0dB",
+    "Position": 1.0
    }
   ],
   "True_Peak/RMS_Meter_(dBFS)": [

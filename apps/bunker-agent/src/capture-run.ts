@@ -5,7 +5,11 @@
 import { buildScenePayload, readCaptureSet, summarizeCapture, type ScenePayload } from "./capture.js";
 import { describeConfig, loadConfig, type AgentConfig } from "./config.js";
 import { QrcClient } from "./qrc.js";
-import { createCaptureSender, type CaptureSender } from "./report.js";
+import { createCaptureSender, createRangeSeeder, type CaptureSender, type RangeSeeder } from "./report.js";
+import { seedRangesFromCapture } from "./sources.js";
+
+/** PR C: the scene whose capture seeds the source ranges (0069) — the seeded default's name. */
+export const RANGE_SEED_SCENE = "NORMAL";
 
 export interface CaptureRunOptions {
   sceneName: string;
@@ -16,6 +20,8 @@ export interface CaptureRunOptions {
   config?: AgentConfig;
   client?: QrcClient;
   sender?: CaptureSender | null;
+  /** PR C test seam: the ranges seed (null = never seed; undefined = production wiring) */
+  rangeSeeder?: RangeSeeder | null;
   out?: (line: string) => void;
   err?: (line: string) => void;
 }
@@ -76,6 +82,21 @@ export async function captureScene(o: CaptureRunOptions): Promise<CaptureRunResu
       return { payload, summary, stored: false };
     }
     out(summary + ` — stored as scene ${res.sceneId ?? "(id not returned)"}`);
+
+    // PR C (0069): a NORMAL capture seeds the nudge RANGES (captured ± 6 dB per source it could
+    // read) for any source that has no range yet — the RPC never overwrites an existing row, so
+    // this is a one-time default until the owner edits them. DECISION: keyed on the scene NAME
+    // "NORMAL" (the seeded default's name — what the CLI addresses; a renamed default no longer
+    // auto-seeds and the editor sets ranges by hand). Nothing is written to the Core here.
+    if (sceneName === RANGE_SEED_SCENE) {
+      const seeder = o.rangeSeeder !== undefined ? o.rangeSeeder : config.devMode ? null : createRangeSeeder({ supabaseUrl: config.supabaseUrl!, anonKey: config.supabaseAnonKey!, deviceToken: config.deviceToken!, agentId: config.agentId });
+      const seed = seedRangesFromCapture(payload.controls);
+      if (seeder && seed.length) {
+        const sr = await seeder(config.venueId, seed);
+        if (!sr.ok) err(`capture: range seed FAILED (${sr.status}) ${sr.error ?? ""}`);
+        else err(`capture: ranges seeded for ${sr.seeded?.length ? sr.seeded.join(", ") : "no new sources (all already set)"}`);
+      }
+    }
     return { payload, summary, stored: true, sceneId: res.sceneId };
   } finally {
     if (ownClient) client.stop();

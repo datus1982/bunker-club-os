@@ -39,6 +39,61 @@ Ramps (PR B): `Control.Set` accepts `Ramp` seconds on Float controls — the Cor
 Booleans/Integers switch instantly, so a recall orders its writes mute → ramp gains → switch
 source → unmute.
 
+### 1b · The SOURCE model (PR C, 2026-09-16 — Stephen: "low/med/high for mics, sonos, and the other audio inputs")
+
+Six staff-facing SOURCE keys, each driving ONE Inside Mixer input gain (the "Inside level" row
+above is the zone's OUTPUT knob; sources are the inputs feeding it):
+
+| Source key | `Inside Mixer` control | Inventory label | Notes |
+|---|---|---|---|
+| `mic1` | `input.1.gain` | Mic 1 | host mic |
+| `mic2` | `input.2.gain` | Mic 2 | second / karaoke mic |
+| `sonos` · `booth` · `hdmi` | `input.5.gain` | Selected_Source | **ONE shared lever** = whatever `Inside Router_8x8 select.1` routes (1 Sonos · 2 Booth · 3 HDMI). A preset/nudge resolves to input 5 ONLY for the source the router is on right now (read live via `Component.Get` first); the other two are refused `not_routed` — their presets stay stored, nothing is written. |
+| `verb` | `input.8.gain` | Verb | the reverb return |
+
+Inputs 3/4/6/7 (Stream 1/2, Booth, Video) are unwired legacy labels and are never a source.
+`input.5.gain` + `input.8.gain` joined the mirror contract AND `SCENE_LEVERS` in PR C (both on
+the already-contracted Inside Mixer, verified by exact name in the pinned inventory; the PR C
+brief believed all four were already levers — only the mic gains were), so a scene now
+captures the source levels too and a recall resets any nudge. The agent's `derived.sources`
+block in the snapshot carries `{routed, levels: {<key>: {control, gain_db, routed}}}`.
+
+**Nudge, not fader (Marvin ruling 2).** `audio_source_ranges` holds the owner's `[min_db,
+max_db]` + `step_db` (default 1.5) per source. Each `source_nudge {source, direction}` reads
+the CURRENT gain, moves it ONE step (a caller `delta_db` is bounded to the step; direction wins
+the sign), and puts exactly one `Component.Set` with `Ramp 0.5` on the wire — unless the target
+would leave the range, in which case it is **refused `out_of_range`** (current / target / range
+in the result, zero frames), never silently capped. No range row ⇒ `range_not_set`, refused.
+`source_preset {source, level}` writes the authored gain with `Ramp 2`; an authored value
+outside the owner's range is refused too (a config conflict he should see). **A recall clamps**
+every source gain it writes into that source's range when one exists — the owner's range wins
+over a stale capture — and reports each clamp in `result.clamped`.
+
+**Baseline (Marvin ruling 3).** `audio_state.baseline` = a flat `"<Component>|<control>" →
+value` map of the levers the agent LAST SET: a recall REPLACES it (the scene is the new
+default), a zone/source preset MERGES its one lever, a nudge never touches it. The page shows
+"NUDGED +1.5 dB" whenever live ≠ baseline for a source's lever. Written only through
+`audio_agent_set_baseline` (token RPC, 0069).
+
+**Ranges live with the owner (Marvin ruling 4).** Edited on `/audio/scenes`. Seeded ONCE by the
+agent after a **NORMAL** capture through `audio_agent_seed_ranges`: captured ± 6 dB per source it
+could read, clamped to [-100, 10]; a source absent from the capture (the two unrouted ones) stays
+unseeded; an existing row is never overwritten. Same never-list as before: never Sonos `Volume`,
+never the amp, never the ducker — every source control is inside `SCENE_LEVERS`, so the WARN-1
+intersection bounds source writes exactly like recalls.
+
+**Rollout facts (PR C, on the record):**
+- Scenes captured BEFORE PR C carry no `input.5.gain` / `input.8.gain` (the two joined
+  `SCENE_LEVERS` here) — a recall of such a scene leaves the source levels untouched; re-capture
+  to pick them up. Moot on the day of shipping: 0 scenes were captured.
+- `audio_source_ranges` is EMPTY after 0069 applies. Every source press is refused
+  `range_not_set` until either NORMAL is captured by the new agent build (seeds ± 6 dB) or the
+  owner types ranges on `/audio/scenes`.
+- The running NUC agent must be RESTARTED on this build: the old build neither mirrors input
+  5/8 (the page shows "? dB" for Sonos/Booth/HDMI/Verb) nor knows the two command kinds (the
+  old executor finishes a source press as `writes_disabled` with its gates closed, or
+  `bad_command` with them open — never a write). Restart first, then arm, then press.
+
 ## 2 · Data model (migration 0067, new module key `audio`)
 
 - **Module key `audio`** in the grant system (`venue_staff.modules`, `has_module()`, the TS
@@ -126,6 +181,24 @@ signal), a small REVERB toggle. Scene editor (admin): name, ramp, **CAPTURE FROM
 agent (`Component.Get`, see §2), per-lever overrides for the few he tweaks; "save current as LOW/MED/HIGH" per zone.
 Confirm on DJ / KARAOKE / TRIVIA, none on NORMAL or presets. Hub/HOME: a one-line chip
 ("NORMAL · Sonos: 80s Hits · Inside MED") from `audio_live`.
+
+### 4b · SOURCES (PR C)
+
+`/audio` gains a **SOURCES** section ABOVE the zones — the primary surface: one row per source
+(MIC 1 · MIC 2 · SONOS · BOOTH · HDMI · VERB) = the live level as a POSITION on a track inside
+`[min, max]` (min/max printed at the ends; no range = an empty track), LOW · MED · HIGH
+(disabled until authored, or while the range is unset), **−** / **+** nudge buttons (44 px), a
+"NUDGED +1.5 dB" chip when live ≠ baseline, NOT ROUTED for the two sources the router isn't on
+(their controls disable, the row says presets are stored), and the last press on that source
+inline — done ("Nudged up to −28.5 dB · 4s ago") or the agent's refusal in plain words
+("Refused — −28.5 dB is outside −31…−29.5 dB"). **No fader, slider or number input exists on
+`/audio`.** Zones keep their LOW/MED/HIGH as the output knob. Offline ⇒ everything disabled.
+
+`/audio/scenes` gains **SOURCE RANGES** (per source: min / max / step within the 0069 bounds;
+NOT SET until seeded or typed; a "fill ±6 dB around live" helper mirrors the seed default) and
+**SOURCE PRESETS** (per source LOW/MED/HIGH with SET FROM CURRENT, like the zones; a preset
+outside the range is chipped OUTSIDE RANGE). Tables `audio_source_ranges` / `audio_source_presets`
+(0069): `has_module('audio')` RLS, anon nothing, client writes column-listed, realtime.
 
 ## 5 · Sequence
 

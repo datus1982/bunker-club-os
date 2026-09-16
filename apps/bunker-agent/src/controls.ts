@@ -39,8 +39,13 @@ export const CONTRACT: readonly ComponentContract[] = [
   { component: "Patio Router_8x8", controls: ["select.1"] },
   { component: "Listen Tech Router_8x8", controls: ["select.1"] },
 
-  // ── Inside level + the two mics (host / karaoke) ─────────────────────────────────
-  { component: "Inside Mixer", controls: ["output.1.gain", "output.1.mute", "input.1.mute", "input.2.mute", "input.1.gain", "input.2.gain"] },
+  // ── Inside level + the two mics (host / karaoke) + the two other SOURCE gains (PR C) ──
+  // DECISION (PR C): the brief said the four source gains were "already in" the contract — only
+  // input.1/2.gain were. input.5.gain ("Selected_Source": whatever select.1 routes — Sonos /
+  // Booth / HDMI) and input.8.gain ("Verb" return) are ADDED here so the nudge bar can show a
+  // live level and a recall can reset a nudge. Both are on an ALREADY-contracted component and
+  // verified by exact name in the pinned inventory (Inside Mixer, 178 controls). No new component.
+  { component: "Inside Mixer", controls: ["output.1.gain", "output.1.mute", "input.1.mute", "input.2.mute", "input.1.gain", "input.2.gain", "input.5.gain", "input.8.gain"] },
 
   // ── Inside trims: the 1x3 — surface mounts / subwoofer / ceiling ────────────────
   { component: "Mixer_8x8", controls: ["output.1.gain", "output.2.gain", "output.3.gain"] },
@@ -99,7 +104,9 @@ export const SCENE_LEVERS: readonly ComponentContract[] = [
   { component: "Inside Router_8x8", controls: ["select.1"] },
   { component: "Patio Router_8x8", controls: ["select.1"] },
   { component: "Listen Tech Router_8x8", controls: ["select.1"] },
-  { component: "Inside Mixer", controls: ["output.1.gain", "output.1.mute", "input.1.mute", "input.2.mute", "input.1.gain", "input.2.gain"] },
+  // PR C: input.5.gain + input.8.gain join the levers (see the DECISION on the mirror contract
+  // above) — a scene captures the source levels too, so a recall resets any nudge (ruling 3).
+  { component: "Inside Mixer", controls: ["output.1.gain", "output.1.mute", "input.1.mute", "input.2.mute", "input.1.gain", "input.2.gain", "input.5.gain", "input.8.gain"] },
   { component: "Mixer_8x8", controls: ["output.1.gain", "output.2.gain", "output.3.gain"] },
   { component: "Patio Mixer", controls: ["output.1.gain", "output.1.mute"] },
   { component: "Listen Tech Mixer", controls: ["output.1.gain", "output.1.mute"] },

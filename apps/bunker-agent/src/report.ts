@@ -102,6 +102,8 @@ export interface CommandApi {
   take(venueId: string): Promise<ReportResult & { commands: QueuedCommand[] }>;
   finish(id: string, status: "done" | "error", result: Record<string, unknown>): Promise<ReportResult>;
   setState(venueId: string, sceneId: string | null, by: string | null, error: string | null): Promise<ReportResult>;
+  /** PR C: audio_agent_set_baseline(p_token, p_venue, p_levers, p_replace) — the levers a recall (replace) / preset (merge) JUST set. */
+  setBaseline(venueId: string, levers: Record<string, unknown>, replace: boolean): Promise<ReportResult>;
 }
 
 export function createCommandApi(opts: ReporterOptions): CommandApi {
@@ -118,5 +120,19 @@ export function createCommandApi(opts: ReporterOptions): CommandApi {
     setState(venueId, sceneId, by, error) {
       return rpc(opts, "audio_agent_set_state", { p_token: opts.deviceToken, p_venue: venueId, p_scene_id: sceneId, p_by: by, p_error: error }, false);
     },
+    setBaseline(venueId, levers, replace) {
+      return rpc(opts, "audio_agent_set_baseline", { p_token: opts.deviceToken, p_venue: venueId, p_levers: levers, p_replace: replace }, false);
+    },
+  };
+}
+
+// ── PR C: the one-time ranges seed (0069 audio_agent_seed_ranges) ─────────────────
+export type RangeSeeder = (venueId: string, ranges: Array<{ source: string; min_db: number; max_db: number }>) => Promise<ReportResult & { seeded?: string[] }>;
+
+/** audio_agent_seed_ranges(p_token, p_venue, p_ranges) → the sources it inserted (never overwrites an existing row). */
+export function createRangeSeeder(opts: ReporterOptions): RangeSeeder {
+  return async (venueId, ranges) => {
+    const r = await rpc(opts, "audio_agent_seed_ranges", { p_token: opts.deviceToken, p_venue: venueId, p_ranges: ranges }, true);
+    return r.ok ? { ok: true, status: r.status, seeded: Array.isArray(r.body) ? (r.body as string[]) : [] } : { ok: false, status: r.status, error: r.error };
   };
 }

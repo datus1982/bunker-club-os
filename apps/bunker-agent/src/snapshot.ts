@@ -14,6 +14,7 @@
  * no I/O — so the fake-core tests can assert the shape byte-for-byte.
  */
 import { CONTRACT, ROUTER_SOURCE_NAMES, SONOS_FAVORITE_COUNT } from "./controls.js";
+import { SELECTED_SOURCE_LEVER, SOURCE_KEYS, SOURCE_MIXER, SOURCE_ROUTER, SOURCE_ROUTER_CONTROL, isRoutedSource, leverForSource, routedSource, type SourceKey } from "./sources.js";
 
 export const AGENT_VERSION = "0.1.0";
 
@@ -59,6 +60,16 @@ export interface Derived {
   zones: { inside: ZoneDerived; patio: ZoneDerived; listen: ZoneDerived };
   inside_trims: { surface_db: number | null; sub_db: number | null; ceiling_db: number | null };
   mics: Record<"1" | "2", { mute: boolean | null; gain_db: number | null }>;
+  /**
+   * PR C — the six staff-facing SOURCES (sources.ts): the lever each one drives, its live gain,
+   * and whether the router is on it (sonos/booth/hdmi share input 5; `routed` false ⇒ the
+   * gain shown is the routed source's, and a nudge would be refused `not_routed`).
+   */
+  sources: {
+    /** which of sonos/booth/hdmi Inside Router_8x8 select.1 is on right now (null = unreadable) */
+    routed: SourceKey | null;
+    levels: Record<SourceKey, { control: string; gain_db: number | null; routed: boolean }>;
+  };
   sonos: {
     transport: string | null;
     track: string | null;
@@ -150,6 +161,21 @@ const bool = (st?: ControlState): boolean | null => {
 };
 const str = (st?: ControlState): string | null => (st && typeof st.s === "string" ? st.s : st && typeof st.v === "string" ? st.v : null);
 
+/** PR C: the per-source projection (pure) — the lever, its live gain, and the router truth. */
+function deriveSources(c: ControlsMap): Derived["sources"] {
+  const select = c[SOURCE_ROUTER]?.[SOURCE_ROUTER_CONTROL]?.v;
+  const routed = routedSource(select);
+  const levels = {} as Derived["sources"]["levels"];
+  for (const source of SOURCE_KEYS) {
+    const lever = leverForSource(source, select);
+    // sonos/booth/hdmi always REPORT input.5.gain (the shared lever) so the UI can show the
+    // routed source's level; `routed` says whether that number is THIS source's.
+    const control = "control" in lever ? lever.control : SELECTED_SOURCE_LEVER;
+    levels[source] = { control, gain_db: num(c[SOURCE_MIXER]?.[control]), routed: isRoutedSource(source) ? routed === source : true };
+  }
+  return { routed, levels };
+}
+
 export function derive(c: ControlsMap): Derived {
   const g = (component: string, control: string): ControlState | undefined => c[component]?.[control];
 
@@ -190,6 +216,7 @@ export function derive(c: ControlsMap): Derived {
       "1": { mute: bool(g("Inside Mixer", "input.1.mute")), gain_db: num(g("Inside Mixer", "input.1.gain")) },
       "2": { mute: bool(g("Inside Mixer", "input.2.mute")), gain_db: num(g("Inside Mixer", "input.2.gain")) },
     },
+    sources: deriveSources(c),
     sonos: {
       transport: str(g("SonosSonosControl", "TransportState")),
       track: str(g("SonosSonosControl", "TrackName")),

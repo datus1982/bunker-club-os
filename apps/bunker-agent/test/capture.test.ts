@@ -44,6 +44,7 @@ describe("capture — payload from the pinned inventory", () => {
           sent.push({ scene, payload });
           return { ok: true, status: 200, sceneId: "a0d10000-0000-4000-8000-000000000001" };
         },
+        rangeSeeder: null, // PR C: the NORMAL seed is covered in sources.test.ts; never let a test reach the network
         out: (l) => out.push(l),
         err: () => {},
       });
