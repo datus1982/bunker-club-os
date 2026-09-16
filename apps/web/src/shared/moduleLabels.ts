@@ -14,6 +14,7 @@ export const MODULE_LABELS: Record<ModuleKey, string> = {
   signage: "SIGNAGE",
   website: "WEBSITE",
   events: "EVENTS & PROMOS",
+  audio: "AUDIO",
 };
 
 export function moduleLabel(key: ModuleKey): string {

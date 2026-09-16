@@ -5,7 +5,7 @@ import { useSession } from "./useSession";
 export type StaffRole = "admin" | "host" | "staff";
 
 /** Module keys (mirror venue_staff.modules + has_module() in migration 0024). */
-export type ModuleKey = "trivia" | "seasons" | "drinks" | "signage" | "website" | "events";
+export type ModuleKey = "trivia" | "seasons" | "drinks" | "signage" | "website" | "events" | "audio";
 
 /** admin ⊇ host ⊇ staff for authorization comparisons (docs/01). */
 const RANK: Record<StaffRole, number> = { staff: 1, host: 2, admin: 3 };
