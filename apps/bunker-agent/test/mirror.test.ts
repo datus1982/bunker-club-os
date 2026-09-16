@@ -9,7 +9,7 @@ import { describe, it } from "node:test";
 import { CONTRACT, CONTRACT_COMPONENTS, CONTRACT_REFS } from "../src/controls.js";
 import { Mirror } from "../src/mirror.js";
 import { QrcClient, READ_ONLY_METHODS } from "../src/qrc.js";
-import type { Snapshot } from "../src/snapshot.js";
+import { ControlStore, derive, type Snapshot } from "../src/snapshot.js";
 import { FakeCore, loadFixture, sleep, testLogger, waitFor } from "./fakeCore.js";
 
 const VENUE = "11111111-1111-1111-1111-111111111111";
@@ -268,5 +268,26 @@ describe("contract ↔ fixture", () => {
       for (const k of c.controls) assert.ok(have.has(k), `inventory lacks ${c.component} → ${k}`);
     }
     assert.equal(CONTRACT_REFS.length, 90);
+  });
+});
+
+describe("derive: Boolean read-backs arrive as bool / 0-1 / String on the wire (live NUC finding, review #2)", () => {
+  it("mic mutes + amp clip resolve from every wire shape; unknown strings stay null", () => {
+    const store = new ControlStore();
+    store.set("Inside Mixer", "input.1.mute", 1, "muted", 1);          // number 0/1
+    store.set("Inside Mixer", "input.2.mute", undefined, "unmuted", 0); // String only
+    store.set("Inside Mixer", "output.1.mute", "true", null, null);     // string value
+    store.set("Patio Mixer", "output.1.mute", false, "unmuted", 0);     // real boolean
+    store.set("Lush_Reverb_Effect", "bypass", undefined, "bypassed", 1);
+    store.set("Amp_Output_bunker-amp-1_CX-Q_2K4", "channel.1.input.clip.led", 0, "normal", 0);
+    store.set("Amp_Output_bunker-amp-1_CX-Q_2K4", "channel.2.input.clip.led", undefined, "clip", 1);
+    store.set("Amp_Output_bunker-amp-1_CX-Q_2K4", "channel.3.input.clip.led", "weird", "weird", null);
+    const d = derive(store.snapshotControls());
+    assert.equal(d.mics["1"].mute, true);
+    assert.equal(d.mics["2"].mute, false);
+    assert.equal(d.zones.inside.mute, true);
+    assert.equal(d.zones.patio.mute, false);
+    assert.equal(d.effects.reverb_bypass, true);
+    assert.deepEqual(d.amp.clip.slice(0, 3), [false, true, null]);
   });
 });

@@ -14,7 +14,9 @@ Stephen's explicit word for the first supervised recall, with him in the room.**
 first cut) ships the schema and a READ-ONLY mirror; the reviewer proves "no write method is
 reachable" by code identity. `Control.Set` arrives in **PR B only**, after that supervised first
 recall. Never `Volume` on Sonos, never amp gain/mute, never the pink-noise / signal-injector
-blocks (not exposed — keep it that way). Room tuning stays in Designer.
+blocks (not exposed — keep it that way). Room tuning stays in Designer. **The executor drops any
+non-lever control:** a recall only ever writes the `SCENE_LEVERS` set (`controls.ts`) — anything
+else in a scene payload (a staff-editable jsonb row) is ignored and reported, never written.
 
 ## 1 · Control surface (pinned from `qrc-inventory-2026-09-16-final.json`, design `BunkerClub_v03.20260329`)
 

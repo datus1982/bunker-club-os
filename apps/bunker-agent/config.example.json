@@ -7,5 +7,6 @@
   "venueId": "11111111-1111-1111-1111-111111111111",
   "agentId": "bunkerclub-nuc",
   "expectedDesignPrefix": "BunkerClub",
-  "logDir": "logs"
+  "logDir": "logs",
+  "writesEnabled": false
 }

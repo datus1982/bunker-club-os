@@ -26,6 +26,12 @@ export interface AgentConfig {
   agentId: string;
   expectedDesignPrefix: string;
   logDir: string | null;
+  /**
+   * PR B — gate (a) of the double gate (0068): may this agent put Component.Set on the wire at
+   * all? DEFAULT FALSE. Flip to true ONLY on the owner's word, in the room, for the supervised
+   * first recall (docs/16). Anything but the JSON boolean `true` reads as false.
+   */
+  writesEnabled: boolean;
   /** derived: true when any of the three cloud fields is missing */
   devMode: boolean;
   /** where it was loaded from (for the boot log) */
@@ -83,6 +89,7 @@ export function parseConfig(raw: Record<string, unknown>, from = "<inline>"): Ag
   const deviceToken = str("deviceToken");
   const devMode = !(supabaseUrl && supabaseAnonKey && deviceToken);
   const logDir = str("logDir");
+  const writesEnabled = raw.writesEnabled === true;
   return {
     coreHost,
     corePort: portRaw,
@@ -94,6 +101,7 @@ export function parseConfig(raw: Record<string, unknown>, from = "<inline>"): Ag
     expectedDesignPrefix: str("expectedDesignPrefix") ?? "BunkerClub",
     logDir: logDir === null ? null : path.resolve(path.dirname(from === "<inline>" ? process.cwd() + "/x" : from), logDir),
     devMode,
+    writesEnabled,
     path: from,
   };
 }
@@ -111,6 +119,7 @@ export function describeConfig(c: AgentConfig): string {
     agentId: c.agentId,
     expectedDesignPrefix: c.expectedDesignPrefix,
     logDir: c.logDir,
+    writesEnabled: c.writesEnabled,
     devMode: c.devMode,
   });
 }

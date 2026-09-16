@@ -36,6 +36,8 @@ const triviaRoutes = () => import("./modules/trivia/routes");
 const leaderboardRoutes = () => import("./modules/leaderboard/routes");
 const signageRoutes = () => import("./modules/signage/routes");
 const dashboardRoutes = () => import("./modules/dashboard/routes");
+// AUDIO (docs/16, PR B) — staff room control over the NUC agent; its own chunk, never the TV's.
+const audioRoutes = () => import("./modules/audio/routes");
 const registrationRoutes = () => import("./modules/registration/routes");
 
 /**
@@ -95,6 +97,10 @@ const StaffLayout = namedLazy(dashboardRoutes, "StaffLayout");
 const BroadcastMoved = namedLazy(dashboardRoutes, "BroadcastMoved");
 const EventsMoved = namedLazy(dashboardRoutes, "EventsMoved");
 const Users = namedLazy(dashboardRoutes, "Users");
+
+// BAR OPS ▸ AUDIO (v2 shell; classic sees a MovedRoute-style notice) + the admin scene editor.
+const AudioPage = namedLazy(audioRoutes, "AudioPage");
+const AudioScenesPage = namedLazy(audioRoutes, "AudioScenesPage");
 
 // Seasons admin, player portal, auth, check-in.
 const SeasonsAdmin = namedLazy(() => import("./modules/seasons/routes"), "SeasonsAdmin");
@@ -237,6 +243,10 @@ export function App() {
         <Route path="/media/playlists" element={<RequireModule module="signage"><MediaPlaylists /></RequireModule>} />
         <Route path="/media/screens" element={<RequireModule module="signage"><MediaScreens /></RequireModule>} />
         <Route path="/admin/drinks" element={<RequireModule module="drinks"><DrinksAdmin /></RequireModule>} />
+        {/* AUDIO (docs/16 PR B): gated on the new `audio` module key (0067). The scene editor is
+            admin-only on top of that — it arms writes to the room. */}
+        <Route path="/audio" element={<RequireModule module="audio"><AudioPage /></RequireModule>} />
+        <Route path="/audio/scenes" element={<RequireRole role="admin"><AudioScenesPage /></RequireRole>} />
         <Route path="/admin/seasons" element={<RequireRole role="admin"><SeasonsAdmin /></RequireRole>} />
         <Route path="/admin/users" element={<RequireRole role="admin"><Users /></RequireRole>} />
       </Route>

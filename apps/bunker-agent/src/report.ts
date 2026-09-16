@@ -83,3 +83,40 @@ export function createCaptureSender(opts: ReporterOptions): CaptureSender {
     return r.ok ? { ok: true, status: r.status, sceneId: typeof r.body === "string" ? r.body : undefined } : { ok: false, status: r.status, error: r.error };
   };
 }
+
+// ── PR B: the command queue's three RPCs (0068) ───────────────────────────────────
+export interface QueuedCommand {
+  id: string;
+  kind: string;
+  payload: Record<string, unknown>;
+  requested_by: string | null;
+  requested_at: string;
+  scene_name: string | null;
+  /** audio_state.writes_armed_by at take time (gate (b) compares payload.armed_by to it) */
+  writes_armed_by: string | null;
+  /** server-derived: the arm exists AND its 04:00 rollover has not passed */
+  writes_arm_valid: boolean;
+}
+
+export interface CommandApi {
+  take(venueId: string): Promise<ReportResult & { commands: QueuedCommand[] }>;
+  finish(id: string, status: "done" | "error", result: Record<string, unknown>): Promise<ReportResult>;
+  setState(venueId: string, sceneId: string | null, by: string | null, error: string | null): Promise<ReportResult>;
+}
+
+export function createCommandApi(opts: ReporterOptions): CommandApi {
+  return {
+    async take(venueId) {
+      const r = await rpc(opts, "audio_agent_take_commands", { p_token: opts.deviceToken, p_venue: venueId, p_agent_id: opts.agentId }, true);
+      if (!r.ok) return { ok: false, status: r.status, error: r.error, commands: [] };
+      const rows = Array.isArray(r.body) ? (r.body as QueuedCommand[]) : [];
+      return { ok: true, status: r.status, commands: rows };
+    },
+    finish(id, status, result) {
+      return rpc(opts, "audio_agent_finish_command", { p_token: opts.deviceToken, p_id: id, p_status: status, p_result: result }, false);
+    },
+    setState(venueId, sceneId, by, error) {
+      return rpc(opts, "audio_agent_set_state", { p_token: opts.deviceToken, p_venue: venueId, p_scene_id: sceneId, p_by: by, p_error: error }, false);
+    },
+  };
+}

@@ -68,6 +68,8 @@ export const SECTIONS_V2: NavSectionV2[] = [
       { to: "/signage/slides", label: "SLIDES", module: "signage", task: "Build and edit the cards the screens rotate" },
       { to: "/signage#events", label: "EVENTS & PROMOS", module: "signage", task: "Schedule a promo or put one on the screens now" },
       { to: "/admin/drinks", label: "TOP SELLERS", module: "drinks", task: "Which drink groups the sellers board rotates" },
+      // docs/16 PR B — v2-only page (classic sees a moved-notice); gated on the `audio` grant.
+      { to: "/audio", label: "AUDIO", module: "audio", task: "Scenes, room levels, mics — what the room sounds like" },
     ],
   },
   {
