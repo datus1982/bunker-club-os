@@ -3,10 +3,15 @@
  * each frame terminated by a single NUL byte). Reference: the read-only inventory script
  * qrc-inventory.ps1 (same wire protocol, same unsolicited-frame handling).
  *
- * READ-ONLY BY CONSTRUCTION. The only methods this client can put on the wire are the ones in
- * READ_ONLY_METHODS below; the private request path refuses anything else, and no public method
- * takes a method name from its caller. There is no code path in this agent that changes a
- * control on the Core — PR A is the mirror phase (card §5 / §6).
+ * READ-ONLY BY CONSTRUCTION (PR A). The only methods the read path can put on the wire are the
+ * ones in READ_ONLY_METHODS below; the private request path refuses anything else, and no public
+ * method takes a method name from its caller.
+ *
+ * PR B adds ONE write surface, deliberately separate: `componentSet()` → private `writeRequest()`
+ * → WRITE_METHODS (Component.Set only), and it refuses everything unless the client was built
+ * with `writesEnabled: true` (config.writesEnabled, default false = gate (a) of the 0068 double
+ * gate). The read allow-list is never loosened. A mirror-only agent (writesEnabled false) still
+ * has no reachable write on the wire.
  *
  * Behaviour:
  *   • request/response matched by numeric id; unsolicited frames (no id: EngineStatus,
@@ -17,6 +22,9 @@
  */
 import { EventEmitter } from "node:events";
 import net from "node:net";
+
+/** PR B: the ONLY methods the gated write path may put on the wire. */
+export const WRITE_METHODS = new Set(["Component.Set"]);
 
 export const READ_ONLY_METHODS = new Set([
   "NoOp",
@@ -94,6 +102,14 @@ export interface QrcClientOptions {
   port?: number;
   keepaliveMs?: number;
   requestTimeoutMs?: number;
+  /**
+   * PR B — gate (a) of the DOUBLE GATE (0068). Default FALSE. Only when true does the client
+   * expose a write path at all (`componentSet` → the private `writeRequest`); with it false the
+   * write method throws before touching the socket, so a mirror-only agent still has "no write
+   * method reachable" as a property of the code. Flipped only via config.writesEnabled, on the
+   * owner's word, in the room.
+   */
+  writesEnabled?: boolean;
   /** backoff floor / ceiling for reconnects */
   reconnectMinMs?: number;
   reconnectMaxMs?: number;
@@ -116,6 +132,7 @@ export class QrcClient extends EventEmitter {
   private readonly reconnectMinMs: number;
   private readonly reconnectMaxMs: number;
   private readonly log: NonNullable<QrcClientOptions["log"]>;
+  private readonly writesEnabled: boolean;
 
   private socket: net.Socket | null = null;
   private buffer = Buffer.alloc(0);
@@ -137,6 +154,12 @@ export class QrcClient extends EventEmitter {
     this.reconnectMaxMs = opts.reconnectMaxMs ?? 30_000;
     this.reconnectDelay = this.reconnectMinMs;
     this.log = opts.log ?? (() => {});
+    this.writesEnabled = opts.writesEnabled === true;
+  }
+
+  /** Whether this client was constructed with writes enabled (gate (a)). */
+  get canWrite(): boolean {
+    return this.writesEnabled;
   }
 
   get connected(): boolean {
@@ -192,12 +215,44 @@ export class QrcClient extends EventEmitter {
     return this.request("NoOp", {});
   }
 
+  // ── WRITE surface (PR B) — the ONE method that can change a control, gated ────
+  /**
+   * Component.Set: batch-set controls on one component. `ramp` (seconds) makes the Core fade a
+   * Float control; Booleans/Integers switch instantly. Refused outright unless the client was
+   * built with `writesEnabled: true`. The executor (commands.ts) adds gate (b) on top.
+   */
+  componentSet(component: string, controls: ReadonlyArray<{ name: string; value: unknown; ramp?: number }>): Promise<void> {
+    return this.writeRequest("Component.Set", {
+      Name: component,
+      Controls: controls.map((c) => (c.ramp !== undefined ? { Name: c.name, Value: c.value, Ramp: c.ramp } : { Name: c.name, Value: c.value })),
+    }).then(() => undefined);
+  }
+
   // ── internals ────────────────────────────────────────────────────────────────
   private request(method: string, params: unknown): Promise<unknown> {
     if (!READ_ONLY_METHODS.has(method)) {
       // The guard that makes "read-only" a property of the code, not a promise.
       return Promise.reject(new Error(`QrcClient: method '${method}' is not in the read-only allow-list`));
     }
+    return this.send(method, params);
+  }
+
+  /**
+   * PR B: the write path. Deliberately a SEPARATE entry — the read allow-list above is never
+   * loosened; only WRITE_METHODS pass here, and only when writesEnabled was set at construction.
+   */
+  private writeRequest(method: string, params: unknown): Promise<unknown> {
+    if (!this.writesEnabled) {
+      return Promise.reject(new Error(`QrcClient: writes are disabled (config.writesEnabled is false) — refused ${method}`));
+    }
+    if (!WRITE_METHODS.has(method)) {
+      return Promise.reject(new Error(`QrcClient: method '${method}' is not in the write allow-list`));
+    }
+    this.log("info", `qrc: WRITE ${method} ${JSON.stringify(params).slice(0, 200)}`);
+    return this.send(method, params);
+  }
+
+  private send(method: string, params: unknown): Promise<unknown> {
     if (!this.socket || !this._connected) {
       return Promise.reject(new Error(`QrcClient: not connected (${method})`));
     }

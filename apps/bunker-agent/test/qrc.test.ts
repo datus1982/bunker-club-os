@@ -123,8 +123,33 @@ describe("QrcClient read-only guard", () => {
     const publicMethods = Object.getOwnPropertyNames(QrcClient.prototype).filter((n) => n !== "constructor" && !n.startsWith("_"));
     const expected = ["start", "stop", "statusGet", "getComponents", "componentGet", "changeGroupAddComponentControl", "changeGroupAutoPoll", "changeGroupPoll", "noOp"];
     for (const m of expected) assert.ok(publicMethods.includes(m), `missing ${m}`);
+    // PR B adds exactly ONE write surface: componentSet (+ canWrite) → private writeRequest → send.
+    // Neither takes a method name from its caller; writeRequest is gated on writesEnabled and
+    // WRITE_METHODS (commands.test.ts proves zero wire writes with the gate closed).
+    const writeSurface = ["componentSet", "canWrite"];
+    for (const m of writeSurface) assert.ok(publicMethods.includes(m), `missing ${m}`);
     // everything else on the prototype is an internal (private in TS, but enumerable at runtime)
-    const internals = publicMethods.filter((m) => !expected.includes(m));
-    assert.deepEqual(internals.sort(), ["connect", "connected", "dispatch", "onClose", "onData", "request", "startKeepalive", "teardown"].sort());
+    const internals = publicMethods.filter((m) => !expected.includes(m) && !writeSurface.includes(m));
+    assert.deepEqual(internals.sort(), ["connect", "connected", "dispatch", "onClose", "onData", "request", "send", "startKeepalive", "teardown", "writeRequest"].sort());
+  });
+
+  it("PR B: the write path refuses everything when writesEnabled is false (default) and only Component.Set when true", async () => {
+    const core = new FakeCore();
+    await core.start();
+    const off = new QrcClient({ host: "127.0.0.1", port: core.port, keepaliveMs: 60_000 });
+    await off.start();
+    assert.equal(off.canWrite, false);
+    await assert.rejects(off.componentSet("Inside Mixer", [{ name: "output.1.mute", value: true }]), /writes are disabled/);
+    off.stop();
+    const on = new QrcClient({ host: "127.0.0.1", port: core.port, keepaliveMs: 60_000, writesEnabled: true });
+    await on.start();
+    const priv = on as unknown as { writeRequest(method: string, params: unknown): Promise<unknown> };
+    await assert.rejects(priv.writeRequest("Control.Set", {}), /not in the write allow-list/);
+    await assert.rejects(priv.writeRequest("Logon", {}), /not in the write allow-list/);
+    await on.componentSet("Inside Mixer", [{ name: "output.1.mute", value: true }]);
+    assert.equal(core.writes.length, 1);
+    assert.ok(!core.received.some((f) => f.connection === 1 && f.method === "Component.Set"), "the writes-off client never sent Component.Set");
+    on.stop();
+    await core.stop();
   });
 });
