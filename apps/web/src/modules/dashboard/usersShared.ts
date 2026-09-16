@@ -7,7 +7,7 @@ import type { ModuleKey, StaffRole } from "@/shared/useRole";
  * one place, `Users.tsx`. Nothing here changed behaviour when it moved.
  */
 
-export const ALL_MODULES: ModuleKey[] = ["trivia", "seasons", "drinks", "signage", "website", "events"];
+export const ALL_MODULES: ModuleKey[] = ["trivia", "seasons", "drinks", "signage", "website", "events", "audio"];
 
 export type InviteRole = "staff" | "host";
 export type InviteStatus = "invited" | "already-staff" | "already-admin" | "error";

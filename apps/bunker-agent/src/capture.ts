@@ -1,0 +1,201 @@
+/**
+ * Scene CAPTURE — read the CURRENT value of every scene lever (controls.ts SCENE_LEVERS) plus the
+ * Sonos favorite in play and the two HDMI active sources, and shape them as a scene payload
+ * (card §2: "a flat map of {component, control} → value exactly as captured, plus a
+ * sonos_favorite index and per-out video selections").
+ *
+ * READ-ONLY: everything comes from Component.Get. Storing the payload goes through the
+ * audio_agent_capture RPC (report.ts). Nothing here can change a control.
+ *
+ * Payload shape (what lands in audio_scenes.payload; the RPC strips venue_id and adds
+ * captured_at / captured_by):
+ *   {
+ *     venue_id, design_name, design_code,
+ *     controls: [ { component, control, value, string, position } … ],   // flat, exact names
+ *     sonos_favorite: N | null, sonos_favorite_name: string | null,
+ *     sonos: { transport, track, artist, album, current_source, track_source, album_art_url },
+ *     sonos_favorite_resolved_by: "override" | "source-name" | "album-art" | "album" | null,
+ *     video: { out1: string | null, out2: string | null },
+ *     missing: [ { component, control, message } … ]                      // levers the Core would not return
+ *   }
+ */
+import { HDMI_CAPTURE_CONTROLS, SCENE_LEVERS, SONOS_CAPTURE_CONTROLS, SONOS_FAVORITE_COUNT } from "./controls.js";
+import type { QrcClient, QrcControlValue } from "./qrc.js";
+
+export interface CapturedControl {
+  component: string;
+  control: string;
+  value: unknown;
+  string: string | null;
+  position: number | null;
+}
+
+export interface ScenePayload {
+  venue_id: string;
+  design_name: string | null;
+  design_code: string | null;
+  controls: CapturedControl[];
+  sonos_favorite: number | null;
+  sonos_favorite_name: string | null;
+  sonos_favorite_resolved_by: "override" | "source-name" | "album-art" | "album" | null;
+  sonos: {
+    transport: string | null;
+    track: string | null;
+    artist: string | null;
+    album: string | null;
+    current_source: string | null;
+    track_source: string | null;
+    album_art_url: string | null;
+  };
+  video: { out1: string | null; out2: string | null };
+  missing: Array<{ component: string; control: string; message: string }>;
+}
+
+/** Raw readings keyed "component\0control" → the Core's control value. */
+export type Readings = Map<string, QrcControlValue>;
+export const key = (component: string, control: string): string => `${component}\0${control}`;
+
+const textOf = (c?: QrcControlValue): string | null => (c && typeof c.String === "string" ? c.String : c && typeof c.Value === "string" ? c.Value : null);
+
+/** Letters+digits only, lower-case — "Y2K Hits" ≡ "Y2KHits" ≡ "y2k-hits". */
+export const squash = (s: string): string => s.toLowerCase().replace(/[^a-z0-9]+/g, "");
+
+/**
+ * Which of the 31 favorites is playing. The Sonos plugin exposes NO favorite URIs, so this is
+ * best-effort text matching, in order of trust:
+ *   override (--favorite N) → favorite name inside CurrentSource/TrackSource →
+ *   favorite name inside the AlbumArtURL (Backgrounds art is named after the program, e.g.
+ *   ".../Y2KHits.png" ⇢ "Y2K Hits") → TrackAlbum equals a favorite name → null (unresolved).
+ * DECISION: unresolved is honest and allowed (sonos_favorite null); the CLI prints it loudly and
+ * the operator can re-run with --favorite N. The app never guesses a station.
+ */
+export function resolveSonosFavorite(
+  favorites: Array<{ n: number; name: string }>,
+  hints: { currentSource: string | null; trackSource: string | null; albumArtUrl: string | null; album: string | null },
+  override?: number | null,
+): { n: number | null; name: string | null; by: ScenePayload["sonos_favorite_resolved_by"] } {
+  if (override != null) {
+    const f = favorites.find((x) => x.n === override);
+    return { n: override, name: f?.name ?? null, by: "override" };
+  }
+  const usable = favorites.filter((f) => f.name.trim() !== "");
+  const inText = (text: string | null): { n: number; name: string } | null => {
+    if (!text) return null;
+    const hay = squash(decodeURIComponentSafe(text));
+    // longest name first so "90s Hits" cannot be shadowed by "Hits"
+    const sorted = [...usable].sort((a, b) => squash(b.name).length - squash(a.name).length);
+    return sorted.find((f) => squash(f.name).length >= 3 && hay.includes(squash(f.name))) ?? null;
+  };
+  const bySource = inText(hints.currentSource) ?? inText(hints.trackSource);
+  if (bySource) return { n: bySource.n, name: bySource.name, by: "source-name" };
+  const byArt = inText(hints.albumArtUrl);
+  if (byArt) return { n: byArt.n, name: byArt.name, by: "album-art" };
+  if (hints.album) {
+    const a = squash(hints.album);
+    const f = usable.find((x) => squash(x.name) === a);
+    if (f) return { n: f.n, name: f.name, by: "album" };
+  }
+  return { n: null, name: null, by: null };
+}
+
+function decodeURIComponentSafe(s: string): string {
+  try {
+    return decodeURIComponent(s.replace(/&amp;/g, "&"));
+  } catch {
+    return s;
+  }
+}
+
+/** Pure: shape readings into the payload. */
+export function buildScenePayload(input: {
+  venueId: string;
+  designName: string | null;
+  designCode: string | null;
+  readings: Readings;
+  missing: ScenePayload["missing"];
+  favoriteOverride?: number | null;
+}): ScenePayload {
+  const { readings } = input;
+  const controls: CapturedControl[] = [];
+  for (const lever of SCENE_LEVERS) {
+    for (const control of lever.controls) {
+      const r = readings.get(key(lever.component, control));
+      if (!r) continue; // recorded in `missing` by the reader
+      controls.push({ component: lever.component, control, value: r.Value ?? null, string: typeof r.String === "string" ? r.String : null, position: typeof r.Position === "number" ? r.Position : null });
+    }
+  }
+  const S = "SonosSonosControl";
+  const favorites: Array<{ n: number; name: string }> = [];
+  for (let n = 1; n <= SONOS_FAVORITE_COUNT; n++) {
+    const name = textOf(readings.get(key(S, `FavName ${n}`)));
+    if (name && name.trim() !== "") favorites.push({ n, name });
+  }
+  const sonos = {
+    transport: textOf(readings.get(key(S, "TransportState"))),
+    track: textOf(readings.get(key(S, "TrackName"))),
+    artist: textOf(readings.get(key(S, "TrackArtist"))),
+    album: textOf(readings.get(key(S, "TrackAlbum"))),
+    current_source: textOf(readings.get(key(S, "CurrentSource"))),
+    track_source: textOf(readings.get(key(S, "TrackSource"))),
+    album_art_url: textOf(readings.get(key(S, "AlbumArtURL"))),
+  };
+  const fav = resolveSonosFavorite(favorites, { currentSource: sonos.current_source, trackSource: sonos.track_source, albumArtUrl: sonos.album_art_url, album: sonos.album }, input.favoriteOverride);
+  const H = "HDMI_I/O_Bunker-Core";
+  return {
+    venue_id: input.venueId,
+    design_name: input.designName,
+    design_code: input.designCode,
+    controls,
+    sonos_favorite: fav.n,
+    sonos_favorite_name: fav.name,
+    sonos_favorite_resolved_by: fav.by,
+    sonos,
+    video: {
+      out1: textOf(readings.get(key(H, HDMI_CAPTURE_CONTROLS[0]))),
+      out2: textOf(readings.get(key(H, HDMI_CAPTURE_CONTROLS[1]))),
+    },
+    missing: input.missing,
+  };
+}
+
+/** Read every capture control from the Core (Component.Get only). Missing controls are isolated by name. */
+export async function readCaptureSet(client: QrcClient): Promise<{ readings: Readings; missing: ScenePayload["missing"] }> {
+  const readings: Readings = new Map();
+  const missing: ScenePayload["missing"] = [];
+  const groups: Array<{ component: string; controls: readonly string[] }> = [
+    ...SCENE_LEVERS,
+    { component: "SonosSonosControl", controls: SONOS_CAPTURE_CONTROLS },
+    { component: "HDMI_I/O_Bunker-Core", controls: HDMI_CAPTURE_CONTROLS },
+  ];
+  for (const g of groups) {
+    let got: QrcControlValue[] | null = null;
+    try {
+      got = (await client.componentGet(g.component, g.controls)).Controls ?? [];
+    } catch (e) {
+      // whole-component refusal → probe one by one so the missing name is exact
+      for (const control of g.controls) {
+        try {
+          const one = (await client.componentGet(g.component, [control])).Controls?.find((c) => c.Name === control);
+          if (one) readings.set(key(g.component, control), one);
+          else missing.push({ component: g.component, control, message: "not returned by the Core" });
+        } catch (e2) {
+          missing.push({ component: g.component, control, message: (e2 as Error).message });
+        }
+      }
+      void e;
+      continue;
+    }
+    for (const control of g.controls) {
+      const c = got.find((x) => x.Name === control);
+      if (c) readings.set(g.component + "\0" + control, c);
+      else missing.push({ component: g.component, control, message: "not returned by the Core" });
+    }
+  }
+  return { readings, missing };
+}
+
+export function summarizeCapture(sceneName: string, p: ScenePayload): string {
+  const fav = p.sonos_favorite != null ? `sonos fav ${p.sonos_favorite} '${p.sonos_favorite_name ?? "?"}'${p.sonos_favorite_resolved_by === "override" ? " (override)" : ""}` : "sonos fav UNRESOLVED";
+  const miss = p.missing.length ? `, ${p.missing.length} MISSING` : "";
+  return `captured ${sceneName}: ${p.controls.length} controls, ${fav}, hdmi out1=${p.video.out1 ?? "?"} out2=${p.video.out2 ?? "?"}${miss}`;
+}

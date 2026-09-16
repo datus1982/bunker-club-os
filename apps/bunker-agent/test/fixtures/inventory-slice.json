@@ -1,0 +1,772 @@
+{
+ "source": "cut from qrc-inventory-2026-09-16-final.json (captured 2026-09-16, design BunkerClub_v03.20260329)",
+ "captured_at": "2026-09-16T18:14:45.4437418Z",
+ "status": {
+  "Platform": "NV-32-H (Core Mode)",
+  "State": "Active",
+  "DesignName": "BunkerClub_v03.20260329",
+  "DesignCode": "vyysM4BoQKaY",
+  "IsRedundant": false,
+  "IsEmulator": false,
+  "Status": {
+   "Code": 0,
+   "String": "OK - 16 OK"
+  }
+ },
+ "components": [
+  {
+   "Name": "HDMI_I/O_Bunker-Core",
+   "Type": "streamer_hdmi_switcher",
+   "ID": "HDMI_I/O_Bunker-Core"
+  },
+  {
+   "Name": "Inside Mixer",
+   "Type": "mixer",
+   "ID": "Inside Mixer"
+  },
+  {
+   "Name": "True_Peak/RMS_Meter_(dBFS)",
+   "Type": "meter2",
+   "ID": "True_Peak/RMS_Meter_(dBFS)"
+  },
+  {
+   "Name": "Amp_Output_bunker-amp-1_CX-Q_2K4",
+   "Type": "cxq_amplifier",
+   "ID": "Amp_Output_bunker-amp-1_CX-Q_2K4"
+  },
+  {
+   "Name": "Lush_Reverb_Effect",
+   "Type": "effect_reverb",
+   "ID": "Lush_Reverb_Effect"
+  },
+  {
+   "Name": "Priority_Ducker",
+   "Type": "priority_ducker",
+   "ID": "Priority_Ducker"
+  },
+  {
+   "Name": "South TV",
+   "Type": "vst_hdmi_display",
+   "ID": "South TV"
+  },
+  {
+   "Name": "Roku",
+   "Type": "vst_hdmi_source",
+   "ID": "Roku"
+  },
+  {
+   "Name": "North TV",
+   "Type": "vst_hdmi_display",
+   "ID": "North TV"
+  },
+  {
+   "Name": "Bunker Feed",
+   "Type": "vst_hdmi_source",
+   "ID": "Bunker Feed"
+  },
+  {
+   "Name": "HDMI 3",
+   "Type": "vst_hdmi_source",
+   "ID": "HDMI 3"
+  },
+  {
+   "Name": "True_Peak/RMS_Meter_(dBFS)_1",
+   "Type": "meter2",
+   "ID": "True_Peak/RMS_Meter_(dBFS)_1"
+  },
+  {
+   "Name": "Patio Mixer",
+   "Type": "mixer",
+   "ID": "Patio Mixer"
+  },
+  {
+   "Name": "RokuUltra",
+   "Type": "%PLUGIN%_35b4cff0-e894-4666-a16b-9e24f86499ed_%FP%_48e44ec08ff51fe8430fc014fa08033f",
+   "ID": "RokuUltra"
+  },
+  {
+   "Name": "Mixer_8x8",
+   "Type": "mixer",
+   "ID": "Mixer_8x8"
+  },
+  {
+   "Name": "Inside Router_8x8",
+   "Type": "router_with_output",
+   "ID": "Inside Router_8x8"
+  },
+  {
+   "Name": "Patio Router_8x8",
+   "Type": "router_with_output",
+   "ID": "Patio Router_8x8"
+  },
+  {
+   "Name": "SONY-N",
+   "Type": "%PLUGIN%_b7e3a1f0-tv01-4c9d-8e2a-universal-tv_%FP%_f76f6eec96eee2d36961347413a5c942",
+   "ID": "SONY-N"
+  },
+  {
+   "Name": "SonyTV_1",
+   "Type": "%PLUGIN%_78a74df3-40bf-447b-a714-f564ebae238a_%FP%_17f7c2b905c38a7cdf412359a2a9a848",
+   "ID": "SonyTV_1"
+  },
+  {
+   "Name": "SonyTV_2",
+   "Type": "%PLUGIN%_78a74df3-40bf-447b-a714-f564ebae238a_%FP%_17f7c2b905c38a7cdf412359a2a9a848",
+   "ID": "SonyTV_2"
+  },
+  {
+   "Name": "Listen Tech Router_8x8",
+   "Type": "router_with_output",
+   "ID": "Listen Tech Router_8x8"
+  },
+  {
+   "Name": "Listen Tech Mixer",
+   "Type": "mixer",
+   "ID": "Listen Tech Mixer"
+  },
+  {
+   "Name": "Booth HDMI",
+   "Type": "vst_hdmi_source",
+   "ID": "Booth HDMI"
+  },
+  {
+   "Name": "TCL-S-TV",
+   "Type": "%PLUGIN%_b7e3a1f0-tv01-4c9d-8e2a-universal-tv_%FP%_f76f6eec96eee2d36961347413a5c942",
+   "ID": "TCL-S-TV"
+  },
+  {
+   "Name": "SONY-S",
+   "Type": "%PLUGIN%_b7e3a1f0-tv01-4c9d-8e2a-universal-tv_%FP%_f76f6eec96eee2d36961347413a5c942",
+   "ID": "SONY-S"
+  },
+  {
+   "Name": "HISENSE-N-SIGN",
+   "Type": "%PLUGIN%_b7e3a1f0-tv01-4c9d-8e2a-universal-tv_%FP%_f76f6eec96eee2d36961347413a5c942",
+   "ID": "HISENSE-N-SIGN"
+  },
+  {
+   "Name": "SonosSonosControl",
+   "Type": "%PLUGIN%_sonos-upnp-control-v3_%FP%_f96d6a3f3f65f7ff4bc9c202e9b1d5f9",
+   "ID": "SonosSonosControl"
+  },
+  {
+   "Name": "TCL-S-SIGN",
+   "Type": "%PLUGIN%_b7e3a1f0-tv01-4c9d-8e2a-universal-tv_%FP%_f76f6eec96eee2d36961347413a5c942",
+   "ID": "TCL-S-SIGN"
+  }
+ ],
+ "controls": {
+  "HDMI_I/O_Bunker-Core": [
+   {
+    "Name": "hdmi.out.1.select.active.source.name",
+    "Type": "Text",
+    "String": "BunkerFeed"
+   },
+   {
+    "Name": "hdmi.out.2.select.active.source.name",
+    "Type": "Text",
+    "String": "BunkerFeed"
+   }
+  ],
+  "Inside Mixer": [
+   {
+    "Name": "input.1.gain",
+    "Type": "Float",
+    "Value": -30,
+    "String": "-30.0dB",
+    "Position": 0.24699999
+   },
+   {
+    "Name": "input.1.mute",
+    "Type": "Boolean",
+    "Value": true,
+    "String": "muted",
+    "Position": 1
+   },
+   {
+    "Name": "input.2.gain",
+    "Type": "Float",
+    "Value": -30,
+    "String": "-30.0dB",
+    "Position": 0.24699999
+   },
+   {
+    "Name": "input.2.mute",
+    "Type": "Boolean",
+    "Value": true,
+    "String": "muted",
+    "Position": 1
+   },
+   {
+    "Name": "output.1.gain",
+    "Type": "Float",
+    "Value": -44.45747756,
+    "String": "-44.5dB",
+    "Position": 0.135
+   },
+   {
+    "Name": "output.1.mute",
+    "Type": "Boolean",
+    "Value": false,
+    "String": "unmuted",
+    "Position": 0
+   }
+  ],
+  "True_Peak/RMS_Meter_(dBFS)": [
+   {
+    "Name": "meter.1",
+    "Type": "Float",
+    "Value": -88.55864715,
+    "String": "-88.6dB",
+    "Position": 0
+   },
+   {
+    "Name": "meter.10",
+    "Type": "Float",
+    "Value": -4.22967195,
+    "String": "-4.23dB",
+    "Position": 0.85770332
+   },
+   {
+    "Name": "meter.11",
+    "Type": "Float",
+    "Value": -120,
+    "String": "-120dB",
+    "Position": 0
+   },
+   {
+    "Name": "meter.12",
+    "Type": "Float",
+    "Value": -120,
+    "String": "-120dB",
+    "Position": 0
+   },
+   {
+    "Name": "meter.13",
+    "Type": "Float",
+    "Value": -120,
+    "String": "-120dB",
+    "Position": 0
+   },
+   {
+    "Name": "meter.2",
+    "Type": "Float",
+    "Value": -89.66613769,
+    "String": "-89.7dB",
+    "Position": 0
+   },
+   {
+    "Name": "meter.3",
+    "Type": "Float",
+    "Value": -120,
+    "String": "-120dB",
+    "Position": 0
+   },
+   {
+    "Name": "meter.4",
+    "Type": "Float",
+    "Value": -120,
+    "String": "-120dB",
+    "Position": 0
+   },
+   {
+    "Name": "meter.5",
+    "Type": "Float",
+    "Value": -95.09051513,
+    "String": "-95.1dB",
+    "Position": 0
+   },
+   {
+    "Name": "meter.6",
+    "Type": "Float",
+    "Value": -96.57935333,
+    "String": "-96.6dB",
+    "Position": 0
+   },
+   {
+    "Name": "meter.7",
+    "Type": "Float",
+    "Value": -85.94486236,
+    "String": "-85.9dB",
+    "Position": 0
+   },
+   {
+    "Name": "meter.8",
+    "Type": "Float",
+    "Value": -85.74588012,
+    "String": "-85.7dB",
+    "Position": 0
+   },
+   {
+    "Name": "meter.9",
+    "Type": "Float",
+    "Value": -4.23166513,
+    "String": "-4.23dB",
+    "Position": 0.85768336
+   }
+  ],
+  "Amp_Output_bunker-amp-1_CX-Q_2K4": [
+   {
+    "Name": "channel.1.input.clip.led",
+    "Type": "Boolean",
+    "Value": false,
+    "String": "false",
+    "Position": 0
+   },
+   {
+    "Name": "channel.1.temperature",
+    "Type": "Float",
+    "Value": 37.09877014,
+    "String": "37.1°C",
+    "Position": 0.37098771
+   },
+   {
+    "Name": "channel.2.input.clip.led",
+    "Type": "Boolean",
+    "Value": false,
+    "String": "false",
+    "Position": 0
+   },
+   {
+    "Name": "channel.2.temperature",
+    "Type": "Float",
+    "Value": 35.44065475,
+    "String": "35.4°C",
+    "Position": 0.35440653
+   },
+   {
+    "Name": "channel.3.input.clip.led",
+    "Type": "Boolean",
+    "Value": false,
+    "String": "false",
+    "Position": 0
+   },
+   {
+    "Name": "channel.3.temperature",
+    "Type": "Float",
+    "Value": 37.10092544,
+    "String": "37.1°C",
+    "Position": 0.37100926
+   },
+   {
+    "Name": "channel.4.input.clip.led",
+    "Type": "Boolean",
+    "Value": false,
+    "String": "false",
+    "Position": 0
+   },
+   {
+    "Name": "channel.4.temperature",
+    "Type": "Float",
+    "Value": 37.73511505,
+    "String": "37.7°C",
+    "Position": 0.37735116
+   },
+   {
+    "Name": "status",
+    "Type": "Status",
+    "Value": 0,
+    "String": "OK"
+   }
+  ],
+  "Lush_Reverb_Effect": [
+   {
+    "Name": "WetLevel",
+    "Type": "Float",
+    "Value": 3.6030004,
+    "String": "3.60dB",
+    "Position": 0.90089559
+   },
+   {
+    "Name": "bypass",
+    "Type": "Boolean",
+    "Value": false,
+    "String": "no",
+    "Position": 0
+   }
+  ],
+  "Priority_Ducker": [
+   {
+    "Name": "bypass",
+    "Type": "Boolean",
+    "Value": true,
+    "String": "bypassed",
+    "Position": 1
+   }
+  ],
+  "Roku": [
+   {
+    "Name": "5v",
+    "Type": "Boolean",
+    "Value": false,
+    "String": "false",
+    "Position": 0
+   },
+   {
+    "Name": "channel.1.input.signal",
+    "Type": "Boolean",
+    "Value": false,
+    "String": "false",
+    "Position": 0
+   }
+  ],
+  "Bunker Feed": [
+   {
+    "Name": "5v",
+    "Type": "Boolean",
+    "Value": true,
+    "String": "true",
+    "Position": 1
+   },
+   {
+    "Name": "channel.1.input.signal",
+    "Type": "Boolean",
+    "Value": true,
+    "String": "true",
+    "Position": 1
+   }
+  ],
+  "HDMI 3": [
+   {
+    "Name": "5v",
+    "Type": "Boolean",
+    "Value": false,
+    "String": "false",
+    "Position": 0
+   },
+   {
+    "Name": "channel.1.input.signal",
+    "Type": "Boolean",
+    "Value": false,
+    "String": "false",
+    "Position": 0
+   }
+  ],
+  "True_Peak/RMS_Meter_(dBFS)_1": [
+   {
+    "Name": "meter.1",
+    "Type": "Float",
+    "Value": -120,
+    "String": "-120dB",
+    "Position": 0
+   },
+   {
+    "Name": "meter.2",
+    "Type": "Float",
+    "Value": -120,
+    "String": "-120dB",
+    "Position": 0
+   },
+   {
+    "Name": "meter.3",
+    "Type": "Float",
+    "Value": -120,
+    "String": "-120dB",
+    "Position": 0
+   },
+   {
+    "Name": "meter.4",
+    "Type": "Float",
+    "Value": -96.44929504,
+    "String": "-96.4dB",
+    "Position": 0
+   }
+  ],
+  "Patio Mixer": [
+   {
+    "Name": "output.1.gain",
+    "Type": "Float",
+    "Value": -3.70967483,
+    "String": "-3.71dB",
+    "Position": 0.643
+   },
+   {
+    "Name": "output.1.mute",
+    "Type": "Boolean",
+    "Value": false,
+    "String": "unmuted",
+    "Position": 0
+   }
+  ],
+  "Mixer_8x8": [
+   {
+    "Name": "output.1.gain",
+    "Type": "Float",
+    "Value": 0,
+    "String": "0dB",
+    "Position": 0.75
+   },
+   {
+    "Name": "output.2.gain",
+    "Type": "Float",
+    "Value": 0,
+    "String": "0dB",
+    "Position": 0.75
+   },
+   {
+    "Name": "output.3.gain",
+    "Type": "Float",
+    "Value": 0,
+    "String": "0dB",
+    "Position": 0.75
+   }
+  ],
+  "Inside Router_8x8": [
+   {
+    "Name": "select.1",
+    "Type": "Integer",
+    "Value": 1,
+    "String": "1",
+    "Position": 0
+   }
+  ],
+  "Patio Router_8x8": [
+   {
+    "Name": "select.1",
+    "Type": "Integer",
+    "Value": 1,
+    "String": "1",
+    "Position": 0
+   }
+  ],
+  "Listen Tech Router_8x8": [
+   {
+    "Name": "select.1",
+    "Type": "Integer",
+    "Value": 1,
+    "String": "1",
+    "Position": 0
+   }
+  ],
+  "Listen Tech Mixer": [
+   {
+    "Name": "output.1.gain",
+    "Type": "Float",
+    "Value": -3.60124588,
+    "String": "-3.60dB",
+    "Position": 0.64600002
+   },
+   {
+    "Name": "output.1.mute",
+    "Type": "Boolean",
+    "Value": false,
+    "String": "unmuted",
+    "Position": 0
+   }
+  ],
+  "Booth HDMI": [
+   {
+    "Name": "5v",
+    "Type": "Boolean",
+    "Value": false,
+    "String": "false",
+    "Position": 0
+   },
+   {
+    "Name": "channel.1.input.signal",
+    "Type": "Boolean",
+    "Value": false,
+    "String": "false",
+    "Position": 0
+   }
+  ],
+  "SonosSonosControl": [
+   {
+    "Name": "AlbumArtURL",
+    "Type": "Text",
+    "String": "https://dqin3wzcrm6g4.cloudfront.net/images/program/Y2KHits.png"
+   },
+   {
+    "Name": "CurrentSource",
+    "Type": "Text",
+    "String": "x-sonosapi-hls-static:track%3a1887489%7c1117016?sid=500&amp;flags=0&amp;sn=5"
+   },
+   {
+    "Name": "FavName 1",
+    "Type": "Text",
+    "String": "8-Tracks"
+   },
+   {
+    "Name": "FavName 10",
+    "Type": "Text",
+    "String": "Concrete Beats"
+   },
+   {
+    "Name": "FavName 11",
+    "Type": "Text",
+    "String": "Decades"
+   },
+   {
+    "Name": "FavName 12",
+    "Type": "Text",
+    "String": "Divas"
+   },
+   {
+    "Name": "FavName 13",
+    "Type": "Text",
+    "String": "El Mocambo"
+   },
+   {
+    "Name": "FavName 14",
+    "Type": "Text",
+    "String": "Feedback"
+   },
+   {
+    "Name": "FavName 15",
+    "Type": "Text",
+    "String": "Hawaiian"
+   },
+   {
+    "Name": "FavName 16",
+    "Type": "Text",
+    "String": "House Party"
+   },
+   {
+    "Name": "FavName 17",
+    "Type": "Text",
+    "String": "Modern Soul"
+   },
+   {
+    "Name": "FavName 18",
+    "Type": "Text",
+    "String": "Perimeter"
+   },
+   {
+    "Name": "FavName 19",
+    "Type": "Text",
+    "String": "RAPture"
+   },
+   {
+    "Name": "FavName 2",
+    "Type": "Text",
+    "String": "80s Hits"
+   },
+   {
+    "Name": "FavName 20",
+    "Type": "Text",
+    "String": "Rock en Español"
+   },
+   {
+    "Name": "FavName 21",
+    "Type": "Text",
+    "String": "Rock Show"
+   },
+   {
+    "Name": "FavName 22",
+    "Type": "Text",
+    "String": "Rock Yard"
+   },
+   {
+    "Name": "FavName 23",
+    "Type": "Text",
+    "String": "Shine"
+   },
+   {
+    "Name": "FavName 24",
+    "Type": "Text",
+    "String": "Strobe"
+   },
+   {
+    "Name": "FavName 25",
+    "Type": "Text",
+    "String": "Subterranean"
+   },
+   {
+    "Name": "FavName 26",
+    "Type": "Text",
+    "String": "Summer Fun"
+   },
+   {
+    "Name": "FavName 27",
+    "Type": "Text",
+    "String": "The Blvd."
+   },
+   {
+    "Name": "FavName 28",
+    "Type": "Text",
+    "String": "The Party Playlist"
+   },
+   {
+    "Name": "FavName 29",
+    "Type": "Text",
+    "String": "Trendspot"
+   },
+   {
+    "Name": "FavName 3",
+    "Type": "Text",
+    "String": "90s Alternative Rock"
+   },
+   {
+    "Name": "FavName 30",
+    "Type": "Text",
+    "String": "Tropical Breezes"
+   },
+   {
+    "Name": "FavName 31",
+    "Type": "Text",
+    "String": "Y2K Hits"
+   },
+   {
+    "Name": "FavName 4",
+    "Type": "Text",
+    "String": "90s Hits"
+   },
+   {
+    "Name": "FavName 5",
+    "Type": "Text",
+    "String": "All Skate"
+   },
+   {
+    "Name": "FavName 6",
+    "Type": "Text",
+    "String": "Bailamos!"
+   },
+   {
+    "Name": "FavName 7",
+    "Type": "Text",
+    "String": "Caribbean Rhythms"
+   },
+   {
+    "Name": "FavName 8",
+    "Type": "Text",
+    "String": "Classic Soul"
+   },
+   {
+    "Name": "FavName 9",
+    "Type": "Text",
+    "String": "College Rock"
+   },
+   {
+    "Name": "Status",
+    "Type": "Status",
+    "Value": 0,
+    "String": "OK - 192.168.68.41"
+   },
+   {
+    "Name": "TrackAlbum",
+    "Type": "Text",
+    "String": "Turn Off the Light"
+   },
+   {
+    "Name": "TrackArtist",
+    "Type": "Text",
+    "String": "Nelly Furtado"
+   },
+   {
+    "Name": "TrackName",
+    "Type": "Text",
+    "String": "Turn Off the Light (radio edit)"
+   },
+   {
+    "Name": "TrackSource",
+    "Type": "Text",
+    "String": ""
+   },
+   {
+    "Name": "TransportState",
+    "Type": "Text",
+    "String": "PAUSED_PLAYBACK"
+   }
+  ]
+ }
+}

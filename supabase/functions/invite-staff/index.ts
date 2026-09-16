@@ -24,7 +24,7 @@ const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY")!;
 
 const FROM = "Bunker Club <no-reply@bunkerokc.com>";
 const REDIRECT_TO = "https://os.bunkerokc.com/dashboard";
-const KNOWN_MODULES = ["trivia", "seasons", "drinks", "signage", "website", "events"];
+const KNOWN_MODULES = ["trivia", "seasons", "drinks", "signage", "website", "events", "audio"];
 const ROLE_TITLES = ["staff", "host"]; // never mint an admin via invite
 
 const cors = {

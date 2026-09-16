@@ -1,0 +1,259 @@
+/**
+ * Fake Q-SYS Core for the tests — a TCP server speaking the QRC wire protocol (JSON-RPC 2.0,
+ * NUL-terminated frames) that REPLAYS the pinned inventory (fixtures/inventory-slice.json, cut
+ * from qrc-inventory-2026-09-16-final.json). It:
+ *   • pushes an unsolicited EngineStatus the moment a client connects (the real Core does)
+ *   • answers StatusGet / Component.GetComponents / Component.Get / ChangeGroup.* / NoOp
+ *   • answers any other method with JSON-RPC -32601 (method not found) and RECORDS it — so a
+ *     test can prove the agent never put a non-read method on the wire
+ *   • can drop the socket once after N requests (reconnect test), split responses across two
+ *     writes (framing test), hide components/controls (degraded-state test), override the
+ *     design name (mismatch test), and push ChangeGroup.Poll notifications on demand
+ */
+import fs from "node:fs";
+import net from "node:net";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+export interface FixtureControl {
+  Name: string;
+  Type?: string;
+  Value?: unknown;
+  String?: string;
+  Position?: number;
+}
+export interface Fixture {
+  status: Record<string, unknown> & { DesignName: string };
+  components: Array<{ Name: string; Type: string; ID?: string }>;
+  controls: Record<string, FixtureControl[]>;
+}
+
+const here = path.dirname(fileURLToPath(import.meta.url));
+export function loadFixture(): Fixture {
+  return JSON.parse(fs.readFileSync(path.join(here, "fixtures", "inventory-slice.json"), "utf8")) as Fixture;
+}
+
+export interface FakeCoreOptions {
+  fixture?: Fixture;
+  designName?: string;
+  hideComponents?: string[];
+  hideControls?: Array<{ component: string; control: string }>;
+  /** close the FIRST connection after this many requests have been answered */
+  dropAfterRequests?: number;
+  /** close the FIRST connection right after answering this method (e.g. "ChangeGroup.AutoPoll") */
+  dropAfterMethod?: string;
+  /** write every response as two chunks with a tiny delay between (framing test) */
+  splitFrames?: boolean;
+  /** send an unsolicited EngineStatus on connect (default true) */
+  engineStatusOnConnect?: boolean;
+  /** also interleave an EngineStatus before EVERY response (id-matching stress) */
+  engineStatusBeforeEachResponse?: boolean;
+}
+
+export interface ReceivedFrame {
+  id?: number;
+  method: string;
+  params?: unknown;
+  connection: number;
+}
+
+export class FakeCore {
+  readonly received: ReceivedFrame[] = [];
+  readonly sockets = new Set<net.Socket>();
+  connections = 0;
+  port = 0;
+  private server: net.Server | null = null;
+  private readonly fx: Fixture;
+  private readonly hidden: Set<string>;
+  private readonly hiddenControls: Set<string>;
+  private answered = 0;
+  private dropped = false;
+  private changeGroups = new Map<string, Array<{ component: string; control: string }>>();
+
+  constructor(private readonly opts: FakeCoreOptions = {}) {
+    this.fx = opts.fixture ?? loadFixture();
+    this.hidden = new Set(opts.hideComponents ?? []);
+    this.hiddenControls = new Set((opts.hideControls ?? []).map((h) => `${h.component}\0${h.control}`));
+  }
+
+  get designName(): string {
+    return this.opts.designName ?? this.fx.status.DesignName;
+  }
+
+  start(port = 0): Promise<number> {
+    return new Promise((resolve) => {
+      this.server = net.createServer((sock) => this.onConnection(sock));
+      this.server.listen(port, "127.0.0.1", () => {
+        this.port = (this.server!.address() as net.AddressInfo).port;
+        resolve(this.port);
+      });
+    });
+  }
+
+  stop(): Promise<void> {
+    for (const s of this.sockets) s.destroy();
+    this.sockets.clear();
+    return new Promise((resolve) => (this.server ? this.server.close(() => resolve()) : resolve()));
+  }
+
+  /** Push a ChangeGroup.Poll notification (what AutoPoll delivers) to every live connection. */
+  pushPoll(groupId: string, changes: Array<{ Component: string; Name: string; Value?: unknown; String?: string; Position?: number }>): void {
+    const frame = { jsonrpc: "2.0", method: "ChangeGroup.Poll", params: { Id: groupId, Changes: changes } };
+    for (const s of this.sockets) this.write(s, frame);
+  }
+
+  /** Push an EngineStatus notification to every live connection. */
+  pushEngineStatus(overrides: Record<string, unknown> = {}): void {
+    const frame = { jsonrpc: "2.0", method: "EngineStatus", params: { ...this.fx.status, DesignName: this.designName, ...overrides } };
+    for (const s of this.sockets) this.write(s, frame);
+  }
+
+  /** Every method the agent ever sent, unique, sorted. */
+  methodsSeen(): string[] {
+    return [...new Set(this.received.map((r) => r.method))].sort();
+  }
+
+  private onConnection(sock: net.Socket): void {
+    const conn = ++this.connections;
+    this.sockets.add(sock);
+    sock.on("close", () => this.sockets.delete(sock));
+    sock.on("error", () => {});
+    if (this.opts.engineStatusOnConnect !== false) {
+      this.write(sock, { jsonrpc: "2.0", method: "EngineStatus", params: { ...this.fx.status, DesignName: this.designName } });
+    }
+    let buf = Buffer.alloc(0);
+    sock.on("data", (chunk) => {
+      buf = Buffer.concat([buf, chunk]);
+      for (;;) {
+        const nul = buf.indexOf(0);
+        if (nul < 0) break;
+        const raw = buf.subarray(0, nul).toString("utf8");
+        buf = buf.subarray(nul + 1);
+        let msg: { id?: number; method: string; params?: unknown };
+        try {
+          msg = JSON.parse(raw);
+        } catch {
+          continue;
+        }
+        this.received.push({ id: msg.id, method: msg.method, params: msg.params, connection: conn });
+        this.answer(sock, conn, msg);
+      }
+    });
+  }
+
+  private answer(sock: net.Socket, conn: number, msg: { id?: number; method: string; params?: unknown }): void {
+    const reply = (body: Record<string, unknown>) => {
+      if (this.opts.engineStatusBeforeEachResponse) {
+        this.write(sock, { jsonrpc: "2.0", method: "EngineStatus", params: { ...this.fx.status, DesignName: this.designName } });
+      }
+      this.write(sock, { jsonrpc: "2.0", id: msg.id, ...body });
+      this.answered++;
+      const byCount = !!this.opts.dropAfterRequests && this.answered >= this.opts.dropAfterRequests;
+      const byMethod = !!this.opts.dropAfterMethod && msg.method === this.opts.dropAfterMethod;
+      if (conn === 1 && !this.dropped && (byCount || byMethod)) {
+        this.dropped = true;
+        setTimeout(() => sock.destroy(), 5);
+      }
+    };
+    const err = (code: number, message: string) => reply({ error: { code, message } });
+    const p = (msg.params ?? {}) as Record<string, unknown>;
+
+    switch (msg.method) {
+      case "NoOp":
+        return reply({ result: true });
+      case "StatusGet":
+        return reply({ result: { ...this.fx.status, DesignName: this.designName } });
+      case "Component.GetComponents":
+        return reply({ result: this.fx.components.filter((c) => !this.hidden.has(c.Name)) });
+      case "Component.Get": {
+        const name = p.Name as string;
+        if (this.hidden.has(name) || !this.fx.controls[name]) return err(7, "Unknown component name");
+        const want = ((p.Controls as Array<{ Name: string }>) ?? []).map((c) => c.Name);
+        const have = this.fx.controls[name];
+        const out: FixtureControl[] = [];
+        for (const w of want) {
+          const ctl = have.find((c) => c.Name === w);
+          if (!ctl || this.hiddenControls.has(`${name}\0${w}`)) return err(8, `Unknown control: ${w}`);
+          out.push({ Name: ctl.Name, Type: ctl.Type, Value: ctl.Value, String: ctl.String, Position: ctl.Position });
+        }
+        return reply({ result: { Name: name, Controls: out } });
+      }
+      case "ChangeGroup.AddComponentControl": {
+        const id = p.Id as string;
+        const comp = p.Component as { Name: string; Controls: Array<{ Name: string }> };
+        if (this.hidden.has(comp.Name) || !this.fx.controls[comp.Name]) return err(7, "Unknown component name");
+        const list = this.changeGroups.get(id) ?? [];
+        for (const c of comp.Controls) list.push({ component: comp.Name, control: c.Name });
+        this.changeGroups.set(id, list);
+        return reply({ result: true });
+      }
+      case "ChangeGroup.AutoPoll": {
+        if (!this.changeGroups.has(p.Id as string)) return err(6, "Unknown change group");
+        return reply({ result: true });
+      }
+      case "ChangeGroup.Poll": {
+        const list = this.changeGroups.get(p.Id as string);
+        if (!list) return err(6, "Unknown change group");
+        return reply({ result: { Id: p.Id, Changes: [] } });
+      }
+      default:
+        return err(-32601, `Method not found: ${msg.method}`);
+    }
+  }
+
+  private writeQueues = new WeakMap<net.Socket, Promise<void>>();
+
+  private write(sock: net.Socket, frame: Record<string, unknown>): void {
+    if (sock.destroyed) return;
+    const bytes = Buffer.concat([Buffer.from(JSON.stringify(frame), "utf8"), Buffer.from([0])]);
+    if (!this.opts.splitFrames || bytes.length <= 8) {
+      sock.write(bytes);
+      return;
+    }
+    // split mode: each frame goes out as two chunks with a gap, but frames stay in ORDER
+    // (a per-socket queue — otherwise the halves of consecutive frames would interleave).
+    const prev = this.writeQueues.get(sock) ?? Promise.resolve();
+    const next = prev.then(
+      () =>
+        new Promise<void>((resolve) => {
+          if (sock.destroyed) return resolve();
+          const cut = Math.floor(bytes.length / 2);
+          sock.write(bytes.subarray(0, cut));
+          setTimeout(() => {
+            if (!sock.destroyed) sock.write(bytes.subarray(cut));
+            resolve();
+          }, 3);
+        }),
+    );
+    this.writeQueues.set(sock, next);
+  }
+
+  /** What the fake has subscribed under a change group (for assertions). */
+  subscriptions(groupId: string): Array<{ component: string; control: string }> {
+    return [...(this.changeGroups.get(groupId) ?? [])];
+  }
+}
+
+/** Quiet logger for tests (collects lines). */
+export function testLogger(): { lines: string[]; log: import("../src/log.js").Logger } {
+  const lines: string[] = [];
+  const write = (level: string, msg: string) => {
+    lines.push(`${level} ${msg}`);
+  };
+  const log = write as unknown as import("../src/log.js").Logger;
+  log.debug = (m) => write("debug", m);
+  log.info = (m) => write("info", m);
+  log.warn = (m) => write("warn", m);
+  log.error = (m) => write("error", m);
+  return { lines, log };
+}
+
+export const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+export async function waitFor(pred: () => boolean, timeoutMs = 3000, label = "condition"): Promise<void> {
+  const t0 = Date.now();
+  while (!pred()) {
+    if (Date.now() - t0 > timeoutMs) throw new Error(`timeout waiting for ${label}`);
+    await sleep(10);
+  }
+}
