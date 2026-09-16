@@ -48,6 +48,8 @@ const admin = createClient(URL_, SERVICE, { auth: { persistSession: false, autoR
 const anon = createClient(URL_, ANON, { auth: { persistSession: false, autoRefreshToken: false } });
 
 const TABLES = ["audio_scenes", "audio_zone_presets", "audio_state", "audio_live"] as const;
+/** PR C (0069): the two source tables — probed only when the migration is applied (absent → skipped, exit 0). */
+const SOURCE_TABLES = ["audio_source_ranges", "audio_source_presets"] as const;
 const USERS = {
   host: "audio-rls-host@bunker.test", // host{audio}
   nomod: "audio-rls-nomod@bunker.test", // host{} — no audio grant
@@ -181,6 +183,45 @@ async function main() {
   const before = await host.from("audio_scenes").select("id,updated_at").eq("venue_id", VENUE).eq("name", "TRIVIA").single();
   const upd = await host.from("audio_scenes").update({ ramp_seconds: 3 }).eq("id", before.data!.id).select("updated_at").single();
   assert("host{audio} UPDATE audio_scenes (no-op value) → 200 + updated_at touched", !upd.error && !!before.data && new Date(upd.data!.updated_at) >= new Date(before.data.updated_at), upd.error);
+
+  // ── (4b) PR C / 0069: source ranges + presets (skipped cleanly until applied) ──
+  const srcProbe = await admin.from("audio_source_presets").select("source").limit(1);
+  const sourcesApplied = !srcProbe.error;
+  if (!sourcesApplied) {
+    console.log("⏭ audio_source_* tables not present — migration 0069 not applied yet; source checks skipped");
+  } else {
+    const sp = await admin.from("audio_source_presets").select("source,level,gain_db").eq("venue_id", VENUE);
+    assert("0069 seed: 18 source presets (6 sources × 3 levels), all gain_db NULL", !sp.error && sp.data?.length === 18 && sp.data.every((r) => r.gain_db === null), sp.error ?? sp.data?.length);
+    const st = await admin.from("audio_state").select("baseline,baseline_at").eq("venue_id", VENUE).single();
+    assert("0069: audio_state.baseline / baseline_at columns exist", !st.error, st.error);
+    for (const t of SOURCE_TABLES) {
+      const a = await anon.from(t).select("*").limit(1);
+      assert(`anon SELECT ${t} → permission denied (42501)`, !!a.error && a.error.code === "42501", a.error ?? a.data);
+      const h = await host.from(t).select("*").eq("venue_id", VENUE);
+      assert(`host{audio} SELECT ${t} → 200`, !h.error, h.error);
+      const n = await nomod.from(t).select("*").eq("venue_id", VENUE);
+      assert(`host{} SELECT ${t} → 200 with 0 rows`, !n.error && n.data?.length === 0, n.error ?? n.data?.length);
+    }
+    // the column-listed grants: gain_db is editable, nothing else on presets; no DELETE anywhere
+    const okUpd = await host.from("audio_source_presets").update({ gain_db: null }).eq("venue_id", VENUE).eq("source", "verb").eq("level", "low").select("gain_db");
+    assert("host{audio} UPDATE audio_source_presets.gain_db (no-op NULL) → 200", !okUpd.error, okUpd.error);
+    const badUpd = await host.from("audio_source_presets").update({ level: "low" }).eq("venue_id", VENUE).eq("source", "verb").eq("level", "low");
+    assert("host{audio} UPDATE audio_source_presets.level → rejected (column not granted)", !!badUpd.error, badUpd.error);
+    const del = await host.from("audio_source_presets").delete().eq("venue_id", VENUE).eq("source", "verb").eq("level", "low");
+    assert("host{audio} DELETE audio_source_presets → rejected (no DELETE grant)", !!del.error, del.error);
+    const nomodUpd = await nomod.from("audio_source_presets").update({ gain_db: -20 }).eq("venue_id", VENUE).eq("source", "verb").eq("level", "low").select("gain_db");
+    assert("host{} UPDATE audio_source_presets → 0 rows touched (RLS filters)", !nomodUpd.error && (nomodUpd.data?.length ?? 0) === 0, nomodUpd.error ?? nomodUpd.data);
+    const rgBad = await host.from("audio_source_ranges").insert({ venue_id: VENUE, source: "mic1", min_db: 5, max_db: 0 });
+    assert("host{audio} INSERT a range with min ≥ max → CHECK rejects", !!rgBad.error, rgBad.error);
+    const rgAnon = await anon.from("audio_source_ranges").insert({ venue_id: VENUE, source: "mic1", min_db: -10, max_db: 0 });
+    assert("anon INSERT audio_source_ranges → rejected", !!rgAnon.error, rgAnon.error);
+    const seedBad = await anon.rpc("audio_agent_seed_ranges", { p_token: "not-the-token", p_venue: VENUE, p_ranges: [{ source: "mic1", min_db: -10, max_db: 0 }] });
+    assert("anon RPC audio_agent_seed_ranges with a wrong token → unauthorized", !!seedBad.error && /unauthorized/i.test(seedBad.error.message), seedBad.error);
+    const blBad = await anon.rpc("audio_agent_set_baseline", { p_token: "not-the-token", p_venue: VENUE, p_levers: {}, p_replace: false });
+    assert("anon RPC audio_agent_set_baseline with a wrong token → unauthorized", !!blBad.error && /unauthorized/i.test(blBad.error.message), blBad.error);
+    const kindBad = await host.from("audio_commands").insert({ venue_id: VENUE, kind: "source_fader", payload: {} });
+    assert("audio_commands CHECK rejects an unknown kind (source_fader)", !!kindBad.error, kindBad.error);
+  }
 
   // ── (5) the RPC with the real token (opt-in) ───────────────────────────────
   if (AGENT_TOKEN) {
