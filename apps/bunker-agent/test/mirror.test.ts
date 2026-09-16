@@ -214,7 +214,7 @@ describe("Mirror degraded paths (fail LOUD, keep running)", () => {
     assert.equal(errs.length, 1);
     assert.deepEqual({ kind: errs[0].kind, component: errs[0].component, control: errs[0].control }, { kind: "missing_control", component: "Inside Mixer", control: "input.2.gain" });
     const subs = r.core.subscriptions(GROUP).filter((s) => s.component === "Inside Mixer").map((s) => s.control).sort();
-    assert.deepEqual(subs, ["input.1.gain", "input.1.mute", "input.2.mute", "output.1.gain", "output.1.mute"]);
+    assert.deepEqual(subs, ["input.1.gain", "input.1.mute", "input.2.mute", "input.5.gain", "input.8.gain", "output.1.gain", "output.1.mute"]);
     await waitFor(() => r.posted.length >= 1, 2000, "post");
     const s = r.posted[r.posted.length - 1];
     assert.deepEqual(s.derived.mics["2"], { mute: true, gain_db: null });
@@ -267,7 +267,7 @@ describe("contract ↔ fixture", () => {
       const have = new Set((fx.controls[c.component] ?? []).map((k) => k.Name));
       for (const k of c.controls) assert.ok(have.has(k), `inventory lacks ${c.component} → ${k}`);
     }
-    assert.equal(CONTRACT_REFS.length, 90);
+    assert.equal(CONTRACT_REFS.length, 92); // 90 (PR A) + input.5.gain + input.8.gain (PR C sources)
   });
 });
 

@@ -268,12 +268,23 @@ describe("the loop: take → execute → finish → setState", () => {
           states.push({ sceneId, by, error });
           return { ok: true, status: 204 };
         },
+        async setBaseline(_v, levers, replace): Promise<ReportResult> {
+          baselines.push({ levers, replace });
+          return { ok: true, status: 204 };
+        },
       };
+      const baselines: Array<{ levers: Record<string, unknown>; replace: boolean }> = [];
       const { log } = testLogger();
       const loop = startCommandLoop({ api, writer: client, config: { venueId: VENUE, agentId: "test-nuc", writesEnabled: true }, log, intervalMs: 60_000, sleep: noSleep });
       const n = await loop.tick();
       loop.stop();
       assert.equal(n, 2);
+      // PR C: the successful recall REPLACED the baseline with every lever it wrote; the refused one wrote none
+      assert.equal(baselines.length, 1);
+      assert.equal(baselines[0].replace, true);
+      assert.equal(baselines[0].levers["Inside Mixer|output.1.gain"], -18.5);
+      assert.equal(baselines[0].levers["Inside Mixer|output.1.mute"], false, "the last write of a control wins (unmute after mute)");
+      assert.equal(baselines[0].levers["Inside Router_8x8|select.1"], 1);
       assert.deepEqual(finished, [
         { id: "c1", status: "done", reason: undefined },
         { id: "c2", status: "error", reason: "writes_disabled" },
@@ -378,7 +389,7 @@ describe("WARN-1: a recall writes ONLY scene levers — a tampered payload canno
       assert.ok(!/Amp_Output|SonosSonosControl|Priority_Ducker/.test(s.component), `smuggled component planned: ${s.component}`);
       for (const c of s.controls) assert.ok(isLever(s.component, c.name), `${s.component}/${c.name} is not a lever`);
     }
-    assert.equal(LEVER_KEYS.size, 18, "SCENE_LEVERS = 18 writable controls (controls.ts)");
+    assert.equal(LEVER_KEYS.size, 20, "SCENE_LEVERS = 20 writable controls (controls.ts: 18 from PR A + input.5/8.gain in PR C)");
   });
 
   it("on the wire: the tampered recall lands the same 10 lever writes and ZERO writes to the smuggled targets", async () => {

@@ -26,6 +26,10 @@ import type { AgentConfig } from "./config.js";
 import { SCENE_LEVERS } from "./controls.js";
 import type { Logger } from "./log.js";
 import type { CommandApi, QueuedCommand } from "./report.js";
+import {
+  SOURCE_MIXER, SOURCE_ROUTER, SOURCE_ROUTER_CONTROL, SELECTED_SOURCE_LEVER, baselineKey, isSourceKey, isSourceLevel, leverForSource,
+  parseRanges, routedSource, type SourceKey, type SourceRange,
+} from "./sources.js";
 
 /** The write surface the executor needs — QrcClient (PR B) satisfies it; tests inject a recorder. */
 export interface ControlWriter {
@@ -34,7 +38,7 @@ export interface ControlWriter {
 }
 
 export interface WriteStep {
-  step: "mute" | "gains" | "switch" | "unmute" | "preset" | "mic" | "reverb" | "sonos" | "video";
+  step: "mute" | "gains" | "switch" | "unmute" | "preset" | "mic" | "reverb" | "sonos" | "video" | "source";
   component: string;
   controls: Array<{ name: string; value: unknown; ramp?: number }>;
 }
@@ -44,7 +48,16 @@ export interface ExecResult {
   result: Record<string, unknown>;
   /** the scene id to stamp into audio_state on a successful recall */
   activeSceneId?: string | null;
+  /**
+   * PR C: the levers this command JUST SET, for audio_state.baseline (0069). A recall REPLACES
+   * the baseline (the scene is the new default); a zone/source preset MERGES its one lever. A
+   * NUDGE never sets this — that is precisely how the page derives "nudged +1.5 dB".
+   */
+  baseline?: { levers: Record<string, unknown>; replace: boolean };
 }
+
+/** One Component.Get answer, as the executor reads it (a subset of QrcControlValue). */
+export type ControlRead = ReadonlyArray<{ Name: string; Value?: unknown; String?: string }>;
 
 export interface ExecContext {
   writer: ControlWriter;
@@ -55,7 +68,13 @@ export interface ExecContext {
   capture?: (sceneName: string) => Promise<{ stored: boolean; summary: string; controls: number; error?: string }>;
   /** injectable live read of the HDMI switcher (NOTE-8 name→selector); production = Component.Get */
   readVideo?: () => Promise<VideoRead | null>;
+  /** PR C: injectable live read of any contract component (router select + the source gain); production = Component.Get (a READ) */
+  readControls?: (component: string, controls: readonly string[]) => Promise<ControlRead>;
 }
+
+/** PR C: the ramps the two source kinds use (brief: preset 2 s, nudge 0.5 s). */
+export const SOURCE_PRESET_RAMP_S = 2;
+export const SOURCE_NUDGE_RAMP_S = 0.5;
 
 /**
  * WARN-1 (review): the ONLY controls a recall may ever write = SCENE_LEVERS (controls.ts), the
@@ -212,7 +231,125 @@ export interface TakenCommand extends QueuedCommand {
   scene_ramp?: number | null;
   preset_gain?: number | null;
   preset_ramp?: number | null;
+  /** PR C (0069 take RPC): the source preset's gain (null = not authored) + the venue's ranges */
+  source_preset_gain?: number | null;
+  ranges?: unknown;
 }
+
+// ── PR C: SOURCE presets + NUDGES, bounded by the owner's ranges ─────────────────────
+/**
+ * The pure decision for one source write (preset or nudge), given what was just READ from the
+ * Core. Returns the single ramped write, or the refusal reason with everything the page shows:
+ *   range_not_set  — no audio_source_ranges row for this source (nothing is ever written blind)
+ *   not_routed     — sonos/booth/hdmi asked for while the router is on another source
+ *   preset_not_set — LOW/MED/HIGH never authored
+ *   out_of_range   — the target would leave [min, max]: REFUSED, never capped (Marvin ruling 2)
+ *   read_failed    — the current gain could not be read (a nudge is a delta; no base = no write)
+ */
+export type SourceDecision =
+  | { ok: true; control: string; current: number | null; target: number; ramp: number }
+  | { ok: false; reason: "range_not_set" | "not_routed" | "preset_not_set" | "out_of_range" | "read_failed" | "bad_command"; detail: string; current?: number | null; target?: number; range?: SourceRange; routed?: SourceKey | null };
+
+export function decideSourceWrite(
+  cmd: Pick<TakenCommand, "kind" | "payload" | "source_preset_gain">,
+  range: SourceRange | undefined,
+  select: unknown,
+  current: number | null,
+): SourceDecision {
+  const p = cmd.payload ?? {};
+  const source = p.source;
+  if (!isSourceKey(source)) return { ok: false, reason: "bad_command", detail: `unknown source ${String(source)}` };
+  if (!range) return { ok: false, reason: "range_not_set", detail: `${source}: no range set — set one in the scene editor (or capture NORMAL to seed ±6 dB)` };
+  const lever = leverForSource(source, select);
+  if ("notRouted" in lever) return { ok: false, reason: "not_routed", detail: `${source} is not routed — the router is on ${lever.routed ?? "an unmapped input"}`, routed: lever.routed };
+
+  let target: number;
+  let ramp: number;
+  if (cmd.kind === "source_preset") {
+    if (!isSourceLevel(p.level)) return { ok: false, reason: "bad_command", detail: `unknown level ${String(p.level)}` };
+    const g = cmd.source_preset_gain;
+    if (g === null || g === undefined || !Number.isFinite(Number(g))) return { ok: false, reason: "preset_not_set", detail: `${source} ${p.level} is not set` };
+    target = Number(g);
+    ramp = SOURCE_PRESET_RAMP_S;
+  } else if (cmd.kind === "source_nudge") {
+    if (p.direction !== "up" && p.direction !== "down") return { ok: false, reason: "bad_command", detail: `direction must be up or down` };
+    if (current === null) return { ok: false, reason: "read_failed", detail: `${source}: could not read the current gain` };
+    // a caller-supplied delta is accepted but NEVER beyond one step; the direction wins the sign
+    const asked = Number(p.delta_db);
+    const magnitude = Number.isFinite(asked) && asked !== 0 ? Math.min(Math.abs(asked), range.step_db) : range.step_db;
+    target = Math.round((current + (p.direction === "up" ? magnitude : -magnitude)) * 100) / 100;
+    ramp = SOURCE_NUDGE_RAMP_S;
+  } else {
+    return { ok: false, reason: "bad_command", detail: `not a source kind: ${cmd.kind}` };
+  }
+  if (target < range.min_db || target > range.max_db) {
+    return {
+      ok: false,
+      reason: "out_of_range",
+      detail: `${source}: ${target.toFixed(1)} dB is outside ${range.min_db}…${range.max_db} dB`,
+      current,
+      target,
+      range,
+    };
+  }
+  return { ok: true, control: lever.control, current, target, ramp };
+}
+
+/** Which source a recalled Inside Mixer input gain belongs to (input 5 = the source the SAME scene routes). */
+function sourceForRecalledControl(control: string, sceneSelect: unknown): SourceKey | null {
+  if (control === "input.1.gain") return "mic1";
+  if (control === "input.2.gain") return "mic2";
+  if (control === "input.8.gain") return "verb";
+  if (control === SELECTED_SOURCE_LEVER) return routedSource(sceneSelect);
+  return null;
+}
+
+export interface ClampedLever {
+  source: SourceKey;
+  control: string;
+  captured: number;
+  written: number;
+  range: { min_db: number; max_db: number };
+}
+
+/**
+ * DECISION (PR C brief): the owner's range wins over a stale capture. A recall clamps every
+ * SOURCE gain it writes into that source's range (when one exists) and REPORTS each clamp in
+ * result.clamped — never silently. Non-source levers (zone outputs, trims, WetLevel) are not
+ * ranged and pass through untouched. Mutates the plan in place; pure otherwise.
+ */
+export function clampRecallToRanges(steps: WriteStep[], payload: Record<string, unknown>, ranges: Map<SourceKey, SourceRange>): ClampedLever[] {
+  const clamped: ClampedLever[] = [];
+  if (ranges.size === 0) return clamped;
+  const controls = Array.isArray(payload.controls) ? (payload.controls as Array<{ component: string; control: string; value: unknown }>) : [];
+  const sceneSelect = controls.find((c) => c && c.component === SOURCE_ROUTER && c.control === SOURCE_ROUTER_CONTROL)?.value;
+  for (const s of steps) {
+    if (s.step !== "gains" || s.component !== SOURCE_MIXER) continue;
+    for (const c of s.controls) {
+      const source = sourceForRecalledControl(c.name, sceneSelect);
+      const range = source ? ranges.get(source) : undefined;
+      if (!source || !range || typeof c.value !== "number") continue;
+      const written = Math.max(range.min_db, Math.min(range.max_db, c.value));
+      if (written !== c.value) {
+        clamped.push({ source, control: c.name, captured: c.value, written, range: { min_db: range.min_db, max_db: range.max_db } });
+        c.value = written;
+      }
+    }
+  }
+  return clamped;
+}
+
+/** The flat "<Component>|<control>" → value map of everything a plan SET (the last write of a control wins). */
+export function baselineFromSteps(steps: ReadonlyArray<WriteStep>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const s of steps) for (const c of s.controls) out[baselineKey(s.component, c.name)] = c.value;
+  return out;
+}
+
+const readNumber = (read: ControlRead, name: string): number | null => {
+  const hit = read.find((c) => c.Name === name);
+  return hit && typeof hit.Value === "number" && Number.isFinite(hit.Value) ? hit.Value : null;
+};
 
 /** Execute ONE command against the writer. Never throws — every outcome is a result row. */
 export async function executeCommand(cmd: TakenCommand, ctx: ExecContext): Promise<ExecResult> {
@@ -250,6 +387,7 @@ export async function executeCommand(cmd: TakenCommand, ctx: ExecContext): Promi
   let steps: WriteStep[];
   let rampSeconds = 0;
   const notes: Record<string, unknown> = {};
+  let baseline: ExecResult["baseline"];
   if (cmd.kind === "recall_scene") {
     const payload = cmd.scene_payload ?? null;
     if (!cmd.scene_name || !payload) return { status: "error", result: { reason: "unknown_scene" } };
@@ -258,6 +396,10 @@ export async function executeCommand(cmd: TakenCommand, ctx: ExecContext): Promi
     steps = planRecall(payload, rampSeconds, ignored);
     if (ignored.length) notes.ignored = ignored;
     if (steps.length === 0) return { status: "error", result: { reason: "scene_not_captured", scene: cmd.scene_name, ...(ignored.length ? { ignored } : {}) } };
+    // PR C: the owner's ranges bound the source gains a scene recalls (reported, never silent)
+    const clamped = clampRecallToRanges(steps, payload, parseRanges(cmd.ranges));
+    if (clamped.length) notes.clamped = clamped;
+    baseline = { levers: baselineFromSteps(steps), replace: true };
     // NOTE-8: the captured video NAMES → live-resolved selector booleans (never hard-coded)
     const video = payload.video as { out1?: string | null; out2?: string | null } | undefined;
     if (video && (video.out1 || video.out2)) {
@@ -280,10 +422,37 @@ export async function executeCommand(cmd: TakenCommand, ctx: ExecContext): Promi
       return { status: "error", result: { reason: "video_unresolved", detail: `no output is currently showing "${cmd.payload.source}", so its selector is unknown` } };
     }
     steps = v.steps;
+  } else if (cmd.kind === "source_preset" || cmd.kind === "source_nudge") {
+    // PR C — read FIRST (router + current gain: both READS), decide, then at most ONE write.
+    const source = cmd.payload?.source;
+    if (!isSourceKey(source)) return { status: "error", result: { reason: "bad_command", detail: `unknown source ${String(source)}` } };
+    const range = parseRanges(cmd.ranges).get(source);
+    if (!ctx.readControls) return { status: "error", result: { reason: "read_failed", source, detail: "no live read available" } };
+    let select: unknown = null;
+    let current: number | null = null;
+    try {
+      const r = await ctx.readControls(SOURCE_ROUTER, [SOURCE_ROUTER_CONTROL]);
+      select = r.find((c) => c.Name === SOURCE_ROUTER_CONTROL)?.Value ?? null;
+      const lever = leverForSource(source, select);
+      if ("control" in lever) current = readNumber(await ctx.readControls(SOURCE_MIXER, [lever.control]), lever.control);
+    } catch (e) {
+      return { status: "error", result: { reason: "read_failed", source, detail: (e as Error).message } };
+    }
+    const d = decideSourceWrite(cmd, range, select, current);
+    if (!d.ok) {
+      const { ok: _ok, reason, ...rest } = d;
+      void _ok;
+      return { status: "error", result: { reason, source, ...rest } };
+    }
+    steps = [{ step: "source", component: SOURCE_MIXER, controls: [{ name: d.control, value: d.target, ramp: d.ramp }] }];
+    Object.assign(notes, { source, control: d.control, current: d.current, target: d.target, level: cmd.kind === "source_preset" ? cmd.payload?.level : undefined, direction: cmd.kind === "source_nudge" ? cmd.payload?.direction : undefined });
+    // a preset is a new baseline for that lever; a nudge is a delta ON the baseline (never recorded)
+    if (cmd.kind === "source_preset") baseline = { levers: { [baselineKey(SOURCE_MIXER, d.control)]: d.target }, replace: false };
   } else {
     const plan = planSimple(cmd, cmd.preset_gain ?? null, cmd.preset_ramp ?? null);
     if ("error" in plan) return { status: "error", result: { reason: "bad_command", detail: plan.error } };
     steps = plan.steps;
+    if (cmd.kind === "zone_preset") baseline = { levers: baselineFromSteps(steps), replace: false };
   }
 
   const completed: WriteStep[] = [];
@@ -301,6 +470,7 @@ export async function executeCommand(cmd: TakenCommand, ctx: ExecContext): Promi
     status: "done",
     result: { writes: completed, ramp_seconds: rampSeconds, ...notes },
     activeSceneId: cmd.kind === "recall_scene" ? String(cmd.payload?.scene_id ?? "") || null : undefined,
+    baseline,
   };
 }
 
@@ -342,6 +512,11 @@ export function startCommandLoop(o: CommandLoopOptions): CommandLoop {
       }
     : undefined;
 
+  // PR C: the source executor reads the router + the current gain through Component.Get (a READ)
+  const readControls = o.captureOptions?.client
+    ? async (component: string, controls: readonly string[]): Promise<ControlRead> => (await o.captureOptions!.client!.componentGet(component, controls)).Controls ?? []
+    : undefined;
+
   const tick = async (): Promise<number> => {
     if (busy || stopped) return 0;
     busy = true;
@@ -353,9 +528,14 @@ export function startCommandLoop(o: CommandLoopOptions): CommandLoop {
       }
       for (const cmd of taken.commands as TakenCommand[]) {
         o.log.info(`commands: ${cmd.kind} ${cmd.id} by ${cmd.requested_by ?? "?"} (arm valid=${cmd.writes_arm_valid})`);
-        const r = await executeCommand(cmd, { writer: o.writer, writesEnabled: o.config.writesEnabled, sleep: o.sleep, capture, readVideo });
+        const r = await executeCommand(cmd, { writer: o.writer, writesEnabled: o.config.writesEnabled, sleep: o.sleep, capture, readVideo, readControls });
         const fin = await o.api.finish(cmd.id, r.status, { ...r.result, agent_id: o.config.agentId });
         if (!fin.ok) o.log.warn(`commands: finish ${cmd.id} failed (${fin.status}) ${fin.error ?? ""}`);
+        // PR C: recall / zone preset / source preset stamp the baseline the "nudged" readout derives from
+        if (r.status === "done" && r.baseline) {
+          const bl = await o.api.setBaseline(o.config.venueId, r.baseline.levers, r.baseline.replace);
+          if (!bl.ok) o.log.warn(`commands: setBaseline failed (${bl.status}) ${bl.error ?? ""}`);
+        }
         if (r.status === "done" && r.activeSceneId) {
           const st = await o.api.setState(o.config.venueId, r.activeSceneId, cmd.requested_by, null);
           if (!st.ok) o.log.warn(`commands: setState failed (${st.status}) ${st.error ?? ""}`);
