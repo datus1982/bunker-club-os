@@ -44,7 +44,7 @@ source → unmute.
 - `audio_scenes` — `id, venue_id, name, position, ramp_seconds (3), payload jsonb, is_default,
   requires_confirm, created_at, updated_at`; unique `(venue_id, name)`, one default per venue.
   Seeded NORMAL (default, no confirm) / DJ / KARAOKE / TRIVIA (confirm) with **empty payloads** —
-  the app never invents levels; PR B's CAPTURE FROM ROOM fills them from `audio_live`.
+  the app never invents levels; PR B's CAPTURE FROM ROOM fills them through the AGENT (`Component.Get` on every scene lever — the same path as the CLI capture), not from the `audio_live` mirror, which deliberately omits write-only levers such as `WetLevel`.
 - `audio_zone_presets` — pk `(venue_id, zone inside|patio, level low|med|high)`, `gain_db` (null
   until authored), `ramp_seconds` (2). Six seeded rows.
 - `audio_state` — one row per venue: `active_scene_id`, `recalled_at`, `recalled_by`, `last_error`.

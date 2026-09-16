@@ -18,7 +18,10 @@
 import { EventEmitter } from "node:events";
 import net from "node:net";
 
-export const READ_ONLY_METHODS = new Set([
+// DECISION (review NOTE-2): the allow-list is module-private and only a ReadonlySet is exported, so no
+// importer (PR B's write client included) can widen it with `.add()` — a write path must be a separate,
+// explicitly gated client, never a loosened read-only one.
+const READ_ONLY_METHODS_MUTABLE = new Set([
   "NoOp",
   "StatusGet",
   "Component.GetComponents",
@@ -27,6 +30,7 @@ export const READ_ONLY_METHODS = new Set([
   "ChangeGroup.AutoPoll",
   "ChangeGroup.Poll",
 ]);
+export const READ_ONLY_METHODS: ReadonlySet<string> = READ_ONLY_METHODS_MUTABLE;
 
 export interface QrcStatus {
   Platform: string;
