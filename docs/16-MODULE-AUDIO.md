@@ -120,8 +120,8 @@ the public-channel backlog from PR #56) and the ordered recall batch; v1 adds no
 **BAR OPS ▸ AUDIO** (`/audio`, `RequireModule('audio')`): SCENES row (four buttons, active one lit
 from `audio_state` + live agreement), INSIDE / PATIO with LOW · MED · HIGH + live meter, MICS (two
 mute toggles + level), MUSIC (now playing + the 31 favorites), VIDEO (two outs × sources with
-signal), a small REVERB toggle. Scene editor (admin): name, ramp, **CAPTURE FROM ROOM** from
-`audio_live`, per-lever overrides for the few he tweaks; "save current as LOW/MED/HIGH" per zone.
+signal), a small REVERB toggle. Scene editor (admin): name, ramp, **CAPTURE FROM ROOM** via the
+agent (`Component.Get`, see §2), per-lever overrides for the few he tweaks; "save current as LOW/MED/HIGH" per zone.
 Confirm on DJ / KARAOKE / TRIVIA, none on NORMAL or presets. Hub/HOME: a one-line chip
 ("NORMAL · Sonos: 80s Hits · Inside MED") from `audio_live`.
 
