@@ -23,10 +23,16 @@
 import { EventEmitter } from "node:events";
 import net from "node:net";
 
-/** PR B: the ONLY methods the gated write path may put on the wire. */
-export const WRITE_METHODS = new Set(["Component.Set"]);
+// DECISION (review NOTE-2): the allow-list is module-private and only a ReadonlySet is exported, so no
+// importer (PR B's write client included) can widen it with `.add()` — a write path must be a separate,
+// explicitly gated client, never a loosened read-only one.
+// PR B honours that: the write path below is a SEPARATE private `writeRequest` over its own
+// frozen set (WRITE_METHODS, Component.Set only), gated on `writesEnabled` at construction.
+const WRITE_METHODS_MUTABLE = new Set(["Component.Set"]);
+/** PR B: the ONLY method the gated write path may put on the wire. ReadonlySet — never widened. */
+export const WRITE_METHODS: ReadonlySet<string> = WRITE_METHODS_MUTABLE;
 
-export const READ_ONLY_METHODS = new Set([
+const READ_ONLY_METHODS_MUTABLE = new Set([
   "NoOp",
   "StatusGet",
   "Component.GetComponents",
@@ -35,6 +41,7 @@ export const READ_ONLY_METHODS = new Set([
   "ChangeGroup.AutoPoll",
   "ChangeGroup.Poll",
 ]);
+export const READ_ONLY_METHODS: ReadonlySet<string> = READ_ONLY_METHODS_MUTABLE;
 
 export interface QrcStatus {
   Platform: string;
