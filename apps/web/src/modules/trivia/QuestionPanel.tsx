@@ -288,7 +288,7 @@ export function QuestionPanel({
                 >
                   {questions.map((a, i) => (
                     <div key={a.id} style={{ display: "flex", gap: 8, fontSize: 20, lineHeight: 1.2, ...(stack ? null : answerCell(a.question_number, bonusRank(questions, i))) }}>
-                      <span className={cx(v2 && "st-mono st-t2")} style={{ fontWeight: 700, flexShrink: 0 }}>{a.question_number > 10 ? "B" : a.question_number}:</span>
+                      <span className={cx(v2 && "st-mono st-t2")} style={{ fontWeight: 700, flexShrink: 0 }}>{a.question_number > 10 ? `B${a.question_number - 10}` : a.question_number}:</span>
                       <span className={cx(v2 && "st-body st-t1")}>{a.answer_text}</span>
                     </div>
                   ))}
@@ -361,11 +361,17 @@ export function QuestionPanel({
                     WARN-1): the fit floors at 24px, and ~5% of the live corpus (p99 422 chars,
                     max 528 — Ronnie's long celebrity clues) does not fit at the floor; on main
                     those scrolled, and they must keep scrolling rather than lose their last
-                    sentence silently. The fitted sizes are byte-identical either way: the
-                    search reads the TEXT node's scroll box against the BOX's client box, and
-                    the only case that can grow a scrollbar is the floor, where the search
-                    already returns minSize. */}
-                <div ref={qBoxRef} style={{ flex: 1, minHeight: 0, overflowY: "auto", overflowX: "hidden", display: "flex", alignItems: "flex-start" }}>
+                    sentence silently. `scrollbarGutter: "stable"` is LOAD-BEARING (addendum
+                    WARN-1): useFitSize reads the BOX's clientWidth once per pass, and on any
+                    platform whose scrollbars take space (Windows Chrome) that width depends
+                    on whether the PREVIOUS pass's size overflowed — pass A (no bar, 564px)
+                    picks 29px, which overflows and grows a bar; pass B (549px) picks 24px,
+                    which fits and drops it; forever. A commit-phase setSize loop, i.e. a
+                    pulsing question and a plausible "Maximum update depth" blank on the host
+                    console. Reserving the gutter pins capW regardless of the bar, so the
+                    search is a pure function of the text again. No-op on overlay-scrollbar
+                    platforms (macOS default), where the gutter is already 0. */}
+                <div ref={qBoxRef} style={{ flex: 1, minHeight: 0, overflowY: "auto", overflowX: "hidden", scrollbarGutter: "stable", display: "flex", alignItems: "flex-start" }}>
                   <div
                     ref={qTextRef}
                     className={cx(v2 && "st-t1")}
