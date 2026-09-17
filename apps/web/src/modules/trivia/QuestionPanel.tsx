@@ -171,13 +171,17 @@ export function QuestionPanel({
   };
 
   // One square, sized from the breakpoint above. `padding: 0` kills btnGhost's 18px sides
-  // so the box is actually square; `.scoring-page button` still forces 6px top/bottom at
-  // desktop, which fits inside the 38px min-height without widening anything.
+  // so the box is actually square. `lineHeight: 1` is NOT cosmetic: `.scoring-page button`
+  // forces 6px of top/bottom padding at desktop, and at the theme's own 1.4 leading an
+  // 18px digit came to 39.2px of content — the square measured 38×41 and the two jump rows
+  // sat a hair taller than they should. At leading 1 the content fits inside the 38px floor
+  // and the square is square in both looks.
   const sqStyle: CSSProperties = {
     width: sq,
     minWidth: sq,
     minHeight: sq,
     padding: 0,
+    lineHeight: 1,
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
