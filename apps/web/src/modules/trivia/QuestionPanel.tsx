@@ -33,9 +33,11 @@ import { useElapsedClock, useRoundClock } from "./useHostClocks";
  *    24px ("could be bigger by a couple of orders of magnitude… only the question pane").
  *    ⚠ The fitted node deliberately does NOT carry `st-body`: in v2 the token sheet sets
  *    `[data-st-page] .st-body { font-size: 15px !important }`, and an author !important
- *    beats the inline px the fit writes — the class would silently pin the pane at 15px and
- *    the binary search would return a number nothing rendered at. It takes `st-t1` (ink
- *    only). The BOX keeps BOX_H: the outer geometry never changes as the host steps through.
+ *    beats any inline px. This was a LIVE BUG on main, not a hypothetical: the v2 node
+ *    carried `st-body` with an inline 24px, so every v2 host had been reading questions at
+ *    15px. With the class on the measured node the binary search would also return a number
+ *    nothing rendered at. It takes `st-t1` (ink only). The BOX keeps BOX_H: the outer
+ *    geometry never changes as the host steps through.
  * 4. SCORE ROUND also sends the BOARD to TABULATE ("when we toggle scoring round we should
  *    make the board switch to the tabulating screen") — the ONE new DB write in this file.
  *    Guarded: never while the game is over or the board is on FINAL, because that would
@@ -161,13 +163,21 @@ export function QuestionPanel({
    * game has been ended or the final reveal is up, and writing 'scoring' there would drag
    * a finished game back onto a holding screen in front of the room. In that state the
    * toggle still works locally, it just doesn't touch the board.
+   *
+   * The patch is `board_stage` ONLY — never `show_game_over: false` (review WARN-2). The
+   * guard is only as fresh as this console's cached `state` (realtime-invalidated, no poll):
+   * a dropped socket or a second host console pressing FINAL leaves the cache stale, and a
+   * press then goes through. With the bare patch that stale press is INVISIBLE to the room
+   * (the board's `isFinal` precedence beats 'scoring' and self-corrects); with
+   * `show_game_over: false` it would yank the FINAL SCORES reveal off the TV. Leaving FINAL
+   * on purpose stays BoardStageControl's job.
    */
   const toggleScoreRound = () => {
     const nextRevealed = !scoreRevealed;
     setScoreRevealed(nextRevealed);
     if (!nextRevealed) return;
     if (state?.show_game_over || state?.board_stage === "final") return;
-    write.mutate({ board_stage: "scoring", show_game_over: false });
+    write.mutate({ board_stage: "scoring" });
   };
 
   // One square, sized from the breakpoint above. `padding: 0` kills btnGhost's 18px sides
@@ -225,8 +235,11 @@ export function QuestionPanel({
       {/* Answer key + question projector — FIXED-height boxes with the projector controls
           aligned UNDER their respective columns (owner refinement 2026-07-22): each box's
           controls sit directly beneath it, one row of height, positioned edge/center. The
-          jump rows (2026-09-17) sit directly ABOVE each box at one matched row height, so
-          the two boxes stay level. */}
+          jump rows (2026-09-17) sit directly ABOVE each box on one matched row FLOOR — the
+          boxes stay level wherever neither row wraps (every desktop width ≥1024 with a
+          normal 7-round / 10-question deck); in the ~750–1000px band the Q row can wrap to
+          two lines while the RD row does not, and the boxes sit one square out of line
+          (review NOTE-1, cosmetic on a desktop-primary console). */}
       <div style={{ display: "grid", gridTemplateColumns: stack ? "minmax(0, 1fr)" : "minmax(0, 1fr) minmax(0, 1fr)", gap: 16 }}>
         {/* Answer-key column: ROUND jump row + box + [ SCORE ROUND · SHOW/HIDE ANSWER centered · BACK TO Q1 right ] */}
         <div style={{ display: "flex", flexDirection: "column", gap: 12, minWidth: 0 }}>
@@ -314,11 +327,14 @@ export function QuestionPanel({
                   type="button"
                   onClick={() => sync(i, false, active, false)}
                   aria-pressed={isCur}
-                  aria-label={qq.question_number > 10 ? "Jump to the bonus question" : `Jump to question ${qq.question_number}`}
+                  aria-label={qq.question_number > 10 ? `Jump to bonus question ${qq.question_number - 10}` : `Jump to question ${qq.question_number}`}
                   className={cx(v2 && "st-body", v2 && isCur && "st-btn-primary")}
                   style={{ ...(isCur ? btnActive : btnGhost), ...sqStyle, ...(passed ? passedMark : null) }}
                 >
-                  {qq.question_number > 10 ? "B" : qq.question_number}
+                  {/* Bonus rounds carry 1–3 questions numbered 11–13 (55 live rounds, 27 with
+                      three) — a bare "B" three times over would leave only the lit one
+                      distinguishable (review NOTE-2). */}
+                  {qq.question_number > 10 ? `B${qq.question_number - 10}` : qq.question_number}
                 </button>
               );
             })}
@@ -338,11 +354,18 @@ export function QuestionPanel({
                   </span>
                   <ClockReadout label="ON THIS Q" ms={questionMs} v2={v2} title="Time on this question — resets every time you move" />
                 </div>
-                {/* The fitted pane. `overflow: hidden` on the BOX is what the measure reads
-                    against; the text node is what gets the px. See useFitSize's contract —
-                    no size class on the measured node, and nothing below it may set a size
-                    (this is a single text node, so there is nothing below it). */}
-                <div ref={qBoxRef} style={{ flex: 1, minHeight: 0, overflow: "hidden", display: "flex", alignItems: "flex-start" }}>
+                {/* The fitted pane. The BOX is what the measure reads against; the text node
+                    is what gets the px. See useFitSize's contract — no size class on the
+                    measured node, and nothing below it may set a size (this is a single text
+                    node, so there is nothing below it). `overflowY: auto` (NOT hidden — review
+                    WARN-1): the fit floors at 24px, and ~5% of the live corpus (p99 422 chars,
+                    max 528 — Ronnie's long celebrity clues) does not fit at the floor; on main
+                    those scrolled, and they must keep scrolling rather than lose their last
+                    sentence silently. The fitted sizes are byte-identical either way: the
+                    search reads the TEXT node's scroll box against the BOX's client box, and
+                    the only case that can grow a scrollbar is the floor, where the search
+                    already returns minSize. */}
+                <div ref={qBoxRef} style={{ flex: 1, minHeight: 0, overflowY: "auto", overflowX: "hidden", display: "flex", alignItems: "flex-start" }}>
                   <div
                     ref={qTextRef}
                     className={cx(v2 && "st-t1")}
