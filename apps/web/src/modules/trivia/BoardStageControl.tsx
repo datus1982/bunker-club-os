@@ -7,8 +7,10 @@ import { btnGhost, btnActive } from "./ui";
  * choreography). Replaces the old "OPEN LEADERBOARD / REVEAL FINAL SCORES" toggle:
  * the leaderboard is always sourced from a separate always-on display, so there is
  * nothing to "open" from here — what the host needs is control over WHAT the room
- * sees. Four stages, driven ONLY from this control (GameSetup seeds 'qr' at game
- * creation; after that nothing else writes board_stage):
+ * sees. Four stages (GameSetup seeds 'qr' at game creation; after that the only writers of
+ * board_stage are this control and — since 2026-09-17, host note 4 — turning SCORE ROUND ON
+ * in QuestionPanel, which sends the board to 'scoring' unless the game is already over or
+ * the board is on 'final'):
  *
  *   JOIN QR      → 'qr'        big join QR, no scores
  *   HIDE SCORES  → 'scoring'   "scores sealed" holding screen, no scores

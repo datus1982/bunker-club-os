@@ -34,6 +34,7 @@
     "test:itemschedule": "tsx scripts/test-item-schedule.ts",
     "test:menugroup": "tsx scripts/test-menu-group.ts",
     "test:audiorls": "tsx scripts/test-audio-rls.ts",
+    "test:hostclocks": "tsx scripts/test-host-clocks.ts",
     "test:tvchunk": "node scripts/check-tv-chunk.mjs"
   },
   "devDependencies": {
