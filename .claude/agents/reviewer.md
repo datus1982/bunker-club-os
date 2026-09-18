@@ -1,7 +1,7 @@
 ---
 name: reviewer
 description: Independent phase review before any merge. Cold-audits a branch against its phase doc. MUST be invoked before every phase PR merges.
-model: fable
+model: opus
 tools: Read, Grep, Glob, Bash
 disallowedTools: Write, Edit
 ---
